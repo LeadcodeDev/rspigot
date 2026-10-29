@@ -1,0 +1,576 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use rspigot_core::ports::SessionVerifier;
+use rspigot_domain::player::{ClientSettings, GameProfile, MainHand, PlayerId, ProfileProperty};
+use rspigot_domain::text::Component;
+use rspigot_protocol::codec::Encode;
+use rspigot_protocol::common::{
+    ClientInformation, ClientboundCustomPayload, Identifier, KeepAlive, NetworkTag, RegistryTags,
+    UpdateTags,
+};
+use rspigot_protocol::configuration::{
+    ClientboundFinishConfiguration, ClientboundSelectKnownPacks, CodeOfConduct, RegistryData,
+    RegistryEntry, ServerboundConfiguration, UpdateEnabledFeatures,
+};
+use rspigot_protocol::frame::{Compression, FrameDecoder, FrameEncoder, FrameError};
+use rspigot_protocol::handshake::{ClientIntent, ServerboundHandshake};
+use rspigot_protocol::login::{
+    ClientboundHello, LoginCompression, LoginDisconnect, LoginFinished, ServerboundLogin,
+};
+use rspigot_protocol::status::{PongResponse, ServerboundStatus, StatusResponse};
+use rspigot_protocol::types::{
+    GameProfile as WireProfile, JsonText, KnownPack, ProfileProperty as WireProperty,
+};
+use rspigot_protocol::{DecodeError, ids, split_packet_id, write_packet_with_id};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+
+use crate::listener::Shared;
+use crate::play;
+use crate::status::{legacy_status, status_json};
+use crate::text::to_json;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectionError {
+    #[error("i/o: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("frame: {0}")]
+    Frame(#[from] FrameError),
+    #[error("decode: {0}")]
+    Decode(#[from] DecodeError),
+    #[error("closed by peer")]
+    Closed,
+    #[error("{0}")]
+    Rejected(String),
+}
+
+pub struct PacketReader {
+    stream: OwnedReadHalf,
+    pub decoder: FrameDecoder,
+    buffer: Box<[u8]>,
+}
+
+impl PacketReader {
+    pub async fn next(&mut self) -> Result<Vec<u8>, ConnectionError> {
+        loop {
+            if let Some(packet) = self.decoder.next_packet()? {
+                return Ok(packet);
+            }
+            let read = self.stream.read(&mut self.buffer).await?;
+            if read == 0 {
+                return Err(ConnectionError::Closed);
+            }
+            self.decoder.feed(&self.buffer[..read]);
+        }
+    }
+}
+
+pub struct PacketWriter {
+    stream: OwnedWriteHalf,
+    pub encoder: FrameEncoder,
+    body: Vec<u8>,
+    pub pending: Vec<u8>,
+}
+
+impl PacketWriter {
+    pub fn queue<P: Encode + ?Sized>(
+        &mut self,
+        id: i32,
+        packet: &P,
+    ) -> Result<(), ConnectionError> {
+        self.body.clear();
+        write_packet_with_id(id, packet, &mut self.body);
+        self.encoder.encode_packet(&self.body, &mut self.pending)?;
+        Ok(())
+    }
+
+    pub fn queue_prebuilt(&mut self, frame: &[u8]) {
+        self.encoder.append_prebuilt(frame, &mut self.pending);
+    }
+
+    pub async fn flush(&mut self) -> Result<(), ConnectionError> {
+        if !self.pending.is_empty() {
+            self.stream.write_all(&self.pending).await?;
+            self.pending.clear();
+        }
+        Ok(())
+    }
+
+    pub async fn send<P: Encode + ?Sized>(
+        &mut self,
+        id: i32,
+        packet: &P,
+    ) -> Result<(), ConnectionError> {
+        self.queue(id, packet)?;
+        self.flush().await
+    }
+
+    pub async fn shutdown(&mut self) {
+        let _ = self.stream.shutdown().await;
+    }
+}
+
+pub struct Session {
+    pub reader: PacketReader,
+    pub writer: PacketWriter,
+    pub addr: SocketAddr,
+}
+
+fn identifier(raw: &str) -> Result<Identifier, ConnectionError> {
+    Identifier::parse(raw).map_err(ConnectionError::from)
+}
+
+pub async fn handle<V: SessionVerifier>(
+    shared: Arc<Shared<V>>,
+    stream: TcpStream,
+    addr: SocketAddr,
+) -> Result<(), ConnectionError> {
+    let mut first = [0u8; 1];
+    let peeked = stream.peek(&mut first).await?;
+    if peeked == 1 && first[0] == 0xFE {
+        let mut stream = stream;
+        let bytes = legacy_status(&shared.config, &shared.status.snapshot());
+        stream.write_all(&bytes).await?;
+        return Ok(());
+    }
+    let (read, write) = stream.into_split();
+    let mut session = Session {
+        reader: PacketReader {
+            stream: read,
+            decoder: FrameDecoder::new(),
+            buffer: vec![0u8; 16 * 1024].into_boxed_slice(),
+        },
+        writer: PacketWriter {
+            stream: write,
+            encoder: FrameEncoder::new(),
+            body: Vec::with_capacity(256),
+            pending: Vec::with_capacity(16 * 1024),
+        },
+        addr,
+    };
+    let packet = session.reader.next().await?;
+    let (id, body) = split_packet_id(&packet)?;
+    let ServerboundHandshake::Intention(intention) = ServerboundHandshake::decode(id, body)?;
+    match intention.intent {
+        ClientIntent::Status => status(&shared, &mut session).await,
+        ClientIntent::Login | ClientIntent::Transfer => {
+            if intention.intent == ClientIntent::Transfer && !shared.config.accepts_transfers {
+                return reject(
+                    &mut session,
+                    Component::translatable(
+                        "multiplayer.disconnect.transfers_disabled",
+                        Vec::new(),
+                    ),
+                )
+                .await;
+            }
+            if intention.protocol_version != rspigot_data::PROTOCOL_VERSION {
+                let template = if intention.protocol_version < rspigot_data::PROTOCOL_VERSION {
+                    &shared.config.outdated_client_message
+                } else {
+                    &shared.config.outdated_server_message
+                };
+                let message = template.replace("{0}", rspigot_data::VERSION_NAME);
+                return reject(&mut session, Component::text(message)).await;
+            }
+            login(shared, session).await
+        }
+    }
+}
+
+async fn reject(session: &mut Session, reason: Component) -> Result<(), ConnectionError> {
+    let packet = LoginDisconnect {
+        reason: JsonText(to_json(&reason)),
+    };
+    session
+        .writer
+        .send(ids::login::clientbound::LOGIN_DISCONNECT, &packet)
+        .await?;
+    session.writer.shutdown().await;
+    Ok(())
+}
+
+async fn status<V: SessionVerifier>(
+    shared: &Shared<V>,
+    session: &mut Session,
+) -> Result<(), ConnectionError> {
+    loop {
+        let packet = session.reader.next().await?;
+        let (id, body) = split_packet_id(&packet)?;
+        match ServerboundStatus::decode(id, body)? {
+            ServerboundStatus::StatusRequest(_) => {
+                if !shared.config.enable_status {
+                    return Ok(());
+                }
+                let json = status_json(&shared.config, &shared.status.snapshot());
+                session
+                    .writer
+                    .send(
+                        ids::status::clientbound::STATUS_RESPONSE,
+                        &StatusResponse { json },
+                    )
+                    .await?;
+            }
+            ServerboundStatus::PingRequest(ping) => {
+                session
+                    .writer
+                    .send(
+                        ids::status::clientbound::PONG_RESPONSE,
+                        &PongResponse { time: ping.time },
+                    )
+                    .await?;
+                return Ok(());
+            }
+        }
+    }
+}
+
+fn valid_name(name: &str) -> bool {
+    (1..=16).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+async fn next_login(session: &mut Session) -> Result<ServerboundLogin, ConnectionError> {
+    let packet = session.reader.next().await?;
+    let (id, body) = split_packet_id(&packet)?;
+    Ok(ServerboundLogin::decode(id, body)?)
+}
+
+async fn login<V: SessionVerifier>(
+    shared: Arc<Shared<V>>,
+    mut session: Session,
+) -> Result<(), ConnectionError> {
+    let ServerboundLogin::Hello(hello) = next_login(&mut session).await? else {
+        return Err(ConnectionError::Rejected("expected hello".to_owned()));
+    };
+    if !valid_name(&hello.name) {
+        return reject(
+            &mut session,
+            Component::translatable("multiplayer.disconnect.invalid_player_data", Vec::new()),
+        )
+        .await;
+    }
+    if shared.throttled(session.addr.ip()) {
+        return reject(
+            &mut session,
+            Component::text("Connection throttled! Please wait before reconnecting."),
+        )
+        .await;
+    }
+    let profile = if shared.config.online_mode {
+        match authenticate(&shared, &mut session, &hello.name).await? {
+            Some(profile) => profile,
+            None => return Ok(()),
+        }
+    } else {
+        GameProfile {
+            id: PlayerId::offline(&hello.name),
+            name: hello.name.clone(),
+            properties: Vec::new(),
+        }
+    };
+    tracing::info!("UUID of player {} is {}", profile.name, profile.id);
+    if let Some(threshold) = shared.config.compression_threshold {
+        session
+            .writer
+            .send(
+                ids::login::clientbound::LOGIN_COMPRESSION,
+                &LoginCompression {
+                    threshold: threshold as i32,
+                },
+            )
+            .await?;
+        session.writer.encoder.set_compression(Some(Compression {
+            threshold,
+            level: shared.config.compression_level,
+        }));
+        session.reader.decoder.set_compression(Some(threshold));
+    }
+    let finished = LoginFinished {
+        profile: wire_profile(&profile),
+        session_id: shared.session_id,
+    };
+    session
+        .writer
+        .send(ids::login::clientbound::LOGIN_FINISHED, &finished)
+        .await?;
+    loop {
+        match next_login(&mut session).await? {
+            ServerboundLogin::LoginAcknowledged(_) => break,
+            ServerboundLogin::CustomQueryAnswer(_) | ServerboundLogin::CookieResponse(_) => {}
+            _ => {
+                return Err(ConnectionError::Rejected(
+                    "unexpected login packet".to_owned(),
+                ));
+            }
+        }
+    }
+    let settings = configure(&shared, &mut session).await?;
+    play::run(shared, session, profile, settings).await
+}
+
+async fn authenticate<V: SessionVerifier>(
+    shared: &Arc<Shared<V>>,
+    session: &mut Session,
+    name: &str,
+) -> Result<Option<GameProfile>, ConnectionError> {
+    let challenge: [u8; 4] = rand::random();
+    let hello = ClientboundHello {
+        server_id: String::new(),
+        public_key: shared.key.public_der().to_vec(),
+        challenge: challenge.to_vec(),
+        should_authenticate: true,
+    };
+    session
+        .writer
+        .send(ids::login::clientbound::HELLO, &hello)
+        .await?;
+    let ServerboundLogin::Key(key) = next_login(session).await? else {
+        return Err(ConnectionError::Rejected("expected key".to_owned()));
+    };
+    let decrypted_challenge = shared
+        .key
+        .decrypt(&key.encrypted_challenge)
+        .map_err(|e| ConnectionError::Rejected(e.to_string()))?;
+    if decrypted_challenge != challenge {
+        return Err(ConnectionError::Rejected("challenge mismatch".to_owned()));
+    }
+    let secret = shared
+        .key
+        .decrypt(&key.encrypted_secret)
+        .map_err(|e| ConnectionError::Rejected(e.to_string()))?;
+    let secret: [u8; 16] = secret
+        .try_into()
+        .map_err(|_| ConnectionError::Rejected("bad shared secret".to_owned()))?;
+    session.writer.encoder.enable_encryption(&secret);
+    session.reader.decoder.enable_encryption(&secret);
+    let hash = rspigot_protocol::crypto::server_hash("", &secret, shared.key.public_der());
+    let verifier = Arc::clone(&shared.verifier);
+    let username = name.to_owned();
+    let ip = shared
+        .config
+        .prevent_proxy_connections
+        .then(|| session.addr.ip());
+    let result = tokio::task::spawn_blocking(move || verifier.verify(&username, &hash, ip))
+        .await
+        .map_err(|e| ConnectionError::Rejected(e.to_string()))?;
+    match result {
+        Ok(profile) => Ok(Some(profile)),
+        Err(error) => {
+            tracing::info!("Disconnecting {name} ({}): {error}", session.addr);
+            reject(
+                session,
+                Component::translatable("multiplayer.disconnect.unverified_username", Vec::new()),
+            )
+            .await?;
+            Ok(None)
+        }
+    }
+}
+
+fn wire_profile(profile: &GameProfile) -> WireProfile {
+    WireProfile {
+        id: profile.id.0,
+        name: profile.name.clone(),
+        properties: profile
+            .properties
+            .iter()
+            .map(|p: &ProfileProperty| WireProperty {
+                name: p.name.clone(),
+                value: p.value.clone(),
+                signature: p.signature.clone(),
+            })
+            .collect(),
+    }
+}
+
+pub fn client_settings(info: &ClientInformation) -> ClientSettings {
+    ClientSettings {
+        locale: info.language.clone(),
+        view_distance: info.view_distance.clamp(2, 32) as u8,
+        chat_colors: info.chat_colors,
+        skin_parts: info.model_customisation,
+        main_hand: match info.main_hand {
+            rspigot_protocol::common::MainHand::Left => MainHand::Left,
+            rspigot_protocol::common::MainHand::Right => MainHand::Right,
+        },
+    }
+}
+
+fn brand_payload(brand: &str) -> Vec<u8> {
+    let mut data = Vec::with_capacity(brand.len() + 2);
+    brand.encode(&mut data);
+    data
+}
+
+fn update_tags() -> Result<UpdateTags, ConnectionError> {
+    let mut registries = Vec::with_capacity(rspigot_data::tags::TAGS.len());
+    for registry in rspigot_data::tags::TAGS {
+        let mut tags = Vec::with_capacity(registry.tags.len());
+        for (name, entries) in registry.tags {
+            tags.push(NetworkTag {
+                name: identifier(name)?,
+                entries: entries.iter().map(|e| *e as i32).collect(),
+            });
+        }
+        registries.push(RegistryTags {
+            registry: identifier(registry.registry)?,
+            tags,
+        });
+    }
+    Ok(UpdateTags { registries })
+}
+
+async fn configure<V: SessionVerifier>(
+    shared: &Shared<V>,
+    session: &mut Session,
+) -> Result<ClientSettings, ConnectionError> {
+    use ids::configuration::clientbound as cb;
+    let writer = &mut session.writer;
+    writer.queue(
+        cb::CUSTOM_PAYLOAD,
+        &ClientboundCustomPayload {
+            channel: identifier("minecraft:brand")?,
+            data: brand_payload(&shared.config.brand),
+        },
+    )?;
+    writer.queue(
+        cb::UPDATE_ENABLED_FEATURES,
+        &UpdateEnabledFeatures {
+            features: vec![identifier("minecraft:vanilla")?],
+        },
+    )?;
+    let core = rspigot_data::KNOWN_PACK;
+    writer.queue(
+        cb::SELECT_KNOWN_PACKS,
+        &ClientboundSelectKnownPacks {
+            packs: vec![KnownPack {
+                namespace: core.namespace.to_owned(),
+                id: core.id.to_owned(),
+                version: core.version.to_owned(),
+            }],
+        },
+    )?;
+    writer.flush().await?;
+    let mut settings = ClientSettings::default();
+    let mut registries_sent = false;
+    let mut conduct_pending = false;
+    loop {
+        let packet = session.reader.next().await?;
+        let (id, body) = split_packet_id(&packet)?;
+        match ServerboundConfiguration::decode(id, body)? {
+            ServerboundConfiguration::ClientInformation(info) => settings = client_settings(&info),
+            ServerboundConfiguration::SelectKnownPacks(selected) if !registries_sent => {
+                let knows_core = selected.packs.iter().any(|p| {
+                    p.namespace == core.namespace && p.id == core.id && p.version == core.version
+                });
+                if !knows_core {
+                    let reason = Component::text(format!(
+                        "This server requires the vanilla {} data (minecraft:core).",
+                        rspigot_data::VERSION_NAME
+                    ));
+                    send_configuration_disconnect(session, &reason).await?;
+                    return Err(ConnectionError::Rejected(
+                        "client lacks minecraft:core".to_owned(),
+                    ));
+                }
+                send_registries(session).await?;
+                registries_sent = true;
+                if let Some(text) = &shared.config.code_of_conduct {
+                    session
+                        .writer
+                        .send(cb::CODE_OF_CONDUCT, &CodeOfConduct { text: text.clone() })
+                        .await?;
+                    conduct_pending = true;
+                } else {
+                    session
+                        .writer
+                        .send(cb::FINISH_CONFIGURATION, &ClientboundFinishConfiguration)
+                        .await?;
+                }
+            }
+            ServerboundConfiguration::AcceptCodeOfConduct(_) if conduct_pending => {
+                conduct_pending = false;
+                session
+                    .writer
+                    .send(cb::FINISH_CONFIGURATION, &ClientboundFinishConfiguration)
+                    .await?;
+            }
+            ServerboundConfiguration::FinishConfiguration(_)
+                if registries_sent && !conduct_pending =>
+            {
+                return Ok(settings);
+            }
+            ServerboundConfiguration::KeepAlive(KeepAlive { .. }) => {}
+            _ => {}
+        }
+    }
+}
+
+async fn send_configuration_disconnect(
+    session: &mut Session,
+    reason: &Component,
+) -> Result<(), ConnectionError> {
+    let packet = rspigot_protocol::common::Disconnect {
+        reason: rspigot_protocol::types::Text(crate::text::to_nbt(reason)),
+    };
+    session
+        .writer
+        .send(ids::configuration::clientbound::DISCONNECT, &packet)
+        .await?;
+    session.writer.shutdown().await;
+    Ok(())
+}
+
+async fn send_registries(session: &mut Session) -> Result<(), ConnectionError> {
+    for registry in rspigot_data::registries::SYNCED {
+        let entries = registry
+            .entries
+            .iter()
+            .map(|entry| {
+                Ok(RegistryEntry {
+                    id: identifier(entry)?,
+                    data: None,
+                })
+            })
+            .collect::<Result<Vec<_>, ConnectionError>>()?;
+        let packet = RegistryData {
+            registry: identifier(registry.id)?,
+            entries,
+        };
+        session
+            .writer
+            .queue(ids::configuration::clientbound::REGISTRY_DATA, &packet)?;
+    }
+    session.writer.queue(
+        ids::configuration::clientbound::UPDATE_TAGS,
+        &update_tags()?,
+    )?;
+    session.writer.flush().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_follow_vanilla_rules() {
+        assert!(valid_name("Notch"));
+        assert!(valid_name("a_b_9"));
+        assert!(!valid_name("bad name"));
+        assert!(!valid_name("seventeen_chars__"));
+    }
+
+    #[test]
+    fn tags_cover_blocks_and_items() {
+        let tags = update_tags().unwrap();
+        let names: Vec<&str> = tags
+            .registries
+            .iter()
+            .map(|r| r.registry.as_str())
+            .collect();
+        assert!(names.contains(&"minecraft:block"));
+        assert!(names.contains(&"minecraft:item"));
+    }
+}
