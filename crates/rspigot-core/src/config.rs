@@ -1,0 +1,89 @@
+use rspigot_domain::BlockPos;
+use rspigot_domain::player::GameMode;
+use rspigot_domain::world::Difficulty;
+use sha2::{Digest, Sha256};
+
+use crate::chunks::ChunkManagerConfig;
+use crate::streaming::StreamConfig;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GameConfig {
+    pub max_players: u32,
+    pub view_distance: u8,
+    pub simulation_distance: u8,
+    pub default_game_mode: GameMode,
+    pub force_game_mode: bool,
+    pub difficulty: Difficulty,
+    pub hardcore: bool,
+    pub pvp: bool,
+    pub allow_flight: bool,
+    pub spawn_protection: u32,
+    pub player_tracking_range: f64,
+    pub chunk_workers: usize,
+    pub stream: StreamConfig,
+    pub chunks: ChunkManagerConfig,
+    pub operators: Vec<String>,
+    pub is_flat: bool,
+    pub spawn_chunk_radius: i32,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self {
+            max_players: 20,
+            view_distance: 10,
+            simulation_distance: 10,
+            default_game_mode: GameMode::Survival,
+            force_game_mode: false,
+            difficulty: Difficulty::Easy,
+            hardcore: false,
+            pvp: true,
+            allow_flight: false,
+            spawn_protection: 16,
+            player_tracking_range: 128.0,
+            chunk_workers: std::thread::available_parallelism()
+                .map_or(4, |n| n.get().saturating_sub(2).max(2)),
+            stream: StreamConfig::default(),
+            chunks: ChunkManagerConfig::default(),
+            operators: Vec::new(),
+            is_flat: false,
+            spawn_chunk_radius: 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LevelData {
+    pub name: String,
+    pub seed: i64,
+    pub spawn: Option<BlockPos>,
+    pub spawn_angle: f32,
+    pub game_time: i64,
+    pub day_time: i64,
+    pub daylight_cycle: bool,
+    pub raining: bool,
+    pub thundering: bool,
+}
+
+impl Default for LevelData {
+    fn default() -> Self {
+        Self {
+            name: "world".to_owned(),
+            seed: 0,
+            spawn: None,
+            spawn_angle: 0.0,
+            game_time: 0,
+            day_time: 0,
+            daylight_cycle: true,
+            raining: false,
+            thundering: false,
+        }
+    }
+}
+
+pub fn hashed_seed(seed: i64) -> i64 {
+    let digest = Sha256::digest(seed.to_le_bytes());
+    let mut first = [0u8; 8];
+    first.copy_from_slice(&digest[..8]);
+    i64::from_le_bytes(first)
+}
