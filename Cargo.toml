@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "GPL-3.0-only"
+rust-version = "1.90"
+
+[workspace.dependencies]
+rspigot-nbt = { path = "crates/rspigot-nbt" }
+rspigot-data = { path = "crates/rspigot-data" }
+rspigot-domain = { path = "crates/rspigot-domain" }
+rspigot-core = { path = "crates/rspigot-core" }
+rspigot-protocol = { path = "crates/rspigot-protocol" }
+rspigot-network = { path = "crates/rspigot-network" }
+rspigot-anvil = { path = "crates/rspigot-anvil" }
+rspigot-worldgen = { path = "crates/rspigot-worldgen" }
+rspigot-auth = { path = "crates/rspigot-auth" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2
