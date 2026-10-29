@@ -352,7 +352,7 @@ impl<L: ClientLink> Server<L> {
         let joined =
             Component::translatable("multiplayer.player.joined", vec![Component::text(name)])
                 .color(NamedColor::Yellow);
-        tracing::info!("{}", joined.plain_text());
+        tracing::info!("{}", crate::console::console_text(&joined));
         self.push(Audience::All, ClientEvent::system(joined));
         self.refresh_status();
     }
@@ -454,7 +454,7 @@ impl<L: ClientLink> Server<L> {
                 vec![Component::text(player.profile.name.clone())],
             )
             .color(NamedColor::Yellow);
-            tracing::info!("{}", left.plain_text());
+            tracing::info!("{}", crate::console::console_text(&left));
             self.push(Audience::All, ClientEvent::system(left));
         }
         self.refresh_status();
@@ -626,7 +626,15 @@ impl<L: ClientLink> Server<L> {
         let saved = self.world.chunks.save_dirty(&self.workers);
         self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
         self.workers.shutdown();
-        tracing::info!("Saved {saved} chunks");
+        let stats = self.world.chunks.stats();
+        tracing::info!(
+            "Saved {saved} chunks ({} loaded from disk, {} generated, {} unloaded, {} cancelled, average load {:.2} ms)",
+            stats.loaded_from_disk,
+            stats.generated,
+            stats.unloaded,
+            stats.cancelled,
+            stats.average_load_time().as_secs_f64() * 1000.0
+        );
         self.world.level
     }
 }

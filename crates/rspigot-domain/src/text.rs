@@ -165,6 +165,31 @@ impl Component {
         root
     }
 
+    pub fn render(&self, translate: &impl Fn(&str) -> Option<&'static str>) -> String {
+        let mut out = String::new();
+        self.write_rendered(&mut out, translate);
+        out
+    }
+
+    fn write_rendered(&self, out: &mut String, translate: &impl Fn(&str) -> Option<&'static str>) {
+        match &self.content {
+            Content::Text(t) => out.push_str(t),
+            Content::Translatable { key, args } => match translate(key) {
+                Some(template) => out.push_str(&fill_template(template, args, translate)),
+                None => {
+                    out.push_str(key);
+                    for arg in args {
+                        out.push(' ');
+                        arg.write_rendered(out, translate);
+                    }
+                }
+            },
+        }
+        for child in &self.extra {
+            child.write_rendered(out, translate);
+        }
+    }
+
     pub fn plain_text(&self) -> String {
         let mut out = String::new();
         self.write_plain(&mut out);
@@ -186,6 +211,43 @@ impl Component {
             child.write_plain(out);
         }
     }
+}
+
+fn fill_template(
+    template: &str,
+    args: &[Component],
+    translate: &impl Fn(&str) -> Option<&'static str>,
+) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut next = 0usize;
+    let mut rest = template;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if let Some(tail) = after.strip_prefix('s') {
+            if let Some(arg) = args.get(next) {
+                arg.write_rendered(&mut out, translate);
+            }
+            next += 1;
+            rest = tail;
+        } else if let Some((index, tail)) = after
+            .split_once("$s")
+            .and_then(|(n, t)| n.parse::<usize>().ok().map(|n| (n, t)))
+        {
+            if let Some(arg) = index.checked_sub(1).and_then(|i| args.get(i)) {
+                arg.write_rendered(&mut out, translate);
+            }
+            rest = tail;
+        } else if let Some(tail) = after.strip_prefix('%') {
+            out.push('%');
+            rest = tail;
+        } else {
+            out.push('%');
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn is_legacy_code(c: char) -> bool {
@@ -213,6 +275,23 @@ fn apply_legacy(style: &mut Style, code: char) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn render_fills_sequential_and_positional_arguments() {
+        let lookup = |key: &str| match key {
+            "a" => Some("%s joined %s"),
+            "b" => Some("%2$s then %1$s, 100%%"),
+            _ => None,
+        };
+        let c = Component::translatable("a", vec![Component::text("Alice"), Component::text("x")]);
+        assert_eq!(c.render(&lookup), "Alice joined x");
+        let c = Component::translatable("b", vec![Component::text("one"), Component::text("two")]);
+        assert_eq!(c.render(&lookup), "two then one, 100%");
+        assert_eq!(
+            Component::translatable("missing", Vec::new()).render(&lookup),
+            "missing"
+        );
+    }
 
     #[test]
     fn legacy_codes_split_into_styled_parts() {

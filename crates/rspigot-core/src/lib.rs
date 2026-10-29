@@ -1,6 +1,7 @@
 pub mod chunks;
 pub mod commands;
 pub mod config;
+pub mod console;
 mod context;
 pub mod events;
 mod input;
