@@ -2,3 +2,4 @@
 /run
 *.jar
 .DS_Store
+/docs
