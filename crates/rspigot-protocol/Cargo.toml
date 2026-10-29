@@ -1,0 +1,22 @@
+[package]
+name = "rspigot-protocol"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-nbt = { workspace = true }
+thiserror = "2"
+uuid = "1"
+flate2 = "1.1"
+aes = "0.8.4"
+cfb8 = "0.8.1"
+rsa = { version = "0.9.10", default-features = false, features = ["std", "u64_digit", "getrandom"] }
+sha1 = "0.10.6"
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true
