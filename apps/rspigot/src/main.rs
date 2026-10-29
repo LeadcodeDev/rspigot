@@ -88,7 +88,12 @@ fn main() -> anyhow::Result<()> {
     if let Some(online) = args.online_mode {
         files.properties.set("online-mode", &online.to_string());
     }
-    let operators = files::read_operators(&args.root);
+    let admin = files::read_admin_lists(&args.root, files.properties.bool("white-list"));
+    if admin.whitelist_enabled && admin.whitelist.is_empty() && admin.operators.is_empty() {
+        tracing::warn!(
+            "The whitelist is enabled and empty: no player can join. Run \"whitelist add <name>\" or set white-list=false in server.properties."
+        );
+    }
     let level_name = files.properties.string("level-name").to_owned();
     let world_root = args.root.join(&level_name);
     std::fs::create_dir_all(&world_root)?;
@@ -115,19 +120,22 @@ fn main() -> anyhow::Result<()> {
         files.properties.string("generator-settings"),
     ));
     let status = StatusBoard::new(0);
-    let game_config = files.game_config(operators);
+    let game_config = files.game_config(admin);
     let network_config = files.network_config(files::read_favicon(&args.root))?;
     let verifier = Arc::new(MojangSessionVerifier::new(
         network_config.prevent_proxy_connections,
     ));
     let (inbound, game_inbox) = crossbeam_channel::unbounded::<Inbound<NetLink>>();
+    let (admin_updates, admin_inbox) = crossbeam_channel::unbounded();
+    files::spawn_admin_writer(args.root.clone(), admin_inbox);
     let mut server: Server<NetLink> = Server::new(
         game_config,
         level,
         Arc::clone(&store),
         generator,
         status.clone(),
-    );
+    )
+    .with_admin_sink(admin_updates);
     let spawn_chunks = server.wait_for_spawn(Duration::from_secs(60));
     tracing::info!("Preparing spawn area: {spawn_chunks} chunks");
     let runtime = tokio::runtime::Builder::new_multi_thread()

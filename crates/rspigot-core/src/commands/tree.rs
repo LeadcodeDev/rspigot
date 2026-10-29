@@ -177,6 +177,14 @@ pub fn build_tree(operator: bool) -> CommandTree {
         }
         let spawn = b.literal(root, "setworldspawn", true);
         b.argument(spawn, "pos", ArgumentParser::BlockPos, true);
+        let whitelist = b.literal(root, "whitelist", false);
+        for action in ["on", "off", "list", "reload"] {
+            b.literal(whitelist, action, true);
+        }
+        for action in ["add", "remove"] {
+            let node = b.literal(whitelist, action, false);
+            b.argument(node, "targets", ArgumentParser::GameProfile, true);
+        }
         b.literal(root, "save-all", true);
         b.literal(root, "stop", true);
     }

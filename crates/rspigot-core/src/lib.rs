@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod chunks;
 pub mod commands;
 pub mod config;
