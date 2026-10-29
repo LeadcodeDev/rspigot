@@ -1,0 +1,20 @@
+[package]
+name = "rspigot-anvil"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-core = { workspace = true }
+rspigot-domain = { workspace = true }
+rspigot-data = { workspace = true }
+rspigot-nbt = { workspace = true }
+flate2 = "1.1"
+lz4_flex = { version = "0.13", default-features = false, features = ["std", "safe-encode", "safe-decode"] }
+parking_lot = "0.12"
+thiserror = "2"
+tracing = "0.1"
+
+[lints]
+workspace = true
