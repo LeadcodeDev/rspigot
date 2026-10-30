@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn, SoundSource,
+    SoundVolume, VoicePitch,
+};
 
 pub struct Mannequin;
 
@@ -49,5 +52,16 @@ impl EntityType for Mannequin {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Fixed(Some("minecraft:entity.generic.hurt")),
+        death: CreatureSound::Fixed(Some("minecraft:entity.generic.death")),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

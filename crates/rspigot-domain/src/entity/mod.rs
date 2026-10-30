@@ -1,14 +1,22 @@
 mod aabb;
+pub mod ageable;
+pub mod arrow;
 mod base;
 mod data;
 pub mod falling;
+pub mod fire;
 pub mod fluid;
 pub mod item;
 pub mod living;
+pub mod orb;
 pub mod physics;
 #[cfg(test)]
 mod physics_tests;
+pub mod raycast;
+pub mod reward;
 pub mod save;
+pub mod spawn;
+pub mod species;
 mod store;
 pub mod tracker;
 mod tracking_range;
@@ -21,10 +29,11 @@ pub use base::{
     DATA_SHARED_FLAGS, DATA_SILENT, DATA_TICKS_FROZEN, EntityBase, FLAG_GLOWING, FLAG_INVISIBLE,
     FLAG_ON_FIRE, MAX_AIR_SUPPLY, RemovalReason,
 };
-pub use data::{Pose, SyncedData, SyncedValue};
+pub use data::{Pose, SyncedData, SyncedValue, VariantKind};
 pub use falling::FallingState;
 pub use item::ItemState;
 pub use living::{LivingState, MobState};
+pub use orb::OrbState;
 pub use physics::BlockView;
 pub use store::{DuplicateUuid, Entities};
 pub use tracker::EntityTracker;
@@ -33,8 +42,10 @@ pub use tracking_range::{ActivationType, TrackingRanges, activation_type, tracki
 #[derive(Debug, Clone, PartialEq)]
 pub enum EntityState {
     Item(ItemState),
+    Arrow(Box<arrow::ArrowState>),
     Falling(FallingState),
     Living(Box<LivingState>),
+    Orb(OrbState),
     Inert(Compound),
 }
 
@@ -69,6 +80,19 @@ impl Entity {
         match &mut self.state {
             EntityState::Living(living) => Some(living),
             _ => None,
+        }
+    }
+
+    pub fn is_baby(&self) -> bool {
+        let Some(mob) = self.living().and_then(|living| living.mob.as_ref()) else {
+            return false;
+        };
+        if let Some(ageable) = &mob.ageable {
+            return ageable::is_baby(&self.base, ageable);
+        }
+        match mob.species {
+            species::Species::Zombie(_) => species::zombie_is_baby(&self.base),
+            _ => false,
         }
     }
 

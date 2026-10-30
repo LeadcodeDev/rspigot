@@ -1,4 +1,4 @@
-use rspigot_entities::EntityKind;
+use rspigot_entities::{EntityDimensions, EntityKind};
 use rspigot_nbt::Compound;
 use uuid::Uuid;
 
@@ -41,6 +41,7 @@ pub struct EntityBase {
     pub id: EntityId,
     pub uuid: Uuid,
     pub kind: EntityKind,
+    pub dimensions: EntityDimensions,
     pub position: Vec3,
     pub old_position: Vec3,
     pub velocity: Vec3,
@@ -75,6 +76,9 @@ pub struct EntityBase {
     pub sync_position: bool,
     pub sync_velocity: bool,
     pub fluid: FluidContact,
+    pub eye_in_water: bool,
+    pub in_powder_snow: bool,
+    pub was_in_powder_snow: bool,
     pub data: SyncedData,
 }
 
@@ -93,6 +97,7 @@ impl EntityBase {
             id,
             uuid,
             kind,
+            dimensions: kind.dimensions(),
             position: Vec3::ZERO,
             old_position: Vec3::ZERO,
             velocity: Vec3::ZERO,
@@ -105,7 +110,7 @@ impl EntityBase {
             vertical_collision_below: false,
             minor_horizontal_collision: false,
             fall_distance: 0.0,
-            remaining_fire_ticks: -1,
+            remaining_fire_ticks: 0,
             invulnerable: false,
             invulnerable_time: 0,
             portal_cooldown: 0,
@@ -127,18 +132,27 @@ impl EntityBase {
             sync_position: false,
             sync_velocity: false,
             fluid: FluidContact::default(),
+            eye_in_water: false,
+            in_powder_snow: false,
+            was_in_powder_snow: false,
             data,
         }
     }
 
     pub fn bounding_box(&self) -> Aabb {
-        let dimensions = self.kind.dimensions();
-        Aabb::of_size(self.position, dimensions.width, dimensions.height)
+        self.bounding_box_at(self.position)
     }
 
     pub fn bounding_box_at(&self, position: Vec3) -> Aabb {
-        let dimensions = self.kind.dimensions();
-        Aabb::of_size(position, dimensions.width, dimensions.height)
+        Aabb::of_size(position, self.dimensions.width, self.dimensions.height)
+    }
+
+    pub fn eye_height(&self) -> f32 {
+        self.dimensions.eye_height
+    }
+
+    pub fn eye_y(&self) -> f64 {
+        self.position.y + f64::from(self.dimensions.eye_height)
     }
 
     pub fn chunk(&self) -> ChunkPos {

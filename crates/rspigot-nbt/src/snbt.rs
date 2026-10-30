@@ -367,7 +367,10 @@ fn integer(negative: bool, body: &str) -> Option<Result<Tag, &'static str>> {
     let lower = body.to_ascii_lowercase();
     let (radix, digits) = if let Some(rest) = lower.strip_prefix("0x") {
         (16, rest)
-    } else if let Some(rest) = lower.strip_prefix("0b") {
+    } else if let Some(rest) = lower
+        .strip_prefix("0b")
+        .filter(|rest| rest.starts_with(['0', '1', '_']))
+    {
         (2, rest)
     } else {
         (10, lower.as_str())
@@ -567,6 +570,16 @@ mod tests {
         assert_eq!(c.get_str("a"), Some("\n\tAé"));
         assert_eq!(c.get("b"), Some(&Tag::Byte(1)));
         assert_eq!(c.get("c"), Some(&Tag::IntArray(vec![0, 1, 0, 2])));
+    }
+
+    #[test]
+    fn zero_byte_is_not_a_binary_prefix() {
+        let c = compound("{a:0b,b:-0b,c:0B,d:0b1b}");
+        assert_eq!(c.get("a"), Some(&Tag::Byte(0)));
+        assert_eq!(c.get("b"), Some(&Tag::Byte(0)));
+        assert_eq!(c.get("c"), Some(&Tag::Byte(0)));
+        assert_eq!(c.get("d"), Some(&Tag::Byte(1)));
+        assert!(parse_compound("{a:0x}").is_err());
     }
 
     #[test]

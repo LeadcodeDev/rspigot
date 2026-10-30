@@ -13,6 +13,7 @@ impl Item for Trident {
     const CLASS: &'static str = "TridentItem";
     const MAX_STACK_SIZE: u8 = 1;
     const MAX_DAMAGE: Option<u32> = Some(250);
+    const WEAPON_DAMAGE: Option<u32> = Some(1);
     const RARITY: Rarity = Rarity::Rare;
     const BLOCK: Option<BlockId> = None;
     const TOOL: Option<Tool> = Some(Tool {

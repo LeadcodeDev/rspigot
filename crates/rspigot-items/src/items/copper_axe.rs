@@ -13,6 +13,7 @@ impl Item for CopperAxe {
     const CLASS: &'static str = "Item";
     const MAX_STACK_SIZE: u8 = 1;
     const MAX_DAMAGE: Option<u32> = Some(190);
+    const WEAPON_DAMAGE: Option<u32> = Some(2);
     const RARITY: Rarity = Rarity::Common;
     const BLOCK: Option<BlockId> = None;
     const TOOL: Option<Tool> = Some(Tool {

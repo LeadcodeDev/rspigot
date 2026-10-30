@@ -39,9 +39,9 @@ pub mod clientbound {
     };
     pub use super::world::{
         BlockChangedAck, BlockDestruction, BlockEntityData, BlockUpdate, ChunkBatchFinished,
-        ChunkBatchStart, GameEvent, GameRuleValues, InitializeBorder, LevelEvent, LevelParticles,
-        SectionBlocksUpdate, SetChunkCacheCenter, SetChunkCacheRadius, SetSimulationDistance,
-        SetTime, Sound,
+        ChunkBatchStart, Explode, ExplosionParticle, GameEvent, GameRuleValues, InitializeBorder,
+        LevelEvent, LevelParticles, ParticleOptions, ParticleRandomization, SectionBlocksUpdate,
+        SetChunkCacheCenter, SetChunkCacheRadius, SetSimulationDistance, SetTime, Sound,
     };
 }
 

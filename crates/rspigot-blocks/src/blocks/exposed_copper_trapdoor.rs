@@ -1,5 +1,6 @@
 use crate::{
-    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, SpawnSurface,
+    StateFlags, StateId,
 };
 
 pub struct ExposedCopperTrapdoor;
@@ -37,22 +38,24 @@ impl Block for ExposedCopperTrapdoor {
         1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(19078), StateFlags(18982), StateFlags(19078), StateFlags(18982),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(19078),
+        StateFlags(18982), StateFlags(19078), StateFlags(18982), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(19078), StateFlags(18982), StateFlags(19078),
+        StateFlags(18982), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(19078), StateFlags(18982), StateFlags(19078), StateFlags(18982),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(19078),
+        StateFlags(18982), StateFlags(19078), StateFlags(18982), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(19078), StateFlags(18982), StateFlags(19078),
+        StateFlags(18982), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(19078), StateFlags(18982), StateFlags(19078), StateFlags(18982),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(19078),
+        StateFlags(18982), StateFlags(19078), StateFlags(18982), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_TRAPDOOR);
     const FACE_SUPPORT: PerState<FaceSupport> =
         PerState::Varies(crate::shapes::SUPPORT_OAK_TRAPDOOR);
+    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::Never;
     type Behavior = crate::family::Trapdoor<true>;
 }

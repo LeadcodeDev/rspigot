@@ -32,12 +32,12 @@ impl Block for PoplarFenceGate {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090),
-        StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090),
-        StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090), StateFlags(2094),
-        StateFlags(2094), StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094),
-        StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090),
-        StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090),
+        StateFlags(18474), StateFlags(18474), StateFlags(2094), StateFlags(2094), StateFlags(18474),
+        StateFlags(18474), StateFlags(2094), StateFlags(2094), StateFlags(18474), StateFlags(18474),
+        StateFlags(2094), StateFlags(2094), StateFlags(18474), StateFlags(18474), StateFlags(2094),
+        StateFlags(2094), StateFlags(18474), StateFlags(18474), StateFlags(2094), StateFlags(2094),
+        StateFlags(18474), StateFlags(18474), StateFlags(2094), StateFlags(2094), StateFlags(18474),
+        StateFlags(18474), StateFlags(2094), StateFlags(2094), StateFlags(18474), StateFlags(18474),
         StateFlags(2094), StateFlags(2094),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_FENCE_GATE);

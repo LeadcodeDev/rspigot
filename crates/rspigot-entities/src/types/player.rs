@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn, SoundSource,
+    SoundVolume, VoicePitch,
+};
 
 pub struct Player;
 
@@ -59,5 +62,16 @@ impl EntityType for Player {
         ("minecraft:waypoint_transmit_range", 60000000.0),
         ("minecraft:waypoint_receive_range", 60000000.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Fixed(Some("minecraft:entity.player.hurt")),
+        death: CreatureSound::Fixed(Some("minecraft:entity.player.death")),
+        small_fall: "minecraft:entity.player.small_fall",
+        big_fall: "minecraft:entity.player.big_fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Fixed,
+        source: SoundSource::Players,
+        can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

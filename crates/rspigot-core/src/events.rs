@@ -132,6 +132,7 @@ pub enum PlayerInput {
         flying: bool,
     },
     Respawn,
+    ClientTickEnd,
     Attack(EntityId),
     Interact {
         target: EntityId,
@@ -264,7 +265,11 @@ pub enum MetadataValue {
     Boolean(bool),
     Item(Slot),
     BlockPos(BlockPos),
+    Variant(VariantKind, u32),
 }
+
+pub use rspigot_domain::entity::VariantKind;
+pub use rspigot_domain::particle::Particle;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetadataEntry {
@@ -288,7 +293,11 @@ pub enum EquipmentSlot {
 pub enum EntityStatus {
     Death,
     Poof,
+    EquipmentBreak(EquipmentSlot),
+    Event(i8),
 }
+
+pub use rspigot_entities::SoundSource;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Abilities {
@@ -487,6 +496,28 @@ pub enum ClientEvent {
         entity: EntityId,
         status: EntityStatus,
     },
+    Sound {
+        sound: &'static str,
+        source: SoundSource,
+        position: Vec3,
+        volume: f32,
+        pitch: f32,
+        seed: i64,
+    },
+    Explode {
+        center: Vec3,
+        radius: f32,
+        block_count: i32,
+        knockback: Option<Vec3>,
+        large: bool,
+        play_sound: bool,
+    },
+    LevelEvent {
+        event: i32,
+        pos: BlockPos,
+        data: i32,
+    },
+    Particle(Particle),
     Disconnect(Component),
 }
 

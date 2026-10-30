@@ -99,4 +99,8 @@ impl ChunkGenerator for NoiseGenerator {
             DimensionKind::End => self.state.end.spawn_point(dimension),
         }
     }
+
+    fn spawns_original_mobs(&self, dimension: &Dimension) -> bool {
+        DimensionKind::of(dimension) != DimensionKind::End
+    }
 }

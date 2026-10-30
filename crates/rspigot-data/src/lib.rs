@@ -1,9 +1,12 @@
+pub mod climate;
 pub mod entities;
 #[rustfmt::skip]
 mod generated;
 pub mod loot;
 pub mod registries;
+pub mod spawns;
 pub mod tags;
+pub mod variants;
 
 pub const PROTOCOL_VERSION: i32 = 777;
 pub const VERSION_NAME: &str = "26.3";

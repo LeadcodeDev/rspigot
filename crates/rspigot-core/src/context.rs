@@ -1,9 +1,12 @@
 use std::hash::{BuildHasher, Hasher};
 
 use rspigot_domain::effect::{EffectId, EffectInstance};
+use rspigot_domain::entity::spawn;
 use rspigot_domain::entity::{Aabb, EntityState, living, save};
 use rspigot_domain::item::PLAYER_INVENTORY_SIZE;
 use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::random::LegacyRandom;
+use rspigot_domain::spawn::SpawnReason;
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
@@ -15,6 +18,7 @@ use crate::chunks::{ChunkJob, Priority};
 use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::{ClientEvent, GameEvent};
+use crate::mobs::ServerRandom;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -481,14 +485,17 @@ impl<L: ClientLink> CommandContext for Server<L> {
             save::load_entity(&compound, id, uuid).map_err(|_| failed("commands.summon.failed"))?;
         let (yaw, pitch) = (entity.base.yaw, entity.base.pitch);
         entity.base.snap_to(position, yaw, pitch);
-        if finalize && let EntityState::Living(state) = &mut entity.state {
-            let rng = &mut self.rng;
-            let mut next_double = || rand::Rng::random::<f64>(rng);
-            let mut doubles: Vec<f64> = (0..2).map(|_| next_double()).collect();
-            let mut take_double = || doubles.remove(0);
-            let float = rand::Rng::random::<f32>(&mut self.rng);
-            let mut take_float = || float;
-            living::finalize_spawn(&mut entity.base, state, &mut take_double, &mut take_float);
+        let mut own = LegacyRandom::new(rand::Rng::random(&mut self.rng));
+        if finalize && entity.living().is_some_and(|state| state.is_mob()) {
+            let environment = self.spawn_environment(entity.base.position);
+            spawn::finalize_spawn(
+                &mut entity,
+                &environment,
+                SpawnReason::Command,
+                None,
+                &mut ServerRandom(&mut self.rng),
+                &mut own,
+            );
         }
         let name = match entity.base.custom_name() {
             Some(name) => name.clone(),
@@ -496,7 +503,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
                 Component::translatable(crate::entities::entity_translation_key(kind), Vec::new())
             }
         };
-        self.add_entity(entity)
+        self.add_mob_entity(entity, own)
             .map(|_| name)
             .map_err(|_| failed("commands.summon.failed.uuid"))
     }

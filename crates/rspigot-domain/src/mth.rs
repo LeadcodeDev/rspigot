@@ -48,6 +48,11 @@ pub fn cos(value: f64) -> f32 {
     sin_table()[((value * SIN_SCALE + 16_384.0) as i64 & 65_535) as usize]
 }
 
+pub fn yaw_direction(yaw: f32) -> (f64, f64) {
+    let radians = f64::from(yaw * DEG_TO_RAD);
+    (f64::from(sin(radians)), f64::from(-cos(radians)))
+}
+
 pub fn wrap_degrees(value: f32) -> f32 {
     let mut wrapped = value % 360.0;
     if wrapped >= 180.0 {

@@ -32,8 +32,8 @@ impl Block for Ladder {
         1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
-        StateFlags(36), StateFlags(132), StateFlags(36),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_LADDER);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_LADDER);

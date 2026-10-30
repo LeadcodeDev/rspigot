@@ -32,8 +32,8 @@ impl Block for DeadFireCoralWallFan {
         1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2178), StateFlags(2082), StateFlags(2178), StateFlags(2082), StateFlags(2178),
-        StateFlags(2082), StateFlags(2178), StateFlags(2082),
+        StateFlags(18562), StateFlags(18466), StateFlags(18562), StateFlags(18466),
+        StateFlags(18562), StateFlags(18466), StateFlags(18562), StateFlags(18466),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

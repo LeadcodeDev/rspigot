@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, VoicePitch,
+};
 
 pub struct ZombieNautilus;
 
@@ -62,5 +65,54 @@ impl EntityType for ZombieNautilus {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt_land"),
+            Some("minecraft:entity.zombie_nautilus.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death_land"),
+            Some("minecraft:entity.zombie_nautilus.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: None,
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::AbstractNautilus),
+        check_spawn_obstruction: MobClass::AbstractNautilus,
+        max_spawn_cluster_size: Some(4),
+        max_spawn_cluster_size_owner: MobClass::Mob,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::AbstractNautilus,
+        requires_custom_persistence: MobClass::AbstractNautilus,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
+    });
     type Behavior = crate::family::Plain;
 }

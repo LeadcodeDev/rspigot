@@ -1,7 +1,7 @@
-use crate::loot::{BlockPredicate, BonusFormula, Condition, EnchantmentPredicate, Entry, EntryKind, EntityTarget, Function, FunctionKind, IntProvider, IntRange, ItemPredicate, Leaf, LootTable, Output, Pool};
+use crate::loot::{BlockPredicate, BonusFormula, Condition, DamageSourcePredicate, EnchantmentPredicate, Entry, EntryKind, EntityFlags, EntityPredicate, EntitySubPredicate, EntityTarget, FloatProvider, Function, FunctionKind, IntProvider, IntRange, ItemPredicate, LevelBasedValue, Leaf, LootTable, Output, Pool, TagPredicate};
 use crate::tags::HolderSet;
 
-pub(crate) static TABLES: [(&str, LootTable); 1201] = [
+pub(crate) static TABLES: [(&str, LootTable); 1335] = [
     (
         "minecraft:blocks/acacia_button",
         LootTable {
@@ -4882,7 +4882,17 @@ pub(crate) static TABLES: [(&str, LootTable); 1201] = [
                 entries: &[Entry {
                     condition: Some(Condition::AllOf(&[
                         Condition::SurvivesExplosion,
-                        Condition::EntityProperties(EntityTarget::This),
+                        Condition::EntityProperties {
+                            target: EntityTarget::This,
+                            predicate: Some(&EntityPredicate {
+                                kind: None,
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[],
+                                sub: &[],
+                            }),
+                        },
                     ])),
                     modifier: &[],
                     kind: EntryKind::Leaf(Leaf {
@@ -24867,7 +24877,17 @@ pub(crate) static TABLES: [(&str, LootTable); 1201] = [
             pools: &[Pool {
                 rolls: IntProvider::Constant(1),
                 bonus_rolls: 0.0,
-                condition: Some(Condition::EntityProperties(EntityTarget::This)),
+                condition: Some(Condition::EntityProperties {
+                    target: EntityTarget::This,
+                    predicate: Some(&EntityPredicate {
+                        kind: None,
+                        flags: EntityFlags { baby: None, on_fire: None },
+                        mainhand: None,
+                        vehicle: None,
+                        components: &[],
+                        sub: &[],
+                    }),
+                }),
                 modifier: &[],
                 entries: &[Entry {
                     condition: None,
@@ -31051,6 +31071,6207 @@ pub(crate) static TABLES: [(&str, LootTable); 1201] = [
             modifier: &[],
         },
     ),
+    (
+        "minecraft:charged_creeper/creeper",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1388),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/piglin",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1390),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/root",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[102])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/piglin"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[32])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/creeper"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[118])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/skeleton"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[150])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/wither_skeleton"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[154])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/zombie"),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/skeleton",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1384),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/wither_skeleton",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1385),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/zombie",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1387),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/allay", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/armadillo", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/armor_stand", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/axolotl", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/bat", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/bee", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/blaze",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::KilledByPlayer),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 1 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1266),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/bogged",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1009),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1216),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 1,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetPotion("minecraft:poison"),
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1444),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/breeze",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::KilledByPlayer),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 1.0, max: 2.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1373),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/camel", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/camel_husk",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 2, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/cat",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Uniform { min: 0, max: 2 },
+                            add: false,
+                        },
+                    }],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1062),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/cave_spider",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1062),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: -1, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1272),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/chicken",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1063),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1262),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/cod",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1190),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::RandomChance(0.05)),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1215),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/copper_golem",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1020),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/cow",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1133),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 1, max: 3 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1260),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/creaking", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/creeper",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1064),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::EntityProperties {
+                        target: EntityTarget::Attacker,
+                        predicate: Some(&EntityPredicate {
+                            kind: Some(HolderSet::Tag("minecraft:skeletons")),
+                            flags: EntityFlags { baby: None, on_fire: None },
+                            mainhand: None,
+                            vehicle: None,
+                            components: &[],
+                            sub: &[],
+                        }),
+                    }),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Items {
+                                items: HolderSet::Tag("minecraft:creeper_drop_music_discs"),
+                                expand: true,
+                            },
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/dolphin",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 1 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                        Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1190),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/donkey",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1133),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/drowned",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1264),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.11,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.13,
+                                per_level_above_first: 0.02,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1020),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/elder_guardian",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1398),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                                Function {
+                                    condition: Some(Condition::AnyOf(&[
+                                        Condition::EntityProperties {
+                                            target: EntityTarget::This,
+                                            predicate: Some(&EntityPredicate {
+                                                kind: None,
+                                                flags: EntityFlags {
+                                                    baby: None,
+                                                    on_fire: Some(true),
+                                                },
+                                                mainhand: None,
+                                                vehicle: None,
+                                                components: &[],
+                                                sub: &[],
+                                            }),
+                                        },
+                                        Condition::EntityProperties {
+                                            target: EntityTarget::DirectAttacker,
+                                            predicate: Some(&EntityPredicate {
+                                                kind: None,
+                                                flags: EntityFlags { baby: None, on_fire: None },
+                                                mainhand: Some(ItemPredicate {
+                                                    items: None,
+                                                    enchantments: &[EnchantmentPredicate {
+                                                        enchantments: Some(&["minecraft:fire_aspect"]),
+                                                        levels: None,
+                                                    }],
+                                                }),
+                                                vehicle: None,
+                                                components: &[],
+                                                sub: &[],
+                                            }),
+                                        },
+                                    ])),
+                                    kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 3,
+                                quality: 0,
+                                output: Output::Item(1190),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            }],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 2,
+                                quality: 0,
+                                output: Output::Item(1399),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Empty,
+                            }),
+                        },
+                    ],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(230),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Table("minecraft:gameplay/fishing/fish"),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 4,
+                                quality: 0,
+                                output: Output::Empty,
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1587),
+                            }),
+                        },
+                    ],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/ender_dragon", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/enderman",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 1 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1265),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/endermite", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/evoker",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1454),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1013),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/fox", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/frog", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/ghast",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1267),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1064),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[TagPredicate {
+                                tag: "minecraft:is_projectile",
+                                expected: true,
+                            }],
+                            source_entity: None,
+                            direct_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[53])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[],
+                                sub: &[],
+                            }),
+                            is_direct: None,
+                        }),
+                        Condition::KilledByPlayer,
+                    ])),
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Constant(1),
+                            add: false,
+                        },
+                    }],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1481),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/giant", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/glow_squid",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1197),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/goat", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/guardian",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1398),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                                Function {
+                                    condition: Some(Condition::AnyOf(&[
+                                        Condition::EntityProperties {
+                                            target: EntityTarget::This,
+                                            predicate: Some(&EntityPredicate {
+                                                kind: None,
+                                                flags: EntityFlags {
+                                                    baby: None,
+                                                    on_fire: Some(true),
+                                                },
+                                                mainhand: None,
+                                                vehicle: None,
+                                                components: &[],
+                                                sub: &[],
+                                            }),
+                                        },
+                                        Condition::EntityProperties {
+                                            target: EntityTarget::DirectAttacker,
+                                            predicate: Some(&EntityPredicate {
+                                                kind: None,
+                                                flags: EntityFlags { baby: None, on_fire: None },
+                                                mainhand: Some(ItemPredicate {
+                                                    items: None,
+                                                    enchantments: &[EnchantmentPredicate {
+                                                        enchantments: Some(&["minecraft:fire_aspect"]),
+                                                        levels: None,
+                                                    }],
+                                                }),
+                                                vehicle: None,
+                                                components: &[],
+                                                sub: &[],
+                                            }),
+                                        },
+                                    ])),
+                                    kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 2,
+                                quality: 0,
+                                output: Output::Item(1190),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            }],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 2,
+                                quality: 0,
+                                output: Output::Item(1399),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Empty,
+                            }),
+                        },
+                    ],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Table("minecraft:gameplay/fishing/fish"),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/happy_ghast", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/hoglin",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 2, max: 4 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1097),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1133),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/horse",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1133),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/husk",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1264),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: Some(Condition::EntityProperties {
+                            target: EntityTarget::This,
+                            predicate: Some(&EntityPredicate {
+                                kind: None,
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[20])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                                components: &[],
+                                sub: &[],
+                            }),
+                        }),
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1403),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1018),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1378),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            }],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1379),
+                            }),
+                        },
+                    ],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/illusioner", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/iron_golem",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(302),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 3, max: 5 },
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1018),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/llama",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1133),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/magma_cube",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[
+                    Entry {
+                        condition: Some(Condition::AllOf(&[
+                            Condition::Inverted(&Condition::DamageSourceProperties(&DamageSourcePredicate {
+                                tags: &[],
+                                source_entity: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[56])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                                direct_entity: None,
+                                is_direct: None,
+                            })),
+                            Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[EntitySubPredicate::CubeMob {
+                                        size: IntRange { min: Some(2), max: None },
+                                    }],
+                                }),
+                            },
+                        ])),
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: -2, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1275),
+                        }),
+                    },
+                    Entry {
+                        condition: Some(Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[],
+                            source_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[56])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[("minecraft:frog/variant", "minecraft:warm")],
+                                sub: &[],
+                            }),
+                            direct_entity: None,
+                            is_direct: None,
+                        })),
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1575),
+                        }),
+                    },
+                    Entry {
+                        condition: Some(Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[],
+                            source_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[56])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[("minecraft:frog/variant", "minecraft:cold")],
+                                sub: &[],
+                            }),
+                            direct_entity: None,
+                            is_direct: None,
+                        })),
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1574),
+                        }),
+                    },
+                    Entry {
+                        condition: Some(Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[],
+                            source_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[56])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[("minecraft:frog/variant", "minecraft:temperate")],
+                                sub: &[],
+                            }),
+                            direct_entity: None,
+                            is_direct: None,
+                        })),
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1573),
+                        }),
+                    },
+                ],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/mannequin", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/mooshroom",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1133),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 1, max: 3 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1260),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/mule",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1133),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/nautilus",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::AllOf(&[
+                    Condition::KilledByPlayer,
+                    Condition::RandomChanceWithEnchantedBonus {
+                        enchantment: "minecraft:looting",
+                        unenchanted_chance: 0.05,
+                        enchanted_chance: LevelBasedValue::Linear {
+                            base: 0.060000002,
+                            per_level_above_first: 0.01,
+                        },
+                    },
+                ])),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1484),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/ocelot", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/panda",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Constant(1),
+                            add: false,
+                        },
+                    }],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(340),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/parched",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1009),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1216),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 1,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetPotion("minecraft:weakness"),
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1444),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/parrot",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1063),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/phantom",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::KilledByPlayer),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 1 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(973),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/pig",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1097),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/piglin", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/piglin_brute", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/pillager",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::EntityProperties {
+                    target: EntityTarget::This,
+                    predicate: Some(&EntityPredicate {
+                        kind: None,
+                        flags: EntityFlags { baby: None, on_fire: None },
+                        mainhand: None,
+                        vehicle: None,
+                        components: &[],
+                        sub: &[EntitySubPredicate::Raider { has_raid: None, captain: Some(true) }],
+                    }),
+                }),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetOminousBottleAmplifier(IntProvider::Uniform {
+                                min: 0,
+                                max: 4,
+                            }),
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1657),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/player", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/polar_bear",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[
+                    Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 3,
+                            quality: 0,
+                            output: Output::Item(1190),
+                        }),
+                    },
+                    Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1191),
+                        }),
+                    },
+                ],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/pufferfish",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1193),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::RandomChance(0.05)),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1215),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/rabbit",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1404),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Constant(1),
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1400),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.1,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.13,
+                                per_level_above_first: 0.03,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1403),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/ravager",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Constant(1),
+                            add: false,
+                        },
+                    }],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(949),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/salmon",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: Some(Condition::AnyOf(&[
+                                Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                                Condition::EntityProperties {
+                                    target: EntityTarget::DirectAttacker,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: Some(ItemPredicate {
+                                            items: None,
+                                            enchantments: &[EnchantmentPredicate {
+                                                enchantments: Some(&["minecraft:fire_aspect"]),
+                                                levels: None,
+                                            }],
+                                        }),
+                                        vehicle: None,
+                                        components: &[],
+                                        sub: &[],
+                                    }),
+                                },
+                            ])),
+                            kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1191),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::RandomChance(0.05)),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1215),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 1, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1415),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Alternatives(&[
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "white")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/white"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "orange")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/orange"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "magenta")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/magenta"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "light_blue")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/light_blue"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "yellow")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/yellow"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "lime")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/lime"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "pink")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/pink"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "gray")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/gray"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "light_gray")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/light_gray"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "cyan")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/cyan"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "purple")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/purple"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "blue")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/blue"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "brown")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/brown"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "green")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/green"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "red")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/red"),
+                                }),
+                            },
+                            Entry {
+                                condition: Some(Condition::EntityProperties {
+                                    target: EntityTarget::This,
+                                    predicate: Some(&EntityPredicate {
+                                        kind: None,
+                                        flags: EntityFlags { baby: None, on_fire: None },
+                                        mainhand: None,
+                                        vehicle: None,
+                                        components: &[("minecraft:sheep/color", "black")],
+                                        sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                    }),
+                                }),
+                                modifier: &[],
+                                kind: EntryKind::Leaf(Leaf {
+                                    weight: 1,
+                                    quality: 0,
+                                    output: Output::Table("minecraft:entities/sheep/black"),
+                                }),
+                            },
+                        ]),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/black",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(265),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(261),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/brown",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(262),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/cyan",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(259),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(257),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/green",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(263),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/light_blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(253),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/light_gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(258),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/lime",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(255),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/magenta",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(252),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/orange",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(251),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/pink",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(256),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/purple",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(260),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/red",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/white",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(250),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/sheep/yellow",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(254),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/shulker",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::RandomChanceWithEnchantedBonus {
+                    enchantment: "minecraft:looting",
+                    unenchanted_chance: 0.5,
+                    enchanted_chance: LevelBasedValue::Linear {
+                        base: 0.5625,
+                        per_level_above_first: 0.0625,
+                    },
+                }),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1455),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/silverfish", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/skeleton",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1009),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1216),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/skeleton_horse",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1216),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/slime",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::EntityProperties {
+                    target: EntityTarget::This,
+                    predicate: Some(&EntityPredicate {
+                        kind: None,
+                        flags: EntityFlags { baby: None, on_fire: None },
+                        mainhand: None,
+                        vehicle: None,
+                        components: &[],
+                        sub: &[EntitySubPredicate::CubeMob {
+                            size: IntRange { min: Some(1), max: Some(1) },
+                        }],
+                    }),
+                }),
+                modifier: &[],
+                entries: &[
+                    Entry {
+                        condition: Some(Condition::Inverted(&Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[],
+                            source_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[56])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[],
+                                sub: &[],
+                            }),
+                            direct_entity: None,
+                            is_direct: None,
+                        }))),
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1147),
+                        }),
+                    },
+                    Entry {
+                        condition: Some(Condition::DamageSourceProperties(&DamageSourcePredicate {
+                            tags: &[],
+                            source_entity: Some(&EntityPredicate {
+                                kind: Some(HolderSet::Direct(&[56])),
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: None,
+                                components: &[],
+                                sub: &[],
+                            }),
+                            direct_entity: None,
+                            is_direct: None,
+                        })),
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1147),
+                        }),
+                    },
+                ],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/sniffer", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/snow_golem",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Uniform { min: 0, max: 15 },
+                            add: false,
+                        },
+                    }],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1132),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/spider",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1062),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: -1, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1272),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/squid",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1196),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/stray",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1009),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1216),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::KilledByPlayer),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 1,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetPotion("minecraft:slowness"),
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1444),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/strider",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 2, max: 5 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1062),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/sulfur_cube", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/tadpole", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/trader_llama",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 2 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1133),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/tropical_fish",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Constant(1),
+                                add: false,
+                            },
+                        }],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1192),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::RandomChance(0.05)),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1215),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/turtle",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 3,
+                            quality: 0,
+                            output: Output::Item(248),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::DamageSourceProperties(&DamageSourcePredicate {
+                        tags: &[TagPredicate { tag: "minecraft:is_lightning", expected: true }],
+                        source_entity: None,
+                        direct_entity: None,
+                        is_direct: None,
+                    })),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1006),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/vex", LootTable { pools: &[], modifier: &[] }),
+    ("minecraft:entities/villager", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/vindicator",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::KilledByPlayer),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 1 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1013),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/wandering_trader", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/warden",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(505),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/witch",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Uniform { min: 1, max: 3 },
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1189),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1217),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1272),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1270),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1064),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::SetCount {
+                                        count: IntProvider::Uniform { min: 0, max: 2 },
+                                        add: false,
+                                    },
+                                },
+                                Function {
+                                    condition: None,
+                                    kind: FunctionKind::EnchantedCountIncrease {
+                                        enchantment: "minecraft:looting",
+                                        count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                        limit: 0,
+                                    },
+                                },
+                            ],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 2,
+                                quality: 0,
+                                output: Output::Item(1060),
+                            }),
+                        },
+                    ],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 4, max: 8 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(824),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/wither", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/wither_skeleton",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: -1, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1010),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1216),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1385),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    ("minecraft:entities/wolf", LootTable { pools: &[], modifier: &[] }),
+    (
+        "minecraft:entities/zoglin",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 1, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/zombie",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1264),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: Some(Condition::EntityProperties {
+                            target: EntityTarget::This,
+                            predicate: Some(&EntityPredicate {
+                                kind: None,
+                                flags: EntityFlags { baby: None, on_fire: None },
+                                mainhand: None,
+                                vehicle: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[155])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                                components: &[],
+                                sub: &[],
+                            }),
+                        }),
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(318),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1018),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1378),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            }],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1379),
+                            }),
+                        },
+                    ],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::EntityProperties {
+                            target: EntityTarget::This,
+                            predicate: Some(&EntityPredicate {
+                                kind: None,
+                                flags: EntityFlags { baby: Some(true), on_fire: None },
+                                mainhand: None,
+                                vehicle: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[26])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                                components: &[],
+                                sub: &[],
+                            }),
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1468),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/zombie_horse",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 2, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/zombie_nautilus",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: Some(Condition::KilledByPlayer),
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::SetCount {
+                                count: IntProvider::Uniform { min: 0, max: 3 },
+                                add: false,
+                            },
+                        },
+                        Function {
+                            condition: None,
+                            kind: FunctionKind::EnchantedCountIncrease {
+                                enchantment: "minecraft:looting",
+                                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                limit: 0,
+                            },
+                        },
+                    ],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/zombie_villager",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 2 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1264),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1018),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1378),
+                            }),
+                        },
+                        Entry {
+                            condition: None,
+                            modifier: &[Function {
+                                condition: Some(Condition::AnyOf(&[
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::This,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: Some(true) },
+                                            mainhand: None,
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                    Condition::EntityProperties {
+                                        target: EntityTarget::DirectAttacker,
+                                        predicate: Some(&EntityPredicate {
+                                            kind: None,
+                                            flags: EntityFlags { baby: None, on_fire: None },
+                                            mainhand: Some(ItemPredicate {
+                                                items: None,
+                                                enchantments: &[EnchantmentPredicate {
+                                                    enchantments: Some(&["minecraft:fire_aspect"]),
+                                                    levels: None,
+                                                }],
+                                            }),
+                                            vehicle: None,
+                                            components: &[],
+                                            sub: &[],
+                                        }),
+                                    },
+                                ])),
+                                kind: FunctionKind::FurnaceSmelt { use_input_count: true },
+                            }],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1379),
+                            }),
+                        },
+                    ],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:entities/zombified_piglin",
+        LootTable {
+            pools: &[
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1264),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: None,
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::SetCount {
+                                    count: IntProvider::Uniform { min: 0, max: 1 },
+                                    add: false,
+                                },
+                            },
+                            Function {
+                                condition: None,
+                                kind: FunctionKind::EnchantedCountIncrease {
+                                    enchantment: "minecraft:looting",
+                                    count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                                    limit: 0,
+                                },
+                            },
+                        ],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1268),
+                        }),
+                    }],
+                },
+                Pool {
+                    rolls: IntProvider::Constant(1),
+                    bonus_rolls: 0.0,
+                    condition: Some(Condition::AllOf(&[
+                        Condition::KilledByPlayer,
+                        Condition::RandomChanceWithEnchantedBonus {
+                            enchantment: "minecraft:looting",
+                            unenchanted_chance: 0.025,
+                            enchanted_chance: LevelBasedValue::Linear {
+                                base: 0.035,
+                                per_level_above_first: 0.01,
+                            },
+                        },
+                    ])),
+                    modifier: &[],
+                    entries: &[Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 1,
+                            quality: 0,
+                            output: Output::Item(1022),
+                        }),
+                    }],
+                },
+            ],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:gameplay/chicken_lay",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[(
+                                        "minecraft:chicken/variant",
+                                        "minecraft:temperate",
+                                    )],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1148),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:chicken/variant", "minecraft:warm")],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1150),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:chicken/variant", "minecraft:cold")],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1149),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:gameplay/fishing/fish",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[
+                    Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 60,
+                            quality: 0,
+                            output: Output::Item(1190),
+                        }),
+                    },
+                    Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 25,
+                            quality: 0,
+                            output: Output::Item(1191),
+                        }),
+                    },
+                    Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 2,
+                            quality: 0,
+                            output: Output::Item(1192),
+                        }),
+                    },
+                    Entry {
+                        condition: None,
+                        modifier: &[],
+                        kind: EntryKind::Leaf(Leaf {
+                            weight: 13,
+                            quality: 0,
+                            output: Output::Item(1193),
+                        }),
+                    },
+                ],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "white")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/white"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "orange")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/orange"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "magenta")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/magenta"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "light_blue")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/light_blue"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "yellow")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/yellow"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "lime")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/lime"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "pink")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/pink"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "gray")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/gray"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "light_gray")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/light_gray"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "cyan")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/cyan"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "purple")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/purple"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "blue")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/blue"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "brown")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/brown"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "green")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/green"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "red")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/red"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "black")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/black"),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/black",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(265),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(261),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/brown",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(262),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/cyan",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(259),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(257),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/green",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(263),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/light_blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(253),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/light_gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(258),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/lime",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(255),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/magenta",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(252),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/orange",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(251),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/pink",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(256),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/purple",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(260),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/red",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/white",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(250),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/yellow",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(254),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
 ];
 
 pub(crate) static BLOCK_TABLES: [u16; 1286] = [
@@ -31123,6 +37344,47 @@ pub(crate) static BLOCK_TABLES: [u16; 1286] = [
     719, 1179, 498, 597, 56, 57, 938, 447, 914, 607, 326, 210, 212, 211, 213, 752, 754, 753, 755,
     342, 340, 339, 341, 330, 328, 327, 329, 184, 236, 237, 461, 941, 868, 866, 867, 790, 806, 647,
     1061, 705, 395, 905, 325, 241, 1043, 1060, 449, 687, 688, 686, 648, 206, 812, 798, 390,
+];
+
+pub(crate) static ENTITY_TABLES: [u16; 161] = [
+    65535, 65535, 1207, 65535, 1208, 1209, 65535, 1210, 65535, 65535, 1211, 1212, 65535, 65535,
+    1213, 65535, 1214, 1215, 65535, 1216, 1217, 1218, 1219, 65535, 65535, 65535, 1220, 1221, 1222,
+    65535, 1223, 1224, 1225, 65535, 65535, 65535, 1226, 1227, 65535, 1228, 65535, 1229, 1231, 1232,
+    1230, 65535, 65535, 1233, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 1234, 1235, 65535,
+    1236, 1241, 1237, 65535, 1238, 1239, 1240, 1242, 65535, 1243, 1244, 1245, 65535, 1246, 65535,
+    65535, 65535, 65535, 65535, 65535, 65535, 1247, 65535, 1248, 65535, 65535, 1249, 65535, 65535,
+    1250, 1251, 1252, 65535, 65535, 1253, 65535, 65535, 65535, 65535, 1254, 1255, 1256, 1257, 1258,
+    1259, 1260, 1261, 1263, 65535, 65535, 65535, 65535, 1264, 1265, 1266, 1267, 1268, 1285, 65535,
+    1286, 1287, 1288, 1289, 65535, 1290, 65535, 1291, 65535, 65535, 1292, 65535, 65535, 1293, 1294,
+    1295, 1296, 1297, 65535, 65535, 65535, 1298, 65535, 1299, 1300, 1301, 1302, 1303, 1304, 1305,
+    65535, 1306, 1307, 1308, 65535, 1309, 1310, 1311, 1312, 1313, 1314, 1315, 1262, 65535,
+];
+
+pub(crate) static SMELTING: [(u16, u16); 163] = [
+    (1, 375), (9, 8), (62, 1), (88, 231), (91, 231), (93, 1010), (94, 1010), (95, 1018), (96, 1018),
+    (97, 1020), (98, 1020), (99, 1022), (100, 1022), (101, 824), (102, 824), (103, 1013),
+    (104, 1013), (105, 1014), (106, 1014), (107, 1012), (108, 1012), (109, 1022), (110, 1015),
+    (111, 1024), (163, 1011), (164, 1011), (165, 1011), (166, 1011), (167, 1011), (168, 1011),
+    (169, 1011), (170, 1011), (171, 1011), (172, 1011), (178, 1011), (179, 1011), (180, 1011),
+    (181, 1011), (182, 1011), (183, 1011), (184, 1011), (185, 1011), (186, 1011), (187, 1011),
+    (190, 1011), (191, 1011), (192, 1011), (193, 1011), (194, 1011), (195, 1011), (196, 1011),
+    (197, 1011), (198, 1011), (199, 1011), (203, 1011), (204, 1011), (205, 1011), (206, 1011),
+    (207, 1011), (208, 1011), (209, 1011), (210, 1011), (211, 1011), (212, 1011), (215, 331),
+    (216, 331), (217, 331), (218, 331), (219, 331), (220, 331), (221, 331), (222, 331), (223, 331),
+    (224, 331), (225, 331), (226, 331), (227, 331), (228, 331), (230, 229), (234, 374), (249, 1204),
+    (328, 1257), (413, 1212), (415, 596), (433, 1396), (436, 438), (449, 451), (455, 456),
+    (457, 458), (486, 1397), (498, 499), (557, 372), (561, 673), (562, 674), (563, 675), (564, 676),
+    (565, 677), (566, 678), (567, 679), (568, 680), (569, 681), (570, 682), (571, 683), (572, 684),
+    (573, 685), (574, 686), (575, 687), (576, 688), (644, 373), (1017, 1018), (1019, 1020),
+    (1021, 1022), (1030, 1457), (1031, 1457), (1032, 1457), (1033, 1457), (1034, 1457),
+    (1040, 1268), (1041, 1268), (1042, 1268), (1043, 1268), (1044, 1268), (1045, 1456),
+    (1046, 1456), (1047, 1456), (1048, 1456), (1049, 1456), (1072, 1457), (1073, 1457),
+    (1074, 1457), (1075, 1457), (1076, 1456), (1077, 1456), (1078, 1456), (1079, 1456),
+    (1080, 1456), (1081, 1456), (1082, 1456), (1083, 1456), (1088, 1268), (1089, 1268),
+    (1090, 1268), (1091, 1268), (1097, 1098), (1143, 1142), (1190, 1194), (1191, 1195),
+    (1260, 1261), (1262, 1263), (1379, 1380), (1400, 1401), (1406, 1457), (1407, 1456),
+    (1408, 1268), (1415, 1416), (1434, 1435), (1449, 1457), (1450, 1456), (1451, 1268),
+    (1485, 1456), (1486, 1268), (1489, 1457), (1545, 1548),
 ];
 
 pub(crate) static PREDICATES: [(&str, Condition); 3] = [

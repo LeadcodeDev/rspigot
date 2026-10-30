@@ -65,10 +65,11 @@ world-settings:
     merge-radius:
       item: 0.5
       exp: -1.0
-    mob-spawn-range: 8
+    mob-spawn-range: 6
     item-despawn-rate: 6000
     arrow-despawn-rate: 1200
     trident-despawn-rate: 1200
+    zombie-aggressive-towards-villager: true
     entity-activation-range:
       animals: 32
       monsters: 32
@@ -235,8 +236,11 @@ mod tests {
             spigot.string("messages.server-full", ""),
             "The server is full!"
         );
+        assert_eq!(spigot.int("world-settings.default.mob-spawn-range", 0), 6);
         let bukkit = YamlConfig::from_str(BUKKIT_DEFAULTS).unwrap();
         assert_eq!(bukkit.int("ticks-per.autosave", 0), 6000);
+        assert_eq!(bukkit.int("spawn-limits.monsters", 0), 70);
+        assert_eq!(bukkit.int("ticks-per.animal-spawns", 0), 400);
     }
 
     #[test]

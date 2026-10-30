@@ -32,8 +32,8 @@ impl Block for DarkPrismarineSlab {
         1, 0, 1, 0, 15, 15,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(3230),
-        StateFlags(3102),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(7326),
+        StateFlags(7198),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_WHITE_WOOL_SLAB);
     const FACE_SUPPORT: PerState<FaceSupport> =

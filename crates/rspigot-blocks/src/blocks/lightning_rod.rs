@@ -33,11 +33,12 @@ impl Block for LightningRod {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
-        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
-        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
+        StateFlags(10886), StateFlags(10790), StateFlags(10886), StateFlags(10790),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_LIGHTNING_ROD);
     const FACE_SUPPORT: PerState<FaceSupport> =

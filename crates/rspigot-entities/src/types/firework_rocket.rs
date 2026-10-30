@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn};
 
 pub struct FireworkRocket;
 
@@ -22,5 +22,7 @@ impl EntityType for FireworkRocket {
     const LIVING: bool = false;
     const ANCESTORS: &'static [&'static str] = &["FireworkRocketEntity", "Projectile", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

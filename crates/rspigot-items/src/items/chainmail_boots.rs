@@ -13,6 +13,7 @@ impl Item for ChainmailBoots {
     const CLASS: &'static str = "Item";
     const MAX_STACK_SIZE: u8 = 1;
     const MAX_DAMAGE: Option<u32> = Some(195);
+    const WEAPON_DAMAGE: Option<u32> = None;
     const RARITY: Rarity = Rarity::Uncommon;
     const BLOCK: Option<BlockId> = None;
     const TOOL: Option<Tool> = None;

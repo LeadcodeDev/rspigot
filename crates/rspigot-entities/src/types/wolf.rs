@@ -1,4 +1,8 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
+    VoicePitch,
+};
 
 pub struct Wolf;
 
@@ -61,5 +65,58 @@ impl EntityType for Wolf {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+            Some("minecraft:entity.baby_wolf.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+            Some("minecraft:entity.baby_wolf.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Fixed(0.4),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::OnGround,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::Wolf,
+        }),
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::Animal),
+        check_spawn_obstruction: MobClass::Mob,
+        max_spawn_cluster_size: Some(8),
+        max_spawn_cluster_size_owner: MobClass::Wolf,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::Animal,
+        requires_custom_persistence: MobClass::Mob,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
+    });
     type Behavior = crate::family::Plain;
 }

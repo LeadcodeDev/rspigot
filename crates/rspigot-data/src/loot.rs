@@ -1,4 +1,4 @@
-use crate::generated::loot::{BLOCK_TABLES, PREDICATES, TABLES};
+use crate::generated::loot::{BLOCK_TABLES, ENTITY_TABLES, PREDICATES, SMELTING, TABLES};
 use crate::tags::HolderSet;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,6 +44,7 @@ pub enum Output {
     Items { items: HolderSet, expand: bool },
     Empty,
     Dynamic(&'static str),
+    Table(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -55,8 +56,18 @@ pub enum Condition {
         offset: [i32; 3],
         block: Option<BlockPredicate>,
     },
-    EntityProperties(EntityTarget),
+    EntityProperties {
+        target: EntityTarget,
+        predicate: Option<&'static EntityPredicate>,
+    },
+    KilledByPlayer,
+    DamageSourceProperties(&'static DamageSourcePredicate),
     RandomChance(f32),
+    RandomChanceWithEnchantedBonus {
+        enchantment: &'static str,
+        unenchanted_chance: f32,
+        enchanted_chance: LevelBasedValue,
+    },
     TableBonus {
         enchantment: &'static str,
         chances: &'static [f32],
@@ -75,6 +86,71 @@ pub enum EntityTarget {
     AttackingPlayer,
     TargetEntity,
     InteractingEntity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityFlags {
+    pub baby: Option<bool>,
+    pub on_fire: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntitySubPredicate {
+    Sheep {
+        sheared: Option<bool>,
+    },
+    CubeMob {
+        size: IntRange,
+    },
+    Raider {
+        has_raid: Option<bool>,
+        captain: Option<bool>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityPredicate {
+    pub kind: Option<HolderSet>,
+    pub flags: EntityFlags,
+    pub mainhand: Option<ItemPredicate>,
+    pub vehicle: Option<&'static EntityPredicate>,
+    pub components: &'static [(&'static str, &'static str)],
+    pub sub: &'static [EntitySubPredicate],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TagPredicate {
+    pub tag: &'static str,
+    pub expected: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DamageSourcePredicate {
+    pub tags: &'static [TagPredicate],
+    pub source_entity: Option<&'static EntityPredicate>,
+    pub direct_entity: Option<&'static EntityPredicate>,
+    pub is_direct: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LevelBasedValue {
+    Constant(f32),
+    Linear {
+        base: f32,
+        per_level_above_first: f32,
+    },
+}
+
+impl LevelBasedValue {
+    pub fn calculate(&self, level: i32) -> f32 {
+        match *self {
+            Self::Constant(value) => value,
+            Self::Linear {
+                base,
+                per_level_above_first,
+            } => base + per_level_above_first * (level - 1) as f32,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +204,16 @@ pub enum FunctionKind {
         max: Option<IntProvider>,
     },
     ExplosionDecay,
+    EnchantedCountIncrease {
+        enchantment: &'static str,
+        count: FloatProvider,
+        limit: i32,
+    },
+    FurnaceSmelt {
+        use_input_count: bool,
+    },
+    SetPotion(&'static str),
+    SetOminousBottleAmplifier(IntProvider),
     Components(&'static str),
 }
 
@@ -136,6 +222,12 @@ pub enum BonusFormula {
     OreDrops,
     UniformBonusCount { bonus_multiplier: i32 },
     BinomialWithBonusCount { extra: i32, probability: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FloatProvider {
+    Constant(f32),
+    Uniform { min: f32, max: f32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -161,6 +253,18 @@ pub fn block_table(block: u16) -> Option<&'static LootTable> {
     TABLES.get(usize::from(index)).map(|(_, table)| table)
 }
 
+pub fn entity_table(entity_type: u16) -> Option<&'static LootTable> {
+    let index = *ENTITY_TABLES.get(usize::from(entity_type))?;
+    TABLES.get(usize::from(index)).map(|(_, table)| table)
+}
+
+pub fn smelted(item: u16) -> Option<u16> {
+    SMELTING
+        .binary_search_by_key(&item, |(input, _)| *input)
+        .ok()
+        .map(|index| SMELTING[index].1)
+}
+
 pub fn predicates() -> &'static [(&'static str, Condition)] {
     &PREDICATES
 }
@@ -181,6 +285,12 @@ mod tests {
     use crate::tags::HolderSet;
 
     const BLOCK_TABLE_FILES: usize = 1201;
+    const ENTITY_TABLE_FILES: usize = 109;
+    const REFERENCED_TABLES: usize = 1;
+    const GAMEPLAY_TABLES: usize = 2;
+    const SHEEP_COLOUR_TABLES: usize = 16;
+    const CHARGED_CREEPER_TABLES: usize = 6;
+    const ENTITY_TYPES_WITH_TABLE: usize = 93;
     const WALL_VARIANTS_WITHOUT_OWN_TABLE: usize = 63;
 
     fn block_id(name: &str) -> u16 {
@@ -245,15 +355,152 @@ mod tests {
         out
     }
 
+    fn entity_id(name: &str) -> u16 {
+        u16::try_from(registries::static_index("minecraft:entity_type", name).unwrap()).unwrap()
+    }
+
     #[test]
     fn tables_are_sorted_and_addressable() {
-        assert_eq!(tables().len(), BLOCK_TABLE_FILES);
+        assert_eq!(
+            tables().len(),
+            BLOCK_TABLE_FILES
+                + ENTITY_TABLE_FILES
+                + REFERENCED_TABLES
+                + GAMEPLAY_TABLES
+                + SHEEP_COLOUR_TABLES
+                + CHARGED_CREEPER_TABLES
+        );
         assert!(tables().windows(2).all(|pair| pair[0].0 < pair[1].0));
+        let count = |prefix: &str| {
+            tables()
+                .iter()
+                .filter(|(name, _)| name.starts_with(prefix))
+                .count()
+        };
+        assert_eq!(count("minecraft:blocks/"), BLOCK_TABLE_FILES);
+        assert_eq!(count("minecraft:entities/"), ENTITY_TABLE_FILES);
+        assert!(table("minecraft:gameplay/fishing/fish").is_some());
+        assert!(table("minecraft:gameplay/chicken_lay").is_some());
+        assert!(table("minecraft:shearing/sheep").is_some());
+        assert_eq!(count("minecraft:shearing/sheep/"), SHEEP_COLOUR_TABLES);
+        assert_eq!(count("minecraft:charged_creeper/"), CHARGED_CREEPER_TABLES);
         for (name, entry) in tables() {
-            assert!(name.starts_with("minecraft:blocks/"));
             assert!(ptr::eq(table(name).unwrap(), entry));
         }
         assert!(table("minecraft:blocks/nope").is_none());
+    }
+
+    #[test]
+    fn entity_types_resolve_their_default_table() {
+        let types = registries::static_entries("minecraft:entity_type").unwrap();
+        let mut resolved = 0;
+        for (index, name) in types.iter().enumerate() {
+            let id = u16::try_from(index).unwrap();
+            let path = name.strip_prefix("minecraft:").unwrap();
+            let own = table(&format!("minecraft:entities/{path}"));
+            assert_eq!(entity_table(id).map(ptr::from_ref), own.map(ptr::from_ref));
+            resolved += usize::from(own.is_some());
+        }
+        assert_eq!(resolved, ENTITY_TYPES_WITH_TABLE);
+        assert!(entity_table(entity_id("minecraft:item")).is_none());
+        assert!(entity_table(u16::MAX).is_none());
+    }
+
+    #[test]
+    fn sheep_nests_one_table_per_colour() {
+        let sheep = entity_table(entity_id("minecraft:sheep")).unwrap();
+        let nested: Vec<&str> = sheep
+            .pools
+            .iter()
+            .flat_map(|pool| pool.entries.iter())
+            .flat_map(|entry| match entry.kind {
+                EntryKind::Alternatives(children) => children.to_vec(),
+                _ => vec![*entry],
+            })
+            .filter_map(|entry| match entry.kind {
+                EntryKind::Leaf(Leaf {
+                    output: Output::Table(name),
+                    ..
+                }) => Some(name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(nested.len(), 16);
+        for name in nested {
+            assert!(name.starts_with("minecraft:entities/sheep/"));
+            assert!(table(name).is_some());
+        }
+    }
+
+    #[test]
+    fn cow_table_shape() {
+        let cow = entity_table(entity_id("minecraft:cow")).unwrap();
+        let [leather, beef] = cow.pools else { panic!() };
+        let [entry] = leather.entries else { panic!() };
+        assert_eq!(
+            entry.kind,
+            EntryKind::Leaf(Leaf {
+                weight: 1,
+                quality: 0,
+                output: Output::Item(item_id("minecraft:leather")),
+            })
+        );
+        let [set_count, looting] = entry.modifier else {
+            panic!()
+        };
+        assert_eq!(
+            set_count.kind,
+            FunctionKind::SetCount {
+                count: IntProvider::Uniform { min: 0, max: 2 },
+                add: false
+            }
+        );
+        assert_eq!(
+            looting.kind,
+            FunctionKind::EnchantedCountIncrease {
+                enchantment: "minecraft:looting",
+                count: FloatProvider::Uniform { min: 0.0, max: 1.0 },
+                limit: 0
+            }
+        );
+        let [entry] = beef.entries else { panic!() };
+        let [_, smelt, _] = entry.modifier else {
+            panic!()
+        };
+        assert_eq!(
+            smelt.kind,
+            FunctionKind::FurnaceSmelt {
+                use_input_count: true
+            }
+        );
+        let Some(Condition::AnyOf([on_fire, _])) = smelt.condition else {
+            panic!()
+        };
+        let Condition::EntityProperties {
+            target: EntityTarget::This,
+            predicate: Some(predicate),
+        } = on_fire
+        else {
+            panic!()
+        };
+        assert_eq!(predicate.flags.on_fire, Some(true));
+    }
+
+    #[test]
+    fn smelting_maps_raw_food_to_cooked() {
+        assert_eq!(
+            smelted(item_id("minecraft:beef")),
+            Some(item_id("minecraft:cooked_beef"))
+        );
+        assert_eq!(
+            smelted(item_id("minecraft:cod")),
+            Some(item_id("minecraft:cooked_cod"))
+        );
+        assert_eq!(
+            smelted(item_id("minecraft:oak_log")),
+            Some(item_id("minecraft:charcoal"))
+        );
+        assert_eq!(smelted(item_id("minecraft:leather")), None);
     }
 
     #[test]

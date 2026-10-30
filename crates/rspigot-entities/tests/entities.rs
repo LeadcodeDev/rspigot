@@ -270,3 +270,78 @@ fn fire_immune_and_dragon() {
         .count();
     assert_eq!(fire_immune, 15);
 }
+
+#[test]
+fn creature_sounds_come_from_the_vanilla_classes() {
+    use rspigot_entities::{
+        CreatureSound, SoundSource, SoundState, SoundVolume, VoicePitch, WaterContact,
+    };
+    let cow = EntityKind::Cow.sounds().unwrap();
+    assert_eq!(
+        cow.hurt,
+        CreatureSound::Fixed(Some("minecraft:entity.cow.hurt"))
+    );
+    assert_eq!(
+        cow.death,
+        CreatureSound::Fixed(Some("minecraft:entity.cow.death"))
+    );
+    assert_eq!(cow.volume, SoundVolume::Fixed(0.4));
+    assert_eq!(cow.source, SoundSource::Neutral);
+    assert_eq!(cow.pitch, VoicePitch::Standard);
+    assert!(cow.can_be_baby);
+    let zombie = EntityKind::Zombie.sounds().unwrap();
+    assert_eq!(zombie.source, SoundSource::Hostile);
+    assert!(zombie.can_be_baby);
+    let giant = EntityKind::Giant.sounds().unwrap();
+    assert_eq!(
+        giant.hurt.get(SoundState::default()),
+        Some("minecraft:entity.hostile.hurt")
+    );
+    let slime = EntityKind::Slime.sounds().unwrap();
+    let tiny = SoundState {
+        tiny: true,
+        ..SoundState::default()
+    };
+    assert_eq!(
+        slime.hurt.get(tiny),
+        Some("minecraft:entity.slime.hurt_small")
+    );
+    assert_eq!(
+        slime.hurt.get(SoundState::default()),
+        Some("minecraft:entity.slime.hurt")
+    );
+    assert_eq!(slime.volume.get(false, 4), 1.6);
+    let pig = EntityKind::Pig.sounds().unwrap();
+    let baby = SoundState {
+        baby: true,
+        ..SoundState::default()
+    };
+    assert_eq!(pig.hurt.get(baby), Some("minecraft:entity.baby_pig.hurt"));
+    let guardian = EntityKind::Guardian.sounds().unwrap();
+    assert_eq!(
+        guardian.hurt.get(SoundState::default()),
+        Some("minecraft:entity.guardian.hurt_land")
+    );
+    let wet = SoundState {
+        water: WaterContact::Touching,
+        ..SoundState::default()
+    };
+    assert_eq!(
+        guardian.hurt.get(wet),
+        Some("minecraft:entity.guardian.hurt")
+    );
+    assert_eq!(EntityKind::Bat.sounds().unwrap().pitch, VoicePitch::Bat);
+    assert_eq!(
+        EntityKind::Player.sounds().unwrap().source,
+        SoundSource::Players
+    );
+    assert!(!EntityKind::Frog.sounds().unwrap().can_be_baby);
+    assert!(EntityKind::Item.sounds().is_none());
+    assert_eq!(
+        EntityKind::HappyGhast.sounds().unwrap().volume,
+        SoundVolume::Baby {
+            adult: 4.0,
+            baby: 1.0
+        }
+    );
+}

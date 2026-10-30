@@ -1,6 +1,7 @@
 use rspigot_domain::BlockPos;
 use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
+use rspigot_domain::spawn::state::SpawnSettings;
 use rspigot_domain::world::Difficulty;
 use sha2::{Digest, Sha256};
 
@@ -15,6 +16,11 @@ pub struct GameRules {
     pub show_death_messages: bool,
     pub immediate_respawn: bool,
     pub fall_damage: bool,
+    pub mob_drops: bool,
+    pub mob_griefing: bool,
+    pub mob_explosion_drop_decay: bool,
+    pub block_drops: bool,
+    pub universal_anger: bool,
 }
 
 impl Default for GameRules {
@@ -25,6 +31,11 @@ impl Default for GameRules {
             show_death_messages: true,
             immediate_respawn: false,
             fall_damage: true,
+            mob_drops: true,
+            mob_griefing: true,
+            mob_explosion_drop_decay: true,
+            block_drops: true,
+            universal_anger: false,
         }
     }
 }
@@ -46,6 +57,36 @@ impl Default for ActivationRanges {
             raiders: 48,
             misc: 16,
             ignore_spectators: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpawningConfig {
+    pub categories: SpawnSettings,
+    pub mob_spawn_range: i32,
+}
+
+impl Default for SpawningConfig {
+    fn default() -> Self {
+        Self {
+            categories: SpawnSettings::default(),
+            mob_spawn_range: 6,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MobSettings {
+    pub zombie_aggressive_towards_villager: bool,
+    pub arrow_despawn_rate: i32,
+}
+
+impl Default for MobSettings {
+    fn default() -> Self {
+        Self {
+            zombie_aggressive_towards_villager: true,
+            arrow_despawn_rate: 1200,
         }
     }
 }
@@ -74,6 +115,8 @@ pub struct GameConfig {
     pub is_flat: bool,
     pub spawn_chunk_radius: i32,
     pub rules: GameRules,
+    pub spawning: SpawningConfig,
+    pub mobs: MobSettings,
 }
 
 impl Default for GameConfig {
@@ -102,6 +145,8 @@ impl Default for GameConfig {
             is_flat: false,
             spawn_chunk_radius: 2,
             rules: GameRules::default(),
+            spawning: SpawningConfig::default(),
+            mobs: MobSettings::default(),
         }
     }
 }
@@ -117,6 +162,8 @@ pub struct LevelData {
     pub daylight_cycle: bool,
     pub raining: bool,
     pub thundering: bool,
+    pub spawn_mobs: bool,
+    pub spawn_monsters: bool,
     pub uuid: Option<uuid::Uuid>,
 }
 
@@ -132,6 +179,8 @@ impl Default for LevelData {
             daylight_cycle: true,
             raining: false,
             thundering: false,
+            spawn_mobs: true,
+            spawn_monsters: true,
             uuid: None,
         }
     }

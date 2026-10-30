@@ -115,6 +115,18 @@ macro_rules! entity_kinds {
                     $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::DEFAULT_ATTRIBUTES,)*
                 }
             }
+
+            pub const fn sounds(self) -> Option<$crate::CreatureSounds> {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::SOUNDS,)*
+                }
+            }
+
+            pub const fn mob_spawn(self) -> Option<$crate::MobSpawn> {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::MOB_SPAWN,)*
+                }
+            }
         }
     };
 }
@@ -135,6 +147,7 @@ const _: () = {
         let kind = EntityKind::ALL[index];
         assert!(kind.id().0 as usize == index);
         assert!(kind.living() != kind.default_attributes().is_empty());
+        assert!(kind.living() == kind.sounds().is_some());
         index += 1;
     }
 };

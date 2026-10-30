@@ -1,0 +1,209 @@
+use rspigot_entities::{EntityKind, MobClass};
+
+use crate::random::RandomSource;
+use crate::world::Difficulty;
+
+pub const NO_ACTION_DESPAWN_TIME: i32 = 600;
+pub const RANDOM_DESPAWN_CHANCE: i32 = 800;
+
+pub fn remove_when_far_away(kind: EntityKind, chicken_jockey: bool) -> Option<bool> {
+    Some(match kind.mob_spawn()?.remove_when_far_away {
+        MobClass::Mob => true,
+        MobClass::Animal
+        | MobClass::AbstractGolem
+        | MobClass::Villager
+        | MobClass::WanderingTrader
+        | MobClass::Allay => false,
+        MobClass::Chicken => chicken_jockey,
+        _ => return None,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DespawnFacts {
+    pub kind: EntityKind,
+    pub persistence_required: bool,
+    pub requires_custom_persistence: bool,
+    pub no_action_time: i32,
+    pub chicken_jockey: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DespawnOutcome {
+    pub discard: bool,
+    pub reset_no_action_time: bool,
+}
+
+pub fn check_despawn(
+    facts: &DespawnFacts,
+    difficulty: Difficulty,
+    nearest_player_distance_sqr: Option<f64>,
+    random: &mut impl RandomSource,
+) -> DespawnOutcome {
+    let mut outcome = DespawnOutcome::default();
+    let kind = facts.kind;
+    if difficulty == Difficulty::Peaceful && !kind.allowed_in_peaceful() {
+        outcome.discard = true;
+        return outcome;
+    }
+    let persistent = facts.persistence_required || facts.requires_custom_persistence;
+    let Some(distance) = nearest_player_distance_sqr else {
+        return outcome;
+    };
+    let category = kind.category();
+    let far = || remove_when_far_away(kind, facts.chicken_jockey).unwrap_or(false);
+    let despawn = i32::from(category.despawn_distance()).pow(2);
+    if !persistent && distance > f64::from(despawn) && far() {
+        outcome.discard = true;
+    }
+    let no_despawn = i32::from(category.no_despawn_distance()).pow(2);
+    if !persistent
+        && facts.no_action_time > NO_ACTION_DESPAWN_TIME
+        && random.next_int(RANDOM_DESPAWN_CHANCE) == 0
+        && distance > f64::from(no_despawn)
+        && far()
+    {
+        outcome.discard = true;
+    } else if distance < f64::from(no_despawn) {
+        outcome.reset_no_action_time = true;
+    }
+    outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::random::LegacyRandom;
+
+    struct Fixed(i32);
+
+    impl RandomSource for Fixed {
+        fn next_float(&mut self) -> f32 {
+            0.0
+        }
+
+        fn next_int(&mut self, _: i32) -> i32 {
+            self.0
+        }
+
+        fn next_double(&mut self) -> f64 {
+            0.0
+        }
+
+        fn next_boolean(&mut self) -> bool {
+            false
+        }
+
+        fn next_gaussian(&mut self) -> f64 {
+            0.0
+        }
+    }
+
+    fn facts(kind: EntityKind) -> DespawnFacts {
+        DespawnFacts {
+            kind,
+            persistence_required: false,
+            requires_custom_persistence: false,
+            no_action_time: 0,
+            chicken_jockey: false,
+        }
+    }
+
+    #[test]
+    fn monsters_vanish_beyond_the_despawn_distance() {
+        let zombie = facts(EntityKind::Zombie);
+        let mut random = LegacyRandom::new(1);
+        let far = check_despawn(
+            &zombie,
+            Difficulty::Normal,
+            Some(128.5 * 128.5),
+            &mut random,
+        );
+        assert!(far.discard);
+        let edge = check_despawn(
+            &zombie,
+            Difficulty::Normal,
+            Some(128.0 * 128.0),
+            &mut random,
+        );
+        assert!(!edge.discard);
+        let none = check_despawn(&zombie, Difficulty::Normal, None, &mut random);
+        assert_eq!(none, DespawnOutcome::default());
+    }
+
+    #[test]
+    fn animals_and_persistent_mobs_stay() {
+        let mut random = Fixed(0);
+        let cow = DespawnFacts {
+            no_action_time: 700,
+            ..facts(EntityKind::Cow)
+        };
+        assert!(!check_despawn(&cow, Difficulty::Normal, Some(1e6), &mut random).discard);
+        let named = DespawnFacts {
+            persistence_required: true,
+            no_action_time: 700,
+            ..facts(EntityKind::Zombie)
+        };
+        assert!(!check_despawn(&named, Difficulty::Normal, Some(1e6), &mut random).discard);
+        let jockey = DespawnFacts {
+            chicken_jockey: true,
+            ..facts(EntityKind::Chicken)
+        };
+        assert!(check_despawn(&jockey, Difficulty::Normal, Some(1e6), &mut random).discard);
+        assert!(
+            !check_despawn(
+                &facts(EntityKind::Chicken),
+                Difficulty::Normal,
+                Some(1e6),
+                &mut random
+            )
+            .discard
+        );
+    }
+
+    #[test]
+    fn idle_monsters_roll_one_in_eight_hundred_beyond_thirty_two_blocks() {
+        let idle = DespawnFacts {
+            no_action_time: 601,
+            ..facts(EntityKind::Skeleton)
+        };
+        assert!(check_despawn(&idle, Difficulty::Easy, Some(40.0 * 40.0), &mut Fixed(0)).discard);
+        assert!(!check_despawn(&idle, Difficulty::Easy, Some(40.0 * 40.0), &mut Fixed(1)).discard);
+        let fresh = DespawnFacts {
+            no_action_time: 600,
+            ..idle
+        };
+        assert!(!check_despawn(&fresh, Difficulty::Easy, Some(40.0 * 40.0), &mut Fixed(0)).discard);
+        let near = check_despawn(&idle, Difficulty::Easy, Some(20.0 * 20.0), &mut Fixed(0));
+        assert_eq!(
+            near,
+            DespawnOutcome {
+                discard: false,
+                reset_no_action_time: true
+            }
+        );
+    }
+
+    #[test]
+    fn peaceful_removes_monsters_only() {
+        let mut random = Fixed(5);
+        assert!(
+            check_despawn(
+                &facts(EntityKind::Creeper),
+                Difficulty::Peaceful,
+                None,
+                &mut random
+            )
+            .discard
+        );
+        assert!(
+            !check_despawn(
+                &facts(EntityKind::Sheep),
+                Difficulty::Peaceful,
+                None,
+                &mut random
+            )
+            .discard
+        );
+    }
+}

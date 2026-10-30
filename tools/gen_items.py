@@ -451,7 +451,16 @@ def validate(dump, registries, components_dir):
                 fail("%s use remainder is not a plain single item" % name)
         report = load_json(os.path.join(components_dir, path + ".json"))
         check_report(item, report, block_ids, item_ids)
+        item["weapon_damage"] = weapon_damage(report["components"].get("minecraft:weapon"), name)
     return block_names
+
+
+def weapon_damage(weapon, name):
+    if weapon is None:
+        return None
+    if not isinstance(weapon, dict) or set(weapon) - {"item_damage_per_attack", "disable_blocking_for_seconds"}:
+        fail("%s has an unsupported weapon component %r" % (name, weapon))
+    return integer(weapon.get("item_damage_per_attack", 1), 0, 2**31 - 1, name + " weapon damage")
 
 
 def option(value, render):
@@ -563,6 +572,7 @@ def item_file(item, behavior):
         '    const CLASS: &\'static str = "%s";' % item["class"],
         "    const MAX_STACK_SIZE: u8 = %d;" % item["max_stack_size"],
         "    const MAX_DAMAGE: Option<u32> = %s;" % option(item["max_damage"], str),
+        "    const WEAPON_DAMAGE: Option<u32> = %s;" % option(item["weapon_damage"], str),
         "    const RARITY: Rarity = Rarity::%s;" % struct_name(item["rarity"]),
         "    const BLOCK: Option<BlockId> = %s;" % option(item["block"], lambda block: "BlockId(%d)" % block),
     ]

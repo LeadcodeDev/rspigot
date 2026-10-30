@@ -30,8 +30,9 @@ impl Block for PitcherCrop {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(32), StateFlags(548), StateFlags(32), StateFlags(548), StateFlags(32),
-        StateFlags(548), StateFlags(32), StateFlags(548), StateFlags(32), StateFlags(36),
+        StateFlags(16416), StateFlags(16932), StateFlags(16416), StateFlags(16932),
+        StateFlags(16416), StateFlags(16932), StateFlags(16416), StateFlags(16932),
+        StateFlags(16416), StateFlags(16420),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_PITCHER_CROP);
     const FACE_SUPPORT: PerState<FaceSupport> =

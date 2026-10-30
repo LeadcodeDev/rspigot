@@ -18,6 +18,8 @@ const LEVEL_BACKUP: &str = "level.dat_old";
 const STORAGE_VERSION: i32 = 19133;
 const OVERWORLD_CLOCK: &str = "minecraft:overworld";
 const ADVANCE_TIME_RULE: &str = "minecraft:advance_time";
+const SPAWN_MOBS_RULE: &str = "minecraft:spawn_mobs";
+const SPAWN_MONSTERS_RULE: &str = "minecraft:spawn_monsters";
 const OVERWORLD: &str = "minecraft:overworld";
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -193,10 +195,11 @@ fn read_level(world_root: &Path) -> Result<Option<LevelData>, AnvilError> {
     {
         level.seed = seed;
     }
-    if let Some(rules) = optional_saved_data(world_root, "game_rules")
-        && let Some(rule) = rules.get(ADVANCE_TIME_RULE)
-    {
-        level.daylight_cycle = flag(rule).unwrap_or(level.daylight_cycle);
+    if let Some(rules) = optional_saved_data(world_root, "game_rules") {
+        let rule = |key: &str, current: bool| rules.get(key).and_then(flag).unwrap_or(current);
+        level.daylight_cycle = rule(ADVANCE_TIME_RULE, level.daylight_cycle);
+        level.spawn_mobs = rule(SPAWN_MOBS_RULE, level.spawn_mobs);
+        level.spawn_monsters = rule(SPAWN_MONSTERS_RULE, level.spawn_monsters);
     }
     if let Some(weather) = optional_saved_data(world_root, "weather") {
         level.raining = weather.get_bool("raining").unwrap_or(level.raining);
@@ -271,8 +274,15 @@ fn write_level(world_root: &Path, level: &LevelData) -> Result<(), AnvilError> {
         changed
     })?;
     update_saved_data(world_root, "game_rules", |data| {
-        let changed = data.get_bool(ADVANCE_TIME_RULE) != Some(level.daylight_cycle);
-        data.insert(ADVANCE_TIME_RULE, level.daylight_cycle);
+        let mut changed = false;
+        for (key, value) in [
+            (ADVANCE_TIME_RULE, level.daylight_cycle),
+            (SPAWN_MOBS_RULE, level.spawn_mobs),
+            (SPAWN_MONSTERS_RULE, level.spawn_monsters),
+        ] {
+            changed |= data.get_bool(key) != Some(value);
+            data.insert(key, value);
+        }
         changed
     })?;
     update_saved_data(world_root, "weather", |data| {
@@ -450,6 +460,8 @@ mod tests {
             daylight_cycle: false,
             raining: true,
             thundering: true,
+            spawn_mobs: true,
+            spawn_monsters: false,
             uuid: None,
         }
     }
@@ -549,13 +561,10 @@ mod tests {
         assert_eq!(overworld.get("total_ticks"), Some(&Tag::Long(6000)));
 
         let rules = read_file(root, "data/minecraft/game_rules.dat");
-        assert_eq!(
-            rules
-                .get_compound("data")
-                .unwrap()
-                .get_bool("minecraft:advance_time"),
-            Some(false)
-        );
+        let rules = rules.get_compound("data").unwrap();
+        assert_eq!(rules.get_bool("minecraft:advance_time"), Some(false));
+        assert_eq!(rules.get_bool("minecraft:spawn_mobs"), Some(true));
+        assert_eq!(rules.get_bool("minecraft:spawn_monsters"), Some(false));
     }
 
     #[test]

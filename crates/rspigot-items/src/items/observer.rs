@@ -10,6 +10,7 @@ impl Item for Observer {
     const CLASS: &'static str = "BlockItem";
     const MAX_STACK_SIZE: u8 = 64;
     const MAX_DAMAGE: Option<u32> = None;
+    const WEAPON_DAMAGE: Option<u32> = None;
     const RARITY: Rarity = Rarity::Common;
     const BLOCK: Option<BlockId> = Some(BlockId(734));
     const TOOL: Option<Tool> = None;

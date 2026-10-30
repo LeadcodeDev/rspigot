@@ -72,6 +72,12 @@ macro_rules! block_kinds {
                 }
             }
 
+            pub const fn spawn_surface(self) -> $crate::SpawnSurface {
+                match self {
+                    $(Self::$kind => <$crate::blocks::$kind as $crate::Block>::SPAWN_SURFACE,)*
+                }
+            }
+
             pub(crate) const fn light_emission_per_state(self) -> $crate::PerState<u8> {
                 match self {
                     $(Self::$kind => <$crate::blocks::$kind as $crate::Block>::LIGHT_EMISSION,)*

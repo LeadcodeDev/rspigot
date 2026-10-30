@@ -26,7 +26,7 @@ impl Block for Mud {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2078));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(6174));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(74));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
     type Behavior = crate::family::Plain;

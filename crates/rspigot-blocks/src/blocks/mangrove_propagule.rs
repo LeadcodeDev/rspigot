@@ -35,14 +35,16 @@ impl Block for MangrovePropagule {
         0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640),
-        StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544),
-        StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640),
-        StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544),
-        StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640),
-        StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544),
-        StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640),
-        StateFlags(544), StateFlags(640), StateFlags(544), StateFlags(640), StateFlags(544),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
+        StateFlags(17024), StateFlags(16928), StateFlags(17024), StateFlags(16928),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn};
 
 pub struct SpruceBoat;
 
@@ -22,5 +22,7 @@ impl EntityType for SpruceBoat {
     const LIVING: bool = false;
     const ANCESTORS: &'static [&'static str] = &["Boat", "AbstractBoat", "VehicleEntity", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

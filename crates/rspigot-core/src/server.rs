@@ -10,7 +10,7 @@ use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::admin::AdminLists;
-use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, Priority};
+use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, MobGeneration, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
 use rand::SeedableRng;
@@ -24,6 +24,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore};
+use crate::spawning::Spawning;
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
@@ -33,6 +34,11 @@ pub(crate) enum Audience {
     Trackers(EntityId),
     TrackersExcept(EntityId, PlayerId),
     ChunkViewers(ChunkPos),
+    Nearby {
+        position: Vec3,
+        range: f64,
+        except: Option<PlayerId>,
+    },
 }
 
 pub struct World {
@@ -88,6 +94,7 @@ pub struct Server<L> {
     pub(crate) entities: EntityWorld,
     pub(crate) falls: ScheduledFalls,
     pub(crate) rng: StdRng,
+    pub(crate) spawning: Spawning,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -112,6 +119,11 @@ impl<L: ClientLink> Server<L> {
         level.spawn = Some(spawn.block());
         let workers = ChunkWorkers::spawn(config.chunk_workers, store, generator);
         let mut chunks = ChunkManager::new(Arc::clone(&dimension), config.chunks);
+        chunks.set_mob_generation(level.spawn_mobs.then_some(MobGeneration {
+            seed: level.seed,
+            zoom_seed: hashed_seed(level.seed),
+            difficulty: config.difficulty,
+        }));
         let center = spawn.chunk();
         for dx in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
             for dz in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
@@ -124,6 +136,7 @@ impl<L: ClientLink> Server<L> {
         }
         let admin = config.admin.clone();
         status.update(|s| s.max_players = config.max_players);
+        let spawning = Spawning::new(level.seed, &dimension);
         Self {
             world: World {
                 dimension,
@@ -141,6 +154,7 @@ impl<L: ClientLink> Server<L> {
             entities: EntityWorld::default(),
             falls: ScheduledFalls::default(),
             rng: StdRng::from_os_rng(),
+            spawning,
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -281,6 +295,18 @@ impl<L: ClientLink> Server<L> {
                         player.link.send(event.clone());
                     }
                 }
+                Audience::Nearby {
+                    position,
+                    range,
+                    except,
+                } => {
+                    for player in self.players.values().filter(|p| {
+                        Some(p.id) != except
+                            && p.position.distance_squared(position) < range * range
+                    }) {
+                        player.link.send(event.clone());
+                    }
+                }
             }
         }
     }
@@ -373,6 +399,8 @@ impl<L: ClientLink> Server<L> {
             operator,
             effects: Default::default(),
             vitals: Default::default(),
+            known_movement: Vec3::ZERO,
+            moved_this_tick: false,
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
@@ -545,10 +573,14 @@ impl<L: ClientLink> Server<L> {
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
+        self.world.chunks.relight();
         self.send_entity_changes();
         self.tick_health();
+        self.tick_spawning();
         self.tick_entities();
         self.collect_items();
+        self.collect_arrows();
+        self.collect_orbs();
         self.tick_inventories();
         self.tick_falling_blocks();
         self.update_tracking();
@@ -584,6 +616,12 @@ impl<L: ClientLink> Server<L> {
                 }),
             },
         ]
+        .into_iter()
+        .chain((player.vitals.arrow_count > 0).then(|| MetadataEntry {
+            index: 12,
+            value: MetadataValue::VarInt(player.vitals.arrow_count),
+        }))
+        .collect()
     }
 
     fn update_tracking(&mut self) {

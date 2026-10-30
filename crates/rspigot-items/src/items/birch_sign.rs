@@ -10,6 +10,7 @@ impl Item for BirchSign {
     const CLASS: &'static str = "StandingAndWallBlockItem";
     const MAX_STACK_SIZE: u8 = 16;
     const MAX_DAMAGE: Option<u32> = None;
+    const WEAPON_DAMAGE: Option<u32> = None;
     const RARITY: Rarity = Rarity::Common;
     const BLOCK: Option<BlockId> = Some(BlockId(256));
     const TOOL: Option<Tool> = None;

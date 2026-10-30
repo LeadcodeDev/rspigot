@@ -1,4 +1,8 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
+    VoicePitch,
+};
 
 pub struct HappyGhast;
 
@@ -60,5 +64,58 @@ impl EntityType for HappyGhast {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Baby { adult: 4.0, baby: 1.0 },
+        pitch: VoicePitch::Fixed,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::OnGround,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::Animal,
+        }),
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::HappyGhast),
+        check_spawn_obstruction: MobClass::Mob,
+        max_spawn_cluster_size: Some(1),
+        max_spawn_cluster_size_owner: MobClass::HappyGhast,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::Animal,
+        requires_custom_persistence: MobClass::Mob,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
+    });
     type Behavior = crate::family::Plain;
 }
