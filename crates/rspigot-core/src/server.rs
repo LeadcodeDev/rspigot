@@ -413,6 +413,7 @@ impl<L: ClientLink> Server<L> {
             vitals: Default::default(),
             known_movement: Vec3::ZERO,
             moved_this_tick: false,
+            using_item: None,
         };
         if let Some(save) = &saved {
             save.restore(&mut player, self.world.spawn, self.world.level.spawn_angle);

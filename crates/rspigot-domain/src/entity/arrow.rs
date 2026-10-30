@@ -33,6 +33,7 @@ const MOB_DAMAGE_SPREAD: f64 = 0.574_25;
 const MOB_DAMAGE_PER_DIFFICULTY: f64 = 0.11;
 const BOUNCE_SCALE: f64 = 0.2;
 const ROTATION_LERP: f32 = 0.2;
+const DEGREES_TO_RADIANS: f32 = 0.017_453_292;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Pickup {
@@ -173,6 +174,38 @@ pub fn shoot(
     base.set_yaw((mth::atan2(movement.x, movement.z) * mth::RAD_TO_DEG) as f32);
     base.set_pitch((mth::atan2(movement.y, horizontal) * mth::RAD_TO_DEG) as f32);
     arrow.life = 0;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Launch {
+    pub pitch: f32,
+    pub yaw: f32,
+    pub roll: f32,
+    pub power: f32,
+    pub uncertainty: f32,
+    pub shooter_movement: Vec3,
+    pub shooter_on_ground: bool,
+}
+
+pub fn shoot_from_rotation(base: &mut EntityBase, arrow: &mut ArrowState, launch: Launch) {
+    let radians = |angle: f32| f64::from(angle * DEGREES_TO_RADIANS);
+    let direction = Vec3::new(
+        f64::from(-mth::sin(radians(launch.yaw)) * mth::cos(radians(launch.pitch))),
+        f64::from(-mth::sin(radians(launch.pitch + launch.roll))),
+        f64::from(mth::cos(radians(launch.yaw)) * mth::cos(radians(launch.pitch))),
+    );
+    shoot(base, arrow, direction, launch.power, launch.uncertainty);
+    let movement = launch.shooter_movement;
+    base.velocity = base.velocity
+        + Vec3::new(
+            movement.x,
+            if launch.shooter_on_ground {
+                0.0
+            } else {
+                movement.y
+            },
+            movement.z,
+        );
 }
 
 pub fn mob_base_damage(power: f32, difficulty: u8, random: &mut impl RandomSource) -> f64 {
@@ -348,6 +381,57 @@ mod tests {
         assert_eq!(base.yaw, 0.0);
         assert_eq!(state.life, 0);
         assert!(base.data.non_default().is_empty());
+    }
+
+    fn launch(pitch: f32, yaw: f32) -> Launch {
+        Launch {
+            pitch,
+            yaw,
+            roll: 0.0,
+            power: 3.0,
+            uncertainty: 0.0,
+            shooter_movement: Vec3::ZERO,
+            shooter_on_ground: true,
+        }
+    }
+
+    fn near(actual: Vec3, expected: Vec3) {
+        assert!(
+            (actual.x - expected.x).abs() < 1e-4
+                && (actual.y - expected.y).abs() < 1e-4
+                && (actual.z - expected.z).abs() < 1e-4,
+            "{actual:?} is not {expected:?}"
+        );
+    }
+
+    #[test]
+    fn shooting_from_rotation_follows_yaw_and_pitch() {
+        let (mut base, mut state) = arrow();
+        shoot_from_rotation(&mut base, &mut state, launch(0.0, 0.0));
+        near(base.velocity, Vec3::new(0.0, 0.0, 3.0));
+        shoot_from_rotation(&mut base, &mut state, launch(0.0, 90.0));
+        near(base.velocity, Vec3::new(-3.0, 0.0, 0.0));
+        shoot_from_rotation(&mut base, &mut state, launch(-90.0, 0.0));
+        near(base.velocity, Vec3::new(0.0, 3.0, 0.0));
+        shoot_from_rotation(&mut base, &mut state, launch(90.0, 0.0));
+        near(base.velocity, Vec3::new(0.0, -3.0, 0.0));
+    }
+
+    #[test]
+    fn the_shooter_movement_is_added_but_not_its_climb_on_the_ground() {
+        let (mut base, mut state) = arrow();
+        let moving = Launch {
+            shooter_movement: Vec3::new(0.2, 0.4, -0.1),
+            ..launch(0.0, 0.0)
+        };
+        shoot_from_rotation(&mut base, &mut state, moving);
+        near(base.velocity, Vec3::new(0.2, 0.0, 2.9));
+        let airborne = Launch {
+            shooter_on_ground: false,
+            ..moving
+        };
+        shoot_from_rotation(&mut base, &mut state, airborne);
+        near(base.velocity, Vec3::new(0.2, 0.4, 2.9));
     }
 
     #[test]

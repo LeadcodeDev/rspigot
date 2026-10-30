@@ -17,7 +17,7 @@ use crate::health::{DamageSource, SourceEntity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
-const EYE_OFFSET: f64 = 0.100_000_001_490_116_12;
+pub(crate) const EYE_OFFSET: f64 = 0.100_000_001_490_116_12;
 const TARGET_HEIGHT_FRACTION: f64 = 0.333_333_333_333_333_3;
 const ARC: f64 = 0.200_000_002_980_232_24;
 const MOB_ARROW_SPEED: f32 = 1.6;
@@ -36,7 +36,7 @@ struct ArrowHit {
     position: Vec3,
 }
 
-fn is_arrow_item(stack: Option<&ItemStack>) -> bool {
+pub(crate) fn is_arrow_item(stack: Option<&ItemStack>) -> bool {
     stack.is_some_and(|stack| {
         rspigot_data::tags::tag("minecraft:item", ARROWS_TAG)
             .is_some_and(|ids| ids.binary_search(&u32::from(stack.item.0)).is_ok())
