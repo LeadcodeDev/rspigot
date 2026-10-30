@@ -38,5 +38,5 @@ impl Block for Scaffolding {
         StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36),
         StateFlags(132), StateFlags(36),
     ]);
-    type Behavior = crate::family::Plain;
+    type Behavior = crate::family::Scaffolding;
 }

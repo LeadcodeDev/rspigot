@@ -1,17 +1,23 @@
 mod door;
 mod facing;
+mod falling;
 mod fence_gate;
 mod pillar;
+mod scaffolding;
 mod slab;
+mod speleothem;
 mod stairs;
 mod standing;
 mod trapdoor;
 
 pub use door::Door;
 pub use facing::{Directional, FaceAttached, HorizontalAway, HorizontalToward};
+pub use falling::{Anvil, ConcretePowder, Falling};
 pub use fence_gate::FenceGate;
 pub use pillar::Pillar;
+pub use scaffolding::{SCAFFOLDING_MAX_DISTANCE, Scaffolding, scaffolding_settle};
 pub use slab::Slab;
+pub use speleothem::{Speleothem, speleothem_thickness};
 pub use stairs::Stairs;
 pub use standing::StandingWithWall;
 pub use trapdoor::Trapdoor;
@@ -26,6 +32,22 @@ pub enum Face {
     South,
     West,
     East,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Gravity {
+    None,
+    Falling,
+    ConcretePowder,
+    Anvil,
+    Speleothem,
+    Scaffolding,
+}
+
+impl Gravity {
+    pub const fn falls(self) -> bool {
+        matches!(self, Self::Falling | Self::ConcretePowder | Self::Anvil)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,6 +92,8 @@ pub struct LinkedProperty {
 }
 
 pub trait BlockBehavior {
+    const GRAVITY: Gravity = Gravity::None;
+
     fn place(context: &PlaceContext) -> Option<Placement> {
         Some(Placement {
             state: context.default_state,
@@ -87,6 +111,38 @@ pub struct Plain;
 impl BlockBehavior for Plain {}
 
 impl Face {
+    pub const ALL: [Self; 6] = [
+        Self::Down,
+        Self::Up,
+        Self::North,
+        Self::South,
+        Self::West,
+        Self::East,
+    ];
+    pub const HORIZONTAL: [Self; 4] = [Self::North, Self::East, Self::South, Self::West];
+
+    pub const fn opposite(self) -> Self {
+        match self {
+            Self::Down => Self::Up,
+            Self::Up => Self::Down,
+            Self::North => Self::South,
+            Self::South => Self::North,
+            Self::West => Self::East,
+            Self::East => Self::West,
+        }
+    }
+
+    pub const fn offset(self) -> (i32, i32, i32) {
+        match self {
+            Self::Down => (0, -1, 0),
+            Self::Up => (0, 1, 0),
+            Self::North => (0, 0, -1),
+            Self::South => (0, 0, 1),
+            Self::West => (-1, 0, 0),
+            Self::East => (1, 0, 0),
+        }
+    }
+
     pub const fn name(self) -> &'static str {
         match self {
             Self::Down => "down",
@@ -119,6 +175,15 @@ pub(crate) fn looking(yaw: f32, pitch: f32) -> &'static str {
         "up"
     } else {
         horizontal_facing(yaw)
+    }
+}
+
+pub(crate) fn clockwise(direction: &str) -> &'static str {
+    match direction {
+        "north" => "east",
+        "east" => "south",
+        "south" => "west",
+        _ => "north",
     }
 }
 

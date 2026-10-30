@@ -20,6 +20,7 @@ use crate::events::{
     ClientEvent, EntityKind, EquipmentSlot, GameEvent, Inbound, JoinInfo, MetadataEntry,
     MetadataValue, PlayerListEntry, Pose, SpawnInfo,
 };
+use crate::falling::{FallingBlock, ScheduledFalls};
 use crate::items::ItemEntity;
 use crate::player::Player;
 use crate::ports::{ChunkGenerator, ChunkStore, ClientLink};
@@ -85,6 +86,8 @@ pub struct Server<L> {
     pub(crate) admin_sink: Option<Sender<AdminLists>>,
     pub(crate) running: bool,
     pub(crate) items: FxHashMap<EntityId, ItemEntity>,
+    pub(crate) falling: FxHashMap<EntityId, FallingBlock>,
+    pub(crate) falls: ScheduledFalls,
     pub(crate) rng: StdRng,
     next_entity_id: i32,
     status: StatusBoard,
@@ -137,6 +140,8 @@ impl<L: ClientLink> Server<L> {
             admin_sink: None,
             running: true,
             items: FxHashMap::default(),
+            falling: FxHashMap::default(),
+            falls: ScheduledFalls::default(),
             rng: StdRng::from_os_rng(),
             next_entity_id: 1,
             status,
@@ -226,6 +231,10 @@ impl<L: ClientLink> Server<L> {
             }
             Inbound::Shutdown => self.running = false,
         }
+    }
+
+    pub(crate) fn current_tick(&self) -> u64 {
+        self.tick
     }
 
     pub(crate) fn allocate_entity_id(&mut self) -> EntityId {
@@ -533,6 +542,7 @@ impl<L: ClientLink> Server<L> {
         }
         self.tick_effects();
         self.tick_items();
+        self.tick_falling_blocks();
         self.update_tracking();
         self.update_item_tracking();
         if self.tick.is_multiple_of(20) {
