@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool, tags,
+};
 
 pub struct NetheriteBoots;
 
@@ -19,5 +22,28 @@ impl Item for NetheriteBoots {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Tag(&tags::ITEM_REPAIRS_NETHERITE_ARMOR));
     const DAMAGE_RESISTANT: Option<&'static str> = Some("minecraft:is_fire");
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:armor",
+            id: "minecraft:armor.boots",
+            amount: 3.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Feet,
+        },
+        AttributeModifier {
+            attribute: "minecraft:armor_toughness",
+            id: "minecraft:armor.boots",
+            amount: 3.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Feet,
+        },
+        AttributeModifier {
+            attribute: "minecraft:knockback_resistance",
+            id: "minecraft:armor.boots",
+            amount: 0.10000000149011612,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Feet,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

@@ -1,9 +1,10 @@
 use rspigot_blocks::{Block, BlockId, BlockKind};
 use rspigot_data::{registries, tags};
 use rspigot_items::{
-    Apple, BlockSet, DEFAULT_MAX_STACK_SIZE, DiamondPickaxe, Elytra, EquipmentSlot, Food,
-    IronHelmet, IronSword, Item, ItemId, ItemKind, ItemSet, MushroomStew, NetheriteIngot, OakDoor,
-    Rarity, Redstone, Stone, Torch, WoodenPickaxe,
+    Apple, AttributeModifier, BlockSet, DEFAULT_MAX_STACK_SIZE, DiamondPickaxe, DiamondSword,
+    Elytra, EquipmentSlot, Food, IronHelmet, IronSword, Item, ItemId, ItemKind, ItemSet,
+    ModifierOperation, MushroomStew, NetheriteIngot, OakDoor, Rarity, Redstone, SlotGroup, Stone,
+    Torch, WoodenPickaxe,
 };
 
 fn block(name: &str) -> BlockId {
@@ -293,4 +294,59 @@ fn classes_are_vanilla_simple_names() {
     assert_eq!(ItemKind::Stone.class(), "BlockItem");
     assert_eq!(ItemKind::ZombieSpawnEgg.class(), "SpawnEggItem");
     assert!(ItemKind::ALL.iter().all(|kind| !kind.class().is_empty()));
+}
+
+#[test]
+fn weapons_and_armor_carry_their_default_attribute_modifiers() {
+    assert_eq!(
+        DiamondSword::ATTRIBUTE_MODIFIERS,
+        &[
+            AttributeModifier {
+                attribute: "minecraft:attack_damage",
+                id: "minecraft:base_attack_damage",
+                amount: 6.0,
+                operation: ModifierOperation::AddValue,
+                slot: SlotGroup::Mainhand,
+            },
+            AttributeModifier {
+                attribute: "minecraft:attack_speed",
+                id: "minecraft:base_attack_speed",
+                amount: f64::from(-2.4f32),
+                operation: ModifierOperation::AddValue,
+                slot: SlotGroup::Mainhand,
+            },
+        ]
+    );
+    assert_eq!(
+        ItemKind::IronHelmet.attribute_modifiers()[0],
+        AttributeModifier {
+            attribute: "minecraft:armor",
+            id: "minecraft:armor.helmet",
+            amount: 2.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Head,
+        }
+    );
+    assert!(Stone::ATTRIBUTE_MODIFIERS.is_empty());
+    assert_eq!(
+        ItemKind::ALL
+            .iter()
+            .filter(|kind| !kind.attribute_modifiers().is_empty())
+            .count(),
+        93
+    );
+}
+
+#[test]
+fn slot_groups_cover_vanilla_slots() {
+    assert!(SlotGroup::Any.contains(EquipmentSlot::Saddle));
+    assert!(SlotGroup::Hand.contains(EquipmentSlot::Offhand));
+    assert!(SlotGroup::Hand.contains(EquipmentSlot::Mainhand));
+    assert!(!SlotGroup::Hand.contains(EquipmentSlot::Head));
+    assert!(SlotGroup::Armor.contains(EquipmentSlot::Feet));
+    assert!(SlotGroup::Armor.contains(EquipmentSlot::Body));
+    assert!(!SlotGroup::Armor.contains(EquipmentSlot::Mainhand));
+    assert!(SlotGroup::Mainhand.contains(EquipmentSlot::Mainhand));
+    assert!(!SlotGroup::Mainhand.contains(EquipmentSlot::Offhand));
+    assert!(SlotGroup::Saddle.contains(EquipmentSlot::Saddle));
 }

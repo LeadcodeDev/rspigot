@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool,
+};
 
 pub struct PlayerHead;
 
@@ -19,5 +22,14 @@ impl Item for PlayerHead {
     const REPAIRABLE: Option<ItemSet> = None;
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:waypoint_transmit_range",
+            id: "minecraft:waypoint_transmit_range_hide",
+            amount: -1.0,
+            operation: ModifierOperation::AddMultipliedTotal,
+            slot: SlotGroup::Head,
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }

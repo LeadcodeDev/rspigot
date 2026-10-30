@@ -98,6 +98,31 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
+    pub(crate) fn spawn_item_entity(
+        &mut self,
+        position: Vec3,
+        velocity: Vec3,
+        pickup_delay: u16,
+        stack: ItemStack,
+    ) {
+        let id = self.allocate_entity_id();
+        let uuid = uuid::Builder::from_random_bytes(self.rng.random()).into_uuid();
+        self.items.insert(
+            id,
+            ItemEntity {
+                id,
+                uuid,
+                stack,
+                position,
+                velocity,
+                on_ground: false,
+                pickup_delay,
+                age: 0,
+                synced_position: position,
+            },
+        );
+    }
+
     fn collides(&self, x: f64, y: f64, z: f64) -> bool {
         let pos = Vec3::new(x, y, z).block();
         self.world
@@ -204,6 +229,7 @@ impl<L: ClientLink> Server<L> {
             .filter(|p| {
                 p.game_mode != rspigot_domain::player::GameMode::Spectator
                     && p.pending_teleport.is_none()
+                    && !p.vitals.is_dead()
             })
             .map(|p| (p.id, p.entity_id, p.position))
             .collect();

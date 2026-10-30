@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool, tags,
+};
 
 pub struct GoldenHelmet;
 
@@ -19,5 +22,21 @@ impl Item for GoldenHelmet {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Tag(&tags::ITEM_REPAIRS_GOLD_ARMOR));
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:armor",
+            id: "minecraft:armor.helmet",
+            amount: 2.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Head,
+        },
+        AttributeModifier {
+            attribute: "minecraft:armor_toughness",
+            id: "minecraft:armor.helmet",
+            amount: 0.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Head,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

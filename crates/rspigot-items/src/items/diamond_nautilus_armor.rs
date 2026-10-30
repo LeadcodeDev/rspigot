@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool,
+};
 
 pub struct DiamondNautilusArmor;
 
@@ -19,5 +22,21 @@ impl Item for DiamondNautilusArmor {
     const REPAIRABLE: Option<ItemSet> = None;
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:armor",
+            id: "minecraft:armor.body",
+            amount: 11.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Body,
+        },
+        AttributeModifier {
+            attribute: "minecraft:armor_toughness",
+            id: "minecraft:armor.body",
+            amount: 2.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Body,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

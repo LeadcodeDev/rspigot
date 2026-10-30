@@ -127,6 +127,7 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::Loaded => {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.loaded = true;
+                    player.vitals.load_timeout = 0;
                 }
             }
             PlayerInput::Abilities { flying } => {
@@ -143,7 +144,9 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn | PlayerInput::Attack(_) | PlayerInput::Interact { .. } => {}
+            PlayerInput::Respawn => self.respawn(id),
+            PlayerInput::Attack(target) => self.handle_attack(id, target),
+            PlayerInput::Interact { .. } => {}
         }
     }
 
@@ -157,7 +160,7 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if player.pending_teleport.is_some() {
+        if player.pending_teleport.is_some() || player.vitals.is_dead() {
             return;
         }
         let from = player.position;
@@ -207,6 +210,7 @@ impl<L: ClientLink> Server<L> {
         let entity = player.entity_id;
         let to = player.position;
         let yaw = player.rotation.yaw;
+        self.check_fall(id, to.y - from.y, on_ground);
         if position.is_some() || rotation.is_some() {
             self.push(
                 Audience::Trackers(entity),

@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod chunk;
+pub mod combat;
 pub mod commands;
 pub mod effect;
 pub mod entity;
@@ -17,6 +18,7 @@ pub use serverbound::ServerboundPlay;
 pub mod clientbound {
     pub use super::chat::{DisguisedChat, PlayerChat, SystemChat};
     pub use super::chunk::{ForgetLevelChunk, LevelChunkWithLight, LightUpdate};
+    pub use super::combat::{DamageEvent, EntityEvent, HurtAnimation, PlayerCombatKill};
     pub use super::commands::{CommandSuggestions, Commands};
     pub use super::effect::{RemoveMobEffect, UpdateMobEffect};
     pub use super::entity::{
@@ -118,6 +120,10 @@ mod tests {
             (<RecipeBookSettings as Packet>::ID, 77),
             (<BundleDelimiter as Packet>::ID, 0),
             (<SwingAnimation as Packet>::ID, 123),
+            (<DamageEvent as Packet>::ID, 25),
+            (<EntityEvent as Packet>::ID, 34),
+            (<HurtAnimation as Packet>::ID, 43),
+            (<PlayerCombatKill as Packet>::ID, 69),
         ];
         for (actual, expected) in table {
             assert_eq!(actual, expected);

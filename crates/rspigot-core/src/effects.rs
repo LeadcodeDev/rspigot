@@ -1,12 +1,18 @@
+use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{
-    ApplyOutcome, AttributeState, EffectId, EffectInstance, affected_attribute, effect_attributes,
-    player_base,
+    ApplyOutcome, AttributeState, EffectDuration, EffectId, EffectInstance, EffectKind,
+    affected_attribute,
 };
 use rspigot_domain::player::PlayerId;
 
 use crate::events::ClientEvent;
+use crate::health::DamageSource;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
+
+const HEAL_BASE: i32 = 4;
+const HARM_BASE: i32 = 6;
+const HUNGER_EXHAUSTION: f32 = 0.005;
 
 const FLAG_EFFECTS: [&str; 2] = ["minecraft:invisibility", "minecraft:glowing"];
 
@@ -23,6 +29,7 @@ impl<L: ClientLink> Server<L> {
         };
         let outcome = player.effects.apply(instance);
         if outcome == ApplyOutcome::Unchanged {
+            self.start_effect(id, instance);
             return false;
         }
         if let Some(current) = player.effects.get(instance.effect).copied() {
@@ -33,6 +40,81 @@ impl<L: ClientLink> Server<L> {
             });
         }
         self.sync_effect_state(id, &[instance.effect]);
+        self.start_effect(id, instance);
+        true
+    }
+
+    pub(crate) fn sync_attributes(&mut self, id: PlayerId, names: &[&'static str]) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        let entity = player.entity_id;
+        let current = crate::health::attributes(player);
+        let mut attributes: Vec<AttributeState> = Vec::new();
+        for name in names {
+            if !attributes.iter().any(|a| a.attribute == *name) {
+                attributes.push(current.state(name));
+            }
+        }
+        if attributes.is_empty() {
+            return;
+        }
+        player.link.send(ClientEvent::Attributes {
+            entity,
+            attributes: attributes.clone(),
+        });
+        self.push(
+            Audience::Trackers(entity),
+            ClientEvent::Attributes { entity, attributes },
+        );
+    }
+
+    fn start_effect(&mut self, id: PlayerId, instance: EffectInstance) {
+        if instance.effect.kind() == Some(EffectKind::Absorption) {
+            self.start_absorption(id, instance.amplifier);
+        }
+    }
+
+    fn effect_tick(&mut self, id: PlayerId, kind: EffectKind, amplifier: u8) -> bool {
+        let shift = u32::from(amplifier);
+        match kind {
+            EffectKind::Regeneration => {
+                let hurt = self
+                    .players
+                    .get(&id)
+                    .is_some_and(|p| p.vitals.health < crate::health::max_health(p));
+                if hurt {
+                    self.heal_player(id, 1.0);
+                }
+            }
+            EffectKind::Poison => {
+                if self.player_health(id).is_some_and(|health| health > 1.0) {
+                    self.hurt(id, &DamageSource::new(DamageType::Magic), 1.0);
+                }
+            }
+            EffectKind::Wither => {
+                self.hurt(id, &DamageSource::new(DamageType::Wither), 1.0);
+            }
+            EffectKind::InstantHealth => {
+                self.heal_player(id, HEAL_BASE.wrapping_shl(shift).max(0) as f32);
+            }
+            EffectKind::InstantDamage => {
+                let amount = HARM_BASE.wrapping_shl(shift) as f32;
+                self.hurt(id, &DamageSource::new(DamageType::Magic), amount);
+            }
+            EffectKind::Hunger => {
+                self.exhaust(id, HUNGER_EXHAUSTION * (f32::from(amplifier) + 1.0));
+            }
+            EffectKind::Saturation => {
+                if let Some(player) = self.players.get_mut(&id) {
+                    player.vitals.food.eat(i32::from(amplifier) + 1, 1.0);
+                }
+            }
+            EffectKind::Absorption => {
+                return self.player_absorption(id).is_some_and(|value| value > 0.0);
+            }
+            _ => {}
+        }
         true
     }
 
@@ -68,8 +150,42 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn tick_effects(&mut self) {
+        let ids: Vec<PlayerId> = self.players.keys().copied().collect();
+        for id in ids {
+            let Some(player) = self.players.get(&id) else {
+                continue;
+            };
+            if player.vitals.is_dead() {
+                continue;
+            }
+            let age = player.vitals.tick_count as i32;
+            let due: Vec<(EffectId, EffectKind, u8)> = player
+                .effects
+                .iter()
+                .filter_map(|effect| {
+                    let kind = effect.effect.kind()?;
+                    let check = match effect.duration {
+                        EffectDuration::Infinite => age,
+                        EffectDuration::Ticks(ticks) => i32::try_from(ticks).unwrap_or(i32::MAX),
+                    };
+                    kind.should_tick(check, effect.amplifier).then_some((
+                        effect.effect,
+                        kind,
+                        effect.amplifier,
+                    ))
+                })
+                .collect();
+            for (effect, kind, amplifier) in due {
+                if !self.effect_tick(id, kind, amplifier) {
+                    self.remove_effects(id, Some(effect));
+                }
+            }
+        }
         let mut expired = Vec::new();
         for player in self.players.values_mut() {
+            if player.vitals.is_dead() {
+                continue;
+            }
             let ended = player.effects.tick();
             if ended.is_empty() {
                 continue;
@@ -92,32 +208,12 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let entity = player.entity_id;
-        let mut attributes = effect_attributes(&player.effects);
-        for attribute in changed.iter().filter_map(|e| affected_attribute(*e)) {
-            if !attributes.iter().any(|a| a.attribute == attribute) {
-                attributes.push(AttributeState {
-                    attribute,
-                    base: player_base(attribute),
-                    modifiers: Vec::new(),
-                });
-            }
-        }
-        attributes.retain(|a| {
-            changed
-                .iter()
-                .filter_map(|e| affected_attribute(*e))
-                .any(|c| c == a.attribute)
-        });
-        if !attributes.is_empty() {
-            player.link.send(ClientEvent::Attributes {
-                entity,
-                attributes: attributes.clone(),
-            });
-            self.push(
-                Audience::Trackers(entity),
-                ClientEvent::Attributes { entity, attributes },
-            );
-        }
+        let names: Vec<&'static str> = changed
+            .iter()
+            .filter_map(|e| affected_attribute(*e))
+            .collect();
+        self.sync_attributes(id, &names);
+        self.clamp_vitals(id);
         if changes_flags(changed) {
             self.broadcast_metadata(id);
             if let Some(player) = self.players.get(&id) {

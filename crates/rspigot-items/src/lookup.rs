@@ -100,6 +100,12 @@ macro_rules! item_kinds {
                 }
             }
 
+            pub const fn attribute_modifiers(self) -> &'static [$crate::AttributeModifier] {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::ATTRIBUTE_MODIFIERS,)*
+                }
+            }
+
             pub fn placed_block(self) -> Option<rspigot_blocks::BlockKind> {
                 match self {
                     $(Self::$kind => <<$crate::items::$kind as $crate::Item>::Behavior as $crate::ItemBehavior>::placed_block::<$crate::items::$kind>(),)*

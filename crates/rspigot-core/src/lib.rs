@@ -1,12 +1,15 @@
 pub mod admin;
 pub mod chunks;
+mod combat;
 pub mod commands;
 pub mod config;
 pub mod console;
 mod context;
 mod effects;
 pub mod events;
+mod fall;
 mod falling;
+pub mod health;
 mod input;
 mod items;
 pub mod lighting;

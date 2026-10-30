@@ -174,6 +174,8 @@ pub fn build_tree(operator: bool) -> CommandTree {
         );
         let clear = b.literal(root, "clear", true);
         b.argument(clear, "targets", player_arg(), true);
+        let kill = b.literal(root, "kill", true);
+        b.argument(kill, "targets", entities(), true);
         let kick = b.literal(root, "kick", false);
         let kicked = b.argument(kick, "targets", player_arg(), true);
         b.argument(kicked, "reason", ArgumentParser::Message, true);

@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, ToolRule, tags};
+use crate::{
+    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Rarity, SlotGroup, Tool, ToolRule, tags,
+};
 
 pub struct GoldenShovel;
 
@@ -35,5 +38,21 @@ impl Item for GoldenShovel {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS));
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:attack_damage",
+            id: "minecraft:base_attack_damage",
+            amount: 1.5,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+        AttributeModifier {
+            attribute: "minecraft:attack_speed",
+            id: "minecraft:base_attack_speed",
+            amount: -3.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }
