@@ -563,6 +563,12 @@ mod tests {
     }
 
     #[test]
+    fn default_brand_is_rspigot() {
+        let brand = crate::NetworkConfig::default().brand;
+        assert_eq!(brand_payload(&brand), b"\x07Rspigot".to_vec());
+    }
+
+    #[test]
     fn tags_cover_blocks_and_items() {
         let tags = update_tags().unwrap();
         let names: Vec<&str> = tags
