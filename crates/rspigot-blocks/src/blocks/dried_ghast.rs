@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct DriedGhast;
 
@@ -38,5 +40,7 @@ impl Block for DriedGhast {
         StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
         StateFlags(646), StateFlags(550),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(268));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;
 }

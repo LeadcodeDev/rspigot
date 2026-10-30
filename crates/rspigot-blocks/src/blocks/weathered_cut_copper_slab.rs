@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct WeatheredCutCopperSlab;
 
@@ -31,5 +33,8 @@ impl Block for WeatheredCutCopperSlab {
         StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(1694),
         StateFlags(1566),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_WHITE_WOOL_SLAB);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_WHITE_WOOL_SLAB);
     type Behavior = crate::family::Slab;
 }

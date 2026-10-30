@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct DragonEgg;
 
@@ -23,5 +25,7 @@ impl Block for DragonEgg {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(1);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(38));
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(156));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 3, 0));
     type Behavior = crate::family::Falling;
 }

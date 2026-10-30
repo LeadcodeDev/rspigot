@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SculkShrieker;
 
@@ -30,5 +32,7 @@ impl Block for SculkShrieker {
         StateFlags(142), StateFlags(14), StateFlags(142), StateFlags(14), StateFlags(142),
         StateFlags(14), StateFlags(142), StateFlags(14),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(54));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(1, 1, 1));
     type Behavior = crate::family::Plain;
 }

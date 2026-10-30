@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct DarkOakSlab;
 
@@ -31,5 +33,8 @@ impl Block for DarkOakSlab {
         StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(1182),
         StateFlags(1054),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_WHITE_WOOL_SLAB);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_WHITE_WOOL_SLAB);
     type Behavior = crate::family::Slab;
 }

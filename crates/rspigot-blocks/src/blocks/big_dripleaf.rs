@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct BigDripleaf;
 
@@ -38,5 +40,7 @@ impl Block for BigDripleaf {
         StateFlags(44), StateFlags(140), StateFlags(44), StateFlags(140), StateFlags(44),
         StateFlags(136), StateFlags(40),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_BIG_DRIPLEAF);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::Plain;
 }

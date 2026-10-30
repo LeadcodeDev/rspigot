@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct ChorusPlant;
 
@@ -30,5 +32,8 @@ impl Block for ChorusPlant {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(4));
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CHORUS_PLANT);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_CHORUS_PLANT);
     type Behavior = crate::family::Plain;
 }

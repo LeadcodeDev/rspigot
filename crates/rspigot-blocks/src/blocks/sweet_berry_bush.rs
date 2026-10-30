@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SweetBerryBush;
 
@@ -27,5 +29,7 @@ impl Block for SweetBerryBush {
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
         StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(32),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::Plain;
 }

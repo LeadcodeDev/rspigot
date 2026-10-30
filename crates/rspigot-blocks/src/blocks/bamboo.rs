@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Bamboo;
 
@@ -31,5 +33,7 @@ impl Block for Bamboo {
         StateFlags(38), StateFlags(550), StateFlags(38), StateFlags(550), StateFlags(38),
         StateFlags(550), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(274));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::Plain;
 }

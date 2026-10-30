@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct HeavyCore;
 
@@ -29,5 +31,7 @@ impl Block for HeavyCore {
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
         StateFlags(140), StateFlags(44),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(178));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;
 }

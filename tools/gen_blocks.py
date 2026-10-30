@@ -31,9 +31,9 @@ FLAG_SOURCES = {
 }
 
 RESERVED_STRUCTS = {
-    "Block", "BlockId", "BlockKind", "BlockSettings", "BlockBehavior", "Face", "Linked",
-    "LinkedProperty", "PerState", "PlaceContext", "Placement", "Property", "StateFlags",
-    "StateId", "UseContext", "UseResult", "Self", "Option", "Some", "None", "Result", "Ok",
+    "Aabb", "Block", "BlockId", "BlockKind", "BlockSettings", "BlockBehavior", "Face",
+    "FaceSupport", "Linked", "LinkedProperty", "PerState", "PlaceContext", "Placement",
+    "Property", "ShapeId", "StateFlags", "StateId", "Support", "UseContext", "UseResult", "Self", "Option", "Some", "None", "Result", "Ok",
     "Err", "Vec", "String", "Box", "Default", "Clone", "Copy", "Send", "Sync", "Sized",
     "Drop", "Fn", "FnMut", "FnOnce", "Iterator", "IntoIterator", "Extend", "ToString",
     "ToOwned", "PartialEq", "Eq", "PartialOrd", "Ord", "AsRef", "AsMut", "Into", "From",
@@ -48,6 +48,10 @@ RUST_KEYWORDS = {
     "override", "priv", "typeof", "unsized", "virtual", "yield", "try", "gen",
 }
 
+STURDY_KEYS = ("sturdy_full", "sturdy_center", "sturdy_rigid")
+FACE_MASK = (1 << 6) - 1
+EMPTY_SHAPE = ()
+FULL_CUBE = ((0.0, 0.0, 0.0, 1.0, 1.0, 1.0),)
 FAMILY_TYPE = re.compile(r"^[A-Z][A-Za-z0-9]*(<(true|false|[0-9]+)(, *(true|false|[0-9]+))*>)?$")
 MODULE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 STRUCT_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -143,6 +147,133 @@ def f32_literal(value):
     return text
 
 
+def f64_literal(value):
+    if not math.isfinite(value):
+        fail("non finite double " + repr(value))
+    text = repr(float(value) + 0.0)
+    if not re.search(r"[.eE]", text):
+        text += ".0"
+    return text
+
+
+def read_shapes(dump):
+    shapes = []
+    for index, raw in enumerate(dump.get("collision_shapes", ())):
+        boxes = []
+        for box in raw:
+            if len(box) != 6 or not all(isinstance(value, (int, float)) for value in box):
+                fail("collision shape %d has a malformed box %r" % (index, box))
+            box = tuple(float(value) + 0.0 for value in box)
+            if not all(math.isfinite(value) for value in box):
+                fail("collision shape %d has a non finite box %r" % (index, box))
+            if not all(box[axis] < box[axis + 3] for axis in range(3)):
+                fail("collision shape %d has an empty box %r" % (index, box))
+            boxes.append(box)
+        shapes.append(tuple(boxes))
+    if not shapes:
+        fail("dump has no collision_shapes")
+    return shapes
+
+
+def intern_shapes(blocks, shapes):
+    table = [EMPTY_SHAPE, FULL_CUBE]
+    ids = {shape: index for index, shape in enumerate(table)}
+    for block in blocks:
+        collision = []
+        support = []
+        for state in block["states"]:
+            index = state.get("collision_shape")
+            if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(shapes):
+                fail("%s state %d has collision shape %r" % (block["name"], state["id"], index))
+            shape = shapes[index]
+            if state["has_collision"] != bool(shape):
+                fail("%s state %d has_collision disagrees with its shape" % (block["name"], state["id"]))
+            if state["is_collision_shape_full_block"] != (shape == FULL_CUBE):
+                fail("%s state %d full block flag disagrees with its shape" % (block["name"], state["id"]))
+            if shape not in ids:
+                ids[shape] = len(table)
+                table.append(shape)
+            collision.append(ids[shape])
+            masks = []
+            for key in STURDY_KEYS:
+                mask = state.get(key)
+                if not isinstance(mask, int) or isinstance(mask, bool) or mask & ~FACE_MASK:
+                    fail("%s state %d has %s %r" % (block["name"], state["id"], key, mask))
+                masks.append(mask)
+            if masks[0] & ~masks[1] or masks[0] & ~masks[2]:
+                fail("%s state %d is full sturdy without center or rigid" % (block["name"], state["id"]))
+            support.append(tuple(masks))
+        block["collision"] = collision
+        block["support"] = support
+    if len(table) > 1 << 16:
+        fail("too many collision shapes: %d" % len(table))
+    return table
+
+
+def share_per_state(blocks):
+    shared = {"collision": {}, "support": {}}
+    for block in blocks:
+        for field, prefix in (("collision", "COLLISION"), ("support", "SUPPORT")):
+            values = tuple(block[field])
+            block[field + "_shared"] = None
+            if all(value == values[0] for value in values):
+                continue
+            names = shared[field]
+            if values not in names:
+                names[values] = "%s_%s" % (prefix, block["path"].upper())
+            block[field + "_shared"] = names[values]
+    return shared
+
+
+def render_shape_id(value):
+    return "ShapeId(%d)" % value
+
+
+def render_support(masks):
+    return "FaceSupport(%d, %d, %d)" % masks
+
+
+def aabb_literal(box):
+    return "Aabb::new(%s)" % ", ".join(f64_literal(value) for value in box)
+
+
+def shapes_file(table, shared):
+    lines = [
+        "use crate::{Aabb, FaceSupport, ShapeId};",
+        "",
+        "pub const SHAPE_COUNT: usize = %d;" % len(table),
+        "",
+        "pub static SHAPES: [&[Aabb]; SHAPE_COUNT] = [",
+    ]
+    for shape in table:
+        boxes = [aabb_literal(box) for box in shape]
+        inline = "    &[%s]," % ", ".join(boxes)
+        if len(inline) <= WIDTH:
+            lines.append(inline)
+        else:
+            lines.append("    &[")
+            lines.extend("        %s," % box for box in boxes)
+            lines.append("    ],")
+    lines.append("];")
+    for field, type_name, render in (
+        ("collision", "ShapeId", render_shape_id),
+        ("support", "FaceSupport", render_support),
+    ):
+        for values, name in shared[field].items():
+            lines.append("")
+            lines.append("pub(crate) const %s: &[%s] = &[" % (name, type_name))
+            lines.extend(wrap([render(value) for value in values], "    "))
+            lines.append("];")
+    return "\n".join(lines) + "\n"
+
+
+def use_line(names):
+    line = "use crate::{%s};" % ", ".join(names)
+    if len(line) <= WIDTH:
+        return [line]
+    return ["use crate::{"] + wrap(names, "    ") + ["};"]
+
+
 def decompose(offset, properties):
     values = []
     for index, (name, options) in enumerate(properties):
@@ -220,6 +351,16 @@ def wrap(items, indent):
     return lines
 
 
+def shared_per_state(name, type_name, values, render, shared):
+    if shared is None:
+        return per_state(name, type_name, values, render)
+    head = "    const %s: PerState<%s> =" % (name, type_name)
+    body = "PerState::Varies(crate::shapes::%s);" % shared
+    if len(head) + 1 + len(body) <= WIDTH:
+        return [head + " " + body]
+    return [head, "        " + body]
+
+
 def per_state(name, type_name, values, render):
     if all(value == values[0] for value in values):
         return ["    const %s: PerState<%s> = PerState::Uniform(%s);" % (name, type_name, render(values[0]))]
@@ -239,12 +380,13 @@ def block_file(block, first_state, item, wall, behavior, bits):
     name = block["name"]
     struct = block["struct"]
     states = block["states"]
-    lines = [
-        "use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};",
-        "",
-        "pub struct %s;" % struct,
-        "",
-    ]
+    lines = use_line(
+        [
+            "Block", "BlockId", "BlockSettings", "FaceSupport", "PerState", "Property", "ShapeId",
+            "StateFlags", "StateId",
+        ]
+    )
+    lines.extend(["", "pub struct %s;" % struct, ""])
     lines.append("impl Block for %s {" % struct)
     lines.append("    const NAME: &'static str = %s;" % rust_string(name))
     lines.append("    const ID: BlockId = BlockId(%d);" % block["id"])
@@ -298,6 +440,12 @@ def block_file(block, first_state, item, wall, behavior, bits):
     lines.extend(per_state("LIGHT_EMISSION", "u8", emission, str))
     lines.extend(per_state("LIGHT_DAMPENING", "u8", dampening, str))
     lines.extend(per_state("FLAGS", "StateFlags", flags, lambda value: "StateFlags(%d)" % value))
+    lines.extend(
+        shared_per_state("COLLISION", "ShapeId", block["collision"], render_shape_id, block["collision_shared"])
+    )
+    lines.extend(
+        shared_per_state("FACE_SUPPORT", "FaceSupport", block["support"], render_support, block["support_shared"])
+    )
     lines.append("    type Behavior = crate::family::%s;" % behavior)
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -372,6 +520,9 @@ def main():
             fail("duplicate struct name " + block["struct"])
         structs.add(block["struct"])
 
+    shape_table = intern_shapes(blocks, read_shapes(dump))
+    shared = share_per_state(blocks)
+
     item_max = max((entry["id"] for entry in dump["block_items"]), default=-1)
     item_table = [None] * (item_max + 1)
     for entry in dump["block_items"]:
@@ -392,16 +543,20 @@ def main():
         write(os.path.join(blocks_dir, file_name), content, stats)
     write(os.path.join(blocks_dir, "mod.rs"), mod_file(blocks), stats)
     write(os.path.join(args.out, "kind.rs"), kind_file(blocks, state_count, item_table), stats)
+    write(os.path.join(args.out, "shapes.rs"), shapes_file(shape_table, shared), stats)
     removed = 0
     for entry in sorted(os.listdir(blocks_dir)):
         if entry.endswith(".rs") and entry not in expected_files:
             os.remove(os.path.join(blocks_dir, entry))
             removed += 1
     print(
-        "blocks %d states %d classes %d families %d files %d bytes %d written %d removed %d"
+        "blocks %d states %d shapes %d boxes %d shared %d classes %d families %d files %d bytes %d written %d removed %d"
         % (
             len(blocks),
             state_count,
+            len(shape_table),
+            sum(len(shape) for shape in shape_table),
+            len(shared["collision"]) + len(shared["support"]),
             len({block["class"] for block in blocks}),
             len(by_class) + len(by_block),
             stats["files"],

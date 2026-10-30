@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SoulCampfire;
 
@@ -42,5 +44,7 @@ impl Block for SoulCampfire {
         StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38),
         StateFlags(134), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(297));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(1, 1, 1));
     type Behavior = crate::family::HorizontalToward;
 }

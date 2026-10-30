@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Barrier;
 
@@ -29,5 +31,7 @@ impl Block for Barrier {
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
         StateFlags(1158), StateFlags(1062),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
     type Behavior = crate::family::Plain;
 }
