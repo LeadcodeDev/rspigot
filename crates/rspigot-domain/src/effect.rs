@@ -1,32 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct EffectId(pub u16);
+pub use rspigot_effects::{AttributeOperation, AttributeTemplate, EffectId};
 
-impl EffectId {
-    pub fn from_name(name: &str) -> Option<Self> {
-        let full = if name.contains(':') {
-            name.to_owned()
-        } else {
-            format!("minecraft:{name}")
-        };
-        rspigot_data::registries::static_index(REGISTRY, &full)
-            .and_then(|id| u16::try_from(id).ok())
-            .map(Self)
-    }
-
-    pub fn name(self) -> Option<&'static str> {
-        rspigot_data::registries::static_entries(REGISTRY)?
-            .get(usize::from(self.0))
-            .copied()
-    }
-
-    pub fn translation_key(self) -> Option<String> {
-        let name = self.name()?;
-        let (namespace, path) = name.split_once(':')?;
-        Some(format!("effect.{namespace}.{path}"))
-    }
-}
-
-const REGISTRY: &str = "minecraft:mob_effect";
+use rspigot_effects::EffectKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectDuration {
@@ -189,152 +163,13 @@ impl ActiveEffects {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AttributeOperation {
-    AddValue,
-    AddMultipliedBase,
-    AddMultipliedTotal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AttributeTemplate {
-    pub attribute: &'static str,
-    pub modifier: &'static str,
-    pub amount: f64,
-    pub operation: AttributeOperation,
-}
-
-const fn template(
-    attribute: &'static str,
-    modifier: &'static str,
-    amount: f64,
-    operation: AttributeOperation,
-) -> AttributeTemplate {
-    AttributeTemplate {
-        attribute,
-        modifier,
-        amount,
-        operation,
-    }
-}
-
-const EFFECT_MODIFIERS: [(&str, AttributeTemplate); 11] = [
-    (
-        "minecraft:speed",
-        template(
-            "minecraft:movement_speed",
-            "minecraft:effect.speed",
-            0.200_000_002_980_232_24,
-            AttributeOperation::AddMultipliedTotal,
-        ),
-    ),
-    (
-        "minecraft:slowness",
-        template(
-            "minecraft:movement_speed",
-            "minecraft:effect.slowness",
-            -0.150_000_005_960_464_48,
-            AttributeOperation::AddMultipliedTotal,
-        ),
-    ),
-    (
-        "minecraft:haste",
-        template(
-            "minecraft:attack_speed",
-            "minecraft:effect.haste",
-            0.100_000_001_490_116_12,
-            AttributeOperation::AddMultipliedTotal,
-        ),
-    ),
-    (
-        "minecraft:mining_fatigue",
-        template(
-            "minecraft:attack_speed",
-            "minecraft:effect.mining_fatigue",
-            -0.100_000_001_490_116_12,
-            AttributeOperation::AddMultipliedTotal,
-        ),
-    ),
-    (
-        "minecraft:strength",
-        template(
-            "minecraft:attack_damage",
-            "minecraft:effect.strength",
-            3.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-    (
-        "minecraft:jump_boost",
-        template(
-            "minecraft:safe_fall_distance",
-            "minecraft:effect.jump_boost",
-            1.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-    (
-        "minecraft:invisibility",
-        template(
-            "minecraft:waypoint_transmit_range",
-            "minecraft:effect.waypoint_transmit_range_hide",
-            -1.0,
-            AttributeOperation::AddMultipliedTotal,
-        ),
-    ),
-    (
-        "minecraft:weakness",
-        template(
-            "minecraft:attack_damage",
-            "minecraft:effect.weakness",
-            -4.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-    (
-        "minecraft:health_boost",
-        template(
-            "minecraft:max_health",
-            "minecraft:effect.health_boost",
-            4.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-    (
-        "minecraft:absorption",
-        template(
-            "minecraft:max_absorption",
-            "minecraft:effect.absorption",
-            4.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-    (
-        "minecraft:luck",
-        template(
-            "minecraft:luck",
-            "minecraft:effect.luck",
-            1.0,
-            AttributeOperation::AddValue,
-        ),
-    ),
-];
-
-const UNLUCK: AttributeTemplate = template(
-    "minecraft:luck",
-    "minecraft:effect.unluck",
-    -1.0,
-    AttributeOperation::AddValue,
-);
-
 pub fn attribute_template(effect: &str) -> Option<AttributeTemplate> {
-    if effect == "minecraft:unluck" {
-        return Some(UNLUCK);
-    }
-    EFFECT_MODIFIERS
-        .iter()
-        .find(|(name, _)| *name == effect)
-        .map(|(_, t)| *t)
+    EffectKind::ALL
+        .into_iter()
+        .find(|kind| kind.name() == effect)?
+        .modifiers()
+        .first()
+        .copied()
 }
 
 pub const PLAYER_ATTRIBUTE_BASES: [(&str, f64); 8] = [
@@ -365,13 +200,14 @@ pub struct AttributeState {
 pub fn effect_attributes(effects: &ActiveEffects) -> Vec<AttributeState> {
     effects
         .iter()
-        .filter_map(|e| Some((e.amplifier, attribute_template(e.effect.name()?)?)))
+        .filter_map(|e| Some((e.amplifier, e.effect.kind()?.modifiers())))
+        .flat_map(|(amplifier, templates)| templates.iter().map(move |t| (amplifier, t)))
         .fold(
             Vec::<AttributeState>::new(),
             |mut states, (amplifier, template)| {
                 let modifier = AttributeModifier {
                     id: template.modifier,
-                    amount: template.amount * (f64::from(amplifier) + 1.0),
+                    amount: template.amount_for(amplifier),
                     operation: template.operation,
                 };
                 match states
@@ -398,10 +234,7 @@ pub fn player_base(attribute: &str) -> f64 {
 }
 
 pub fn affected_attribute(effect: EffectId) -> Option<&'static str> {
-    effect
-        .name()
-        .and_then(attribute_template)
-        .map(|t| t.attribute)
+    effect.kind()?.modifiers().first().map(|t| t.attribute)
 }
 
 #[cfg(test)]

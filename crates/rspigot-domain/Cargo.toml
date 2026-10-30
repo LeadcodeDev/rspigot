@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 rspigot-blocks = { workspace = true }
 rspigot-data = { workspace = true }
+rspigot-effects = { workspace = true }
 rspigot-nbt = { workspace = true }
 thiserror = "2"
 uuid = "1"

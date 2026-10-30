@@ -13,6 +13,7 @@ rspigot-nbt = { path = "crates/rspigot-nbt" }
 rspigot-blocks = { path = "crates/rspigot-blocks" }
 rspigot-data = { path = "crates/rspigot-data" }
 rspigot-domain = { path = "crates/rspigot-domain" }
+rspigot-effects = { path = "crates/rspigot-effects" }
 rspigot-core = { path = "crates/rspigot-core" }
 rspigot-protocol = { path = "crates/rspigot-protocol" }
 rspigot-network = { path = "crates/rspigot-network" }
