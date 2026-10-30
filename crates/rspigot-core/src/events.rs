@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
@@ -277,6 +278,12 @@ pub enum EquipmentSlot {
     Saddle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityStatus {
+    Death,
+    Poof,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Abilities {
     pub invulnerable: bool,
@@ -444,6 +451,25 @@ pub enum ClientEvent {
     Attributes {
         entity: EntityId,
         attributes: Vec<AttributeState>,
+    },
+    DamageEvent {
+        entity: EntityId,
+        kind: DamageType,
+        cause: Option<EntityId>,
+        direct: Option<EntityId>,
+        position: Option<Vec3>,
+    },
+    HurtAnimation {
+        entity: EntityId,
+        yaw: f32,
+    },
+    CombatKill {
+        player: EntityId,
+        message: Component,
+    },
+    EntityStatus {
+        entity: EntityId,
+        status: EntityStatus,
     },
     Disconnect(Component),
 }

@@ -1,6 +1,6 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
 
 pub struct BrownStainedGlass;
 
@@ -19,5 +19,6 @@ impl Item for BrownStainedGlass {
     const REPAIRABLE: Option<ItemSet> = None;
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     type Behavior = crate::family::BlockItem;
 }

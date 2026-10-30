@@ -5,7 +5,7 @@ use rspigot_core::commands::{
     ArgumentParser as CoreParser, CommandNodeKind as CoreNodeKind, CommandTree,
 };
 use rspigot_core::events::{
-    Abilities, Animation, ClientEvent, EntityKind, EquipmentSlot as CoreSlot,
+    Abilities, Animation, ClientEvent, EntityKind, EntityStatus, EquipmentSlot as CoreSlot,
     GameEvent as CoreGameEvent, MetadataValue, PlayerListEntry, Pose as CorePose, SpawnInfo,
 };
 use rspigot_domain::chunk::{
@@ -16,7 +16,7 @@ use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::GameMode as DomainGameMode;
 use rspigot_domain::world::Difficulty as DomainDifficulty;
 use rspigot_domain::{BlockPos, ChunkPos, Rotation, Vec3};
-use rspigot_protocol::codec::{Angle, Encode, Position};
+use rspigot_protocol::codec::{Angle, Position};
 use rspigot_protocol::frame::{Compression, build_frame};
 use rspigot_protocol::play::chat::ChatTypeBound;
 use rspigot_protocol::play::chunk::{
@@ -44,23 +44,11 @@ use rspigot_protocol::play::types::{
 };
 use rspigot_protocol::play::world::{ClockState, ClockUpdate, GameEventKind};
 use rspigot_protocol::types::{ProfileProperty, Text};
-use rspigot_protocol::{Packet, ids, write_packet};
+use rspigot_protocol::{Packet, write_packet};
 
 use crate::cache::ChunkPacketCache;
 use crate::connection::{ConnectionError, PacketWriter};
 use crate::text::to_nbt;
-
-struct EntityEvent {
-    entity: i32,
-    status: i8,
-}
-
-impl Encode for EntityEvent {
-    fn encode(&self, out: &mut Vec<u8>) {
-        self.entity.encode(out);
-        self.status.encode(out);
-    }
-}
 
 pub struct Encoder {
     online_mode: bool,
@@ -966,11 +954,54 @@ impl Encoder {
                     amount: *amount,
                 },
             ),
-            ClientEvent::OperatorLevel { entity, level } => writer.queue(
-                ids::play::clientbound::ENTITY_EVENT,
-                &EntityEvent {
-                    entity: entity.0,
-                    status: 24 + (*level).min(4) as i8,
+            ClientEvent::OperatorLevel { entity, level } => Self::queue(
+                writer,
+                &cb::EntityEvent {
+                    entity_id: entity.0,
+                    event: cb::EntityEvent::OPERATOR_LEVEL_BASE + (*level).min(4) as i8,
+                },
+            ),
+            ClientEvent::EntityStatus { entity, status } => Self::queue(
+                writer,
+                &cb::EntityEvent {
+                    entity_id: entity.0,
+                    event: match status {
+                        EntityStatus::Death => cb::EntityEvent::DEATH,
+                        EntityStatus::Poof => cb::EntityEvent::POOF,
+                    },
+                },
+            ),
+            ClientEvent::DamageEvent {
+                entity,
+                kind,
+                cause,
+                direct,
+                position: at,
+            } => match kind.registry_id() {
+                Some(source_type) => Self::queue(
+                    writer,
+                    &cb::DamageEvent {
+                        entity_id: entity.0,
+                        source_type,
+                        source_cause_id: cause.map(|e| e.0),
+                        source_direct_id: direct.map(|e| e.0),
+                        source_position: at.map(wire_vec),
+                    },
+                ),
+                None => Ok(()),
+            },
+            ClientEvent::HurtAnimation { entity, yaw } => Self::queue(
+                writer,
+                &cb::HurtAnimation {
+                    entity_id: entity.0,
+                    yaw: *yaw,
+                },
+            ),
+            ClientEvent::CombatKill { player, message } => Self::queue(
+                writer,
+                &cb::PlayerCombatKill {
+                    player_id: player.0,
+                    message: text(message),
                 },
             ),
             ClientEvent::EffectApplied {

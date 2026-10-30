@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, ToolRule, tags};
+use crate::{
+    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Rarity, SlotGroup, Tool, ToolRule, tags,
+};
 
 pub struct IronSword;
 
@@ -40,5 +43,21 @@ impl Item for IronSword {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Tag(&tags::ITEM_IRON_TOOL_MATERIALS));
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:attack_damage",
+            id: "minecraft:base_attack_damage",
+            amount: 5.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+        AttributeModifier {
+            attribute: "minecraft:attack_speed",
+            id: "minecraft:base_attack_speed",
+            amount: -2.4000000953674316,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

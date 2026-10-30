@@ -74,6 +74,62 @@ impl EquipmentSlot {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModifierOperation {
+    AddValue,
+    AddMultipliedBase,
+    AddMultipliedTotal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlotGroup {
+    Any,
+    Mainhand,
+    Offhand,
+    Hand,
+    Feet,
+    Legs,
+    Chest,
+    Head,
+    Armor,
+    Body,
+    Saddle,
+}
+
+impl SlotGroup {
+    pub const fn contains(self, slot: EquipmentSlot) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Mainhand => matches!(slot, EquipmentSlot::Mainhand),
+            Self::Offhand => matches!(slot, EquipmentSlot::Offhand),
+            Self::Hand => matches!(slot, EquipmentSlot::Mainhand | EquipmentSlot::Offhand),
+            Self::Feet => matches!(slot, EquipmentSlot::Feet),
+            Self::Legs => matches!(slot, EquipmentSlot::Legs),
+            Self::Chest => matches!(slot, EquipmentSlot::Chest),
+            Self::Head => matches!(slot, EquipmentSlot::Head),
+            Self::Armor => matches!(
+                slot,
+                EquipmentSlot::Feet
+                    | EquipmentSlot::Legs
+                    | EquipmentSlot::Chest
+                    | EquipmentSlot::Head
+                    | EquipmentSlot::Body
+            ),
+            Self::Body => matches!(slot, EquipmentSlot::Body),
+            Self::Saddle => matches!(slot, EquipmentSlot::Saddle),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AttributeModifier {
+    pub attribute: &'static str,
+    pub id: &'static str,
+    pub amount: f64,
+    pub operation: ModifierOperation,
+    pub slot: SlotGroup,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockTag {
     pub name: &'static str,
@@ -194,6 +250,7 @@ pub trait Item: 'static {
     const REPAIRABLE: Option<ItemSet>;
     const DAMAGE_RESISTANT: Option<&'static str>;
     const USE_REMAINDER: Option<ItemId>;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier];
     type Behavior: ItemBehavior;
 }
 

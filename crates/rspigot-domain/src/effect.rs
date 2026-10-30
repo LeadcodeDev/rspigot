@@ -1,6 +1,4 @@
-pub use rspigot_effects::{AttributeOperation, AttributeTemplate, EffectId};
-
-use rspigot_effects::EffectKind;
+pub use rspigot_effects::{AttributeOperation, AttributeTemplate, EffectId, EffectKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectDuration {
@@ -172,11 +170,12 @@ pub fn attribute_template(effect: &str) -> Option<AttributeTemplate> {
         .copied()
 }
 
-pub const PLAYER_ATTRIBUTE_BASES: [(&str, f64); 8] = [
+pub const PLAYER_ATTRIBUTE_BASES: [(&str, f64); 9] = [
     ("minecraft:movement_speed", 0.100_000_001_490_116_12),
     ("minecraft:attack_speed", 4.0),
     ("minecraft:attack_damage", 1.0),
     ("minecraft:safe_fall_distance", 3.0),
+    ("minecraft:fall_damage_multiplier", 1.0),
     ("minecraft:waypoint_transmit_range", 6.0e7),
     ("minecraft:max_health", 20.0),
     ("minecraft:max_absorption", 0.0),

@@ -277,6 +277,10 @@ impl<L: ClientLink> CommandContext for Server<L> {
         self.remove_effects(player, effect)
     }
 
+    fn kill(&mut self, player: PlayerId) -> bool {
+        Server::kill(self, player)
+    }
+
     fn seed(&self) -> i64 {
         self.world.level.seed
     }

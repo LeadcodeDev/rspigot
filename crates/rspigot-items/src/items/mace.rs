@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool,
+};
 
 pub struct Mace;
 
@@ -24,5 +27,21 @@ impl Item for Mace {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Direct(&[ItemId(1373)]));
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:attack_damage",
+            id: "minecraft:base_attack_damage",
+            amount: 5.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+        AttributeModifier {
+            attribute: "minecraft:attack_speed",
+            id: "minecraft:base_attack_speed",
+            amount: -3.4000000953674316,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

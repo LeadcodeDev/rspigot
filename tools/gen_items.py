@@ -23,11 +23,16 @@ DEFAULT_FAMILY = "Plain"
 
 RARITIES = ["common", "uncommon", "rare", "epic"]
 EQUIPMENT_SLOTS = ["mainhand", "offhand", "feet", "legs", "chest", "head", "body", "saddle"]
+OPERATIONS = ["add_value", "add_multiplied_base", "add_multiplied_total"]
+SLOT_GROUPS = [
+    "any", "mainhand", "offhand", "hand", "feet", "legs", "chest", "head", "armor", "body", "saddle",
+]
 
 RESERVED_STRUCTS = {
     "Item", "ItemId", "ItemKind", "ItemBehavior", "ItemSet", "ItemTag", "BlockSet", "BlockTag",
     "BlockId", "BlockKind", "Tool", "ToolRule", "Food", "Rarity", "EquipmentSlot", "Plain",
     "BlockItem", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec", "Box",
+    "AttributeModifier", "ModifierOperation", "SlotGroup",
 }
 
 RUST_KEYWORDS = {
@@ -43,6 +48,7 @@ MODULE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 STRUCT_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 CLASS_NAME = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 TAG_NAME = re.compile(r"^minecraft:[a-z0-9_/]+$")
+MODIFIER_NAME = re.compile(r"^minecraft:[a-z0-9_./]+$")
 WIDTH = 100
 
 
@@ -86,6 +92,23 @@ def f32_literal(value, what):
     if not re.fullmatch(r"-?[0-9]+\.[0-9]+(e[0-9]+)?", text) or f32(float(text)) != target:
         fail("%s float %r has no literal form" % (what, value))
     return text
+
+
+def f64_literal(value, what):
+    text = repr(finite(value, what))
+    mantissa, marker, exponent = text.partition("e")
+    if "." not in mantissa:
+        mantissa += ".0"
+    text = mantissa + (marker + exponent if marker else "")
+    if float(text) != float(value):
+        fail("%s double %r has no literal form" % (what, value))
+    return text
+
+
+def modifier_name(value, what):
+    if not isinstance(value, str) or not MODIFIER_NAME.match(value):
+        fail("%s unsupported name %r" % (what, value))
+    return '"' + value + '"'
 
 
 def rust_string(value):
@@ -249,6 +272,18 @@ def check_report(item, report, block_ids, item_ids):
         mismatch("damage_resistant", resistant, item["damage_resistant"])
     if resistant is not None and resistant["types"] != "#" + item["damage_resistant"]["tag"]:
         mismatch("damage_resistant", resistant, item["damage_resistant"])
+    reported = [
+        {
+            "attribute": entry["type"],
+            "id": entry["id"],
+            "amount": entry["amount"],
+            "operation": entry["operation"],
+            "slot": entry.get("slot", "any"),
+        }
+        for entry in components.get("minecraft:attribute_modifiers", [])
+    ]
+    if reported != item["attribute_modifiers"]:
+        mismatch("attribute_modifiers", reported, item["attribute_modifiers"])
     remainder = components.get("minecraft:use_remainder")
     if (remainder is None) != (item["use_remainder"] is None):
         mismatch("use_remainder", remainder, item["use_remainder"])
@@ -401,6 +436,14 @@ def validate(dump, registries, components_dir):
             tag = item["damage_resistant"]["tag"]
             if not TAG_NAME.match(tag):
                 fail("%s has unsupported damage tag %r" % (name, tag))
+        for modifier in item["attribute_modifiers"]:
+            modifier_name(modifier["attribute"], name + " modifier attribute")
+            modifier_name(modifier["id"], name + " modifier id")
+            finite(modifier["amount"], name + " modifier amount")
+            if modifier["operation"] not in OPERATIONS:
+                fail("%s has unknown modifier operation %r" % (name, modifier["operation"]))
+            if modifier["slot"] not in SLOT_GROUPS:
+                fail("%s has unknown modifier slot %r" % (name, modifier["slot"]))
         remainder = item["use_remainder"]
         if remainder is not None:
             integer(remainder["item"], 0, len(item_names) - 1, name + " use remainder")
@@ -493,6 +536,24 @@ def food_lines(food, name):
     ]
 
 
+def modifier_lines(modifiers, name, used):
+    if not modifiers:
+        return ["    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];"]
+    used.add("ModifierOperation")
+    used.add("SlotGroup")
+    lines = ["    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &["]
+    for modifier in modifiers:
+        lines.append("        AttributeModifier {")
+        lines.append("            attribute: %s," % modifier_name(modifier["attribute"], name))
+        lines.append("            id: %s," % modifier_name(modifier["id"], name))
+        lines.append("            amount: %s," % f64_literal(modifier["amount"], name + " modifier"))
+        lines.append("            operation: ModifierOperation::%s," % struct_name(modifier["operation"]))
+        lines.append("            slot: SlotGroup::%s," % struct_name(modifier["slot"]))
+        lines.append("        },")
+    lines.append("    ];")
+    return lines
+
+
 def item_file(item, behavior):
     name = item["name"]
     used = set()
@@ -518,16 +579,19 @@ def item_file(item, behavior):
     body.append("    const DAMAGE_RESISTANT: Option<&'static str> = %s;" % resistant)
     remainder = option(item["use_remainder"], lambda value: "ItemId(%d)" % value["item"])
     body.append("    const USE_REMAINDER: Option<ItemId> = %s;" % remainder)
+    body.extend(modifier_lines(item["attribute_modifiers"], name, used))
     body.append("    type Behavior = crate::family::%s;" % behavior)
-    names = ["EquipmentSlot", "Food", "Item", "ItemId", "ItemSet", "Rarity", "Tool"]
-    names.extend(name for name in ("BlockSet", "ToolRule") if name in used)
+    names = ["AttributeModifier", "EquipmentSlot", "Food", "Item", "ItemId", "ItemSet", "Rarity", "Tool"]
+    names.extend(
+        name for name in ("BlockSet", "ModifierOperation", "SlotGroup", "ToolRule") if name in used
+    )
     if "tags" in used:
         names.append("tags")
     names.sort(key=lambda entry: (entry[:1].islower(), entry))
-    lines = [
-        "use rspigot_blocks::BlockId;",
-        "",
-        "use crate::{%s};" % ", ".join(names),
+    imports = ["use crate::{%s};" % ", ".join(names)]
+    if len(imports[0]) > WIDTH:
+        imports = ["use crate::{"] + wrap(names, "    ") + ["};"]
+    lines = ["use rspigot_blocks::BlockId;", ""] + imports + [
         "",
         "pub struct %s;" % item["struct"],
         "",
@@ -665,7 +729,7 @@ def main():
                 else:
                     os.remove(os.path.join(items_dir, entry))
     print(
-        "items %d classes %d block_items %d tools %d foods %d equippable %d block_tags %d item_tags %d families %d files %d bytes %d written %d removed %d"
+        "items %d classes %d block_items %d tools %d foods %d equippable %d modified %d block_tags %d item_tags %d families %d files %d bytes %d written %d removed %d"
         % (
             len(items),
             len({item["class"] for item in items}),
@@ -673,6 +737,7 @@ def main():
             sum(1 for item in items if item["tool"] is not None),
             sum(1 for item in items if item["food"] is not None),
             sum(1 for item in items if item["equippable"] is not None),
+            sum(1 for item in items if item["attribute_modifiers"]),
             len(dump["block_tags"]),
             len(dump["item_tags"]),
             len(by_class) + len(by_item),

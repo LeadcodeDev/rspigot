@@ -6,12 +6,16 @@ use rspigot_blocks::{
     BlockKind, Face, Gravity, SCAFFOLDING_MAX_DISTANCE, StateFlags, scaffolding_settle,
     speleothem_thickness,
 };
+use rspigot_domain::damage::DamageType;
 use rspigot_domain::item::ItemStack;
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, ItemId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
 use crate::events::{ClientEvent, EntityKind};
+use crate::health::{DamageSource, SourceEntity};
 use crate::loot::{self, LootContext};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -26,7 +30,9 @@ const MAX_FALL_TICKS: u32 = 600;
 const OUT_OF_WORLD_TICKS: u32 = 100;
 const TRACKING_RANGE: f64 = 160.0;
 const POSITION_SYNC_TICKS: u32 = 20;
-const STALAGMITE_LANDING_BONUS: f64 = 2.5;
+const BLOCK_HALF_WIDTH: f64 = 0.49;
+const BLOCK_HEIGHT: f64 = 0.98;
+const PLAYER_HALF_WIDTH: f64 = 0.3;
 const MIN_STALACTITE_SIZE: i32 = 6;
 const MAX_FALL_DAMAGE: i32 = 40;
 
@@ -74,6 +80,14 @@ pub fn anvil_degrade_chance(fall_distance: f64) -> f32 {
 
 fn fall_blocks(fall_distance: f64) -> i32 {
     (fall_distance - 1.0).ceil() as i32
+}
+
+fn overlaps(block: Vec3, player: Vec3, height: f64) -> bool {
+    let reach = BLOCK_HALF_WIDTH + PLAYER_HALF_WIDTH;
+    (block.x - player.x).abs() < reach
+        && (block.z - player.z).abs() < reach
+        && block.y < player.y + height
+        && block.y + BLOCK_HEIGHT > player.y
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -466,9 +480,11 @@ impl<L: ClientLink> Server<L> {
             let mut pos = entity.position.block();
             if let Some(y) = floor {
                 let below = self.block_or_air(BlockPos::new(pos.x, y, pos.z));
-                let distance = entity.fall_distance + self.landing_bonus(below);
-                if entity.fall_distance > 0.0 {
-                    self.cause_fall_damage(&mut entity, distance);
+                if entity.fall_distance > 0.0
+                    && let Some(impact) =
+                        crate::fall::fall_impact(below, entity.fall_distance, false)
+                {
+                    self.cause_fall_damage(&mut entity, impact.distance);
                 }
                 entity.fall_distance = 0.0;
             }
@@ -517,19 +533,42 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn landing_bonus(&self, below: BlockStateId) -> f64 {
-        let stalagmite_tip = below.kind() == Some(BlockKind::PointedDripstone)
-            && below.is_speleothem_toward(Face::Up)
-            && below.property("thickness") == Some("tip");
-        if stalagmite_tip {
-            STALAGMITE_LANDING_BONUS
-        } else {
-            0.0
-        }
-    }
-
     fn cause_fall_damage(&mut self, entity: &mut FallingBlock, distance: f64) {
-        if entity.hurt.is_none() || gravity(entity.state) != Gravity::Anvil {
+        let Some(hurt) = entity.hurt else {
+            return;
+        };
+        if fall_blocks(distance) < 0 {
+            return;
+        }
+        let damage = hurt.damage(distance);
+        let kind = match gravity(entity.state) {
+            Gravity::Anvil => DamageType::FallingAnvil,
+            Gravity::Speleothem => DamageType::FallingStalactite,
+            _ => DamageType::FallingBlock,
+        };
+        let source = DamageSource::by(
+            kind,
+            SourceEntity {
+                entity: entity.id,
+                player: None,
+                name: Component::translatable("entity.minecraft.falling_block", Vec::new()),
+                position: entity.position,
+            },
+        );
+        let victims: Vec<PlayerId> = self
+            .players
+            .values()
+            .filter(|p| {
+                !matches!(p.game_mode, GameMode::Creative | GameMode::Spectator)
+                    && !p.vitals.is_dead()
+                    && overlaps(entity.position, p.position, p.height())
+            })
+            .map(|p| p.id)
+            .collect();
+        for victim in victims {
+            self.hurt(victim, &source, damage);
+        }
+        if gravity(entity.state) != Gravity::Anvil {
             return;
         }
         let chance = anvil_degrade_chance(distance);

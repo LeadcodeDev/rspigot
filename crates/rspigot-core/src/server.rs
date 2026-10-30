@@ -372,6 +372,7 @@ impl<L: ClientLink> Server<L> {
             loaded: false,
             operator,
             effects: Default::default(),
+            vitals: Default::default(),
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
@@ -422,7 +423,7 @@ impl<L: ClientLink> Server<L> {
             view_distance: self.config.view_distance,
             simulation_distance: self.config.simulation_distance,
             reduced_debug_info: false,
-            enable_respawn_screen: true,
+            enable_respawn_screen: !self.config.rules.immediate_respawn,
             do_limited_crafting: false,
             spawn: self.spawn_info(player),
             enforces_secure_chat: false,
@@ -468,15 +469,16 @@ impl<L: ClientLink> Server<L> {
             carried: None,
         });
         link.send(ClientEvent::Health {
-            health: 20.0,
-            food: 20,
-            saturation: 5.0,
+            health: player.vitals.health,
+            food: player.vitals.food.food,
+            saturation: player.vitals.food.saturation,
         });
         link.send(ClientEvent::Experience {
             progress: 0.0,
             level: 0,
             total: 0,
         });
+        player.vitals.mark_sent();
     }
 
     pub(crate) fn time_event(&self) -> ClientEvent {
@@ -540,11 +542,12 @@ impl<L: ClientLink> Server<L> {
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
-        self.tick_effects();
+        self.tick_health();
         self.tick_items();
         self.tick_falling_blocks();
         self.update_tracking();
         self.update_item_tracking();
+        self.sync_vitals();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
             self.push(Audience::All, time);
@@ -591,13 +594,17 @@ impl<L: ClientLink> Server<L> {
         let targets: Vec<Target> = self
             .players
             .values()
+            .filter(|p| !p.vitals.removed)
             .map(|p| Target {
                 id: p.id,
                 entity: p.entity_id,
                 position: p.position,
                 rotation: p.rotation,
                 chunk: p.position.chunk(),
-                metadata: Self::metadata(p),
+                metadata: Self::metadata(p)
+                    .into_iter()
+                    .chain(Self::health_metadata(p))
+                    .collect(),
                 held: p
                     .inventory
                     .get(HOTBAR_START + usize::from(p.inventory.selected_hotbar))

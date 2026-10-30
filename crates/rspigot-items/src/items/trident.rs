@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool,
+};
 
 pub struct Trident;
 
@@ -24,5 +27,21 @@ impl Item for Trident {
     const REPAIRABLE: Option<ItemSet> = None;
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:attack_damage",
+            id: "minecraft:base_attack_damage",
+            amount: 8.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+        AttributeModifier {
+            attribute: "minecraft:attack_speed",
+            id: "minecraft:base_attack_speed",
+            amount: -2.9000000953674316,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Mainhand,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

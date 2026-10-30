@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, ToolRule, tags};
+use crate::{
+    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, ToolRule,
+    tags,
+};
 
 pub struct Shears;
 
@@ -45,5 +48,6 @@ impl Item for Shears {
     const REPAIRABLE: Option<ItemSet> = None;
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     type Behavior = crate::family::Plain;
 }

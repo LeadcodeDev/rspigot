@@ -5,6 +5,7 @@ use rspigot_domain::{EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
 use crate::events::Abilities;
+use crate::health::Vitals;
 use crate::streaming::ChunkStreamer;
 
 pub struct Player<L> {
@@ -30,6 +31,7 @@ pub struct Player<L> {
     pub loaded: bool,
     pub operator: bool,
     pub effects: ActiveEffects,
+    pub vitals: Vitals,
 }
 
 impl<L> Player<L> {
@@ -77,7 +79,18 @@ impl<L> Player<L> {
     }
 
     pub fn eye_position(&self) -> Vec3 {
-        let eye = if self.sneaking { 1.27 } else { 1.62 };
-        Vec3::new(self.position.x, self.position.y + eye, self.position.z)
+        Vec3::new(
+            self.position.x,
+            self.position.y + self.eye_height(),
+            self.position.z,
+        )
+    }
+
+    pub fn eye_height(&self) -> f64 {
+        if self.sneaking { 1.27 } else { 1.62 }
+    }
+
+    pub fn height(&self) -> f64 {
+        if self.sneaking { 1.5 } else { 1.8 }
     }
 }

@@ -37,6 +37,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.component.DamageResistant;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.Tool;
 import net.minecraft.world.item.component.UseRemainder;
 import net.minecraft.world.item.enchantment.Enchantable;
@@ -193,6 +194,8 @@ public final class ItemDump {
             }
             json.name("use_remainder");
             writeRemainder(json, components.get(DataComponents.USE_REMAINDER));
+            json.name("attribute_modifiers");
+            writeModifiers(json, components.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY));
             json.endObject();
         }
         json.endArray();
@@ -329,6 +332,20 @@ public final class ItemDump {
         json.name("count").value(template.count());
         json.name("patch_empty").value(template.components().isEmpty());
         json.endObject();
+    }
+
+    private static void writeModifiers(JsonWriter json, ItemAttributeModifiers modifiers) throws IOException {
+        json.beginArray();
+        for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
+            json.beginObject();
+            json.name("attribute").value(BuiltInRegistries.ATTRIBUTE.getKey(entry.attribute().value()).toString());
+            json.name("id").value(entry.modifier().id().toString());
+            json.name("amount").value(entry.modifier().amount());
+            json.name("operation").value(entry.modifier().operation().getSerializedName());
+            json.name("slot").value(entry.slot().getSerializedName());
+            json.endObject();
+        }
+        json.endArray();
     }
 
     private static void writeBlockTags(JsonWriter json) throws IOException {

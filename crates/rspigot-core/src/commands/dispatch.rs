@@ -56,6 +56,7 @@ pub trait CommandContext {
     ) -> Result<Vec<PlayerId>, Component>;
     fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool;
     fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool;
+    fn kill(&mut self, player: PlayerId) -> bool;
     fn seed(&self) -> i64;
     fn difficulty(&self) -> Difficulty;
     fn set_difficulty(&mut self, difficulty: Difficulty);
@@ -66,8 +67,9 @@ pub trait CommandContext {
     fn stop(&mut self);
 }
 
-const ADMIN_COMMANDS: [&str; 18] = [
+const ADMIN_COMMANDS: [&str; 19] = [
     "effect",
+    "kill",
     "whitelist",
     "say",
     "gamemode",
@@ -176,6 +178,7 @@ pub fn execute<C: CommandContext>(
         "op" | "deop" => operator(ctx, sender, &args, label == "op"),
         "whitelist" => whitelist(ctx, sender, &args),
         "effect" => effect(ctx, sender, &args),
+        "kill" => kill(ctx, sender, &args).unwrap_or_else(|outcome| outcome),
         "difficulty" => difficulty(ctx, sender, &args),
         "weather" => weather(ctx, sender, &args),
         "setworldspawn" => set_world_spawn(ctx, sender, &args),
@@ -239,6 +242,7 @@ fn help<C: CommandContext>(ctx: &mut C, sender: CommandSender) -> CommandOutcome
             "/time set|add|query <value>",
             "/give <player> <item> [count]",
             "/clear [player]",
+            "/kill [targets]",
             "/kick <player> [reason]",
             "/op <player>",
             "/deop <player>",
@@ -877,6 +881,40 @@ fn effect_clear<C: CommandContext>(
     Ok(CommandOutcome::Success)
 }
 
+fn kill<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    args: &[&str],
+) -> Result<CommandOutcome, CommandOutcome> {
+    if args.len() > 1 {
+        return Err(usage(ctx, sender, "/kill [targets]"));
+    }
+    let targets = match (args.first().copied(), sender) {
+        (None, CommandSender::Console) => {
+            return Err(fail(ctx, sender, "permissions.requires.entity", Vec::new()));
+        }
+        (None, CommandSender::Player(id)) => vec![id],
+        (Some(selector), _) => select(ctx, sender, Some(selector))?,
+    };
+    for target in &targets {
+        ctx.kill(*target);
+    }
+    let message = match targets.as_slice() {
+        [single] => Component::translatable(
+            "commands.kill.success.single",
+            vec![Component::text(
+                ctx.player_name(*single).unwrap_or_default(),
+            )],
+        ),
+        many => Component::translatable(
+            "commands.kill.success.multiple",
+            vec![Component::text(many.len().to_string())],
+        ),
+    };
+    ctx.reply(sender, message);
+    Ok(CommandOutcome::Success)
+}
+
 fn whitelist<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
@@ -1046,6 +1084,7 @@ mod tests {
         effects: Vec<(PlayerId, EffectInstance)>,
         cleared: Vec<(PlayerId, Option<EffectId>)>,
         refuse_effects: bool,
+        killed: Vec<PlayerId>,
     }
 
     fn alice() -> PlayerId {
@@ -1138,6 +1177,10 @@ mod tests {
         }
         fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool {
             self.cleared.push((player, effect));
+            true
+        }
+        fn kill(&mut self, player: PlayerId) -> bool {
+            self.killed.push(player);
             true
         }
         fn seed(&self) -> i64 {
@@ -1396,6 +1439,49 @@ mod tests {
             ),
             CommandOutcome::Denied
         );
+    }
+
+    #[test]
+    fn kill_defaults_to_the_sender_and_reports_vanilla_messages() {
+        let mut ctx = operator();
+        assert_eq!(
+            execute(&mut ctx, CommandSender::Player(alice()), "/kill"),
+            CommandOutcome::Success
+        );
+        assert_eq!(ctx.killed, vec![alice()]);
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("commands.kill.success.single Alice")
+        );
+        execute(&mut ctx, CommandSender::Console, "kill @a");
+        assert_eq!(ctx.killed.len(), 3);
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("commands.kill.success.multiple 2")
+        );
+        assert_eq!(
+            execute(&mut ctx, CommandSender::Console, "kill"),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("permissions.requires.entity")
+        );
+        assert_eq!(
+            execute(&mut ctx, CommandSender::Console, "kill @s"),
+            CommandOutcome::Failure
+        );
+        assert_eq!(ctx.killed.len(), 3);
+    }
+
+    #[test]
+    fn kill_requires_operator() {
+        let mut ctx = FakeContext::default();
+        assert_eq!(
+            execute(&mut ctx, CommandSender::Player(alice()), "/kill"),
+            CommandOutcome::Denied
+        );
+        assert!(ctx.killed.is_empty());
     }
 
     #[test]

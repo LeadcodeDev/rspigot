@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags};
+use crate::{
+    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool, tags,
+};
 
 pub struct CopperChestplate;
 
@@ -19,5 +22,21 @@ impl Item for CopperChestplate {
     const REPAIRABLE: Option<ItemSet> = Some(ItemSet::Tag(&tags::ITEM_REPAIRS_COPPER_ARMOR));
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
+    const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[
+        AttributeModifier {
+            attribute: "minecraft:armor",
+            id: "minecraft:armor.chestplate",
+            amount: 4.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Chest,
+        },
+        AttributeModifier {
+            attribute: "minecraft:armor_toughness",
+            id: "minecraft:armor.chestplate",
+            amount: 0.0,
+            operation: ModifierOperation::AddValue,
+            slot: SlotGroup::Chest,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

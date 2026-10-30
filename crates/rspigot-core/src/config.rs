@@ -7,6 +7,27 @@ use crate::admin::AdminLists;
 use crate::chunks::ChunkManagerConfig;
 use crate::streaming::StreamConfig;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameRules {
+    pub natural_regeneration: bool,
+    pub keep_inventory: bool,
+    pub show_death_messages: bool,
+    pub immediate_respawn: bool,
+    pub fall_damage: bool,
+}
+
+impl Default for GameRules {
+    fn default() -> Self {
+        Self {
+            natural_regeneration: true,
+            keep_inventory: false,
+            show_death_messages: true,
+            immediate_respawn: false,
+            fall_damage: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
     pub max_players: u32,
@@ -29,6 +50,7 @@ pub struct GameConfig {
     pub whitelist_message: String,
     pub is_flat: bool,
     pub spawn_chunk_radius: i32,
+    pub rules: GameRules,
 }
 
 impl Default for GameConfig {
@@ -55,6 +77,7 @@ impl Default for GameConfig {
             whitelist_message: "You are not whitelisted on this server!".to_owned(),
             is_flat: false,
             spawn_chunk_radius: 2,
+            rules: GameRules::default(),
         }
     }
 }
