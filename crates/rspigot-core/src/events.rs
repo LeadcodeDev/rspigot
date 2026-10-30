@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
@@ -424,6 +425,19 @@ pub enum ClientEvent {
     OperatorLevel {
         entity: EntityId,
         level: u8,
+    },
+    EffectApplied {
+        entity: EntityId,
+        effect: EffectInstance,
+        blend: bool,
+    },
+    EffectRemoved {
+        entity: EntityId,
+        effect: EffectId,
+    },
+    Attributes {
+        entity: EntityId,
+        attributes: Vec<AttributeState>,
     },
     Disconnect(Component),
 }

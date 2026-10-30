@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod chunk;
 pub mod commands;
+pub mod effect;
 pub mod entity;
 pub mod inventory;
 pub mod metadata;
@@ -17,6 +18,7 @@ pub mod clientbound {
     pub use super::chat::{DisguisedChat, PlayerChat, SystemChat};
     pub use super::chunk::{ForgetLevelChunk, LevelChunkWithLight, LightUpdate};
     pub use super::commands::{CommandSuggestions, Commands};
+    pub use super::effect::{RemoveMobEffect, UpdateMobEffect};
     pub use super::entity::{
         AddEntity, Animate, EntityPositionSync, MoveEntityPos, MoveEntityPosRot, MoveEntityRot,
         RemoveEntities, RotateHead, SetEntityMotion, SetEquipment, SwingAnimation, TakeItemEntity,

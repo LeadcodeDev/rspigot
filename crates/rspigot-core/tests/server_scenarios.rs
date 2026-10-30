@@ -352,3 +352,144 @@ fn whitelist_rejects_unlisted_player_and_admits_after_add() {
     assert!(bob_again.is_connected());
     assert_eq!(server.players_online(), 2);
 }
+
+fn command(server: &mut Server<Link>, player: PlayerId, line: &str) {
+    server.handle(Inbound::Input {
+        player,
+        input: PlayerInput::Command(line.to_owned()),
+    });
+    server.deliver();
+}
+
+fn effect_events(
+    events: &[ClientEvent],
+) -> (
+    Vec<rspigot_domain::effect::EffectInstance>,
+    Vec<rspigot_domain::effect::EffectId>,
+) {
+    let applied = events
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::EffectApplied { effect, .. } => Some(*effect),
+            _ => None,
+        })
+        .collect();
+    let removed = events
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::EffectRemoved { effect, .. } => Some(*effect),
+            _ => None,
+        })
+        .collect();
+    (applied, removed)
+}
+
+fn movement_speed(
+    events: &[ClientEvent],
+) -> Option<Vec<(f64, rspigot_domain::effect::AttributeOperation)>> {
+    events.iter().rev().find_map(|e| match e {
+        ClientEvent::Attributes { attributes, .. } => attributes
+            .iter()
+            .find(|a| a.attribute == "minecraft:movement_speed")
+            .map(|a| {
+                a.modifiers
+                    .iter()
+                    .map(|m| (m.amount, m.operation))
+                    .collect()
+            }),
+        _ => None,
+    })
+}
+
+#[test]
+fn effect_give_speed_250_reaches_the_client_with_attributes() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, link) = join(&mut server, "Alice");
+    link.take();
+    command(&mut server, alice, "effect give @s speed 99999 250 false");
+    let events = link.take();
+    let (applied, _) = effect_events(&events);
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].amplifier, 250);
+    assert_eq!(
+        applied[0].duration,
+        rspigot_domain::effect::EffectDuration::Ticks(1_999_980)
+    );
+    assert!(applied[0].visible);
+    let modifiers = movement_speed(&events).unwrap_or_default();
+    assert_eq!(modifiers.len(), 1);
+    assert!((modifiers[0].0 - 50.2).abs() < 1e-5);
+    assert_eq!(
+        modifiers[0].1,
+        rspigot_domain::effect::AttributeOperation::AddMultipliedTotal
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ClientEvent::SystemChat { .. }))
+    );
+}
+
+#[test]
+fn weaker_effect_is_refused_and_clear_resets_attributes() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, link) = join(&mut server, "Alice");
+    command(&mut server, alice, "effect give @s speed 60 3");
+    link.take();
+    command(&mut server, alice, "effect give @s speed 600 1");
+    let refused = link.take();
+    assert!(effect_events(&refused).0.is_empty());
+    assert!(refused.iter().any(|e| matches!(e, ClientEvent::SystemChat { message, .. } if message.plain_text().contains("commands.effect.give.failed"))));
+    command(&mut server, alice, "effect clear @s speed");
+    let cleared = link.take();
+    assert_eq!(effect_events(&cleared).1.len(), 1);
+    assert_eq!(movement_speed(&cleared), Some(Vec::new()));
+}
+
+#[test]
+fn effect_expires_after_its_duration() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, link) = join(&mut server, "Alice");
+    command(&mut server, alice, "effect give @s night_vision 1");
+    link.take();
+    for _ in 0..19 {
+        server.tick();
+    }
+    assert!(effect_events(&link.take()).1.is_empty());
+    server.tick();
+    assert_eq!(effect_events(&link.take()).1.len(), 1);
+}
+
+#[test]
+fn invisibility_sets_the_shared_flag_for_viewers() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, alice_link) = join(&mut server, "Alice");
+    let (bob, bob_link) = join(&mut server, "Bob");
+    let mut log = vec![Vec::new(), Vec::new()];
+    confirm_teleport(&mut server, alice, &alice_link.take());
+    confirm_teleport(&mut server, bob, &bob_link.take());
+    run_ticks(
+        &mut server,
+        30,
+        &[(alice, &alice_link), (bob, &bob_link)],
+        &mut log,
+    );
+    command(&mut server, alice, "effect give Alice invisibility 30");
+    let flags = bob_link.take().iter().find_map(|e| match e {
+        ClientEvent::EntityMetadata { entries, .. } => entries
+            .iter()
+            .find(|m| m.index == 0)
+            .map(|m| m.value.clone()),
+        _ => None,
+    });
+    assert_eq!(flags, Some(rspigot_core::events::MetadataValue::Byte(0x20)));
+}
+
+#[test]
+fn non_operator_cannot_give_effects() {
+    let mut server = server(Vec::new());
+    let (alice, link) = join(&mut server, "Alice");
+    link.take();
+    command(&mut server, alice, "effect give @s speed");
+    assert!(effect_events(&link.take()).0.is_empty());
+}

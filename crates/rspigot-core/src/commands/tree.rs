@@ -18,6 +18,7 @@ pub enum ArgumentParser {
     GameMode,
     Dimension,
     ResourceLocation,
+    Resource { registry: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +92,19 @@ impl TreeBuilder {
     fn alias(&mut self, parent: usize, name: &str, target: usize) {
         let index = self.literal(parent, name, false);
         self.nodes[index].redirect = Some(target);
+    }
+}
+
+fn entities() -> ArgumentParser {
+    ArgumentParser::Entity {
+        single: false,
+        players_only: false,
+    }
+}
+
+fn mob_effect() -> ArgumentParser {
+    ArgumentParser::Resource {
+        registry: "minecraft:mob_effect".to_owned(),
     }
 }
 
@@ -177,6 +191,35 @@ pub fn build_tree(operator: bool) -> CommandTree {
         }
         let spawn = b.literal(root, "setworldspawn", true);
         b.argument(spawn, "pos", ArgumentParser::BlockPos, true);
+        let effect = b.literal(root, "effect", false);
+        let clear = b.literal(effect, "clear", true);
+        let clear_targets = b.argument(clear, "targets", entities(), true);
+        b.argument(clear_targets, "effect", mob_effect(), true);
+        let give = b.literal(effect, "give", false);
+        let give_targets = b.argument(give, "targets", entities(), false);
+        let give_effect = b.argument(give_targets, "effect", mob_effect(), true);
+        let seconds = b.argument(
+            give_effect,
+            "seconds",
+            ArgumentParser::Integer {
+                min: Some(1),
+                max: Some(1_000_000),
+            },
+            true,
+        );
+        let infinite = b.literal(give_effect, "infinite", true);
+        for duration in [seconds, infinite] {
+            let amplifier = b.argument(
+                duration,
+                "amplifier",
+                ArgumentParser::Integer {
+                    min: Some(0),
+                    max: Some(255),
+                },
+                true,
+            );
+            b.argument(amplifier, "hideParticles", ArgumentParser::Bool, true);
+        }
         let whitelist = b.literal(root, "whitelist", false);
         for action in ["on", "off", "list", "reload"] {
             b.literal(whitelist, action, true);
