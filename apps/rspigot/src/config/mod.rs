@@ -8,6 +8,7 @@ use rspigot_core::admin::AdminLists;
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::GameConfig;
 use rspigot_core::streaming::StreamConfig;
+use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
 use rspigot_domain::world::Difficulty;
 use rspigot_network::NetworkConfig;
@@ -60,6 +61,7 @@ impl ServerFiles {
                 "world-settings.default.entity-tracking-range.players",
                 128.0,
             ),
+            tracking: self.tracking_ranges(),
             stream: StreamConfig::default(),
             chunks: ChunkManagerConfig {
                 autosave_interval_ticks: self.bukkit.int("ticks-per.autosave", 6000).max(0) as u64,
@@ -72,6 +74,30 @@ impl ServerFiles {
             ),
             is_flat: p.string("level-type").ends_with("flat"),
             ..GameConfig::default()
+        }
+    }
+
+    fn tracking_ranges(&self) -> TrackingRanges {
+        let defaults = TrackingRanges::default();
+        let range = |key: &str, fallback: i32| {
+            self.spigot
+                .int(
+                    &format!("world-settings.default.{key}"),
+                    i64::from(fallback),
+                )
+                .clamp(0, i64::from(i32::MAX)) as i32
+        };
+        TrackingRanges {
+            players: range("entity-tracking-range.players", defaults.players),
+            animals: range("entity-tracking-range.animals", defaults.animals),
+            monsters: range("entity-tracking-range.monsters", defaults.monsters),
+            misc: range("entity-tracking-range.misc", defaults.misc),
+            display: range("entity-tracking-range.display", defaults.display),
+            other: range("entity-tracking-range.other", defaults.other),
+            monster_activation: range(
+                "entity-activation-range.monsters",
+                defaults.monster_activation,
+            ),
         }
     }
 

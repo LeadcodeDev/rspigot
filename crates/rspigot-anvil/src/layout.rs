@@ -27,6 +27,22 @@ impl DimensionLayout {
         world_root: &Path,
         dimension: &Identifier,
     ) -> Result<PathBuf, AnvilError> {
+        Ok(self.dimension_dir(world_root, dimension)?.join("region"))
+    }
+
+    pub fn entities_dir(
+        self,
+        world_root: &Path,
+        dimension: &Identifier,
+    ) -> Result<PathBuf, AnvilError> {
+        Ok(self.dimension_dir(world_root, dimension)?.join("entities"))
+    }
+
+    pub fn dimension_dir(
+        self,
+        world_root: &Path,
+        dimension: &Identifier,
+    ) -> Result<PathBuf, AnvilError> {
         let namespace = dimension.namespace();
         let path = dimension.path();
         check_component(namespace)?;
@@ -60,7 +76,7 @@ impl DimensionLayout {
                 }
             }
         };
-        Ok(folder.join("region"))
+        Ok(folder)
     }
 }
 
@@ -132,6 +148,29 @@ mod tests {
         assert_eq!(
             dir(layout, "mypack:deep/dark"),
             Path::new("/srv/world_mypack_deep/dark/dimensions/mypack/deep/dark/region")
+        );
+    }
+
+    #[test]
+    fn entities_sit_next_to_the_region_folder() {
+        let layout = DimensionLayout::Spigot;
+        assert_eq!(
+            layout
+                .entities_dir(Path::new("/srv/world"), &id("minecraft:overworld"))
+                .unwrap(),
+            Path::new("/srv/world/dimensions/minecraft/overworld/entities")
+        );
+        assert_eq!(
+            layout
+                .entities_dir(Path::new("/srv/world"), &id("minecraft:the_nether"))
+                .unwrap(),
+            Path::new("/srv/world_nether/dimensions/minecraft/the_nether/entities")
+        );
+        assert_eq!(
+            DimensionLayout::LegacyVanilla
+                .entities_dir(Path::new("/srv/world"), &id("minecraft:overworld"))
+                .unwrap(),
+            Path::new("/srv/world/entities")
         );
     }
 

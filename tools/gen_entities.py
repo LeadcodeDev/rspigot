@@ -218,7 +218,7 @@ def validate(dump, registries):
         for key in ("width", "height", "eye_height"):
             if finite(entity[key], name + " " + key) < 0:
                 fail("%s negative %s" % (name, key))
-        for key in ("fire_immune", "can_summon", "can_spawn_far_from_player", "living", "has_update_interval"):
+        for key in ("fire_immune", "can_summon", "can_serialize", "can_spawn_far_from_player", "living", "has_update_interval", "track_deltas", "allowed_in_peaceful"):
             boolean(entity[key], name + " " + key)
         integer(entity["client_tracking_range"], 0, 255, name + " tracking range")
         interval = entity["update_interval"]
@@ -234,6 +234,14 @@ def validate(dump, registries):
             if item_names[egg] != name + "_spawn_egg":
                 fail("%s spawn egg %d is %s" % (name, egg, item_names[egg]))
             eggs[egg] = name
+        ancestors = entity["ancestors"]
+        if not ancestors or ancestors[0] != entity["class"] or ancestors[-1] != "Entity":
+            fail("%s has ancestry %r" % (name, ancestors))
+        for ancestor in ancestors:
+            if not CLASS_NAME.match(ancestor):
+                fail("%s has unsupported ancestor %r" % (name, ancestor))
+        if ("LivingEntity" in ancestors) != entity["living"]:
+            fail("%s living %r disagrees with ancestry" % (name, entity["living"]))
         attributes = entity["default_attributes"]
         if entity["living"] != bool(attributes):
             fail("%s living %r with %d default attributes" % (name, entity["living"], len(attributes)))
@@ -270,12 +278,23 @@ def entity_file(entity, categories, behavior):
         "    const EYE_HEIGHT: f32 = %s;" % f32_literal(entity["eye_height"], name + " eye height"),
         "    const FIRE_IMMUNE: bool = %s;" % boolean(entity["fire_immune"], name),
         "    const SUMMONABLE: bool = %s;" % boolean(entity["can_summon"], name),
+        "    const CAN_SERIALIZE: bool = %s;" % boolean(entity["can_serialize"], name),
+        "    const ALLOWED_IN_PEACEFUL: bool = %s;" % boolean(entity["allowed_in_peaceful"], name),
         "    const CAN_SPAWN_FAR_FROM_PLAYER: bool = %s;" % boolean(entity["can_spawn_far_from_player"], name),
         "    const CLIENT_TRACKING_RANGE: u8 = %d;" % entity["client_tracking_range"],
         "    const UPDATE_INTERVAL: Option<u8> = %s;" % interval,
+        "    const TRACK_DELTAS: bool = %s;" % boolean(entity["track_deltas"], name),
         "    const SPAWN_EGG: Option<u16> = %s;" % egg,
         "    const LIVING: bool = %s;" % boolean(entity["living"], name),
     ]
+    ancestors = ", ".join('"%s"' % ancestor for ancestor in entity["ancestors"])
+    single = "    const ANCESTORS: &'static [&'static str] = &[%s];" % ancestors
+    if len(single) <= WIDTH:
+        lines.append(single)
+    else:
+        lines.append("    const ANCESTORS: &'static [&'static str] = &[")
+        lines.extend('        "%s",' % ancestor for ancestor in entity["ancestors"])
+        lines.append("    ];")
     attributes = entity["default_attributes"]
     if attributes:
         lines.append("    const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[")

@@ -229,6 +229,7 @@ impl<L: ClientLink> Server<L> {
                 ClientEvent::EntityHeadRotation { entity, yaw },
             );
         }
+        self.update_player_view(id);
     }
 
     fn handle_chat(&mut self, id: PlayerId, message: &str) {

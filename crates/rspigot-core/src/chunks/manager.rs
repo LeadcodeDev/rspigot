@@ -5,6 +5,7 @@ use std::time::Duration;
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos};
+use rspigot_nbt::Compound;
 use rustc_hash::FxHashMap;
 
 use super::queue::Priority;
@@ -61,6 +62,14 @@ struct Pending {
     cancel: Arc<AtomicBool>,
 }
 
+#[derive(Debug, Default)]
+pub struct ChunkEvents {
+    pub entity_loads: Vec<(ChunkPos, Vec<Compound>)>,
+    pub entities_saved: Vec<(ChunkPos, u64)>,
+    pub unloaded: Vec<ChunkPos>,
+    pub autosaved: bool,
+}
+
 pub struct ChunkManager {
     dimension: Arc<Dimension>,
     config: ChunkManagerConfig,
@@ -68,6 +77,7 @@ pub struct ChunkManager {
     pending: FxHashMap<ChunkPos, Pending>,
     now: u64,
     stats: ChunkManagerStats,
+    events: ChunkEvents,
 }
 
 impl ChunkManager {
@@ -79,7 +89,12 @@ impl ChunkManager {
             pending: FxHashMap::default(),
             now: 0,
             stats: ChunkManagerStats::default(),
+            events: ChunkEvents::default(),
         }
+    }
+
+    pub fn take_events(&mut self) -> ChunkEvents {
+        std::mem::take(&mut self.events)
     }
 
     pub fn dimension(&self) -> &Arc<Dimension> {
@@ -156,9 +171,13 @@ impl ChunkManager {
                 chunk,
                 source,
                 elapsed,
+                entities,
                 ..
             } => {
                 let pending = self.pending.remove(&pos)?;
+                self.events
+                    .entity_loads
+                    .push((pos, entities.unwrap_or_default()));
                 match source {
                     ChunkSource::Disk => self.stats.loaded_from_disk += 1,
                     ChunkSource::Generated => self.stats.generated += 1,
@@ -177,6 +196,10 @@ impl ChunkManager {
             }
             ChunkResult::Saved { .. } => {
                 self.stats.saved += 1;
+                None
+            }
+            ChunkResult::EntitiesSaved { pos, generation } => {
+                self.events.entities_saved.push((pos, generation));
                 None
             }
             ChunkResult::Failed { pos, error } => {
@@ -201,6 +224,7 @@ impl ChunkManager {
                 if loaded.dirty {
                     self.submit_save(loaded.chunk, workers);
                 }
+                self.events.unloaded.push(pos);
                 self.stats.unloaded += 1;
             }
         }
@@ -208,6 +232,7 @@ impl ChunkManager {
             && now.is_multiple_of(self.config.autosave_interval_ticks)
         {
             self.save_dirty(workers);
+            self.events.autosaved = true;
         }
     }
 
@@ -287,6 +312,12 @@ impl ChunkManager {
     }
 }
 
+impl rspigot_domain::entity::BlockView for ChunkManager {
+    fn block(&self, pos: BlockPos) -> Option<BlockStateId> {
+        ChunkManager::block(self, pos)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -316,6 +347,25 @@ mod tests {
         }
 
         fn flush(&self) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl crate::ports::EntityStore for MemoryStore {
+        fn load_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+        ) -> Result<Option<Vec<Compound>>, StoreError> {
+            Ok(None)
+        }
+
+        fn save_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+            _: &[Compound],
+        ) -> Result<(), StoreError> {
             Ok(())
         }
     }

@@ -12,11 +12,15 @@ impl EntityType for EnderDragon {
     const EYE_HEIGHT: f32 = 6.8;
     const FIRE_IMMUNE: bool = true;
     const SUMMONABLE: bool = true;
+    const CAN_SERIALIZE: bool = true;
+    const ALLOWED_IN_PEACEFUL: bool = true;
     const CAN_SPAWN_FAR_FROM_PLAYER: bool = false;
     const CLIENT_TRACKING_RANGE: u8 = 10;
     const UPDATE_INTERVAL: Option<u8> = Some(3);
+    const TRACK_DELTAS: bool = true;
     const SPAWN_EGG: Option<u16> = Some(1364);
     const LIVING: bool = true;
+    const ANCESTORS: &'static [&'static str] = &["EnderDragon", "Mob", "LivingEntity", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[
         ("minecraft:air_drag_modifier", 1.0),
         ("minecraft:armor", 0.0),

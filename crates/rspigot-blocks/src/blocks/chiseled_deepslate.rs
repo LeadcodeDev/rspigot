@@ -19,6 +19,8 @@ impl Block for ChiseledDeepslate {
         friction: 0.6,
         speed_factor: 1.0,
         jump_factor: 1.0,
+        bounce_restitution: 0.0,
+        fall_distance_reduction: 0.0,
         requires_correct_tool: true,
         ignited_by_lava: false,
     };

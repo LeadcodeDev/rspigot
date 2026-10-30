@@ -116,6 +116,8 @@ public final class BlockDump {
             json.name("friction").value(Float.valueOf(block.getFriction()));
             json.name("speed_factor").value(Float.valueOf(block.getSpeedFactor()));
             json.name("jump_factor").value(Float.valueOf(block.getJumpFactor()));
+            json.name("bounce_restitution").value(Float.valueOf(block.getBounceRestitution()));
+            json.name("fall_distance_reduction").value(Float.valueOf(block.getFallDistanceReduction()));
             json.name("requires_correct_tool_for_drops").value(defaultState.requiresCorrectToolForDrops());
             json.name("ignited_by_lava").value(defaultState.ignitedByLava());
             json.name("default_state").value(Block.getId(defaultState));

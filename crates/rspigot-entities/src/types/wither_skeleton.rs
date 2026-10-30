@@ -12,11 +12,23 @@ impl EntityType for WitherSkeleton {
     const EYE_HEIGHT: f32 = 2.1;
     const FIRE_IMMUNE: bool = true;
     const SUMMONABLE: bool = true;
+    const CAN_SERIALIZE: bool = true;
+    const ALLOWED_IN_PEACEFUL: bool = false;
     const CAN_SPAWN_FAR_FROM_PLAYER: bool = false;
     const CLIENT_TRACKING_RANGE: u8 = 8;
     const UPDATE_INTERVAL: Option<u8> = Some(3);
+    const TRACK_DELTAS: bool = true;
     const SPAWN_EGG: Option<u16> = Some(1332);
     const LIVING: bool = true;
+    const ANCESTORS: &'static [&'static str] = &[
+        "WitherSkeleton",
+        "AbstractSkeleton",
+        "Monster",
+        "PathfinderMob",
+        "Mob",
+        "LivingEntity",
+        "Entity",
+    ];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[
         ("minecraft:air_drag_modifier", 1.0),
         ("minecraft:armor", 0.0),

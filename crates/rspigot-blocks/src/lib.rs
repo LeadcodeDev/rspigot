@@ -147,6 +147,8 @@ pub struct BlockSettings {
     pub friction: f32,
     pub speed_factor: f32,
     pub jump_factor: f32,
+    pub bounce_restitution: f32,
+    pub fall_distance_reduction: f32,
     pub requires_correct_tool: bool,
     pub ignited_by_lava: bool,
 }

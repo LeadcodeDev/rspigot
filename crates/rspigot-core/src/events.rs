@@ -237,17 +237,8 @@ pub enum Animation {
     MagicCriticalHit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pose {
-    Standing,
-    FallFlying,
-    Sleeping,
-    Swimming,
-    SpinAttack,
-    Crouching,
-    LongJumping,
-    Dying,
-}
+pub use rspigot_domain::entity::Pose;
+pub use rspigot_domain::entity::tracker::{DeltaStep, MoveDelta, Movement, PositionPath};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
@@ -258,6 +249,7 @@ pub enum MetadataValue {
     OptionalComponent(Option<Component>),
     Boolean(bool),
     Item(Slot),
+    BlockPos(BlockPos),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -382,6 +374,11 @@ pub enum ClientEvent {
         rotation: Option<Rotation>,
         on_ground: bool,
     },
+    EntityMove {
+        entity: EntityId,
+        movement: Movement,
+    },
+    BundleDelimiter,
     EntityHeadRotation {
         entity: EntityId,
         yaw: f32,
