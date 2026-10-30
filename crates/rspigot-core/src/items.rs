@@ -143,20 +143,13 @@ impl<L: ClientLink> Server<L> {
         if taken == 0 {
             return;
         }
-        for slot in outcome.changed {
-            let state_id = player.next_inventory_state();
-            player.link.send(ClientEvent::InventorySlot {
-                state_id,
-                slot: slot as i16,
-                stack: player.inventory.get(slot).cloned(),
-            });
-        }
         let pickup = ClientEvent::ItemPickup {
             collected: id,
             collector,
             amount: taken as i32,
         };
         player.link.send(pickup.clone());
+        self.sync_inventory(player_id);
         self.push(Audience::TrackersExcept(id, player_id), pickup);
         self.broadcast_held_item(player_id);
         match std::num::NonZeroU8::new(outcome.remaining as u8) {

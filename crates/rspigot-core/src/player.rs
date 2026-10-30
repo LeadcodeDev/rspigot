@@ -1,9 +1,11 @@
 use rspigot_domain::effect::ActiveEffects;
 use rspigot_domain::item::Inventory;
+use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
 use rspigot_domain::{EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
+use crate::drops::DropLimits;
 use crate::events::Abilities;
 use crate::health::Vitals;
 use crate::streaming::ChunkStreamer;
@@ -20,6 +22,8 @@ pub struct Player<L> {
     pub previous_game_mode: Option<GameMode>,
     pub inventory: Inventory,
     pub inventory_state: i32,
+    pub menu: InventoryMenu,
+    pub(crate) drops: DropLimits,
     pub settings: ClientSettings,
     pub streamer: ChunkStreamer,
     pub pending_teleport: Option<i32>,

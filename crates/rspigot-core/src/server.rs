@@ -359,6 +359,8 @@ impl<L: ClientLink> Server<L> {
             previous_game_mode: None,
             inventory: Default::default(),
             inventory_state: 0,
+            menu: Default::default(),
+            drops: Default::default(),
             streamer: ChunkStreamer::new(self.config.stream, position.chunk(), view_distance),
             settings,
             pending_teleport: None,
@@ -462,10 +464,11 @@ impl<L: ClientLink> Server<L> {
             }
         }
         link.send(ClientEvent::GameEvent(GameEvent::LevelChunksLoadStart));
+        let (slots, carried) = player.menu.sync_all(&player.inventory);
         link.send(ClientEvent::InventoryContent {
             state_id: 0,
-            slots: player.inventory.slots().to_vec(),
-            carried: None,
+            slots,
+            carried,
         });
         link.send(ClientEvent::Health {
             health: player.vitals.health,
@@ -546,6 +549,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_health();
         self.tick_entities();
         self.collect_items();
+        self.tick_inventories();
         self.tick_falling_blocks();
         self.update_tracking();
         self.sync_vitals();

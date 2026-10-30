@@ -16,6 +16,15 @@ pub const ITEM_GRAVITY: f64 = 0.04;
 pub const INFINITE_PICKUP_DELAY: i32 = 32767;
 pub const INFINITE_LIFETIME: i32 = -32768;
 pub const DEFAULT_HEALTH: i32 = 5;
+pub const THROWN_PICKUP_DELAY: i32 = 40;
+pub const THROWN_DROP_BELOW_EYES: f32 = 0.3;
+const DEGREES_TO_RADIANS: f32 = 0.017_453_292;
+const THROW_SPEED: f32 = 0.3;
+const THROW_LIFT: f32 = 0.1;
+const THROW_SPREAD: f32 = 0.02;
+const FULL_TURN: f32 = 6.283_185_5;
+const SIN_SCALE: f64 = 10_430.378_350_470_453;
+const SIN_QUARTER: f64 = 16_384.0;
 const AIR_DRAG: f32 = 0.98;
 const BOUNCE: f64 = -0.5;
 const SYNC_DELTA: f64 = 0.01;
@@ -43,6 +52,45 @@ impl ItemState {
             owner: None,
         }
     }
+}
+
+fn sin_table(index: i64) -> f32 {
+    let index = (index & 65_535) as f64;
+    (index * std::f64::consts::PI * 2.0 / 65_536.0).sin() as f32
+}
+
+pub fn mth_sin(value: f64) -> f32 {
+    sin_table((value * SIN_SCALE) as i64)
+}
+
+pub fn mth_cos(value: f64) -> f32 {
+    sin_table((value * SIN_SCALE + SIN_QUARTER) as i64)
+}
+
+pub fn wrap_degrees(value: f32) -> f32 {
+    let mut wrapped = value % 360.0;
+    if wrapped >= 180.0 {
+        wrapped -= 360.0;
+    }
+    if wrapped < -180.0 {
+        wrapped += 360.0;
+    }
+    wrapped
+}
+
+pub fn thrown_velocity(yaw: f32, pitch: f32, rolls: [f32; 4]) -> Vec3 {
+    let yaw = wrap_degrees(yaw);
+    let sin_pitch = mth_sin(f64::from(pitch * DEGREES_TO_RADIANS));
+    let cos_pitch = mth_cos(f64::from(pitch * DEGREES_TO_RADIANS));
+    let sin_yaw = mth_sin(f64::from(yaw * DEGREES_TO_RADIANS));
+    let cos_yaw = mth_cos(f64::from(yaw * DEGREES_TO_RADIANS));
+    let angle = f64::from(rolls[0] * FULL_TURN);
+    let spread = f64::from(THROW_SPREAD * rolls[1]);
+    Vec3::new(
+        f64::from(-sin_yaw * cos_pitch * THROW_SPEED) + angle.cos() * spread,
+        f64::from(-sin_pitch * THROW_SPEED + THROW_LIFT + (rolls[2] - rolls[3]) * THROW_LIFT),
+        f64::from(cos_yaw * cos_pitch * THROW_SPEED) + angle.sin() * spread,
+    )
 }
 
 pub fn stack(base: &EntityBase) -> Option<&ItemStack> {
@@ -162,4 +210,35 @@ pub fn tick_item<V: BlockView>(
         base.needs_sync = true;
     }
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sine_table_matches_vanilla_mth_for_both_signs() {
+        assert_eq!(mth_sin(0.0), 0.0);
+        assert_eq!(mth_sin(std::f64::consts::FRAC_PI_2), 1.0);
+        assert_eq!(mth_sin(-std::f64::consts::FRAC_PI_2), -1.0);
+        assert_eq!(mth_cos(0.0), 1.0);
+        assert_eq!(wrap_degrees(270.0), -90.0);
+        assert_eq!(wrap_degrees(-190.0), 170.0);
+    }
+
+    #[test]
+    fn thrown_velocity_follows_the_look_direction() {
+        let ahead = thrown_velocity(0.0, 0.0, [0.0, 0.0, 0.5, 0.5]);
+        assert_eq!(ahead, Vec3::new(0.0, f64::from(0.1f32), f64::from(0.3f32)));
+        let east = thrown_velocity(270.0, 0.0, [0.0, 0.0, 0.5, 0.5]);
+        assert!(
+            (east.x - 0.3).abs() < 1e-6 && east.z.abs() < 1e-6,
+            "{east:?}"
+        );
+        let up = thrown_velocity(0.0, -90.0, [0.0, 0.0, 1.0, 0.0]);
+        assert!((up.y - 0.5).abs() < 1e-6 && up.z.abs() < 1e-6, "{up:?}");
+        let spread = thrown_velocity(0.0, 0.0, [0.25, 1.0, 0.5, 0.5]);
+        assert!(spread.x.abs() < 1e-6, "{spread:?}");
+        assert!((spread.z - 0.32).abs() < 1e-6, "{spread:?}");
+    }
 }
