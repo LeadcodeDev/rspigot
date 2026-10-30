@@ -414,6 +414,7 @@ EXTRA_TABLES = [
     ("minecraft:charged_creeper/root", "minecraft:entity"),
     ("minecraft:gameplay/chicken_lay", "minecraft:gift"),
     ("minecraft:shearing/sheep", "minecraft:shearing"),
+    ("minecraft:till/rooted_dirt", "minecraft:block_interact"),
 ]
 
 REFERENCED_TABLE_TYPES = {"minecraft:block", "minecraft:entity", "minecraft:fishing", "minecraft:shearing"}
@@ -1682,6 +1683,7 @@ def emit_loot(tables, block_tables, entity_tables, predicates, smelting):
     return "\n".join(head) + "\n\n" + text
 
 
+TRANSFORMER_TOOLS = ["axe", "hoe", "shovel"]
 TRANSFORMER_GROUP_KEYS = [
     "block_state_provider",
     "item_damage_per_use",
@@ -1689,82 +1691,138 @@ TRANSFORMER_GROUP_KEYS = [
     "particle",
     "transform_type",
     "update_from_neighbors",
+    "disallowed_faces",
+    "drop_strategy",
+    "loot",
 ]
+TRANSFORMER_FACES = ["down", "up", "north", "south", "west", "east"]
 
 
-def build_axe_transformers(datapack):
-    path = os.path.join(datapack, "block_transformer", "axe.json")
-    groups = load_json(path)
-    assert isinstance(groups, list) and groups, path
-    out = []
-    for index, group in enumerate(groups):
-        where = "block_transformer/axe.json group %d" % index
-        expect_keys(group, TRANSFORMER_GROUP_KEYS, where)
-        provider = group["block_state_provider"]
-        expect_keys(provider, ["type", "rules"], where)
-        assert provider["type"] == "minecraft:rule_based", (where, provider["type"])
-        rules = []
-        for rule in provider["rules"]:
-            expect_keys(rule, ["if_true", "then"], where)
-            condition = rule["if_true"]
-            expect_keys(condition, ["type", "blocks"], where)
-            assert condition["type"] == "minecraft:matching_blocks", (where, condition)
-            assert isinstance(condition["blocks"], str) and not condition["blocks"].startswith("#"), (
-                where,
-                condition,
+def parse_condition(node, where):
+    expect_keys(node, ["type", "blocks", "tag", "offset", "predicates"], where)
+    kind = node.get("type")
+    if kind == "minecraft:matching_blocks":
+        expect_keys(node, ["type", "blocks"], where)
+        assert isinstance(node["blocks"], str) and not node["blocks"].startswith("#"), (where, node)
+        return ("block", node["blocks"])
+    if kind == "minecraft:matching_block_tag":
+        expect_keys(node, ["type", "tag", "offset"], where)
+        offset = node.get("offset", [0, 0, 0])
+        assert isinstance(offset, list) and len(offset) == 3, (where, node)
+        assert isinstance(node["tag"], str) and not node["tag"].startswith("#"), (where, node)
+        return ("tag", node["tag"], tuple(offset))
+    if kind == "minecraft:all_of":
+        expect_keys(node, ["type", "predicates"], where)
+        assert node["predicates"], (where, node)
+        return ("all", [parse_condition(item, where) for item in node["predicates"]])
+    fail("unsupported predicate %s in %s" % (kind, where))
+
+
+def parse_then(node, where):
+    if node.get("type") == "minecraft:copy_properties":
+        expect_keys(node, ["type", "source"], where)
+        source = node["source"]
+        expect_keys(source, ["id", "properties"], where)
+        return ("copy", source["id"], sorted((source.get("properties") or {}).items()))
+    expect_keys(node, ["id", "properties"], where)
+    return ("set", node["id"], sorted((node.get("properties") or {}).items()))
+
+
+def build_transformers(datapack):
+    tools = []
+    for tool in TRANSFORMER_TOOLS:
+        path = os.path.join(datapack, "block_transformer", tool + ".json")
+        groups = load_json(path)
+        assert isinstance(groups, list) and groups, path
+        out = []
+        for index, group in enumerate(groups):
+            where = "block_transformer/%s.json group %d" % (tool, index)
+            expect_keys(group, TRANSFORMER_GROUP_KEYS, where)
+            provider = group["block_state_provider"]
+            expect_keys(provider, ["type", "rules"], where)
+            assert provider["type"] == "minecraft:rule_based", (where, provider["type"])
+            rules = []
+            for rule in provider["rules"]:
+                expect_keys(rule, ["if_true", "then"], where)
+                rules.append((parse_condition(rule["if_true"], where), parse_then(rule["then"], where)))
+            assert rules, where
+            faces = group.get("disallowed_faces", [])
+            assert all(face in TRANSFORMER_FACES for face in faces), (where, faces)
+            out.append(
+                {
+                    "sound": group["sound"],
+                    "particle": group.get("particle"),
+                    "transform_type": group.get("transform_type"),
+                    "update_from_neighbors": group.get("update_from_neighbors", True),
+                    "damage": group["item_damage_per_use"],
+                    "disallowed_faces": faces,
+                    "drop_strategy": group.get("drop_strategy"),
+                    "loot": group.get("loot"),
+                    "rules": rules,
+                }
             )
-            then = rule["then"]
-            expect_keys(then, ["type", "source"], where)
-            assert then["type"] == "minecraft:copy_properties", (where, then)
-            source = then["source"]
-            expect_keys(source, ["id", "properties"], where)
-            defaults = sorted((source.get("properties") or {}).items())
-            rules.append((condition["blocks"], source["id"], defaults))
-        assert rules, where
-        out.append(
-            {
-                "sound": group["sound"],
-                "particle": group.get("particle"),
-                "transform_type": group.get("transform_type"),
-                "update_from_neighbors": group.get("update_from_neighbors", True),
-                "damage": group["item_damage_per_use"],
-                "rules": rules,
-            }
-        )
-    return out
+        tools.append((tool, out))
+    return tools
 
 
-def emit_transformers(axe):
-    def rule_node(rule):
-        source, target, defaults = rule
-        pairs = [rs_tuple([rs_str(key), rs_str(value)]) for key, value in defaults]
-        return rs_struct(
-            "Rule",
-            [("from", rs_str(source)), ("to", rs_str(target)), ("defaults", rs_slice(pairs))],
-        )
+def emit_transformers(tools):
+    def condition_node(condition):
+        if condition[0] == "block":
+            return rs_call("Condition::Block", [rs_str(condition[1])])
+        if condition[0] == "tag":
+            return rs_struct(
+                "Condition::Tag",
+                [
+                    ("tag", rs_str(condition[1])),
+                    ("offset", rs_tuple([rs_int(value) for value in condition[2]])),
+                ],
+            )
+        return rs_call("Condition::AllOf", [rs_slice([condition_node(item) for item in condition[1]])])
+
+    def then_node(then):
+        pairs = rs_slice([rs_tuple([rs_str(key), rs_str(value)]) for key, value in then[2]])
+        if then[0] == "copy":
+            return rs_struct("Then::Copy", [("to", rs_str(then[1])), ("defaults", pairs)])
+        return rs_struct("Then::Set", [("to", rs_str(then[1])), ("properties", pairs)])
+
+    def optional(value):
+        return rs_option(None if value is None else rs_str(value))
 
     def group_node(group):
         return rs_struct(
             "Group",
             [
                 ("sound", rs_str(group["sound"])),
-                ("particle", rs_option(None if group["particle"] is None else rs_str(group["particle"]))),
-                (
-                    "transform_type",
-                    rs_option(None if group["transform_type"] is None else rs_str(group["transform_type"])),
-                ),
+                ("particle", optional(group["particle"])),
+                ("transform_type", optional(group["transform_type"])),
                 ("update_from_neighbors", rs_bool(group["update_from_neighbors"])),
                 ("damage", rs_int(group["damage"])),
-                ("rules", rs_slice([rule_node(rule) for rule in group["rules"]])),
+                ("disallowed_faces", rs_slice([rs_str(face) for face in group["disallowed_faces"]])),
+                ("drop_strategy", optional(group["drop_strategy"])),
+                ("loot", optional(group["loot"])),
+                (
+                    "rules",
+                    rs_slice(
+                        [
+                            rs_struct(
+                                "Rule",
+                                [("when", condition_node(rule[0])), ("then", then_node(rule[1]))],
+                            )
+                            for rule in group["rules"]
+                        ]
+                    ),
+                ),
             ],
         )
 
-    body = ["pub(crate) static AXE: [Group; %d] = [" % len(axe)]
-    for group in axe:
-        body.extend(render(group_node(group), "    ", "", ","))
-    body.append("];")
-    return "use crate::transformers::{Group, Rule};\n\n" + "\n".join(body) + "\n"
-
+    body = []
+    for tool, groups in tools:
+        body.append("pub(crate) static %s: [Group; %d] = [" % (tool.upper(), len(groups)))
+        for group in groups:
+            body.extend(render(group_node(group), "    ", "", ","))
+        body.append("];")
+        body.append("")
+    return "use crate::transformers::{Condition, Group, Rule, Then};\n\n" + "\n".join(body)
 
 
 def emit_mod():
@@ -1822,7 +1880,7 @@ def main():
     mob_variants, sound_variants = build_variants(args.datapack, synced, tag_table)
     dye_mixes = build_dye_mixes(args.datapack)
     climate = build_climate(args.datapack, synced)
-    axe_transformers = build_axe_transformers(args.datapack)
+    transformers = build_transformers(args.datapack)
 
     files = {
         "mod.rs": emit_mod(),
@@ -1833,7 +1891,7 @@ def main():
         "spawns.rs": emit_spawns(biome_spawns, dimension_spawns),
         "variants.rs": emit_variants(mob_variants, sound_variants, dye_mixes),
         "climate.rs": emit_climate(climate),
-        "block_transformers.rs": emit_transformers(axe_transformers),
+        "block_transformers.rs": emit_transformers(transformers),
     }
     write_files(args.out, files)
 
