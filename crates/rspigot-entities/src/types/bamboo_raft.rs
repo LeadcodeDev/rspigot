@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
 
 pub struct BambooRaft;
 
@@ -22,5 +22,6 @@ impl EntityType for BambooRaft {
     const LIVING: bool = false;
     const ANCESTORS: &'static [&'static str] = &["Raft", "AbstractBoat", "VehicleEntity", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
     type Behavior = crate::family::Plain;
 }

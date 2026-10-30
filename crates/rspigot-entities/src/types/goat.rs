@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct Goat;
 
@@ -60,5 +63,15 @@ impl EntityType for Goat {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Fixed(Some("minecraft:entity.goat.hurt")),
+        death: CreatureSound::Fixed(Some("minecraft:entity.goat.death")),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
     type Behavior = crate::family::Plain;
 }

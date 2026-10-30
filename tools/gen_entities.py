@@ -258,13 +258,134 @@ def validate(dump, registries):
     return categories
 
 
-def entity_file(entity, categories, behavior):
+SOUND_SOURCES = {
+    "master": "Master",
+    "music": "Music",
+    "record": "Records",
+    "weather": "Weather",
+    "block": "Blocks",
+    "hostile": "Hostile",
+    "neutral": "Neutral",
+    "player": "Players",
+    "ambient": "Ambient",
+    "voice": "Voice",
+    "ui": "Ui",
+}
+
+VOICE_PITCHES = {
+    "standard": "Standard",
+    "fixed": "Fixed",
+    "bat": "Bat",
+    "zombie_villager": "ZombieVillager",
+    "parrot": "Parrot",
+}
+
+SOUND_KEYS = [
+    "%s_%s_%s" % (age, size, water)
+    for age in ("adult", "baby")
+    for size in ("large", "tiny")
+    for water in ("dry", "water", "submerged")
+]
+
+
+def sound_literal(value, sound_names, what):
+    if value is None:
+        return "None"
+    if value not in sound_names:
+        fail("%s references unknown sound %r" % (what, value))
+    return "Some(%s)" % rust_string(value)
+
+
+def creature_sound(table, sound_names, what):
+    if sorted(table) != sorted(SOUND_KEYS):
+        fail("%s has sound keys %r" % (what, sorted(table)))
+    values = [table[key] for key in SOUND_KEYS]
+    if len(set(values)) == 1:
+        return ["CreatureSound::Fixed(%s)," % sound_literal(values[0], sound_names, what)]
+    lines = ["CreatureSound::Varied(&["]
+    lines.extend("    %s," % sound_literal(value, sound_names, what) for value in values)
+    lines.append("]),")
+    return lines
+
+
+def sound_volume(volume, what):
+    if sorted(volume) != ["adult_1", "adult_2", "baby_1", "baby_2"]:
+        fail("%s has volume keys %r" % (what, sorted(volume)))
+    values = {key: f32(finite(value, what + " volume")) for key, value in volume.items()}
+    if len(set(values.values())) == 1:
+        return "SoundVolume::Fixed(%s)" % f32_literal(values["adult_1"], what)
+    per_size = values["adult_1"]
+    if all(values["%s_%d" % (age, size)] == f32(per_size * size) for age in ("adult", "baby") for size in (1, 2)):
+        return "SoundVolume::PerSize(%s)" % f32_literal(per_size, what)
+    if values["adult_1"] == values["adult_2"] and values["baby_1"] == values["baby_2"]:
+        return "SoundVolume::Baby { adult: %s, baby: %s }" % (
+            f32_literal(values["adult_1"], what),
+            f32_literal(values["baby_1"], what),
+        )
+    fail("%s has an unsupported volume rule %r" % (what, volume))
+
+
+def sounds_lines(entity, sound_names):
+    sounds = entity.get("sounds")
+    name = entity["name"]
+    if not entity["living"]:
+        if sounds is not None:
+            fail("%s is not living but has sounds" % name)
+        return ["    const SOUNDS: Option<CreatureSounds> = None;"]
+    if sounds is None:
+        fail("%s is living but has no sounds" % name)
+    source = SOUND_SOURCES.get(sounds["source"])
+    if source is None:
+        fail("%s has unknown sound source %r" % (name, sounds["source"]))
+    pitch = VOICE_PITCHES.get(sounds["pitch"])
+    if pitch is None:
+        fail("%s has unknown voice pitch %r" % (name, sounds["pitch"]))
+    lines = ["    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {"]
+    for field in ("hurt", "death"):
+        body = creature_sound(sounds[field], sound_names, name + " " + field)
+        lines.append("        %s: %s" % (field, body[0]))
+        lines.extend("        " + line for line in body[1:])
+    for field in ("small_fall", "big_fall"):
+        value = sounds[field]
+        if value not in sound_names:
+            fail("%s %s references unknown sound %r" % (name, field, value))
+        lines.append("        %s: %s," % (field, rust_string(value)))
+    lines.append("        volume: %s," % sound_volume(sounds["volume"], name))
+    lines.append("        pitch: VoicePitch::%s," % pitch)
+    lines.append("        source: SoundSource::%s," % source)
+    lines.append("        can_be_baby: %s," % boolean(sounds["can_be_baby"], name + " can_be_baby"))
+    lines.append("    });")
+    return lines
+
+
+def entity_file(entity, categories, behavior, sound_names):
     name = entity["name"]
     category = categories[entity["category"]]["variant"]
     interval = "Some(%d)" % entity["update_interval"] if entity["has_update_interval"] else "None"
     egg = "None" if entity["spawn_egg"] is None else "Some(%d)" % entity["spawn_egg"]
-    lines = [
-        "use crate::{EntityType, EntityTypeId, MobCategory};",
+    sound_block = sounds_lines(entity, sound_names)
+    imports = ["EntityType", "EntityTypeId", "MobCategory"]
+    if entity["living"]:
+        imports = ["CreatureSound", "CreatureSounds", "EntityType", "EntityTypeId", "MobCategory", "SoundSource", "SoundVolume", "VoicePitch"]
+        if not any("CreatureSound::" in line for line in sound_block):
+            imports.remove("CreatureSound")
+    else:
+        imports = ["CreatureSounds"] + imports
+    single = "use crate::{%s};" % ", ".join(imports)
+    if len(single) <= WIDTH:
+        head = [single]
+    else:
+        head = ["use crate::{"]
+        current = "   "
+        for item in imports:
+            piece = " " + item + ","
+            if len(current) + len(piece) > WIDTH:
+                head.append(current)
+                current = "   "
+            current += piece
+        head.append(current)
+        head.append("};")
+    lines = head + [
         "",
         "pub struct %s;" % entity["struct"],
         "",
@@ -306,6 +427,7 @@ def entity_file(entity, categories, behavior):
         lines.append("    ];")
     else:
         lines.append("    const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];")
+    lines.extend(sound_block)
     lines.append("    type Behavior = crate::family::%s;" % behavior)
     lines.append("}")
     for line in lines:
@@ -396,6 +518,7 @@ def main():
     categories = validate(dump, registries)
     entities = dump["entity_types"]
     by_class, by_entity = read_families(args.families, entities)
+    sound_names = set(registry_names(registries, "minecraft:sound_event"))
 
     types_dir = os.path.join(args.out, "types")
     if not args.check:
@@ -408,7 +531,7 @@ def main():
         families[behavior] = families.get(behavior, 0) + 1
         file_name = entity["path"] + ".rs"
         expected_files.add(file_name)
-        write(os.path.join(types_dir, file_name), entity_file(entity, categories, behavior), stats, args.check)
+        write(os.path.join(types_dir, file_name), entity_file(entity, categories, behavior, sound_names), stats, args.check)
     write(os.path.join(types_dir, "mod.rs"), mod_file(entities), stats, args.check)
     write(os.path.join(args.out, "kind.rs"), kind_file(entities), stats, args.check)
     write(os.path.join(args.out, "categories.rs"), categories_file(categories), stats, args.check)

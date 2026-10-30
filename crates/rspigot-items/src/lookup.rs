@@ -46,6 +46,12 @@ macro_rules! item_kinds {
                 }
             }
 
+            pub const fn weapon_damage(self) -> Option<u32> {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::WEAPON_DAMAGE,)*
+                }
+            }
+
             pub const fn rarity(self) -> $crate::Rarity {
                 match self {
                     $(Self::$kind => <$crate::items::$kind as $crate::Item>::RARITY,)*

@@ -405,23 +405,47 @@ COMPOSITE_ENTRIES = {
     "minecraft:group": "Group",
 }
 
+TABLE_TYPES = {
+    "blocks": "minecraft:block",
+    "entities": "minecraft:entity",
+}
+
+REFERENCED_TABLE_TYPES = {"minecraft:block", "minecraft:entity", "minecraft:fishing"}
+
+ENTITY_FLAGS = {
+    "is_on_fire": "on_fire",
+    "is_baby": "baby",
+}
+
+COMPONENT_PREDICATES = {
+    "minecraft:sheep/color": "dye",
+    "minecraft:frog/variant": "minecraft:frog_variant",
+}
+
 LOOT_TYPES = [
     "BlockPredicate",
     "BonusFormula",
     "Condition",
+    "DamageSourcePredicate",
     "EnchantmentPredicate",
     "Entry",
     "EntryKind",
+    "EntityFlags",
+    "EntityPredicate",
+    "EntitySubPredicate",
     "EntityTarget",
+    "FloatProvider",
     "Function",
     "FunctionKind",
     "IntProvider",
     "IntRange",
     "ItemPredicate",
+    "LevelBasedValue",
     "Leaf",
     "LootTable",
     "Output",
     "Pool",
+    "TagPredicate",
 ]
 
 
@@ -547,21 +571,24 @@ def expect_keys(value, allowed, where):
 
 
 class LootBuilder:
-    def __init__(self, block_ids, item_ids, enchantments, block_properties, tag_table, where):
-        self.block_ids = block_ids
-        self.item_ids = item_ids
-        self.enchantments = enchantments
+    def __init__(self, ids, synced_names, block_properties, tag_table, where):
+        self.ids = ids
+        self.block_ids = ids["minecraft:block"]
+        self.item_ids = ids["minecraft:item"]
+        self.synced_names = synced_names
+        self.enchantments = set(synced_names["minecraft:enchantment"])
         self.block_properties = block_properties
         self.tag_table = tag_table
         self.where = where
         self.references = set()
+        self.tables = set()
         self.ignored = {}
 
     def note_ignored(self, construct):
         self.ignored.setdefault(construct, set()).add(self.where)
 
     def holder_set(self, value, registry):
-        ids = self.block_ids if registry == "minecraft:block" else self.item_ids
+        ids = self.ids[registry]
         if isinstance(value, str) and value.startswith("#"):
             tag = normalize_id(value[1:])
             if tag not in self.tag_table[registry]:
@@ -628,11 +655,17 @@ class LootBuilder:
             names = []
             for entry in values:
                 if entry.startswith("#"):
-                    fail("enchantment tag in %s" % self.where)
-                name = normalize_id(entry)
-                if name not in self.enchantments:
-                    fail("unknown enchantment %s in %s" % (name, self.where))
-                names.append(rs_str(name))
+                    tag = normalize_id(entry[1:])
+                    members = self.tag_table["minecraft:enchantment"].get(tag)
+                    if members is None:
+                        fail("unknown enchantment tag %s in %s" % (tag, self.where))
+                    expanded = [self.synced_names["minecraft:enchantment"][i] for i in members]
+                else:
+                    expanded = [normalize_id(entry)]
+                for name in expanded:
+                    if name not in self.enchantments:
+                        fail("unknown enchantment %s in %s" % (name, self.where))
+                    names.append(rs_str(name))
         levels = None if "levels" not in predicate else self.int_range(predicate["levels"])
         return rs_struct(
             "EnchantmentPredicate",
@@ -655,6 +688,137 @@ class LootBuilder:
                 ("enchantments", rs_slice(enchantments)),
             ],
         )
+
+    def optional_bool(self, value):
+        return rs_option(None if value is None else rs_bool(value))
+
+    def entity_flags(self, value):
+        expect_keys(value, set(ENTITY_FLAGS), self.where)
+        return rs_struct(
+            "EntityFlags",
+            [(field, self.optional_bool(value.get(key))) for key, field in sorted(ENTITY_FLAGS.items())],
+        )
+
+    def component_value(self, component, value):
+        kind = COMPONENT_PREDICATES.get(component)
+        if kind is None:
+            fail("unsupported component predicate %s in %s" % (component, self.where))
+        if not isinstance(value, str):
+            fail("non exact component predicate %s in %s" % (component, self.where))
+        if kind == "dye":
+            if value not in self.ids["dye"]:
+                fail("unknown dye colour %s in %s" % (value, self.where))
+            return rs_str(value)
+        name = normalize_id(value)
+        if name not in self.synced_names[kind]:
+            fail("unknown %s entry %s in %s" % (kind, name, self.where))
+        return rs_str(name)
+
+    def entity_sub_predicate(self, key, value):
+        if key == "minecraft:type_specific/sheep":
+            expect_keys(value, {"sheared"}, self.where)
+            return rs_struct("EntitySubPredicate::Sheep", [("sheared", self.optional_bool(value.get("sheared")))])
+        if key == "minecraft:type_specific/cube_mob":
+            expect_keys(value, {"size"}, self.where)
+            return rs_struct("EntitySubPredicate::CubeMob", [("size", self.int_range(value.get("size", {})))])
+        if key == "minecraft:type_specific/raider":
+            expect_keys(value, {"has_raid", "is_captain"}, self.where)
+            return rs_struct(
+                "EntitySubPredicate::Raider",
+                [
+                    ("has_raid", self.optional_bool(value.get("has_raid"))),
+                    ("captain", self.optional_bool(value.get("is_captain"))),
+                ],
+            )
+        fail("unsupported entity sub predicate %s in %s" % (key, self.where))
+
+    def entity_predicate(self, value):
+        assert isinstance(value, dict), (self.where, value)
+        sub_keys = {"minecraft:type_specific/sheep", "minecraft:type_specific/cube_mob", "minecraft:type_specific/raider"}
+        expect_keys(
+            value,
+            {"minecraft:entity_type", "minecraft:flags", "minecraft:equipment", "minecraft:vehicle", "minecraft:components"}
+            | sub_keys,
+            self.where,
+        )
+        kind = value.get("minecraft:entity_type")
+        flags = self.entity_flags(value.get("minecraft:flags", {}))
+        equipment = value.get("minecraft:equipment", {})
+        expect_keys(equipment, {"mainhand"}, self.where)
+        mainhand = equipment.get("mainhand")
+        vehicle = value.get("minecraft:vehicle")
+        components = value.get("minecraft:components", {})
+        assert isinstance(components, dict), (self.where, components)
+        pairs = [
+            rs_tuple([rs_str(component), self.component_value(component, components[component])])
+            for component in sorted(components)
+        ]
+        subs = [self.entity_sub_predicate(key, value[key]) for key in sorted(sub_keys) if key in value]
+        return rs_struct(
+            "EntityPredicate",
+            [
+                ("kind", rs_option(None if kind is None else self.holder_set(kind, "minecraft:entity_type"))),
+                ("flags", flags),
+                ("mainhand", rs_option(None if mainhand is None else self.item_predicate(mainhand))),
+                ("vehicle", rs_option(None if vehicle is None else rs_ref(self.entity_predicate(vehicle)))),
+                ("components", rs_slice(pairs)),
+                ("sub", rs_slice(subs)),
+            ],
+        )
+
+    def damage_source_predicate(self, value):
+        expect_keys(value, {"tags", "source_entity", "direct_entity", "is_direct"}, self.where)
+        tags = []
+        for entry in value.get("tags", []):
+            expect_keys(entry, {"id", "expected"}, self.where)
+            tag = entry["id"]
+            if not tag.startswith("#"):
+                fail("damage type tag predicate without # in %s" % self.where)
+            tag = normalize_id(tag[1:])
+            if tag not in self.tag_table["minecraft:damage_type"]:
+                fail("unknown damage type tag %s in %s" % (tag, self.where))
+            tags.append(rs_struct("TagPredicate", [("tag", rs_str(tag)), ("expected", rs_bool(entry["expected"]))]))
+        source = value.get("source_entity")
+        direct = value.get("direct_entity")
+        return rs_struct(
+            "DamageSourcePredicate",
+            [
+                ("tags", rs_slice(tags)),
+                ("source_entity", rs_option(None if source is None else rs_ref(self.entity_predicate(source)))),
+                ("direct_entity", rs_option(None if direct is None else rs_ref(self.entity_predicate(direct)))),
+                ("is_direct", self.optional_bool(value.get("is_direct"))),
+            ],
+        )
+
+    def level_based_value(self, value):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return rs_call("LevelBasedValue::Constant", [rs_f32(value)])
+        kind = value.get("type") if isinstance(value, dict) else None
+        if kind == "minecraft:linear":
+            expect_keys(value, {"type", "base", "per_level_above_first"}, self.where)
+            return rs_struct(
+                "LevelBasedValue::Linear",
+                [
+                    ("base", rs_f32(value["base"])),
+                    ("per_level_above_first", rs_f32(value["per_level_above_first"])),
+                ],
+            )
+        fail("unsupported level based value %s in %s" % (json.dumps(value), self.where))
+
+    def float_provider(self, value):
+        if not isinstance(value, dict):
+            return rs_call("FloatProvider::Constant", [rs_f32(value)])
+        kind = value.get("type")
+        if kind == "minecraft:constant":
+            expect_keys(value, {"type", "value"}, self.where)
+            return rs_call("FloatProvider::Constant", [rs_f32(value["value"])])
+        if kind == "minecraft:uniform":
+            expect_keys(value, {"type", "min", "max"}, self.where)
+            return rs_struct(
+                "FloatProvider::Uniform",
+                [("min", self.float_constant(value["min"])), ("max", self.float_constant(value["max"]))],
+            )
+        fail("unsupported float provider %s in %s" % (json.dumps(value), self.where))
 
     def float_constant(self, value):
         if isinstance(value, dict):
@@ -724,13 +888,43 @@ class LootBuilder:
             )
         if kind == "minecraft:entity_properties":
             expect_keys(value, {"type", "entity", "predicate"}, self.where)
-            if value.get("predicate", {}) != {}:
-                fail("non empty entity predicate in %s" % self.where)
+            if value["entity"] not in ENTITY_TARGETS:
+                fail("unknown entity target %s in %s" % (value["entity"], self.where))
             target = ENTITY_TARGETS[value["entity"]]
-            return rs_call("Condition::EntityProperties", [Atom("EntityTarget::" + target)])
+            predicate = value.get("predicate")
+            return rs_struct(
+                "Condition::EntityProperties",
+                [
+                    ("target", Atom("EntityTarget::" + target)),
+                    (
+                        "predicate",
+                        rs_option(None if predicate is None else rs_ref(self.entity_predicate(predicate))),
+                    ),
+                ],
+            )
+        if kind == "minecraft:killed_by_player":
+            expect_keys(value, {"type"}, self.where)
+            return Atom("Condition::KilledByPlayer")
+        if kind == "minecraft:damage_source_properties":
+            expect_keys(value, {"type", "predicate"}, self.where)
+            predicate = self.damage_source_predicate(value.get("predicate", {}))
+            return rs_call("Condition::DamageSourceProperties", [rs_ref(predicate)])
         if kind == "minecraft:random_chance":
             expect_keys(value, {"type", "chance"}, self.where)
             return rs_call("Condition::RandomChance", [self.float_constant(value["chance"])])
+        if kind == "minecraft:random_chance_with_enchanted_bonus":
+            expect_keys(value, {"type", "enchantment", "unenchanted_chance", "enchanted_chance"}, self.where)
+            enchantment = normalize_id(value["enchantment"])
+            if enchantment not in self.enchantments:
+                fail("unknown enchantment %s in %s" % (enchantment, self.where))
+            return rs_struct(
+                "Condition::RandomChanceWithEnchantedBonus",
+                [
+                    ("enchantment", rs_str(enchantment)),
+                    ("unenchanted_chance", rs_f32(value["unenchanted_chance"])),
+                    ("enchanted_chance", self.level_based_value(value["enchanted_chance"])),
+                ],
+            )
         if kind == "minecraft:table_bonus":
             expect_keys(value, {"type", "enchantment", "chances"}, self.where)
             enchantment = normalize_id(value["enchantment"])
@@ -809,6 +1003,34 @@ class LootBuilder:
         elif kind == "minecraft:explosion_decay":
             expect_keys(value, {"type", "condition"}, self.where)
             body = Atom("FunctionKind::ExplosionDecay")
+        elif kind == "minecraft:enchanted_count_increase":
+            expect_keys(value, {"type", "condition", "enchantment", "count", "limit"}, self.where)
+            enchantment = normalize_id(value["enchantment"])
+            if enchantment not in self.enchantments:
+                fail("unknown enchantment %s in %s" % (enchantment, self.where))
+            body = rs_struct(
+                "FunctionKind::EnchantedCountIncrease",
+                [
+                    ("enchantment", rs_str(enchantment)),
+                    ("count", self.float_provider(value["count"])),
+                    ("limit", rs_int(value.get("limit", 0))),
+                ],
+            )
+        elif kind == "minecraft:furnace_smelt":
+            expect_keys(value, {"type", "condition", "use_input_count"}, self.where)
+            body = rs_struct(
+                "FunctionKind::FurnaceSmelt",
+                [("use_input_count", rs_bool(value.get("use_input_count", True)))],
+            )
+        elif kind == "minecraft:set_potion":
+            expect_keys(value, {"type", "condition", "id"}, self.where)
+            potion = normalize_id(value["id"])
+            if potion not in self.ids["minecraft:potion"]:
+                fail("unknown potion %s in %s" % (potion, self.where))
+            body = rs_call("FunctionKind::SetPotion", [rs_str(potion)])
+        elif kind == "minecraft:set_ominous_bottle_amplifier":
+            expect_keys(value, {"type", "condition", "amplifier"}, self.where)
+            body = rs_call("FunctionKind::SetOminousBottleAmplifier", [self.int_provider(value["amplifier"])])
         elif kind in COMPONENT_FUNCTIONS:
             self.note_ignored(kind)
             body = rs_call("FunctionKind::Components", [rs_str(kind)])
@@ -866,6 +1088,13 @@ class LootBuilder:
             expect_keys(value, leaf_keys | {"name"}, self.where)
             self.note_ignored("dynamic")
             body = self.leaf(value, rs_call("Output::Dynamic", [rs_str(normalize_id(value["name"]))]))
+        elif kind == "minecraft:loot_table":
+            expect_keys(value, leaf_keys | {"value"}, self.where)
+            if not isinstance(value["value"], str):
+                fail("inline nested loot table in %s" % self.where)
+            name = normalize_id(value["value"])
+            self.tables.add(name)
+            body = self.leaf(value, rs_call("Output::Table", [rs_str(name)]))
         elif kind in COMPOSITE_ENTRIES:
             expect_keys(value, {"type", "condition", "modifier", "children"}, self.where)
             children = rs_slice([self.entry(child) for child in value["children"]])
@@ -894,9 +1123,9 @@ class LootBuilder:
             ],
         )
 
-    def table(self, value):
+    def table(self, value, allowed):
         expect_keys(value, {"type", "pools", "modifier", "random_sequence"}, self.where)
-        if value["type"] != "minecraft:block":
+        if value["type"] not in allowed:
             fail("unexpected loot table type %s in %s" % (value["type"], self.where))
         return rs_struct(
             "LootTable",
@@ -920,27 +1149,50 @@ def build_loot(datapack, block_reports, static_registries, synced, tag_table):
     }
     block_ids = static_ids["minecraft:block"]
     item_ids = static_ids["minecraft:item"]
-    enchantments = set(dict((rid, e) for _, rid, e in synced)["minecraft:enchantment"])
+    synced_names = {rid: entries for _, rid, entries in synced}
     assert [block["name"] for block in block_reports] == sorted(block_ids, key=block_ids.get)
     block_properties = {
         block["name"]: {p["name"]: p["values"] for p in block["properties"]} for block in block_reports
     }
+    dyes = {name[len("minecraft:") : -len("_dye")] for name in item_ids if name.endswith("_dye")}
+    assert len(dyes) == 16, sorted(dyes)
+    ids = dict(static_ids)
+    ids["dye"] = dyes
     references = set()
     ignored = {}
 
     def builder(where):
-        return LootBuilder(block_ids, item_ids, enchantments, block_properties, tag_table, where)
+        return LootBuilder(ids, synced_names, block_properties, tag_table, where)
 
     tables = []
-    for path in json_names(os.path.join(datapack, "loot_table", "blocks")):
-        assert NAME_RE.match(path), path
-        name = "minecraft:blocks/" + path
+    pending = set()
+
+    def add_table(name, path, allowed):
         current = builder(name)
-        node = current.table(load_json(os.path.join(datapack, "loot_table", "blocks", path + ".json")))
+        node = current.table(load_json(path), allowed)
+        nonlocal references
         references |= current.references
+        pending.update(current.tables)
         for construct, owners in current.ignored.items():
             ignored.setdefault(construct, set()).update(owners)
         tables.append((name, node))
+
+    for directory in sorted(TABLE_TYPES):
+        for path in json_names(os.path.join(datapack, "loot_table", directory)):
+            assert NAME_RE.match(path), path
+            name = "minecraft:%s/%s" % (directory, path)
+            add_table(name, os.path.join(datapack, "loot_table", directory, path + ".json"), {TABLE_TYPES[directory]})
+    while True:
+        emitted = {name for name, _ in tables}
+        missing_tables = sorted(pending - emitted)
+        if not missing_tables:
+            break
+        for name in missing_tables:
+            path = os.path.join(datapack, "loot_table", name.split(":", 1)[1] + ".json")
+            if not os.path.exists(path):
+                fail("unresolved loot table reference " + name)
+            add_table(name, path, REFERENCED_TABLE_TYPES)
+    tables.sort(key=lambda pair: pair[0])
 
     predicates = []
     for path in json_names(os.path.join(datapack, "predicate")):
@@ -983,14 +1235,64 @@ def build_loot(datapack, block_reports, static_registries, synced, tag_table):
                 own = table_index["minecraft:blocks/" + floors[0]["name"].split(":", 1)[1]]
                 wall_mapped.append(block["name"])
         block_tables.append(65535 if own is None else own)
-    return tables, block_tables, predicates, wall_mapped, ignored
+    entity_names = sorted(static_ids["minecraft:entity_type"], key=static_ids["minecraft:entity_type"].get)
+    entity_tables = [
+        table_index.get("minecraft:entities/" + name.split(":", 1)[1], 65535) for name in entity_names
+    ]
+    return tables, block_tables, entity_tables, predicates, wall_mapped, ignored
+
+
+def ingredient_items(value, item_ids, tag_table, where):
+    if isinstance(value, list):
+        result = set()
+        for entry in value:
+            result |= ingredient_items(entry, item_ids, tag_table, where)
+        return result
+    if not isinstance(value, str):
+        fail("unsupported ingredient %s in %s" % (json.dumps(value), where))
+    if value.startswith("#"):
+        tag = normalize_id(value[1:])
+        if tag not in tag_table["minecraft:item"]:
+            fail("unknown item tag %s in %s" % (tag, where))
+        return set(tag_table["minecraft:item"][tag])
+    name = normalize_id(value)
+    if name not in item_ids:
+        fail("unknown item %s in %s" % (name, where))
+    return {item_ids[name]}
+
+
+def build_smelting(datapack, static_registries, tag_table):
+    item_ids = {
+        name: i for registry_id, by_id, _ in static_registries if registry_id == "minecraft:item" for i, name in enumerate(by_id)
+    }
+    root = os.path.join(datapack, "recipe")
+    results = {}
+    for path in json_names(root):
+        recipe = load_json(os.path.join(root, path + ".json"))
+        if recipe.get("type") != "minecraft:smelting":
+            continue
+        where = "recipe " + path
+        expect_keys(recipe, {"type", "category", "group", "cookingtime", "experience", "ingredient", "result"}, where)
+        result = recipe["result"]
+        expect_keys(result, {"id", "count"}, where)
+        if result.get("count", 1) != 1:
+            fail("smelting result count %r in %s" % (result["count"], where))
+        output = normalize_id(result["id"])
+        if output not in item_ids:
+            fail("unknown item %s in %s" % (output, where))
+        for item in ingredient_items(recipe["ingredient"], item_ids, tag_table, where):
+            previous = results.get(item)
+            if previous is not None and previous != item_ids[output]:
+                fail("item %d smelts into two results in %s" % (item, where))
+            results[item] = item_ids[output]
+    return sorted(results.items())
 
 
 def used_imports(text, names):
     return [name for name in names if re.search(r"\b" + name + r"\b", text)]
 
 
-def emit_loot(tables, block_tables, predicates):
+def emit_loot(tables, block_tables, entity_tables, predicates, smelting):
     body = ["pub(crate) static TABLES: [(&str, LootTable); %d] = [" % len(tables)]
     for name, node in tables:
         body.extend(render(rs_tuple([rs_str(name), node]), "    ", "", ","))
@@ -998,6 +1300,14 @@ def emit_loot(tables, block_tables, predicates):
     body.append("")
     body.append("pub(crate) static BLOCK_TABLES: [u16; %d] = [" % len(block_tables))
     body.extend(wrapped([str(index) for index in block_tables], "    "))
+    body.append("];")
+    body.append("")
+    body.append("pub(crate) static ENTITY_TABLES: [u16; %d] = [" % len(entity_tables))
+    body.extend(wrapped([str(index) for index in entity_tables], "    "))
+    body.append("];")
+    body.append("")
+    body.append("pub(crate) static SMELTING: [(u16, u16); %d] = [" % len(smelting))
+    body.extend(wrapped(["(%d, %d)" % pair for pair in smelting], "    "))
     body.append("];")
     body.append("")
     body.append("pub(crate) static PREDICATES: [(&str, Condition); %d] = [" % len(predicates))
@@ -1051,16 +1361,17 @@ def main():
     synced, missing = build_synced(args.datapack)
     tag_table, skipped = build_tags(args.datapack, static_registries, synced)
     block_reports = load_block_properties(args.reports)
-    tables, block_tables, predicates, wall_mapped, ignored = build_loot(
+    tables, block_tables, entity_tables, predicates, wall_mapped, ignored = build_loot(
         args.datapack, block_reports, static_registries, synced, tag_table
     )
+    smelting = build_smelting(args.datapack, static_registries, tag_table)
 
     files = {
         "mod.rs": emit_mod(),
         "static_registries.rs": emit_static_registries(static_registries),
         "synced.rs": emit_synced(synced),
         "tags.rs": emit_tags(tag_table),
-        "loot.rs": emit_loot(tables, block_tables, predicates),
+        "loot.rs": emit_loot(tables, block_tables, entity_tables, predicates, smelting),
     }
     write_files(args.out, files)
 
@@ -1081,6 +1392,8 @@ def main():
     print("tag registries skipped: %s" % (", ".join(skipped) if skipped else "none"))
     print("loot tables %d" % len(tables))
     print("blocks with loot table %d" % sum(1 for index in block_tables if index != 65535))
+    print("entity types with loot table %d" % sum(1 for index in entity_tables if index != 65535))
+    print("smelting inputs %d" % len(smelting))
     print("wall variants using floor table %d" % len(wall_mapped))
     print("named predicates %d" % len(predicates))
     for construct in sorted(ignored):

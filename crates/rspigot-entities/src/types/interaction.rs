@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
 
 pub struct Interaction;
 
@@ -22,5 +22,6 @@ impl EntityType for Interaction {
     const LIVING: bool = false;
     const ANCESTORS: &'static [&'static str] = &["Interaction", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
     type Behavior = crate::family::Plain;
 }

@@ -6,12 +6,14 @@ use rspigot_domain::attribute::{
 use rspigot_domain::combat::{CombatEntry, CombatTracker};
 use rspigot_domain::damage::{self, DamageTag, DamageType, java_clamp};
 use rspigot_domain::effect::EffectId;
+use rspigot_domain::experience::PlayerExperience;
 use rspigot_domain::food::{FoodData, FoodEffect};
 use rspigot_domain::item::{HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
+use rspigot_entities::EntityKind as Kind;
 use rspigot_items::EquipmentSlot as ItemSlot;
 
 use crate::events::{ClientEvent, EntityStatus, GameEvent, MetadataEntry, MetadataValue};
@@ -47,6 +49,8 @@ const ABSORPTION_PER_LEVEL: f32 = 4.0;
 pub struct SourceEntity {
     pub entity: EntityId,
     pub player: Option<PlayerId>,
+    pub kind: Kind,
+    pub creative: bool,
     pub name: Component,
     pub position: Vec3,
 }
@@ -82,7 +86,21 @@ impl DamageSource {
         self.causing.as_ref().and_then(|c| c.player)
     }
 
-    fn source_position(&self) -> Option<Vec3> {
+    pub fn living_cause(&self) -> bool {
+        self.causing.as_ref().is_some_and(|c| c.kind.living())
+    }
+
+    pub fn scales_with_difficulty(&self) -> bool {
+        self.causing
+            .as_ref()
+            .is_some_and(|c| c.kind.living() && c.kind != Kind::Player)
+    }
+
+    pub fn creative_attacker(&self) -> bool {
+        self.causing.as_ref().is_some_and(|c| c.creative)
+    }
+
+    pub(crate) fn source_position(&self) -> Option<Vec3> {
         self.position
             .or_else(|| self.direct.as_ref().map(|d| d.position))
     }
@@ -127,6 +145,8 @@ pub struct Vitals {
     pub death_location: Option<BlockPos>,
     pub hurt_dir: f32,
     pub equipment: Vec<(ItemSlot, ItemId)>,
+    pub experience: PlayerExperience,
+    pub last_hurt_mob: Option<EntityId>,
     sent: Option<SentVitals>,
 }
 
@@ -155,6 +175,8 @@ impl Default for Vitals {
             death_location: None,
             hurt_dir: 0.0,
             equipment: Vec::new(),
+            experience: PlayerExperience::default(),
+            last_hurt_mob: None,
             sent: None,
         }
     }
@@ -171,6 +193,7 @@ impl Vitals {
 
     pub(crate) fn mark_sent(&mut self) {
         self.sent = Some(self.snapshot());
+        self.experience.last_sent = self.experience.total;
     }
 
     fn snapshot(&self) -> SentVitals {
@@ -238,7 +261,7 @@ fn actually_hurt<L>(
     if !kind.is(DamageTag::BypassesArmor) {
         amount = damage::after_armor(
             amount,
-            attributes.get(ARMOR) as f32,
+            attributes.get(ARMOR).floor() as f32,
             attributes.get(ARMOR_TOUGHNESS) as f32,
         );
     }
@@ -273,7 +296,7 @@ fn actually_hurt<L>(
             kind,
             causing: source.causing.as_ref().map(|c| c.name.clone()),
             direct: source.direct.as_ref().map(|d| d.name.clone()),
-            living_cause: source.attacker().is_some(),
+            living_cause: source.living_cause(),
             damage: amount,
             fall_distance: vitals.fall_distance as f32,
             location: None,
@@ -293,6 +316,8 @@ impl<L: ClientLink> Server<L> {
         self.players.get(&id).map(|p| SourceEntity {
             entity: p.entity_id,
             player: Some(id),
+            kind: Kind::Player,
+            creative: p.game_mode == GameMode::Creative,
             name: Component::text(p.name()),
             position: p.position,
         })
@@ -301,6 +326,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn hurt(&mut self, id: PlayerId, source: &DamageSource, amount: f32) -> bool {
         let pvp = self.config.pvp;
         let fall_damage = self.config.rules.fall_damage;
+        let difficulty = self.world.difficulty;
         let now = self.current_tick();
         let kind = source.kind;
         let Some(player) = self.players.get_mut(&id) else {
@@ -316,6 +342,14 @@ impl<L: ClientLink> Server<L> {
             return false;
         }
         if player.vitals.is_dead() {
+            return false;
+        }
+        let amount = if source.scales_with_difficulty() {
+            damage::scaled_for_difficulty(amount, difficulty)
+        } else {
+            amount
+        };
+        if amount == 0.0 {
             return false;
         }
         if kind.is(DamageTag::IsFire) && player.effects.has("minecraft:fire_resistance") {
@@ -355,6 +389,20 @@ impl<L: ClientLink> Server<L> {
                 memory: KILL_CREDIT_TICKS,
             });
         }
+        if let Some(cause) = &source.causing
+            && cause.player.is_none()
+            && cause.kind.living()
+        {
+            player.vitals.last_hurt_mob = Some(cause.entity);
+        }
+        if let Some(attacker) = source.attacker()
+            && let Some(other) = self.players.get_mut(&attacker)
+        {
+            other.vitals.attack_ticker = 0;
+        }
+        let Some(player) = self.players.get(&id) else {
+            return false;
+        };
         let entity = player.entity_id;
         let position = player.position;
         let dead = player.vitals.health <= 0.0;
@@ -377,9 +425,30 @@ impl<L: ClientLink> Server<L> {
             }
         }
         if dead {
+            if full {
+                self.play_player_sound(id, Kind::Player.sounds().map(|s| s.death));
+            }
             self.die(id);
+        } else if full {
+            self.play_player_sound(id, Kind::Player.sounds().map(|s| s.hurt));
         }
         true
+    }
+
+    fn play_player_sound(&mut self, id: PlayerId, sound: Option<rspigot_entities::CreatureSound>) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        let Some(sound) = sound.and_then(|s| s.get(rspigot_entities::SoundState::default())) else {
+            return;
+        };
+        let position = player.position;
+        let Some(sounds) = Kind::Player.sounds() else {
+            return;
+        };
+        let pitch = self.voice_pitch(sounds.pitch, false);
+        let volume = sounds.volume.get(false, 1);
+        self.play_sound(Some(id), position, sound, sounds.source, volume, pitch);
     }
 
     pub(crate) fn heal_player(&mut self, id: PlayerId, amount: f32) {
@@ -429,7 +498,14 @@ impl<L: ClientLink> Server<L> {
             player.position.y + player.eye_height() - DROP_EYE_OFFSET,
             player.position.z,
         );
-        let drops: Vec<ItemStack> = if keep || player.game_mode == GameMode::Spectator {
+        let spectator = player.game_mode == GameMode::Spectator;
+        let experience = if keep || spectator {
+            0
+        } else {
+            player.vitals.experience.death_reward()
+        };
+        let feet = player.position;
+        let drops: Vec<ItemStack> = if keep || spectator {
             Vec::new()
         } else {
             (0..PLAYER_INVENTORY_SIZE)
@@ -458,6 +534,7 @@ impl<L: ClientLink> Server<L> {
             self.send_inventory(id);
             self.broadcast_held_item(id);
         }
+        self.award_experience(feet, experience);
         let status = ClientEvent::EntityStatus {
             entity,
             status: EntityStatus::Death,
@@ -479,6 +556,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn respawn(&mut self, id: PlayerId) {
         let hardcore = self.config.hardcore;
+        let keep_experience = self.config.rules.keep_inventory;
         let spawn = self.world.spawn;
         let angle = self.world.level.spawn_angle;
         let dimension = self.world.dimension.key.clone();
@@ -489,8 +567,17 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let death_location = player.vitals.death_location;
+        let mut experience = PlayerExperience::default();
+        if keep_experience {
+            let kept = player.vitals.experience;
+            experience.level = kept.level;
+            experience.progress = kept.progress;
+            experience.total = kept.total;
+        }
+        experience.last_sent = -1;
         player.vitals = Vitals {
             death_location,
+            experience,
             ..Vitals::default()
         };
         let _ = player.effects.clear();
@@ -533,10 +620,11 @@ impl<L: ClientLink> Server<L> {
             difficulty,
             locked: false,
         });
+        let experience = player.vitals.experience;
         link.send(ClientEvent::Experience {
-            progress: 0.0,
-            level: 0,
-            total: 0,
+            progress: experience.progress,
+            level: experience.level,
+            total: experience.total,
         });
         link.send(ClientEvent::OperatorLevel {
             entity,
@@ -766,6 +854,16 @@ impl<L: ClientLink> Server<L> {
                 let event = ClientEvent::EntityMetadata { entity, entries };
                 updates.push((Audience::One(player.id), event.clone()));
                 updates.push((Audience::Trackers(entity), event));
+            }
+            if let Some((progress, level, total)) = player.vitals.experience.take_unsent() {
+                updates.push((
+                    Audience::One(player.id),
+                    ClientEvent::Experience {
+                        progress,
+                        level,
+                        total,
+                    },
+                ));
             }
             if player.vitals.sync_velocity {
                 let event = ClientEvent::EntityVelocity {

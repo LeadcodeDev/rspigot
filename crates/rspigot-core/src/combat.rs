@@ -3,19 +3,24 @@ use rspigot_domain::attribute::{
     ATTACK_DAMAGE, ATTACK_KNOCKBACK, ATTACK_SPEED, KNOCKBACK_RESISTANCE,
 };
 use rspigot_domain::damage::DamageType;
+use rspigot_domain::entity::physics::has_tag;
+use rspigot_domain::entity::reward::{damage_value, max_damage, set_damage_value};
+use rspigot_domain::entity::{Aabb, EntityState};
+use rspigot_domain::mth;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{EntityId, Vec3};
+use rspigot_entities::SoundSource;
 
-use crate::events::{Animation, ClientEvent};
+use crate::commands::Target;
+use crate::events::{Animation, ClientEvent, EntityStatus, EquipmentSlot};
 use crate::health::{DamageSource, attributes};
+use crate::mobs::{MIN_KNOCKBACK_DIRECTION, knockback_velocity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
-pub const DEFAULT_KNOCKBACK: f64 = 0.4;
+pub const DEFAULT_KNOCKBACK: f64 = crate::mobs::DEFAULT_KNOCKBACK;
 const SPRINT_KNOCKBACK: f32 = 0.5;
-const KNOCKBACK_VERTICAL_CAP: f64 = 0.4;
-const MIN_KNOCKBACK_DIRECTION: f64 = 1.0e-5;
 const RANDOM_DIRECTION_SCALE: f64 = 0.01;
 const ATTACK_PARTIAL_TICK: f32 = 0.5;
 const FULL_STRENGTH: f32 = 0.9;
@@ -24,9 +29,24 @@ const ATTACK_EXHAUSTION: f32 = 0.1;
 const ATTACK_RANGE_BUFFER: f64 = 3.0;
 const SURVIVAL_REACH: f64 = 3.0;
 const CREATIVE_REACH: f64 = 5.0;
-const PLAYER_HALF_WIDTH: f64 = 0.3;
-const RADIANS_PER_DEGREE: f32 = 0.017_453_292;
+const PLAYER_WIDTH: f32 = 0.6;
 const DEGREES_PER_RADIAN: f64 = 57.295_776_367_187_5;
+const ATTACKER_SLOWDOWN: f64 = 0.6;
+const PUSH_LIFT: f64 = 0.1;
+const SWEEP_SPEED_FACTOR: f64 = 2.5;
+const SWEEP_INFLATE_XZ: f64 = 1.0;
+const SWEEP_INFLATE_Y: f64 = 0.25;
+const SWEEP_RANGE_SQR: f64 = 9.0;
+const SWEEP_KNOCKBACK: f64 = 0.400_000_005_960_464_5;
+const MOVEMENT_SPEED: &str = "minecraft:movement_speed";
+const SWEEPING_DAMAGE_RATIO: &str = "minecraft:sweeping_damage_ratio";
+const SWORDS: &str = "minecraft:swords";
+const SOUND_KNOCKBACK: &str = "minecraft:entity.player.attack.knockback";
+const SOUND_CRIT: &str = "minecraft:entity.player.attack.crit";
+const SOUND_STRONG: &str = "minecraft:entity.player.attack.strong";
+const SOUND_WEAK: &str = "minecraft:entity.player.attack.weak";
+const SOUND_SWEEP: &str = "minecraft:entity.player.attack.sweep";
+const SOUND_NO_DAMAGE: &str = "minecraft:entity.player.attack.nodamage";
 
 pub fn attack_strength_delay(attack_speed: f64) -> f32 {
     (1.0 / attack_speed * 20.0) as f32
@@ -65,30 +85,33 @@ pub fn strike(base: f32, scale: f32, sprinting: bool, can_critical: bool) -> Opt
     })
 }
 
-pub fn knockback_velocity(current: Vec3, strength: f64, dx: f64, dz: f64, on_ground: bool) -> Vec3 {
-    let length = (dx * dx + dz * dz).sqrt();
-    let (nx, nz) = if length < MIN_KNOCKBACK_DIRECTION {
-        (0.0, 0.0)
-    } else {
-        (dx / length * strength, dz / length * strength)
-    };
-    Vec3::new(
-        current.x / 2.0 - nx,
-        if on_ground {
-            (current.y / 2.0 + strength).min(KNOCKBACK_VERTICAL_CAP)
-        } else {
-            current.y
-        },
-        current.z / 2.0 - nz,
-    )
+fn distance_to_box_squared(point: Vec3, bounds: &Aabb) -> f64 {
+    let axis = |value: f64, min: f64, max: f64| (min - value).max(0.0).max(value - max);
+    let dx = axis(point.x, bounds.min_x, bounds.max_x);
+    let dy = axis(point.y, bounds.min_y, bounds.max_y);
+    let dz = axis(point.z, bounds.min_z, bounds.max_z);
+    dx * dx + dy * dy + dz * dz
 }
 
-fn distance_to_box_squared(point: Vec3, center: Vec3, half_width: f64, height: f64) -> f64 {
-    let axis = |value: f64, min: f64, max: f64| (min - value).max(0.0).max(value - max);
-    let dx = axis(point.x, center.x - half_width, center.x + half_width);
-    let dy = axis(point.y, center.y, center.y + height);
-    let dz = axis(point.z, center.z - half_width, center.z + half_width);
-    dx * dx + dy * dy + dz * dz
+fn is_sword(item: rspigot_domain::ItemId) -> bool {
+    rspigot_data::tags::tag("minecraft:item", SWORDS)
+        .is_some_and(|ids| ids.binary_search(&u32::from(item.0)).is_ok())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Sweep {
+    damage: f32,
+    direction: (f64, f64),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Victim {
+    target: Target,
+    entity: EntityId,
+    bounds: Aabb,
+    living: bool,
+    attackable: bool,
+    velocity: Vec3,
 }
 
 impl<L: ClientLink> Server<L> {
@@ -97,9 +120,6 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let strength = strength * (1.0 - attributes(player).get(KNOCKBACK_RESISTANCE));
-        if strength <= 0.0 {
-            return;
-        }
         let (mut dx, mut dz) = (dx, dz);
         while dx * dx + dz * dz < MIN_KNOCKBACK_DIRECTION {
             dx = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
@@ -139,25 +159,66 @@ impl<L: ClientLink> Server<L> {
             .is_some_and(|p| self.in_water(p.position))
     }
 
+    fn victim(&self, target: EntityId) -> Option<Victim> {
+        if let Some(player) = self
+            .players
+            .values()
+            .find(|p| p.entity_id == target && !p.vitals.removed)
+        {
+            return Some(Victim {
+                target: Target::Player(player.id),
+                entity: target,
+                bounds: Aabb::of_size(player.position, PLAYER_WIDTH, player.height() as f32),
+                living: true,
+                attackable: true,
+                velocity: player.vitals.velocity,
+            });
+        }
+        let entity = self.entities.store.get(target)?;
+        Some(Victim {
+            target: Target::Entity(target),
+            entity: target,
+            bounds: entity.base.bounding_box(),
+            living: entity.living().is_some(),
+            attackable: !matches!(
+                entity.state,
+                EntityState::Item(_) | EntityState::Falling(_) | EntityState::Orb(_)
+            ),
+            velocity: entity.base.velocity,
+        })
+    }
+
     pub(crate) fn handle_attack(&mut self, id: PlayerId, target: EntityId) {
         let Some(attacker) = self.players.get(&id) else {
             return;
         };
-        if !attacker.vitals.client_loaded()
+        if attacker.vitals.is_dead()
+            || !attacker.vitals.client_loaded()
             || attacker.game_mode == GameMode::Spectator
-            || attacker.vitals.is_dead()
         {
             return;
         }
-        if target == attacker.entity_id
+        let Some(victim) = self.victim(target) else {
+            return;
+        };
+        let reach = if attacker.game_mode == GameMode::Creative {
+            CREATIVE_REACH
+        } else {
+            SURVIVAL_REACH
+        };
+        let distance = distance_to_box_squared(attacker.eye_position(), &victim.bounds).sqrt();
+        if distance < -ATTACK_RANGE_BUFFER || distance > reach + ATTACK_RANGE_BUFFER {
+            return;
+        }
+        let invalid = target == attacker.entity_id
             || self.entities.store.get(target).is_some_and(|e| {
                 matches!(
-                    e.state,
-                    rspigot_domain::entity::EntityState::Item(_)
-                        | rspigot_domain::entity::EntityState::Falling(_)
+                    e.base.kind,
+                    rspigot_entities::EntityKind::Item
+                        | rspigot_entities::EntityKind::ExperienceOrb
                 )
-            })
-        {
+            });
+        if invalid {
             tracing::warn!(
                 "Player {} tried to attack an invalid entity",
                 attacker.name()
@@ -168,37 +229,44 @@ impl<L: ClientLink> Server<L> {
             ));
             return;
         }
-        let Some(victim) = self
-            .players
-            .values()
-            .find(|p| p.entity_id == target && !p.vitals.removed)
-        else {
-            return;
-        };
-        let reach = if attacker.game_mode == GameMode::Creative {
-            CREATIVE_REACH
-        } else {
-            SURVIVAL_REACH
-        } + ATTACK_RANGE_BUFFER;
-        let distance = distance_to_box_squared(
-            attacker.eye_position(),
-            victim.position,
-            PLAYER_HALF_WIDTH,
-            victim.height(),
-        );
-        if distance >= reach * reach {
-            return;
-        }
-        let victim_id = victim.id;
-        self.attack(id, victim_id);
+        self.attack(id, victim);
     }
 
-    fn attack(&mut self, id: PlayerId, victim: PlayerId) {
+    fn hurt_target(&mut self, target: Target, source: &DamageSource, amount: f32) -> bool {
+        match target {
+            Target::Player(player) => self.hurt(player, source, amount),
+            Target::Entity(entity) => self.hurt_mob(entity, source, amount),
+        }
+    }
+
+    fn knockback_target(&mut self, target: Target, strength: f64, dx: f64, dz: f64) {
+        match target {
+            Target::Player(player) => self.knockback(player, strength, dx, dz),
+            Target::Entity(entity) => self.mob_knockback(entity, strength, dx, dz),
+        }
+    }
+
+    fn attacker_sound(&mut self, id: PlayerId, sound: &'static str) {
+        if let Some(position) = self.players.get(&id).map(|p| p.position) {
+            self.play_sound(None, position, sound, SoundSource::Players, 1.0, 1.0);
+        }
+    }
+
+    fn attack(&mut self, id: PlayerId, victim: Victim) {
+        if !victim.attackable {
+            return;
+        }
         let in_water = self.feet_in_water(id);
+        let climbing = self.players.get(&id).is_some_and(|p| {
+            self.world
+                .chunks
+                .block(p.position.block())
+                .is_some_and(|state| has_tag(state, "minecraft:climbable"))
+        });
         let Some(source) = self.source_of(id) else {
             return;
         };
-        let Some(attacker) = self.players.get_mut(&id) else {
+        let Some(attacker) = self.players.get(&id) else {
             return;
         };
         let stats = attributes(attacker);
@@ -207,11 +275,12 @@ impl<L: ClientLink> Server<L> {
             stats.get(ATTACK_SPEED),
             ATTACK_PARTIAL_TICK,
         );
-        attacker.vitals.attack_ticker = 0;
         let can_critical = attacker.vitals.fall_distance > 0.0
             && !attacker.on_ground
+            && !climbing
             && !in_water
-            && !attacker.effects.has("minecraft:blindness");
+            && !attacker.effects.has("minecraft:blindness")
+            && victim.living;
         let Some(strike) = strike(
             stats.get(ATTACK_DAMAGE) as f32,
             scale,
@@ -220,55 +289,192 @@ impl<L: ClientLink> Server<L> {
         ) else {
             return;
         };
-        let yaw = attacker.rotation.yaw * RADIANS_PER_DEGREE;
+        let full = scale > FULL_STRENGTH;
+        let yaw = attacker.rotation.yaw;
         let attacker_entity = attacker.entity_id;
+        let speed = stats.get(MOVEMENT_SPEED) as f32;
+        let sweep_limit = f64::from(speed) * SWEEP_SPEED_FACTOR;
+        let held = attacker.inventory.held().map(|s| s.item);
+        let sweep = full
+            && !strike.critical
+            && !strike.sprint_knockback
+            && attacker.on_ground
+            && attacker.known_movement.horizontal_distance_sqr() < sweep_limit * sweep_limit
+            && held.is_some_and(is_sword);
+        let sweep_ratio = stats.get(SWEEPING_DAMAGE_RATIO) as f32;
         let knockback = stats.get(ATTACK_KNOCKBACK) as f32 / 2.0
             + if strike.sprint_knockback {
                 SPRINT_KNOCKBACK
             } else {
                 0.0
             };
+        if strike.sprint_knockback {
+            self.attacker_sound(id, SOUND_KNOCKBACK);
+        }
         let source = DamageSource::by(DamageType::PlayerAttack, source);
-        if !self.hurt(victim, &source, strike.damage) {
+        if !self.hurt_target(victim.target, &source, strike.damage) {
+            self.attacker_sound(id, SOUND_NO_DAMAGE);
+            self.send_inventory(id);
             return;
         }
+        let (dx, dz) = mth::yaw_direction(yaw);
         if knockback > 0.0 {
-            self.knockback(
-                victim,
-                f64::from(knockback),
-                f64::from(yaw.sin()),
-                f64::from(-yaw.cos()),
-            );
-            if let Some(attacker) = self.players.get_mut(&id)
-                && attacker.sprinting
-            {
-                attacker.sprinting = false;
-                self.broadcast_metadata(id);
+            if victim.living {
+                self.knockback_target(victim.target, f64::from(knockback), dx, dz);
+            } else if let Some(entity) = self.entities.store.get_mut(victim.entity) {
+                let push = Vec3::new(
+                    -dx * f64::from(knockback),
+                    PUSH_LIFT,
+                    -dz * f64::from(knockback),
+                );
+                let base = &mut entity.base;
+                base.velocity = Vec3::new(
+                    base.velocity.x + push.x,
+                    base.velocity.y + push.y,
+                    base.velocity.z + push.z,
+                );
+                base.needs_sync = true;
+            }
+            if let Some(attacker) = self.players.get_mut(&id) {
+                attacker.vitals.velocity =
+                    attacker
+                        .vitals
+                        .velocity
+                        .multiply(ATTACKER_SLOWDOWN, 1.0, ATTACKER_SLOWDOWN);
+                if attacker.sprinting {
+                    attacker.sprinting = false;
+                    self.broadcast_metadata(id);
+                }
             }
         }
-        if let Some(target) = self.players.get_mut(&victim)
+        if let Target::Player(victim_id) = victim.target
+            && let Some(target) = self.players.get_mut(&victim_id)
             && target.vitals.sync_velocity
         {
             target.vitals.sync_velocity = false;
-            let velocity = std::mem::replace(&mut target.vitals.velocity, Vec3::ZERO);
+            let velocity = std::mem::replace(&mut target.vitals.velocity, victim.velocity);
             let entity = target.entity_id;
             self.push(
-                Audience::One(victim),
+                Audience::One(victim_id),
                 ClientEvent::EntityVelocity { entity, velocity },
             );
         }
+        if sweep {
+            let sweep = Sweep {
+                damage: (1.0 + sweep_ratio * strike.damage) * scale,
+                direction: (dx, dz),
+            };
+            self.sweep_attack(id, victim, &source, sweep);
+        }
         if strike.critical {
-            let target_entity = self.players.get(&victim).map(|p| p.entity_id);
-            if let Some(entity) = target_entity {
-                let event = ClientEvent::EntityAnimation {
-                    entity,
-                    animation: Animation::CriticalHit,
-                };
-                self.push(Audience::One(id), event.clone());
-                self.push(Audience::Trackers(attacker_entity), event);
-            }
+            self.attacker_sound(id, SOUND_CRIT);
+            let event = ClientEvent::EntityAnimation {
+                entity: victim.entity,
+                animation: Animation::CriticalHit,
+            };
+            self.push(Audience::One(id), event.clone());
+            self.push(Audience::Trackers(attacker_entity), event);
+        }
+        if !strike.critical && !sweep {
+            self.attacker_sound(id, if full { SOUND_STRONG } else { SOUND_WEAK });
+        }
+        if let Some(attacker) = self.players.get_mut(&id) {
+            attacker.vitals.last_hurt_mob = Some(victim.entity);
+        }
+        if victim.living {
+            self.damage_weapon(id);
         }
         self.exhaust(id, ATTACK_EXHAUSTION);
+    }
+
+    fn sweep_attack(&mut self, id: PlayerId, victim: Victim, source: &DamageSource, sweep: Sweep) {
+        self.attacker_sound(id, SOUND_SWEEP);
+        let Some(attacker) = self.players.get(&id) else {
+            return;
+        };
+        let origin = attacker.position;
+        let attacker_entity = attacker.entity_id;
+        let (dx, dz) = sweep.direction;
+        let b = victim.bounds;
+        let area = Aabb::new(
+            b.min_x - SWEEP_INFLATE_XZ,
+            b.min_y - SWEEP_INFLATE_Y,
+            b.min_z - SWEEP_INFLATE_XZ,
+            b.max_x + SWEEP_INFLATE_XZ,
+            b.max_y + SWEEP_INFLATE_Y,
+            b.max_z + SWEEP_INFLATE_XZ,
+        );
+        let mut targets: Vec<Target> = self
+            .entities
+            .store
+            .iter()
+            .filter(|e| e.living().is_some() && e.base.id != victim.entity)
+            .filter(|e| e.base.bounding_box().intersects(&area))
+            .filter(|e| e.base.position.distance_squared(origin) < SWEEP_RANGE_SQR)
+            .map(|e| Target::Entity(e.base.id))
+            .collect();
+        targets.extend(
+            self.players
+                .values()
+                .filter(|p| p.entity_id != attacker_entity && p.entity_id != victim.entity)
+                .filter(|p| !p.vitals.removed)
+                .filter(|p| {
+                    Aabb::of_size(p.position, PLAYER_WIDTH, p.height() as f32).intersects(&area)
+                })
+                .filter(|p| p.position.distance_squared(origin) < SWEEP_RANGE_SQR)
+                .map(|p| Target::Player(p.id)),
+        );
+        for target in targets {
+            if self.hurt_target(target, source, sweep.damage) {
+                self.knockback_target(target, SWEEP_KNOCKBACK, dx, dz);
+            }
+        }
+    }
+
+    fn damage_weapon(&mut self, id: PlayerId) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        if player.game_mode == GameMode::Creative {
+            return;
+        }
+        let slot =
+            rspigot_domain::item::HOTBAR_START + usize::from(player.inventory.selected_hotbar);
+        let Some(mut stack) = player.inventory.get(slot).cloned() else {
+            return;
+        };
+        let Some(amount) = stack
+            .item
+            .kind()
+            .and_then(|kind| kind.weapon_damage())
+            .and_then(|amount| i32::try_from(amount).ok())
+        else {
+            return;
+        };
+        let Some(max) = max_damage(&stack) else {
+            return;
+        };
+        if amount == 0 {
+            return;
+        }
+        let before = Self::equipment_of(player);
+        let damage = damage_value(&stack) + amount;
+        set_damage_value(&mut stack, damage);
+        let broken = damage_value(&stack) >= max;
+        let entity = player.entity_id;
+        player
+            .inventory
+            .set(slot, if broken { None } else { Some(stack) });
+        if broken {
+            let status = ClientEvent::EntityStatus {
+                entity,
+                status: EntityStatus::EquipmentBreak(EquipmentSlot::MainHand),
+            };
+            self.push(Audience::One(id), status.clone());
+            self.push(Audience::Trackers(entity), status);
+        }
+        self.sync_inventory(id);
+        self.broadcast_equipment_changes(id, before);
     }
 }
 
@@ -322,12 +528,18 @@ mod tests {
 
     #[test]
     fn reach_is_measured_to_the_target_box() {
-        let target = Vec3::new(0.0, 64.0, 0.0);
+        let target = Aabb::of_size(Vec3::new(0.0, 64.0, 0.0), 0.6, 1.8);
         assert_eq!(
-            distance_to_box_squared(Vec3::new(0.0, 65.0, 0.0), target, 0.3, 1.8),
+            distance_to_box_squared(Vec3::new(0.0, 65.0, 0.0), &target),
             0.0
         );
-        let far = distance_to_box_squared(Vec3::new(3.3, 65.0, 0.0), target, 0.3, 1.8);
-        assert!((far - 9.0).abs() < 1e-9);
+        let far = distance_to_box_squared(Vec3::new(3.3, 65.0, 0.0), &target);
+        assert!((far - 9.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn only_swords_sweep() {
+        assert!(is_sword(rspigot_items::ItemKind::DiamondSword.id()));
+        assert!(!is_sword(rspigot_items::ItemKind::DiamondAxe.id()));
     }
 }

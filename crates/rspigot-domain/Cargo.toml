@@ -18,6 +18,7 @@ uuid = "1"
 md-5 = "0.10"
 
 [dev-dependencies]
+rand = "0.9"
 proptest = "1"
 
 [lints]

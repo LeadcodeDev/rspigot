@@ -4,6 +4,7 @@ pub mod combat;
 pub mod damage;
 pub mod effect;
 pub mod entity;
+pub mod experience;
 pub mod food;
 pub mod ident;
 pub mod ids;
@@ -12,6 +13,7 @@ pub mod menu;
 pub mod mth;
 pub mod player;
 pub mod pos;
+pub mod random;
 pub mod text;
 pub mod world;
 

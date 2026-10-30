@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct HappyGhast;
 
@@ -60,5 +63,41 @@ impl EntityType for HappyGhast {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.happy_ghast.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+            Some("minecraft:entity.ghastling.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.happy_ghast.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+            Some("minecraft:entity.ghastling.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Baby { adult: 4.0, baby: 1.0 },
+        pitch: VoicePitch::Fixed,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
     type Behavior = crate::family::Plain;
 }

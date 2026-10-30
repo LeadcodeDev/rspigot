@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
 
 pub struct SpawnerMinecart;
 
@@ -27,5 +27,6 @@ impl EntityType for SpawnerMinecart {
         "Entity",
     ];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
     type Behavior = crate::family::Plain;
 }

@@ -17,6 +17,7 @@ pub enum DamageType {
     FallingStalactite,
     Stalagmite,
     PlayerAttack,
+    MobAttack,
     GenericKill,
     Generic,
     Starve,
@@ -35,6 +36,7 @@ pub enum DamageTag {
     DamagesHelmet,
     IsFall,
     IsFire,
+    NoAnger,
     NoImpact,
     NoKnockback,
 }
@@ -51,6 +53,7 @@ impl DamageTag {
             Self::DamagesHelmet => "minecraft:damages_helmet",
             Self::IsFall => "minecraft:is_fall",
             Self::IsFire => "minecraft:is_fire",
+            Self::NoAnger => "minecraft:no_anger",
             Self::NoImpact => "minecraft:no_impact",
             Self::NoKnockback => "minecraft:no_knockback",
         }
@@ -67,6 +70,7 @@ impl DamageType {
             Self::FallingStalactite => "minecraft:falling_stalactite",
             Self::Stalagmite => "minecraft:stalagmite",
             Self::PlayerAttack => "minecraft:player_attack",
+            Self::MobAttack => "minecraft:mob_attack",
             Self::GenericKill => "minecraft:generic_kill",
             Self::Generic => "minecraft:generic",
             Self::Starve => "minecraft:starve",
@@ -84,6 +88,7 @@ impl DamageType {
             Self::FallingStalactite => "fallingStalactite",
             Self::Stalagmite => "stalagmite",
             Self::PlayerAttack => "player",
+            Self::MobAttack => "mob",
             Self::GenericKill => "genericKill",
             Self::Generic => "generic",
             Self::Starve => "starve",
@@ -95,7 +100,7 @@ impl DamageType {
     pub const fn exhaustion(self) -> f32 {
         match self {
             Self::FallingAnvil | Self::FallingBlock | Self::FallingStalactite => 0.1,
-            Self::PlayerAttack => 0.1,
+            Self::PlayerAttack | Self::MobAttack => 0.1,
             _ => 0.0,
         }
     }
@@ -110,11 +115,25 @@ impl DamageType {
     }
 
     pub fn is(self, tag: DamageTag) -> bool {
+        self.in_tag(tag.name())
+    }
+
+    pub fn in_tag(self, tag: &str) -> bool {
         let Some(id) = rspigot_data::registries::synced_index(REGISTRY, self.name()) else {
             return false;
         };
-        rspigot_data::tags::tag(REGISTRY, tag.name())
+        rspigot_data::tags::tag(REGISTRY, tag)
             .is_some_and(|members| members.binary_search(&id).is_ok())
+    }
+}
+
+pub fn scaled_for_difficulty(amount: f32, difficulty: crate::world::Difficulty) -> f32 {
+    use crate::world::Difficulty;
+    match difficulty {
+        Difficulty::Peaceful => 0.0,
+        Difficulty::Easy => (amount / 2.0 + 1.0).min(amount),
+        Difficulty::Normal => amount,
+        Difficulty::Hard => amount * 3.0 / 2.0,
     }
 }
 
@@ -168,6 +187,7 @@ mod tests {
         assert_eq!(DamageType::GenericKill.registry_id(), Some(19));
         assert_eq!(DamageType::OutOfWorld.registry_id(), Some(32));
         assert_eq!(DamageType::PlayerAttack.registry_id(), Some(34));
+        assert_eq!(DamageType::MobAttack.registry_id(), Some(28));
         assert_eq!(DamageType::Wither.registry_id(), Some(49));
     }
 
@@ -186,6 +206,21 @@ mod tests {
         assert!(DamageType::Starve.is(DamageTag::BypassesEffects));
         assert!(DamageType::OutOfWorld.is(DamageTag::AlwaysMostSignificantFall));
         assert!(!DamageType::Magic.is(DamageTag::BypassesCooldown));
+        assert!(!DamageType::MobAttack.is(DamageTag::NoKnockback));
+        assert!(!DamageType::MobAttack.is(DamageTag::NoAnger));
+        assert!(DamageType::Fall.in_tag("minecraft:no_knockback"));
+        assert!(!DamageType::PlayerAttack.in_tag("minecraft:is_projectile"));
+        assert!(!DamageType::PlayerAttack.in_tag("minecraft:nope"));
+    }
+
+    #[test]
+    fn difficulty_scales_mob_damage_against_players() {
+        use crate::world::Difficulty;
+        assert_eq!(scaled_for_difficulty(3.0, Difficulty::Peaceful), 0.0);
+        assert_eq!(scaled_for_difficulty(3.0, Difficulty::Easy), 2.5);
+        assert_eq!(scaled_for_difficulty(1.0, Difficulty::Easy), 1.0);
+        assert_eq!(scaled_for_difficulty(3.0, Difficulty::Normal), 3.0);
+        assert_eq!(scaled_for_difficulty(3.0, Difficulty::Hard), 4.5);
     }
 
     #[test]

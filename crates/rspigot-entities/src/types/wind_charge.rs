@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
 
 pub struct WindCharge;
 
@@ -28,5 +28,6 @@ impl EntityType for WindCharge {
         "Entity",
     ];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
     type Behavior = crate::family::Plain;
 }

@@ -36,6 +36,8 @@ pub struct Player<L> {
     pub operator: bool,
     pub effects: ActiveEffects,
     pub vitals: Vitals,
+    pub known_movement: Vec3,
+    pub moved_this_tick: bool,
 }
 
 impl<L> Player<L> {
