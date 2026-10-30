@@ -54,7 +54,7 @@ impl Default for NetworkConfig {
             enable_status: true,
             enforce_secure_profile: false,
             accepts_transfers: false,
-            brand: "Spigot".to_owned(),
+            brand: "Rspigot".to_owned(),
             keep_alive_interval: Duration::from_secs(15),
             keep_alive_timeout: Duration::from_secs(30),
             connection_throttle: Duration::from_millis(4000),
