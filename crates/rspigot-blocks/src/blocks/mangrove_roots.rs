@@ -29,7 +29,7 @@ impl Block for MangroveRoots {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1158), StateFlags(1030),
+        StateFlags(3206), StateFlags(3078),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));

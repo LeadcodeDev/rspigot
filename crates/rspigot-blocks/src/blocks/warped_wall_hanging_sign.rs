@@ -32,8 +32,8 @@ impl Block for WarpedWallHangingSign {
         1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134),
-        StateFlags(38), StateFlags(134), StateFlags(38),
+        StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182),
+        StateFlags(2086), StateFlags(2182), StateFlags(2086),
     ]);
     const COLLISION: PerState<ShapeId> =
         PerState::Varies(crate::shapes::COLLISION_OAK_WALL_HANGING_SIGN);

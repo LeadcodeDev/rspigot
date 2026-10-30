@@ -31,7 +31,7 @@ impl Block for DeepslateRedstoneOre {
     ]);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1566), StateFlags(1054),
+        StateFlags(3614), StateFlags(3102),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));

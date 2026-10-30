@@ -31,7 +31,7 @@ impl Block for Barrier {
         1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1158), StateFlags(1062),
+        StateFlags(3206), StateFlags(3110),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));

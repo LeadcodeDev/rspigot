@@ -31,12 +31,12 @@ impl Block for DarkOakLeaves {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1158), StateFlags(1030), StateFlags(1158), StateFlags(1030), StateFlags(1158),
-        StateFlags(1030), StateFlags(1158), StateFlags(1030), StateFlags(1158), StateFlags(1030),
-        StateFlags(1158), StateFlags(1030), StateFlags(1158), StateFlags(1030), StateFlags(1158),
-        StateFlags(1030), StateFlags(1158), StateFlags(1030), StateFlags(1158), StateFlags(1030),
-        StateFlags(1158), StateFlags(1030), StateFlags(1158), StateFlags(1030), StateFlags(1158),
-        StateFlags(1030), StateFlags(1670), StateFlags(1542),
+        StateFlags(3206), StateFlags(3078), StateFlags(3206), StateFlags(3078), StateFlags(3206),
+        StateFlags(3078), StateFlags(3206), StateFlags(3078), StateFlags(3206), StateFlags(3078),
+        StateFlags(3206), StateFlags(3078), StateFlags(3206), StateFlags(3078), StateFlags(3206),
+        StateFlags(3078), StateFlags(3206), StateFlags(3078), StateFlags(3206), StateFlags(3078),
+        StateFlags(3206), StateFlags(3078), StateFlags(3206), StateFlags(3078), StateFlags(3206),
+        StateFlags(3078), StateFlags(3718), StateFlags(3590),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

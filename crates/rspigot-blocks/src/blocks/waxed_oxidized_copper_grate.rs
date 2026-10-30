@@ -29,7 +29,7 @@ impl Block for WaxedOxidizedCopperGrate {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1190), StateFlags(1062),
+        StateFlags(3238), StateFlags(3110),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));

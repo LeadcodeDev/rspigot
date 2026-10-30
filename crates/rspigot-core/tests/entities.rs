@@ -320,7 +320,9 @@ fn summoned_cow_falls_and_settles_on_the_floor() {
     let landed = heights.iter().position(|y| *y == 64.0);
     assert_eq!(landed, Some(9));
     let cow = cows(&server)[0];
-    assert_eq!(cow.position, Vec3::new(0.5, 64.0, 2.5));
+    assert_eq!(cow.position.y, 64.0);
+    let drift = cow.position - Vec3::new(0.5, 64.0, 2.5);
+    assert!(drift.horizontal_distance_sqr() < 4.0, "{drift:?}");
     assert!(cow.on_ground);
     let events = alice.drain();
     let moves = events
@@ -387,7 +389,7 @@ fn nearby_players_track_the_cow_and_far_ones_pick_it_up_when_they_come_close() {
     let carol_events = carol.drain();
     let seen = spawned(&carol_events, Kind::Cow);
     assert_eq!(seen.len(), 1);
-    assert_eq!(seen[0].1, Vec3::new(3.5, 64.0, 3.5));
+    assert_eq!(seen[0].1.y, 64.0);
     server.handle(Inbound::Console("tp Carol 300 64 300".to_owned()));
     pump(&mut server, &mut [&mut alice, &mut bob, &mut carol], 5);
     walk(&mut server, &carol, Vec3::new(300.5, 64.0, 300.5));
@@ -409,7 +411,7 @@ fn unloaded_cow_comes_back_with_the_same_uuid_and_position() {
     command(
         &mut server,
         &alice,
-        "/summon minecraft:cow 100 64 100 {CustomName:\"Daisy\"}",
+        "/summon minecraft:cow 100 64 100 {CustomName:\"Daisy\",NoAI:1b}",
     );
     pump(&mut server, &mut [&mut alice], 5);
     let before = cows(&server)[0];
@@ -507,7 +509,7 @@ fn kill_selector_kills_only_cows_with_a_death_animation() {
             .count(),
         2
     );
-    pump(&mut server, &mut [&mut alice], 21);
+    pump(&mut server, &mut [&mut alice], 30);
     assert!(cows(&server).is_empty());
     assert_eq!(server.entities_of(Kind::Zombie).len(), 1);
     let events = alice.drain();

@@ -30,7 +30,7 @@ impl Block for WhiteBed {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(38));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2086));
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_WHITE_BED);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::HorizontalToward;

@@ -64,6 +64,10 @@ impl PathFinder {
         self.max_visited_nodes = (self.max_path_length * 16.0).floor() as i32;
     }
 
+    pub fn set_max_path_length(&mut self, length: f32) {
+        self.max_path_length = length;
+    }
+
     pub fn set_visited_multiplier(&mut self, multiplier: f32) {
         self.visited_multiplier = multiplier;
     }

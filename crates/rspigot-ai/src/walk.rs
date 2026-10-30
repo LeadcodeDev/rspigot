@@ -523,6 +523,15 @@ pub fn block_path_type(view: &impl BlockView, pos: BlockPos) -> PathType {
     Walker::new(view, &profile, mob).static_type(pos)
 }
 
+pub fn mob_path_type(
+    view: &impl BlockView,
+    profile: &MobProfile,
+    mob: MobState,
+    pos: BlockPos,
+) -> PathType {
+    Walker::new(view, profile, mob).mob_type(pos)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,13 +1,17 @@
-use rspigot_domain::{BlockPos, Vec3};
+use rspigot_blocks::{BlockKind, StateFlags, StateId};
+use rspigot_domain::{BlockPos, ChunkPos, Vec3};
 
 use crate::classify::is_cauldron;
 use crate::view::{floor_level, is_air, is_water};
-use crate::{BlockView, MobProfile, MobState, Path, PathType};
+use crate::{BlockView, MobProfile, MobState, Path, PathFinder, PathType};
 
 const STUCK_CHECK_INTERVAL: i32 = 100;
 const STUCK_THRESHOLD_DISTANCE_FACTOR: f32 = 0.25;
 const MAX_VERTICAL_DISTANCE_TO_WAYPOINT: f64 = 1.0;
 const SURFACE_SCAN: i32 = 16;
+const MAX_TIME_RECOMPUTE: i64 = 20;
+const REQUIRED_PATH_LENGTH: f32 = 16.0;
+const BLOCK_REGION_OFFSET: f32 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MobTick {
@@ -37,6 +41,15 @@ pub struct Navigation {
     timeout_limit: f64,
     max_distance_to_waypoint: f32,
     stuck: bool,
+    target_pos: Option<BlockPos>,
+    reach_range: i32,
+    has_delayed_recomputation: bool,
+    time_last_recompute: i64,
+    max_visited_nodes: i32,
+    max_visited_nodes_multiplier: f32,
+    required_path_length: f32,
+    climber: bool,
+    path_to_position: Option<BlockPos>,
 }
 
 impl Default for Navigation {
@@ -74,7 +87,201 @@ impl Navigation {
             timeout_limit: 0.0,
             max_distance_to_waypoint: 0.5,
             stuck: false,
+            target_pos: None,
+            reach_range: 0,
+            has_delayed_recomputation: false,
+            time_last_recompute: 0,
+            max_visited_nodes: (MobProfile::DEFAULT_FOLLOW_RANGE * 16.0).floor() as i32,
+            max_visited_nodes_multiplier: 1.0,
+            required_path_length: REQUIRED_PATH_LENGTH,
+            climber: false,
+            path_to_position: None,
         }
+    }
+
+    pub fn set_climber(&mut self, climber: bool) {
+        self.climber = climber;
+    }
+
+    pub fn is_climber(&self) -> bool {
+        self.climber
+    }
+
+    pub fn path_to_position(&self) -> Option<BlockPos> {
+        self.path_to_position
+    }
+
+    pub fn with_follow_range(base_follow_range: f64) -> Self {
+        Self {
+            max_visited_nodes: (base_follow_range * 16.0).floor() as i32,
+            ..Self::new()
+        }
+    }
+
+    pub fn max_path_length(&self, follow_range: f64) -> f32 {
+        (follow_range as f32).max(self.required_path_length)
+    }
+
+    pub fn update_max_visited_nodes(&mut self, follow_range: f64) {
+        self.max_visited_nodes = (self.max_path_length(follow_range) * 16.0).floor() as i32;
+    }
+
+    pub fn max_visited_nodes(&self) -> i32 {
+        self.max_visited_nodes
+    }
+
+    pub fn target_pos(&self) -> Option<BlockPos> {
+        self.target_pos
+    }
+
+    pub fn has_delayed_recomputation(&self) -> bool {
+        self.has_delayed_recomputation
+    }
+
+    pub fn can_update_path(mob: &MobTick) -> bool {
+        mob.state.on_ground || mob.in_liquid || mob.passenger
+    }
+
+    pub fn create_path(
+        &mut self,
+        view: &impl BlockView,
+        profile: &MobProfile,
+        mob: &MobTick,
+        target: BlockPos,
+        reach: i32,
+        follow_range: f64,
+    ) -> Option<Path> {
+        if self.climber {
+            self.path_to_position = Some(target);
+        }
+        if !view.chunk_loaded(target.chunk()) {
+            return None;
+        }
+        let target = find_surface_position(view, target);
+        if mob.state.position.y < f64::from(view.min_y()) || !Self::can_update_path(mob) {
+            return None;
+        }
+        if let Some(path) = self.path.as_ref()
+            && !path.is_done()
+            && self.target_pos == Some(target)
+        {
+            return Some(path.clone());
+        }
+        let max_path_length = self.max_path_length(follow_range);
+        let start = mob.state.block_pos();
+        let radius = (max_path_length + BLOCK_REGION_OFFSET) as i32;
+        let region = Region {
+            view,
+            min: start.offset(-radius, -radius, -radius).chunk(),
+            max: start.offset(radius, radius, radius).chunk(),
+        };
+        let mut finder = PathFinder::new(profile.clone());
+        finder.set_max_visited_nodes(self.max_visited_nodes);
+        finder.set_max_path_length(max_path_length);
+        finder.set_visited_multiplier(self.max_visited_nodes_multiplier);
+        let path = finder.find_path(&region, &mob.state, &[target], reach);
+        if let Some(path) = path.as_ref() {
+            self.target_pos = Some(path.target());
+            self.reach_range = reach;
+            self.reset_stuck_timeout();
+        }
+        path
+    }
+
+    pub fn move_to_pos(
+        &mut self,
+        view: &impl BlockView,
+        profile: &MobProfile,
+        mob: &MobTick,
+        position: Vec3,
+        speed_modifier: f64,
+        follow_range: f64,
+    ) -> bool {
+        let path = self.create_path(view, profile, mob, position.block(), 1, follow_range);
+        self.move_to(path, speed_modifier, view, profile, mob)
+    }
+
+    pub fn move_to_entity(
+        &mut self,
+        view: &impl BlockView,
+        profile: &MobProfile,
+        mob: &MobTick,
+        position: Vec3,
+        speed_modifier: f64,
+        follow_range: f64,
+    ) -> bool {
+        let reach = if self.climber { 0 } else { 1 };
+        let target = position.block();
+        let path = self.create_path(view, profile, mob, target, reach, follow_range);
+        if self.climber && path.is_none() {
+            self.path_to_position = Some(target);
+            self.speed_modifier = speed_modifier;
+            return true;
+        }
+        path.is_some() && self.move_to(path, speed_modifier, view, profile, mob)
+    }
+
+    fn climb_towards(&mut self, profile: &MobProfile, mob: &MobTick) -> Option<MoveTarget> {
+        let target = self.path_to_position?;
+        let position = mob.state.position;
+        let width = f64::from(profile.width);
+        let level = BlockPos::new(target.x, position.y.floor() as i32, target.z);
+        if closer_to_center(target, position, width)
+            || (position.y > f64::from(target.y) && closer_to_center(level, position, width))
+        {
+            self.path_to_position = None;
+            return None;
+        }
+        Some(MoveTarget {
+            position: Vec3::new(
+                f64::from(target.x),
+                f64::from(target.y),
+                f64::from(target.z),
+            ),
+            speed_modifier: self.speed_modifier,
+        })
+    }
+
+    pub fn recompute_path(
+        &mut self,
+        view: &impl BlockView,
+        profile: &MobProfile,
+        mob: &MobTick,
+        follow_range: f64,
+    ) {
+        if mob.game_time - self.time_last_recompute > MAX_TIME_RECOMPUTE
+            && Self::can_update_path(mob)
+        {
+            if let Some(target) = self.target_pos {
+                self.path = None;
+                let reach = self.reach_range;
+                self.path = self.create_path(view, profile, mob, target, reach, follow_range);
+                self.time_last_recompute = mob.game_time;
+                self.has_delayed_recomputation = false;
+            }
+        } else {
+            self.has_delayed_recomputation = true;
+        }
+    }
+
+    pub fn should_recompute_path(&self, pos: BlockPos, mob_position: Vec3) -> bool {
+        if self.has_delayed_recomputation {
+            return false;
+        }
+        let Some(path) = self.path.as_ref().filter(|path| !path.is_done()) else {
+            return false;
+        };
+        let Some(end) = path.end_node() else {
+            return false;
+        };
+        let middle = Vec3::new(
+            (f64::from(end.pos.x) + mob_position.x) / 2.0,
+            (f64::from(end.pos.y) + mob_position.y) / 2.0,
+            (f64::from(end.pos.z) + mob_position.z) / 2.0,
+        );
+        let reach = (path.node_count() - path.next_node_index()) as f64;
+        bottom_center(pos).distance_squared(Vec3::new(middle.x, middle.y - 0.5, middle.z))
+            < reach * reach
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -170,6 +377,9 @@ impl Navigation {
         profile: &MobProfile,
         mob: &MobTick,
     ) -> Option<MoveTarget> {
+        if self.climber && self.is_done() {
+            return self.climb_towards(profile, mob);
+        }
         self.tick += 1;
         if self.is_done() {
             return None;
@@ -281,6 +491,15 @@ fn aims_past(path: &Path, temp: Vec3) -> bool {
     }
 }
 
+fn closer_to_center(pos: BlockPos, position: Vec3, distance: f64) -> bool {
+    let center = Vec3::new(
+        f64::from(pos.x) + 0.5,
+        f64::from(pos.y) + 0.5,
+        f64::from(pos.z) + 0.5,
+    );
+    center.distance_squared(position) < distance * distance
+}
+
 fn bottom_center(pos: BlockPos) -> Vec3 {
     Vec3::new(
         f64::from(pos.x) + 0.5,
@@ -304,6 +523,74 @@ fn normalize(vec: Vec3) -> Vec3 {
     } else {
         Vec3::new(vec.x / length, vec.y / length, vec.z / length)
     }
+}
+
+struct Region<'a, V> {
+    view: &'a V,
+    min: ChunkPos,
+    max: ChunkPos,
+}
+
+impl<V: BlockView> BlockView for Region<'_, V> {
+    fn state(&self, pos: BlockPos) -> Option<StateId> {
+        let chunk = pos.chunk();
+        if chunk.x < self.min.x
+            || chunk.z < self.min.z
+            || chunk.x > self.max.x
+            || chunk.z > self.max.z
+            || !self.view.chunk_loaded(chunk)
+        {
+            return Some(BlockKind::VoidAir.default_state());
+        }
+        Some(self.view.state(pos).unwrap_or(StateId::AIR))
+    }
+
+    fn min_y(&self) -> i32 {
+        self.view.min_y()
+    }
+
+    fn max_y(&self) -> i32 {
+        self.view.max_y()
+    }
+
+    fn chunk_loaded(&self, chunk: ChunkPos) -> bool {
+        self.view.chunk_loaded(chunk)
+    }
+}
+
+fn surface_air(view: &impl BlockView, pos: BlockPos) -> bool {
+    view.state(pos).is_none_or(StateId::is_air)
+}
+
+fn surface_solid(view: &impl BlockView, pos: BlockPos) -> bool {
+    view.state(pos)
+        .is_some_and(|state| state.flags().contains(StateFlags::LEGACY_SOLID))
+}
+
+pub fn find_surface_position(view: &impl BlockView, pos: BlockPos) -> BlockPos {
+    let mut pos = pos;
+    if surface_air(view, pos) {
+        let mut below = pos.offset(0, -1, 0);
+        while below.y >= view.min_y() && surface_air(view, below) {
+            below = below.offset(0, -1, 0);
+        }
+        if below.y >= view.min_y() {
+            return below.offset(0, 1, 0);
+        }
+        let mut above = BlockPos::new(pos.x, pos.y + 1, pos.z);
+        while above.y <= view.max_y() && surface_air(view, above) {
+            above = above.offset(0, 1, 0);
+        }
+        pos = above;
+    }
+    if !surface_solid(view, pos) {
+        return pos;
+    }
+    let mut above = pos.offset(0, 1, 0);
+    while above.y <= view.max_y() && surface_solid(view, above) {
+        above = above.offset(0, 1, 0);
+    }
+    above
 }
 
 pub fn temp_mob_pos(view: &impl BlockView, profile: &MobProfile, mob: &MobState) -> Vec3 {

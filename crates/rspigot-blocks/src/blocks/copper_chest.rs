@@ -33,11 +33,11 @@ impl Block for CopperChest {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(654),
-        StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558),
-        StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(654),
-        StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558),
-        StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558),
+        StateFlags(2702), StateFlags(2606), StateFlags(2702), StateFlags(2606), StateFlags(2702),
+        StateFlags(2606), StateFlags(2702), StateFlags(2606), StateFlags(2702), StateFlags(2606),
+        StateFlags(2702), StateFlags(2606), StateFlags(2702), StateFlags(2606), StateFlags(2702),
+        StateFlags(2606), StateFlags(2702), StateFlags(2606), StateFlags(2702), StateFlags(2606),
+        StateFlags(2702), StateFlags(2606), StateFlags(2702), StateFlags(2606),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CHEST);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_CHEST);

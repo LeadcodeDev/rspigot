@@ -5,16 +5,17 @@ use rspigot_items::EquipmentSlot;
 
 use super::base::EntityBase;
 use super::data::{Pose, SyncedValue};
+use super::fluid;
 use super::physics::{
-    self, BlockView, Landing, MoveTraits, apply_inside_blocks, friction, has_tag, move_entity,
-    movement_affecting_pos,
+    self, BlockView, Landing, MoveTraits, apply_inside_blocks, block_jump_factor, friction,
+    has_tag, move_entity, movement_affecting_pos,
 };
 use crate::attribute;
 use crate::effect::{
     ActiveEffects, AttributeModifier, AttributeOperation, AttributeState, EffectId, EffectInstance,
 };
 use crate::item::ItemStack;
-use crate::{BlockPos, Vec3};
+use crate::{BlockPos, Vec3, mth};
 
 pub const DATA_LIVING_FLAGS: u8 = 8;
 pub const DATA_HEALTH: u8 = 9;
@@ -24,6 +25,8 @@ pub const DATA_STINGER_COUNT: u8 = 13;
 pub const DATA_MOB_FLAGS: u8 = 15;
 pub const MOB_FLAG_NO_AI: u8 = 1;
 pub const MOB_FLAG_LEFT_HANDED: u8 = 2;
+pub const DATA_SPIDER_FLAGS: u8 = 16;
+pub const SPIDER_FLAG_CLIMBING: u8 = 1;
 pub const DEATH_DURATION: i32 = 20;
 pub const HURT_DURATION: i32 = 10;
 pub const DEFAULT_DROP_CHANCE: f32 = 0.085;
@@ -36,6 +39,8 @@ pub const FRICTION_MODIFIER: &str = "minecraft:friction_modifier";
 pub const AIR_DRAG_MODIFIER: &str = "minecraft:air_drag_modifier";
 pub const BOUNCINESS: &str = "minecraft:bounciness";
 pub const MOVEMENT_EFFICIENCY: &str = "minecraft:movement_efficiency";
+pub const WATER_MOVEMENT_EFFICIENCY: &str = "minecraft:water_movement_efficiency";
+pub const JUMP_STRENGTH: &str = "minecraft:jump_strength";
 const VELOCITY_THRESHOLD: f64 = 0.003;
 const SPAWN_BONUS_DEVIATION: f64 = 0.114_850_000_000_000_01;
 const LEFT_HANDED_CHANCE: f32 = 0.05;
@@ -48,6 +53,17 @@ const LEVITATION_BLEND: f64 = 0.2;
 const CLIMB_SPEED: f64 = 0.15000000596046448;
 const CLIMB_BOOST: f64 = 0.2;
 const APPLIED_INPUT_DECAY: f32 = 0.98;
+const FLUID_SPEED: f32 = 0.02;
+const WATER_SLOW_DOWN: f32 = 0.8;
+const WATER_EFFICIENT_SLOW_DOWN: f32 = 0.546_000_06;
+const DOLPHIN_SLOW_DOWN: f32 = 0.96;
+const FLUID_VERTICAL_DRAG: f64 = 0.800_000_011_920_929;
+const LIQUID_JUMP_IMPULSE: f64 = 0.039_999_999_105_930_33;
+const NO_JUMP_DELAY: i32 = 10;
+const JUMP_OUT_STEP: f64 = 0.600_000_023_841_857_9;
+const JUMP_OUT_SPEED: f64 = 0.300_000_011_920_929;
+const MIN_JUMP_POWER: f32 = 1.0e-5;
+const JUMP_BOOST_STEP: f32 = 0.1;
 
 const SYNCABLE: [&str; 32] = [
     "minecraft:air_drag_modifier",
@@ -236,6 +252,8 @@ pub struct MobState {
     pub death_loot_table: Option<String>,
     pub death_loot_table_seed: i64,
     pub aware: bool,
+    pub home_pos: BlockPos,
+    pub home_radius: i32,
 }
 
 impl Default for MobState {
@@ -247,6 +265,8 @@ impl Default for MobState {
             death_loot_table: None,
             death_loot_table_seed: 0,
             aware: true,
+            home_pos: BlockPos::new(0, 0, 0),
+            home_radius: -1,
         }
     }
 }
@@ -269,6 +289,7 @@ pub struct LivingState {
     pub yya: f32,
     pub zza: f32,
     pub no_jump_delay: i32,
+    pub no_action_time: i32,
     pub last_hurt: f32,
     pub mob: Option<MobState>,
 }
@@ -308,6 +329,9 @@ impl LivingState {
         if is_mob {
             base.data.define(DATA_MOB_FLAGS, SyncedValue::Byte(0));
         }
+        if kind.extends("Spider") {
+            base.data.define(DATA_SPIDER_FLAGS, SyncedValue::Byte(0));
+        }
         let mut state = Self {
             absorption: 0.0,
             hurt_time: 0,
@@ -325,6 +349,7 @@ impl LivingState {
             yya: 0.0,
             zza: 0.0,
             no_jump_delay: 0,
+            no_action_time: 0,
             last_hurt: 0.0,
             mob: is_mob.then(MobState::default),
         };
@@ -456,6 +481,7 @@ pub fn hurt(
     if base.invulnerable && !bypasses_invulnerability {
         return HurtOutcome::Ignored;
     }
+    living.no_action_time = 0;
     let amount = if amount.is_finite() {
         amount.max(0.0)
     } else {
@@ -536,7 +562,15 @@ pub fn mark_effect_attributes(living: &mut LivingState, effect: EffectId) {
     }
 }
 
+pub fn set_climbing(base: &mut EntityBase, climbing: bool) {
+    base.data
+        .set_flag(DATA_SPIDER_FLAGS, SPIDER_FLAG_CLIMBING, climbing);
+}
+
 pub fn on_climbable(base: &EntityBase, view: &impl BlockView) -> bool {
+    if base.kind.extends("Spider") {
+        return base.data.flag(DATA_SPIDER_FLAGS, SPIDER_FLAG_CLIMBING);
+    }
     has_tag(
         view.block_or_air(base.position.block()),
         "minecraft:climbable",
@@ -554,9 +588,9 @@ fn input_vector(input: Vec3, speed: f32, yaw: f32) -> Vec3 {
         input
     }
     .scale(f64::from(speed));
-    let radians = yaw * 0.017_453_292;
-    let sin = f64::from(radians.sin());
-    let cos = f64::from(radians.cos());
+    let radians = f64::from(yaw * mth::DEG_TO_RAD);
+    let sin = f64::from(mth::sin(radians));
+    let cos = f64::from(mth::cos(radians));
     Vec3::new(
         scaled.x * cos - scaled.z * sin,
         scaled.y,
@@ -628,11 +662,7 @@ pub fn travel_in_air<V: BlockView>(
     landing
 }
 
-pub fn ai_step<V: BlockView>(
-    base: &mut EntityBase,
-    living: &mut LivingState,
-    view: &V,
-) -> Option<Landing> {
+pub fn begin_ai_step(base: &mut EntityBase, living: &mut LivingState) {
     if living.no_jump_delay > 0 {
         living.no_jump_delay -= 1;
     }
@@ -657,22 +687,179 @@ pub fn ai_step<V: BlockView>(
         living.xxa = 0.0;
         living.zza = 0.0;
     }
+}
+
+pub fn effective_ai(base: &EntityBase, living: &LivingState) -> bool {
+    !living.is_mob() || !is_no_ai(base)
+}
+
+pub fn finish_ai_step<V: BlockView>(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    view: &V,
+    can_float: bool,
+) -> Option<Landing> {
+    if living.jumping {
+        jump(base, living, view, can_float);
+    } else {
+        living.no_jump_delay = 0;
+    }
     if living.has_effect("minecraft:slow_falling") || living.has_effect("minecraft:levitation") {
         base.fall_distance = 0.0;
     }
-    let effective_ai = !living.is_mob() || !is_no_ai(base);
     let input = Vec3::new(
         f64::from(living.xxa),
         f64::from(living.yya),
         f64::from(living.zza),
     );
-    let landing = if effective_ai {
-        travel_in_air(base, living, view, input)
+    let landing = if effective_ai(base, living) {
+        travel(base, living, view, input)
     } else {
         None
     };
     let weaving = living.has_effect("minecraft:weaving");
     apply_inside_blocks(base, view, weaving);
+    landing
+}
+
+pub fn ai_step<V: BlockView>(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    view: &V,
+) -> Option<Landing> {
+    begin_ai_step(base, living);
+    finish_ai_step(base, living, view, false)
+}
+
+fn jump<V: BlockView>(base: &mut EntityBase, living: &mut LivingState, view: &V, can_float: bool) {
+    let contact = base.fluid;
+    let height = if contact.in_lava() {
+        contact.lava_height
+    } else {
+        contact.water_height
+    };
+    let in_water = contact.in_water && height > 0.0;
+    let threshold = fluid::jump_threshold(base);
+    let swim_up = in_water && (!base.on_ground || height > threshold);
+    let lava_up = contact.in_lava() && (!base.on_ground || contact.lava_height > threshold);
+    if swim_up || lava_up {
+        jump_in_liquid(base, living, can_float);
+    } else if (base.on_ground || (in_water && height <= threshold)) && living.no_jump_delay == 0 {
+        jump_from_ground(base, living, view);
+        living.no_jump_delay = NO_JUMP_DELAY;
+    }
+}
+
+fn jump_in_liquid(base: &mut EntityBase, living: &LivingState, can_float: bool) {
+    let impulse = if living.is_mob() && !can_float {
+        0.3
+    } else {
+        LIQUID_JUMP_IMPULSE
+    };
+    base.velocity = base.velocity + Vec3::new(0.0, impulse, 0.0);
+}
+
+pub fn jump_power(base: &EntityBase, living: &mut LivingState, view: &impl BlockView) -> f32 {
+    let boost = living.effect("minecraft:jump_boost").map_or(0.0, |effect| {
+        JUMP_BOOST_STEP * (effect.amplifier as f32 + 1.0)
+    });
+    living.attribute(JUMP_STRENGTH) as f32 * block_jump_factor(base, view) + boost
+}
+
+pub fn jump_from_ground(base: &mut EntityBase, living: &mut LivingState, view: &impl BlockView) {
+    let power = jump_power(base, living, view);
+    if power <= MIN_JUMP_POWER {
+        return;
+    }
+    let v = base.velocity;
+    base.velocity = Vec3::new(v.x, f64::from(power).max(v.y), v.z);
+    base.needs_sync = true;
+}
+
+pub fn travel<V: BlockView>(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    view: &V,
+    input: Vec3,
+) -> Option<Landing> {
+    if base.fluid.in_liquid() {
+        travel_in_fluid(base, living, view, input)
+    } else {
+        travel_in_air(base, living, view, input)
+    }
+}
+
+fn fluid_falling_adjusted(gravity: f64, falling: bool, movement: Vec3) -> Vec3 {
+    if gravity == 0.0 {
+        return movement;
+    }
+    let y = if falling
+        && (movement.y - 0.005).abs() >= VELOCITY_THRESHOLD
+        && (movement.y - gravity / 16.0).abs() < VELOCITY_THRESHOLD
+    {
+        -VELOCITY_THRESHOLD
+    } else {
+        movement.y - gravity / 16.0
+    };
+    Vec3::new(movement.x, y, movement.z)
+}
+
+pub fn travel_in_fluid<V: BlockView>(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    view: &V,
+    input: Vec3,
+) -> Option<Landing> {
+    let falling = base.velocity.y <= 0.0;
+    let old_y = base.position.y;
+    let gravity = living.effective_gravity(base);
+    let landing = if base.fluid.in_water {
+        let mut slow_down = WATER_SLOW_DOWN;
+        let mut speed = FLUID_SPEED;
+        let mut efficiency = living.attribute(WATER_MOVEMENT_EFFICIENCY) as f32;
+        if !base.on_ground {
+            efficiency *= 0.5;
+        }
+        if efficiency > 0.0 {
+            slow_down += (WATER_EFFICIENT_SLOW_DOWN - slow_down) * efficiency;
+            speed += (living.speed - speed) * efficiency;
+        }
+        if living.has_effect("minecraft:dolphins_grace") {
+            slow_down = DOLPHIN_SLOW_DOWN;
+        }
+        base.velocity = base.velocity + input_vector(input, speed, base.yaw);
+        let traits = living.move_traits(base);
+        let landing = move_entity(base, view, base.velocity, &traits);
+        let mut movement = base.velocity;
+        if base.horizontal_collision && on_climbable(base, view) {
+            movement = Vec3::new(movement.x, CLIMB_BOOST, movement.z);
+        }
+        let slow = f64::from(slow_down);
+        movement = movement.multiply(slow, FLUID_VERTICAL_DRAG, slow);
+        base.velocity = fluid_falling_adjusted(gravity, falling, movement);
+        landing
+    } else {
+        base.velocity = base.velocity + input_vector(input, FLUID_SPEED, base.yaw);
+        let traits = living.move_traits(base);
+        let landing = move_entity(base, view, base.velocity, &traits);
+        if base.fluid.lava_height <= fluid::jump_threshold(base) {
+            base.velocity = base.velocity.multiply(0.5, FLUID_VERTICAL_DRAG, 0.5);
+            base.velocity = fluid_falling_adjusted(gravity, falling, base.velocity);
+        } else {
+            base.velocity = base.velocity.scale(0.5);
+        }
+        if gravity != 0.0 {
+            base.velocity = base.velocity + Vec3::new(0.0, -gravity / 4.0, 0.0);
+        }
+        landing
+    };
+    let v = base.velocity;
+    if base.horizontal_collision {
+        let step = Vec3::new(v.x, v.y + JUMP_OUT_STEP - base.position.y + old_y, v.z);
+        if fluid::is_free(view, &base.bounding_box().move_by(step)) {
+            base.velocity = Vec3::new(v.x, JUMP_OUT_SPEED, v.z);
+        }
+    }
     landing
 }
 

@@ -1,11 +1,19 @@
 use rspigot_blocks::{Aabb, StateFlags, StateId};
-use rspigot_domain::BlockPos;
+use rspigot_domain::{BlockPos, ChunkPos};
 
 pub trait BlockView {
     fn state(&self, pos: BlockPos) -> Option<StateId>;
 
     fn min_y(&self) -> i32 {
         -64
+    }
+
+    fn max_y(&self) -> i32 {
+        319
+    }
+
+    fn chunk_loaded(&self, _chunk: ChunkPos) -> bool {
+        true
     }
 }
 

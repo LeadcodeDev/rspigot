@@ -29,6 +29,27 @@ impl Default for GameRules {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivationRanges {
+    pub animals: i32,
+    pub monsters: i32,
+    pub raiders: i32,
+    pub misc: i32,
+    pub ignore_spectators: bool,
+}
+
+impl Default for ActivationRanges {
+    fn default() -> Self {
+        Self {
+            animals: 32,
+            monsters: 32,
+            raiders: 48,
+            misc: 16,
+            ignore_spectators: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
     pub max_players: u32,
@@ -43,6 +64,7 @@ pub struct GameConfig {
     pub spawn_protection: u32,
     pub player_tracking_range: f64,
     pub tracking: TrackingRanges,
+    pub activation: ActivationRanges,
     pub item_despawn_ticks: u32,
     pub chunk_workers: usize,
     pub stream: StreamConfig,
@@ -69,6 +91,7 @@ impl Default for GameConfig {
             spawn_protection: 16,
             player_tracking_range: 128.0,
             tracking: TrackingRanges::default(),
+            activation: ActivationRanges::default(),
             item_despawn_ticks: 6000,
             chunk_workers: std::thread::available_parallelism()
                 .map_or(4, |n| n.get().saturating_sub(2).max(2)),

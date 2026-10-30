@@ -4,8 +4,8 @@ use rand::Rng;
 use rspigot_domain::entity::living::{self, EQUIPMENT_SLOTS, HurtOutcome};
 use rspigot_domain::entity::tracker::{TrackerUpdate, unpack_degrees};
 use rspigot_domain::entity::{
-    Entities, Entity, EntityBase, EntityState, EntityTracker, RemovalReason, SyncedValue, item,
-    save, tracking_range,
+    Entities, Entity, EntityBase, EntityState, EntityTracker, RemovalReason, SyncedValue, fluid,
+    item, save, tracking_range,
 };
 use rspigot_domain::{ChunkPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
@@ -33,6 +33,7 @@ pub(crate) struct TrackedEntity {
 pub(crate) struct EntityWorld {
     pub store: Entities,
     pub tracked: FxHashMap<EntityId, TrackedEntity>,
+    pub mobs: crate::mobs::MobTable,
     pending_saves: FxHashMap<ChunkPos, (u64, Arc<Vec<Compound>>)>,
     stored_empty: FxHashSet<ChunkPos>,
     generation: u64,
@@ -191,6 +192,7 @@ impl<L: ClientLink> Server<L> {
             );
             self.update_entity_viewers(id);
         }
+        self.register_mob(id);
         Ok(id)
     }
 
@@ -198,6 +200,7 @@ impl<L: ClientLink> Server<L> {
         let mut entity = self.entities.store.remove(id)?;
         entity.base.removal = Some(reason);
         self.entities.tracked.remove(&id);
+        self.entities.mobs.entries.remove(&id);
         for player in self.players.values_mut() {
             if player.tracked.remove(&id) {
                 player.link.send(ClientEvent::RemoveEntities(vec![id]));
@@ -309,6 +312,8 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn tick_entities(&mut self) {
+        self.refresh_mob_players();
+        self.activate_entities();
         for id in self.entities.store.ids() {
             let Some(entity) = self.entities.store.get(id) else {
                 continue;
@@ -327,6 +332,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn tick_living_entity(&mut self, id: EntityId) {
+        if !self.mob_active(id) {
+            return;
+        }
         let min_y = self.world.dimension.height.min_y;
         let Some(Entity {
             base,
@@ -338,6 +346,7 @@ impl<L: ClientLink> Server<L> {
         };
         base.old_position = base.position;
         base.tick_count = base.tick_count.wrapping_add(1);
+        fluid::update(base, &self.world.chunks);
         let outcome = living::base_tick(base, state);
         let below = living::below_world(base, min_y);
         if below {
@@ -354,6 +363,16 @@ impl<L: ClientLink> Server<L> {
             self.remove_entity(id, RemovalReason::Killed);
             return;
         }
+        if let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        {
+            living::begin_ai_step(base, state);
+        }
+        self.mob_server_ai_step(id);
+        let can_float = self.mob_can_float(id);
         let chunks = &self.world.chunks;
         if let Some(Entity {
             base,
@@ -361,8 +380,9 @@ impl<L: ClientLink> Server<L> {
             ..
         }) = self.entities.store.get_mut(id)
         {
-            let _ = living::ai_step(base, state, chunks);
+            let _ = living::finish_ai_step(base, state, chunks, can_float);
         }
+        self.mob_after_tick(id);
     }
 
     pub(crate) fn hurt_entity(

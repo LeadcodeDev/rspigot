@@ -2,6 +2,7 @@ mod aabb;
 mod base;
 mod data;
 pub mod falling;
+pub mod fluid;
 pub mod item;
 pub mod living;
 pub mod physics;
@@ -27,7 +28,7 @@ pub use living::{LivingState, MobState};
 pub use physics::BlockView;
 pub use store::{DuplicateUuid, Entities};
 pub use tracker::EntityTracker;
-pub use tracking_range::{TrackingRanges, tracking_range};
+pub use tracking_range::{ActivationType, TrackingRanges, activation_type, tracking_range};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EntityState {

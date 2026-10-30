@@ -171,6 +171,7 @@ public final class BlockDump {
         json.name("lava").value(fluid.getType().isSame(Fluids.LAVA));
         json.name("is_randomly_ticking").value(state.isRandomlyTicking());
         json.name("is_collision_shape_full_block").value(state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+        json.name("is_solid").value(state.isSolid());
         json.name("collision_shape").value(internShape(shapes, collision));
         json.name("sturdy_full").value(sturdyMask(state, SupportType.FULL));
         json.name("sturdy_center").value(sturdyMask(state, SupportType.CENTER));

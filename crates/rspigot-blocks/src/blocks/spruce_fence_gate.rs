@@ -32,13 +32,13 @@ impl Block for SpruceFenceGate {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(42), StateFlags(42), StateFlags(46), StateFlags(46), StateFlags(42),
-        StateFlags(42), StateFlags(46), StateFlags(46), StateFlags(42), StateFlags(42),
-        StateFlags(46), StateFlags(46), StateFlags(42), StateFlags(42), StateFlags(46),
-        StateFlags(46), StateFlags(42), StateFlags(42), StateFlags(46), StateFlags(46),
-        StateFlags(42), StateFlags(42), StateFlags(46), StateFlags(46), StateFlags(42),
-        StateFlags(42), StateFlags(46), StateFlags(46), StateFlags(42), StateFlags(42),
-        StateFlags(46), StateFlags(46),
+        StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090),
+        StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090),
+        StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090), StateFlags(2094),
+        StateFlags(2094), StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094),
+        StateFlags(2090), StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090),
+        StateFlags(2090), StateFlags(2094), StateFlags(2094), StateFlags(2090), StateFlags(2090),
+        StateFlags(2094), StateFlags(2094),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_FENCE_GATE);
     const FACE_SUPPORT: PerState<FaceSupport> =

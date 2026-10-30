@@ -31,7 +31,7 @@ impl Block for Conduit {
         1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(134), StateFlags(38),
+        StateFlags(2182), StateFlags(2086),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(273));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
