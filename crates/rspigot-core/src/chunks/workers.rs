@@ -10,7 +10,9 @@ use rspigot_domain::world::Dimension;
 
 use super::queue::{JobQueue, Priority};
 use crate::lighting;
-use crate::ports::{ChunkGenerator, ChunkStore};
+use rspigot_nbt::Compound;
+
+use crate::ports::{ChunkGenerator, ChunkStore, EntityStore};
 
 pub enum ChunkJob {
     Load {
@@ -20,6 +22,13 @@ pub enum ChunkJob {
     Save {
         dimension: Arc<Dimension>,
         chunk: Arc<ChunkColumn>,
+    },
+    SaveEntities {
+        dimension: Arc<Dimension>,
+        pos: ChunkPos,
+        entities: Arc<Vec<Compound>>,
+        merge: bool,
+        generation: u64,
     },
     Flush,
 }
@@ -37,9 +46,14 @@ pub enum ChunkResult {
         chunk: Box<ChunkColumn>,
         source: ChunkSource,
         elapsed: Duration,
+        entities: Option<Vec<Compound>>,
     },
     Saved {
         pos: ChunkPos,
+    },
+    EntitiesSaved {
+        pos: ChunkPos,
+        generation: u64,
     },
     Failed {
         pos: ChunkPos,
@@ -55,7 +69,7 @@ pub struct ChunkWorkers {
 }
 
 impl ChunkWorkers {
-    pub fn spawn<S: ChunkStore, G: ChunkGenerator>(
+    pub fn spawn<S: ChunkStore + EntityStore, G: ChunkGenerator>(
         threads: usize,
         store: Arc<S>,
         generator: Arc<G>,
@@ -106,7 +120,7 @@ impl ChunkWorkers {
     }
 }
 
-fn run_worker<S: ChunkStore, G: ChunkGenerator>(
+fn run_worker<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     queue: &JobQueue<ChunkJob>,
     store: &S,
     generator: &G,
@@ -120,7 +134,7 @@ fn run_worker<S: ChunkStore, G: ChunkGenerator>(
     }
 }
 
-fn execute<S: ChunkStore, G: ChunkGenerator>(
+fn execute<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     job: ChunkJob,
     store: &S,
     generator: &G,
@@ -134,6 +148,19 @@ fn execute<S: ChunkStore, G: ChunkGenerator>(
                 error: error.to_string(),
             },
         },
+        ChunkJob::SaveEntities {
+            dimension,
+            pos,
+            entities,
+            merge,
+            generation,
+        } => match save_entities(&dimension, pos, &entities, merge, store) {
+            Ok(()) => ChunkResult::EntitiesSaved { pos, generation },
+            Err(error) => ChunkResult::Failed {
+                pos,
+                error: error.to_string(),
+            },
+        },
         ChunkJob::Flush => {
             if let Err(error) = store.flush() {
                 tracing::error!(%error, "chunk store flush failed");
@@ -143,7 +170,7 @@ fn execute<S: ChunkStore, G: ChunkGenerator>(
     }
 }
 
-fn load<S: ChunkStore, G: ChunkGenerator>(
+fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     dimension: Arc<Dimension>,
     pos: ChunkPos,
     store: &S,
@@ -158,6 +185,13 @@ fn load<S: ChunkStore, G: ChunkGenerator>(
             (generator.generate(&dimension, pos), ChunkSource::Generated)
         }
     };
+    let entities = match store.load_entities(&dimension.key, pos) {
+        Ok(entities) => entities,
+        Err(error) => {
+            tracing::error!(?pos, %error, "Failed to load entities");
+            None
+        }
+    };
     if !lighting::has_light(&chunk) {
         lighting::compute(&mut chunk, dimension.has_skylight);
     }
@@ -167,5 +201,36 @@ fn load<S: ChunkStore, G: ChunkGenerator>(
         chunk: Box::new(chunk),
         source,
         elapsed: started.elapsed(),
+        entities,
     }
+}
+
+fn entity_uuid(entity: &Compound) -> Option<&[i32]> {
+    entity.get_int_array("UUID")
+}
+
+fn save_entities<S: EntityStore>(
+    dimension: &Dimension,
+    pos: ChunkPos,
+    entities: &[Compound],
+    merge: bool,
+    store: &S,
+) -> Result<(), crate::ports::StoreError> {
+    if !merge {
+        return store.save_entities(&dimension.key, pos, entities);
+    }
+    let mut merged: Vec<Compound> = store
+        .load_entities(&dimension.key, pos)?
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|existing| {
+            entity_uuid(existing).is_none_or(|uuid| {
+                !entities
+                    .iter()
+                    .any(|entity| entity_uuid(entity) == Some(uuid))
+            })
+        })
+        .collect();
+    merged.extend(entities.iter().cloned());
+    store.save_entities(&dimension.key, pos, &merged)
 }

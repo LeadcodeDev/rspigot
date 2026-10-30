@@ -1,10 +1,13 @@
 use rspigot_domain::effect::ActiveEffects;
 use rspigot_domain::item::Inventory;
+use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
 use rspigot_domain::{EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
+use crate::drops::DropLimits;
 use crate::events::Abilities;
+use crate::health::Vitals;
 use crate::streaming::ChunkStreamer;
 
 pub struct Player<L> {
@@ -19,6 +22,8 @@ pub struct Player<L> {
     pub previous_game_mode: Option<GameMode>,
     pub inventory: Inventory,
     pub inventory_state: i32,
+    pub menu: InventoryMenu,
+    pub(crate) drops: DropLimits,
     pub settings: ClientSettings,
     pub streamer: ChunkStreamer,
     pub pending_teleport: Option<i32>,
@@ -30,6 +35,7 @@ pub struct Player<L> {
     pub loaded: bool,
     pub operator: bool,
     pub effects: ActiveEffects,
+    pub vitals: Vitals,
 }
 
 impl<L> Player<L> {
@@ -77,7 +83,18 @@ impl<L> Player<L> {
     }
 
     pub fn eye_position(&self) -> Vec3 {
-        let eye = if self.sneaking { 1.27 } else { 1.62 };
-        Vec3::new(self.position.x, self.position.y + eye, self.position.z)
+        Vec3::new(
+            self.position.x,
+            self.position.y + self.eye_height(),
+            self.position.z,
+        )
+    }
+
+    pub fn eye_height(&self) -> f64 {
+        if self.sneaking { 1.27 } else { 1.62 }
+    }
+
+    pub fn height(&self) -> f64 {
+        if self.sneaking { 1.5 } else { 1.8 }
     }
 }

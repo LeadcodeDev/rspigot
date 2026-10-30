@@ -1,14 +1,17 @@
 use std::num::NonZeroU8;
 
 use rspigot_domain::item::{HOTBAR_START, ItemStack};
+use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
 
+use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
+
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
-use crate::placement::{is_replaceable, placed_state};
+use crate::loot::{self, LootContext};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -125,6 +128,7 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::Loaded => {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.loaded = true;
+                    player.vitals.load_timeout = 0;
                 }
             }
             PlayerInput::Abilities { flying } => {
@@ -141,7 +145,17 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn | PlayerInput::Attack(_) | PlayerInput::Interact { .. } => {}
+            PlayerInput::Respawn => {
+                let dead = self.players.get(&id).is_some_and(|p| p.vitals.is_dead());
+                self.respawn(id);
+                if dead && let Some(player) = self.players.get_mut(&id) {
+                    player.menu = InventoryMenu::synced(&player.inventory);
+                }
+            }
+            PlayerInput::Attack(target) => self.handle_attack(id, target),
+            PlayerInput::Interact { .. } => {}
+            PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
+            PlayerInput::ContainerClose(_) => self.handle_container_close(id),
         }
     }
 
@@ -155,7 +169,7 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if player.pending_teleport.is_some() {
+        if player.pending_teleport.is_some() || player.vitals.is_dead() {
             return;
         }
         let from = player.position;
@@ -205,6 +219,7 @@ impl<L: ClientLink> Server<L> {
         let entity = player.entity_id;
         let to = player.position;
         let yaw = player.rotation.yaw;
+        self.check_fall(id, to.y - from.y, on_ground);
         if position.is_some() || rotation.is_some() {
             self.push(
                 Audience::Trackers(entity),
@@ -223,6 +238,7 @@ impl<L: ClientLink> Server<L> {
                 ClientEvent::EntityHeadRotation { entity, yaw },
             );
         }
+        self.update_player_view(id);
     }
 
     fn handle_chat(&mut self, id: PlayerId, message: &str) {
@@ -288,16 +304,27 @@ impl<L: ClientLink> Server<L> {
         };
         match action {
             DigAction::Start | DigAction::Finish => {
-                let breaks = match action {
-                    DigAction::Start => mode == GameMode::Creative,
-                    _ => mode == GameMode::Survival,
+                let Some(state) = self.world.chunks.block(pos) else {
+                    self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                    return;
+                };
+                let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
+                let breaks = match (action, mode) {
+                    (DigAction::Start, GameMode::Creative) => true,
+                    (DigAction::Start, GameMode::Survival) => hardness == 0.0,
+                    (DigAction::Finish, GameMode::Survival) => true,
+                    _ => false,
                 };
                 if breaks {
-                    if !self.within_reach(id, pos) || self.is_protected(id, pos) {
+                    let unbreakable = mode == GameMode::Survival && hardness < 0.0;
+                    if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
                         self.refuse_block(id, pos, sequence);
                         return;
                     }
                     self.set_block(pos, BlockStateId::AIR);
+                    if mode == GameMode::Survival {
+                        self.drop_block_loot(id, pos, state);
+                    }
                 }
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             }
@@ -315,16 +342,34 @@ impl<L: ClientLink> Server<L> {
                     self.broadcast_held_item(id);
                 }
             }
-            DigAction::DropItem
-            | DigAction::DropStack
-            | DigAction::ReleaseUseItem
-            | DigAction::Stab => self.send_inventory(id),
+            DigAction::DropItem => self.handle_drop_action(id, false),
+            DigAction::DropStack => self.handle_drop_action(id, true),
+            DigAction::ReleaseUseItem | DigAction::Stab => self.send_inventory(id),
+        }
+    }
+
+    fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
+        let tool = self
+            .players
+            .get(&id)
+            .and_then(|p| p.inventory.held().cloned());
+        if !loot::tool_is_correct(tool.as_ref(), state) {
+            return;
+        }
+        let context = LootContext {
+            state,
+            tool: tool.as_ref(),
+        };
+        for stack in loot::block_drops(&context, &mut self.rng) {
+            self.spawn_item(pos, stack);
         }
     }
 
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
+                self.mob_paths_block_changed(pos, old, state);
+                self.notify_neighbours(pos);
                 self.push(
                     Audience::ChunkViewers(pos.chunk()),
                     ClientEvent::BlockUpdate { pos, state },
@@ -359,15 +404,12 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         };
-        if !sneaking && self.toggle_openable(pos, clicked) {
+        if !sneaking && self.use_block(pos, clicked, sneaking) {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
-        let placeable = stack
-            .as_ref()
-            .and_then(|s| rspigot_data::items::block_state_for(s.item.0))
-            .map(BlockStateId);
-        let (Some(stack), Some(default)) = (stack, placeable) else {
+        let kind = stack.as_ref().and_then(|s| BlockKind::from_item(s.item.0));
+        let (Some(stack), Some(kind)) = (stack, kind) else {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         };
@@ -391,15 +433,28 @@ impl<L: ClientLink> Server<L> {
             self.refuse_block(id, target, sequence);
             return;
         }
-        let state = placed_state(default, face, rotation.yaw, rotation.pitch, cursor);
+        let context = PlaceContext {
+            default_state: kind.default_state(),
+            wall_variant: kind.wall_variant().map(BlockKind::default_state),
+            face: block_face(face),
+            yaw: rotation.yaw,
+            pitch: rotation.pitch,
+            cursor_y: cursor.y as f32,
+        };
+        let Some(placement) = kind.place(&context) else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
+        let Some(state) = self.placement_state(target, placement.state, rotation.pitch, sneaking)
+        else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
         self.set_block(target, state);
-        if let Some(name) = rspigot_data::blocks::block_name(state.0)
-            && name.ends_with("_door")
-            && let Some(upper) = rspigot_data::blocks::with_property(state.0, "half", "upper")
-        {
-            let above = target.offset(0, 1, 0);
-            if self.world.chunks.block(above).is_some_and(is_replaceable) {
-                self.set_block(above, BlockStateId(upper));
+        if let Some(linked) = placement.linked {
+            let other = target.offset(0, i32::from(linked.dy), 0);
+            if self.world.chunks.block(other).is_some_and(is_replaceable) {
+                self.set_block(other, linked.state);
             }
         }
         self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
@@ -408,32 +463,21 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn toggle_openable(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
-        let Some(name) = rspigot_data::blocks::block_name(state.0) else {
+    fn use_block(&mut self, pos: BlockPos, state: BlockStateId, sneaking: bool) -> bool {
+        let Some(kind) = state.kind() else {
             return false;
         };
-        if name.starts_with("minecraft:iron_") {
-            return false;
-        }
-        let Some(open) = rspigot_data::blocks::property(state.0, "open") else {
+        let Some(result) = kind.use_block(&UseContext { state, sneaking }) else {
             return false;
         };
-        let next = if open == "true" { "false" } else { "true" };
-        let Some(toggled) = rspigot_data::blocks::with_property(state.0, "open", next) else {
-            return false;
-        };
-        self.set_block(pos, BlockStateId(toggled));
-        if name.ends_with("_door") {
-            let other = match rspigot_data::blocks::property(state.0, "half") {
-                Some("lower") => pos.offset(0, 1, 0),
-                _ => pos.offset(0, -1, 0),
-            };
+        self.set_block(pos, result.state);
+        if let Some(linked) = result.linked {
+            let other = pos.offset(0, i32::from(linked.dy), 0);
             if let Some(other_state) = self.world.chunks.block(other)
-                && rspigot_data::blocks::block_name(other_state.0) == Some(name)
-                && let Some(other_toggled) =
-                    rspigot_data::blocks::with_property(other_state.0, "open", next)
+                && other_state.kind() == Some(kind)
+                && let Some(changed) = other_state.with_property(linked.property, linked.value)
             {
-                self.set_block(other, BlockStateId(other_toggled));
+                self.set_block(other, changed);
             }
         }
         true
@@ -454,31 +498,29 @@ impl<L: ClientLink> Server<L> {
         };
         let remaining = stack.count.get() - 1;
         let new = NonZeroU8::new(remaining).map(|count| ItemStack { count, ..stack });
-        player.inventory.set(slot, new.clone());
-        let state_id = player.next_inventory_state();
-        player.link.send(ClientEvent::InventorySlot {
-            state_id,
-            slot: slot as i16,
-            stack: new,
-        });
+        player.inventory.set(slot, new);
+        self.sync_inventory(id);
         self.broadcast_held_item(id);
     }
 
     fn handle_creative_slot(&mut self, id: PlayerId, slot: i16, stack: Option<ItemStack>) {
-        let Some(player) = self.players.get_mut(&id) else {
-            return;
-        };
-        if player.game_mode != GameMode::Creative {
-            self.send_inventory(id);
+        if self
+            .players
+            .get(&id)
+            .is_none_or(|p| p.game_mode != GameMode::Creative)
+        {
             return;
         }
-        let Ok(index) = usize::try_from(slot) else {
+        let valid_data = stack
+            .as_ref()
+            .is_none_or(|s| s.count.get() <= s.item.max_stack_size());
+        if !valid_data {
             return;
-        };
-        if player.inventory.set(index, stack)
-            && index == HOTBAR_START + usize::from(player.inventory.selected_hotbar)
-        {
-            self.broadcast_held_item(id);
+        }
+        match usize::try_from(slot) {
+            Ok(index @ 1..=45) => self.set_slot_by_player(id, index, stack),
+            Err(_) => self.drop_creative(id, stack),
+            Ok(_) => {}
         }
     }
 
@@ -486,10 +528,7 @@ impl<L: ClientLink> Server<L> {
         let Some(state) = self.world.chunks.block(pos) else {
             return;
         };
-        let Some(name) = rspigot_data::blocks::block_name(state.0) else {
-            return;
-        };
-        let Some(item) = rspigot_data::items::id(name) else {
+        let Some(item) = state.kind().and_then(BlockKind::item) else {
             return;
         };
         let Some(player) = self.players.get_mut(&id) else {
@@ -502,12 +541,7 @@ impl<L: ClientLink> Server<L> {
         player
             .inventory
             .set(slot, Some(ItemStack::new(ItemId(item), NonZeroU8::MIN)));
-        let state_id = player.next_inventory_state();
-        player.link.send(ClientEvent::InventorySlot {
-            state_id,
-            slot: slot as i16,
-            stack: player.inventory.get(slot).cloned(),
-        });
+        self.sync_inventory(id);
         self.broadcast_held_item(id);
     }
 
@@ -556,11 +590,12 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn send_inventory(&mut self, id: PlayerId) {
         if let Some(player) = self.players.get_mut(&id) {
+            let (slots, carried) = player.menu.sync_all(&player.inventory);
             let state_id = player.next_inventory_state();
             player.link.send(ClientEvent::InventoryContent {
                 state_id,
-                slots: player.inventory.slots().to_vec(),
-                carried: None,
+                slots,
+                carried,
             });
         }
     }
@@ -624,4 +659,19 @@ impl<L: ClientLink> Server<L> {
 
 fn to_pitch(rotation: Option<Rotation>) -> f32 {
     rotation.map_or(0.0, |r| r.pitch.clamp(-90.0, 90.0))
+}
+
+fn is_replaceable(state: BlockStateId) -> bool {
+    state.flags().contains(StateFlags::REPLACEABLE)
+}
+
+const fn block_face(face: Direction) -> Face {
+    match face {
+        Direction::Down => Face::Down,
+        Direction::Up => Face::Up,
+        Direction::North => Face::North,
+        Direction::South => Face::South,
+        Direction::West => Face::West,
+        Direction::East => Face::East,
+    }
 }

@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rspigot_data::blocks::{block_name, default_state, properties, state_with, with_property};
+use rspigot_blocks::BlockKind;
 use rspigot_data::registries::{biome_id, biome_name};
 use rspigot_domain::chunk::{
     Biomes, BlockEntity, Blocks, ChunkColumn, ChunkLight, ChunkSection, ChunkStatus, Heightmap,
@@ -329,18 +329,19 @@ fn block_state_from_tag(tag: &Tag) -> BlockStateId {
                 .collect()
         })
         .unwrap_or_default();
-    if let Some(state) = state_with(&name, &props) {
-        return BlockStateId(state);
-    }
-    let Some(default) = default_state(&name) else {
+    let Some(kind) = BlockKind::from_name(&name) else {
         tracing::warn!(block = %name, "unknown block in a chunk palette, using air");
         return BlockStateId::AIR;
     };
+    if let Some(state) = kind.state_with(&props) {
+        return state;
+    }
     tracing::warn!(block = %name, "invalid block properties in a chunk palette, keeping the valid ones");
-    let state = props.iter().fold(default, |state, (key, value)| {
-        with_property(state, key, value).unwrap_or(state)
-    });
-    BlockStateId(state)
+    props
+        .iter()
+        .fold(kind.default_state(), |state, (key, value)| {
+            state.with_property(key, value).unwrap_or(state)
+        })
 }
 
 fn biome_from_tag(tag: &Tag, plains: BiomeId) -> BiomeId {
@@ -462,10 +463,10 @@ fn biome_to_name(biome: BiomeId) -> String {
 }
 
 fn block_state_to_tag(state: &BlockStateId) -> Tag {
-    let name = block_name(state.0).unwrap_or(AIR_NAME);
+    let name = state.kind().map_or(AIR_NAME, BlockKind::name);
     let mut entry = Compound::with_capacity(2);
     entry.insert("Name", name);
-    let props = properties(state.0);
+    let props: Vec<_> = state.properties().collect();
     if !props.is_empty() {
         let mut compound = Compound::with_capacity(props.len());
         for (key, value) in props {
@@ -543,7 +544,6 @@ fn encode_block_entity(entity: &BlockEntity) -> Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rspigot_data::blocks::state_with;
     use rspigot_data::registries::biome_id;
     use rspigot_domain::chunk::{
         Biomes, Blocks, ChunkLight, ChunkSection, ChunkStatus, Heightmap, HeightmapKind,
@@ -562,22 +562,18 @@ mod tests {
     }
 
     fn state(name: &str) -> BlockStateId {
-        BlockStateId(state_with(name, &[]).unwrap())
+        BlockKind::from_name(name).unwrap().default_state()
     }
 
     fn stairs() -> BlockStateId {
-        BlockStateId(
-            state_with(
-                "minecraft:oak_stairs",
-                &[
-                    ("facing", "north"),
-                    ("half", "bottom"),
-                    ("shape", "straight"),
-                    ("waterlogged", "false"),
-                ],
-            )
-            .unwrap(),
-        )
+        BlockKind::OakStairs
+            .state_with(&[
+                ("facing", "north"),
+                ("half", "bottom"),
+                ("shape", "straight"),
+                ("waterlogged", "false"),
+            ])
+            .unwrap()
     }
 
     fn biome(name: &str) -> BiomeId {
@@ -1230,8 +1226,7 @@ mod tests {
         let section = &chunk.sections()[1];
         assert_eq!(section.block(0, 0, 0), state("minecraft:stone"));
         assert_eq!(section.block(1, 0, 0), BlockStateId::AIR);
-        let half_top =
-            BlockStateId(state_with("minecraft:oak_stairs", &[("half", "top")]).unwrap());
+        let half_top = BlockKind::OakStairs.state_with(&[("half", "top")]).unwrap();
         assert_eq!(section.block(2, 0, 0), half_top);
         assert_eq!(section.biome(1, 0, 0), biome(PLAINS));
     }

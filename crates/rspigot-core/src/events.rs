@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
@@ -146,6 +147,19 @@ pub enum PlayerInput {
         id: i32,
         text: String,
     },
+    ContainerClick(ContainerClick),
+    ContainerClose(i32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContainerClick {
+    pub container: i32,
+    pub state_id: i32,
+    pub slot: i16,
+    pub button: i8,
+    pub input: ClickInput,
+    pub changed: Vec<(i16, HashedSlot)>,
+    pub carried: HashedSlot,
 }
 
 pub enum Inbound<L> {
@@ -223,6 +237,7 @@ pub struct PlayerListEntry {
 pub enum EntityKind {
     Player,
     Item,
+    FallingBlock,
     Other(u16),
 }
 
@@ -235,17 +250,9 @@ pub enum Animation {
     MagicCriticalHit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pose {
-    Standing,
-    FallFlying,
-    Sleeping,
-    Swimming,
-    SpinAttack,
-    Crouching,
-    LongJumping,
-    Dying,
-}
+pub use rspigot_domain::entity::Pose;
+pub use rspigot_domain::entity::tracker::{DeltaStep, MoveDelta, Movement, PositionPath};
+pub use rspigot_domain::menu::{ClickInput, HashedItem, HashedSlot};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
@@ -255,6 +262,8 @@ pub enum MetadataValue {
     Pose(Pose),
     OptionalComponent(Option<Component>),
     Boolean(bool),
+    Item(Slot),
+    BlockPos(BlockPos),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -273,6 +282,12 @@ pub enum EquipmentSlot {
     Head,
     Body,
     Saddle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityStatus {
+    Death,
+    Poof,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -373,9 +388,18 @@ pub enum ClientEvent {
         rotation: Option<Rotation>,
         on_ground: bool,
     },
+    EntityMove {
+        entity: EntityId,
+        movement: Movement,
+    },
+    BundleDelimiter,
     EntityHeadRotation {
         entity: EntityId,
         yaw: f32,
+    },
+    EntityVelocity {
+        entity: EntityId,
+        velocity: Vec3,
     },
     EntityAnimation {
         entity: EntityId,
@@ -398,6 +422,11 @@ pub enum ClientEvent {
     InventorySlot {
         state_id: i32,
         slot: i16,
+        stack: Slot,
+    },
+    CursorItem(Slot),
+    PlayerInventorySlot {
+        slot: i32,
         stack: Slot,
     },
     Health {
@@ -438,6 +467,25 @@ pub enum ClientEvent {
     Attributes {
         entity: EntityId,
         attributes: Vec<AttributeState>,
+    },
+    DamageEvent {
+        entity: EntityId,
+        kind: DamageType,
+        cause: Option<EntityId>,
+        direct: Option<EntityId>,
+        position: Option<Vec3>,
+    },
+    HurtAnimation {
+        entity: EntityId,
+        yaw: f32,
+    },
+    CombatKill {
+        player: EntityId,
+        message: Component,
+    },
+    EntityStatus {
+        entity: EntityId,
+        status: EntityStatus,
     },
     Disconnect(Component),
 }

@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rspigot-blocks = { workspace = true }
 rspigot-core = { workspace = true }
 rspigot-domain = { workspace = true }
 rspigot-data = { workspace = true }
@@ -15,6 +16,7 @@ lz4_flex = { version = "0.13", default-features = false, features = ["std", "saf
 parking_lot = "0.12"
 thiserror = "2"
 tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
 
 [lints]
 workspace = true

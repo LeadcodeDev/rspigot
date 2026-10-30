@@ -1,0 +1,15 @@
+[package]
+name = "rspigot-entities"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+rspigot-data.workspace = true
+rspigot-items.workspace = true
+
+[lints]
+workspace = true

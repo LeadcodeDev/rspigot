@@ -13,12 +13,17 @@ use crate::admin::AdminLists;
 use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
+use crate::entities::EntityWorld;
 use crate::events::{
     ClientEvent, EntityKind, EquipmentSlot, GameEvent, Inbound, JoinInfo, MetadataEntry,
     MetadataValue, PlayerListEntry, Pose, SpawnInfo,
 };
+use crate::falling::ScheduledFalls;
 use crate::player::Player;
-use crate::ports::{ChunkGenerator, ChunkStore, ClientLink};
+use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore};
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
@@ -26,6 +31,7 @@ pub(crate) enum Audience {
     One(PlayerId),
     All,
     Trackers(EntityId),
+    TrackersExcept(EntityId, PlayerId),
     ChunkViewers(ChunkPos),
 }
 
@@ -79,6 +85,9 @@ pub struct Server<L> {
     pub(crate) admin: AdminLists,
     pub(crate) admin_sink: Option<Sender<AdminLists>>,
     pub(crate) running: bool,
+    pub(crate) entities: EntityWorld,
+    pub(crate) falls: ScheduledFalls,
+    pub(crate) rng: StdRng,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -88,7 +97,7 @@ pub struct Server<L> {
 }
 
 impl<L: ClientLink> Server<L> {
-    pub fn new<S: ChunkStore, G: ChunkGenerator>(
+    pub fn new<S: ChunkStore + EntityStore, G: ChunkGenerator>(
         config: GameConfig,
         mut level: LevelData,
         store: Arc<S>,
@@ -129,6 +138,9 @@ impl<L: ClientLink> Server<L> {
             admin,
             admin_sink: None,
             running: true,
+            entities: EntityWorld::default(),
+            falls: ScheduledFalls::default(),
+            rng: StdRng::from_os_rng(),
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -219,6 +231,16 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn current_tick(&self) -> u64 {
+        self.tick
+    }
+
+    pub(crate) fn allocate_entity_id(&mut self) -> EntityId {
+        let id = EntityId(self.next_entity_id);
+        self.next_entity_id += 1;
+        id
+    }
+
     pub(crate) fn push(&mut self, audience: Audience, event: ClientEvent) {
         self.outbox.push((audience, event));
     }
@@ -241,6 +263,15 @@ impl<L: ClientLink> Server<L> {
                         .players
                         .values()
                         .filter(|p| p.tracked.contains(&entity))
+                    {
+                        player.link.send(event.clone());
+                    }
+                }
+                Audience::TrackersExcept(entity, excluded) => {
+                    for player in self
+                        .players
+                        .values()
+                        .filter(|p| p.id != excluded && p.tracked.contains(&entity))
                     {
                         player.link.send(event.clone());
                     }
@@ -313,8 +344,7 @@ impl<L: ClientLink> Server<L> {
             ));
             return;
         }
-        let entity_id = EntityId(self.next_entity_id);
-        self.next_entity_id += 1;
+        let entity_id = self.allocate_entity_id();
         let position = self.world.spawn;
         let view_distance = self.config.view_distance.min(settings.view_distance.max(2));
         let mut player = Player {
@@ -329,6 +359,8 @@ impl<L: ClientLink> Server<L> {
             previous_game_mode: None,
             inventory: Default::default(),
             inventory_state: 0,
+            menu: Default::default(),
+            drops: Default::default(),
             streamer: ChunkStreamer::new(self.config.stream, position.chunk(), view_distance),
             settings,
             pending_teleport: None,
@@ -340,6 +372,7 @@ impl<L: ClientLink> Server<L> {
             loaded: false,
             operator,
             effects: Default::default(),
+            vitals: Default::default(),
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
@@ -369,6 +402,7 @@ impl<L: ClientLink> Server<L> {
         let name = player.profile.name.clone();
         let id = player.id;
         self.players.insert(id, player);
+        self.update_player_view(id);
         let joined =
             Component::translatable("multiplayer.player.joined", vec![Component::text(name)])
                 .color(NamedColor::Yellow);
@@ -390,7 +424,7 @@ impl<L: ClientLink> Server<L> {
             view_distance: self.config.view_distance,
             simulation_distance: self.config.simulation_distance,
             reduced_debug_info: false,
-            enable_respawn_screen: true,
+            enable_respawn_screen: !self.config.rules.immediate_respawn,
             do_limited_crafting: false,
             spawn: self.spawn_info(player),
             enforces_secure_chat: false,
@@ -430,21 +464,23 @@ impl<L: ClientLink> Server<L> {
             }
         }
         link.send(ClientEvent::GameEvent(GameEvent::LevelChunksLoadStart));
+        let (slots, carried) = player.menu.sync_all(&player.inventory);
         link.send(ClientEvent::InventoryContent {
             state_id: 0,
-            slots: player.inventory.slots().to_vec(),
-            carried: None,
+            slots,
+            carried,
         });
         link.send(ClientEvent::Health {
-            health: 20.0,
-            food: 20,
-            saturation: 5.0,
+            health: player.vitals.health,
+            food: player.vitals.food.food,
+            saturation: player.vitals.food.saturation,
         });
         link.send(ClientEvent::Experience {
             progress: 0.0,
             level: 0,
             total: 0,
         });
+        player.vitals.mark_sent();
     }
 
     pub(crate) fn time_event(&self) -> ClientEvent {
@@ -505,11 +541,18 @@ impl<L: ClientLink> Server<L> {
             self.world.level.day_time += 1;
         }
         self.world.chunks.tick(&self.workers);
+        self.handle_chunk_events();
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
-        self.tick_effects();
+        self.send_entity_changes();
+        self.tick_health();
+        self.tick_entities();
+        self.collect_items();
+        self.tick_inventories();
+        self.tick_falling_blocks();
         self.update_tracking();
+        self.sync_vitals();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
             self.push(Audience::All, time);
@@ -556,13 +599,17 @@ impl<L: ClientLink> Server<L> {
         let targets: Vec<Target> = self
             .players
             .values()
+            .filter(|p| !p.vitals.removed)
             .map(|p| Target {
                 id: p.id,
                 entity: p.entity_id,
                 position: p.position,
                 rotation: p.rotation,
                 chunk: p.position.chunk(),
-                metadata: Self::metadata(p),
+                metadata: Self::metadata(p)
+                    .into_iter()
+                    .chain(Self::health_metadata(p))
+                    .collect(),
                 held: p
                     .inventory
                     .get(HOTBAR_START + usize::from(p.inventory.selected_hotbar))
@@ -644,6 +691,8 @@ impl<L: ClientLink> Server<L> {
             self.world.level.name,
             self.world.dimension.key
         );
+        self.handle_chunk_events();
+        self.save_all_entities();
         let saved = self.world.chunks.save_dirty(&self.workers);
         self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
         self.workers.shutdown();

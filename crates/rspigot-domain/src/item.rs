@@ -24,7 +24,67 @@ impl ItemStack {
 pub type Slot = Option<ItemStack>;
 
 pub const HOTBAR_START: usize = 36;
+pub const OFFHAND_SLOT: usize = 45;
 pub const PLAYER_INVENTORY_SIZE: usize = 46;
+const CONTAINER_MAX_STACK: u32 = 99;
+const STORAGE_SLOTS: usize = 36;
+const OFFHAND_INDEX: usize = 40;
+
+pub fn count(slot: &Slot) -> u32 {
+    slot.as_ref().map_or(0, |s| u32::from(s.count.get()))
+}
+
+pub fn max_stack(stack: &ItemStack) -> u32 {
+    u32::from(stack.item.max_stack_size())
+}
+
+pub fn with_count(stack: &ItemStack, count: u32) -> Slot {
+    let count = NonZeroU8::new(u8::try_from(count).unwrap_or(u8::MAX))?;
+    Some(ItemStack {
+        count,
+        ..stack.clone()
+    })
+}
+
+pub fn split(slot: &mut Slot, amount: u32) -> Slot {
+    let stack = slot.as_ref()?;
+    let taken = amount.min(count(slot));
+    let part = with_count(stack, taken);
+    *slot = with_count(stack, count(slot) - taken);
+    part
+}
+
+pub fn same_item_same_components(a: &ItemStack, b: &ItemStack) -> bool {
+    a.item == b.item && a.components == b.components
+}
+
+pub fn same_item(a: &Slot, b: &Slot) -> bool {
+    a.as_ref().map(|s| s.item) == b.as_ref().map(|s| s.item)
+}
+
+pub fn stacks_match(a: &Slot, b: &Slot) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.count == b.count && same_item_same_components(a, b),
+        _ => false,
+    }
+}
+
+pub const fn menu_slot(inventory_slot: usize) -> Option<usize> {
+    match inventory_slot {
+        0..=8 => Some(HOTBAR_START + inventory_slot),
+        9..=35 => Some(inventory_slot),
+        36..=39 => Some(44 - inventory_slot),
+        OFFHAND_INDEX => Some(OFFHAND_SLOT),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlaceBack {
+    pub placed: Vec<(usize, ItemStack)>,
+    pub leftover: Slot,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inventory {
@@ -62,5 +122,261 @@ impl Inventory {
 
     pub fn slots(&self) -> &[Slot] {
         &self.slots
+    }
+
+    pub fn remove(&mut self, slot: usize, amount: u32) -> Slot {
+        if amount == 0 {
+            return None;
+        }
+        split(self.slots.get_mut(slot)?, amount)
+    }
+
+    fn storage(&self, inventory_slot: usize) -> &Slot {
+        menu_slot(inventory_slot)
+            .and_then(|slot| self.slots.get(slot))
+            .unwrap_or(&None)
+    }
+
+    fn has_space_for(&self, inventory_slot: usize, stack: &ItemStack) -> bool {
+        self.storage(inventory_slot).as_ref().is_some_and(|dest| {
+            same_item_same_components(dest, stack)
+                && max_stack(dest) > 1
+                && u32::from(dest.count.get()) < max_stack(dest).min(CONTAINER_MAX_STACK)
+        })
+    }
+
+    pub fn slot_with_remaining_space(&self, stack: &ItemStack) -> Option<usize> {
+        let selected = usize::from(self.selected_hotbar);
+        [selected, OFFHAND_INDEX]
+            .into_iter()
+            .chain(0..STORAGE_SLOTS)
+            .find(|slot| self.has_space_for(*slot, stack))
+    }
+
+    pub fn free_slot(&self) -> Option<usize> {
+        (0..STORAGE_SLOTS).find(|slot| self.storage(*slot).is_none())
+    }
+
+    fn add_resource(&mut self, inventory_slot: usize, stack: &ItemStack) -> u32 {
+        let amount = u32::from(stack.count.get());
+        let Some(slot) = menu_slot(inventory_slot) else {
+            return amount;
+        };
+        let existing = count(&self.slots[slot]);
+        let template = self.slots[slot].clone().unwrap_or_else(|| stack.clone());
+        let space = max_stack(&template)
+            .min(CONTAINER_MAX_STACK)
+            .saturating_sub(existing);
+        let added = amount.min(space);
+        if added == 0 {
+            return amount;
+        }
+        self.slots[slot] = with_count(&template, existing + added);
+        amount - added
+    }
+
+    pub fn add(&mut self, stack: &mut Slot, infinite_materials: bool) -> bool {
+        if stack.is_none() {
+            return false;
+        }
+        let mut last = count(stack);
+        while let Some(current) = stack.clone() {
+            last = u32::from(current.count.get());
+            let remaining = match self
+                .slot_with_remaining_space(&current)
+                .or_else(|| self.free_slot())
+            {
+                Some(slot) => self.add_resource(slot, &current),
+                None => last,
+            };
+            *stack = with_count(&current, remaining);
+            if remaining >= last {
+                break;
+            }
+        }
+        if count(stack) == last && infinite_materials {
+            *stack = None;
+            return true;
+        }
+        count(stack) < last
+    }
+
+    fn add_at(&mut self, inventory_slot: usize, stack: &mut Slot) -> bool {
+        let mut last = count(stack);
+        while let Some(current) = stack.clone() {
+            last = u32::from(current.count.get());
+            let remaining = self.add_resource(inventory_slot, &current);
+            *stack = with_count(&current, remaining);
+            if remaining >= last {
+                break;
+            }
+        }
+        count(stack) < last
+    }
+
+    pub fn place_back(&mut self, stack: ItemStack) -> PlaceBack {
+        let mut outcome = PlaceBack::default();
+        let mut stack = Some(stack);
+        while let Some(current) = stack.clone() {
+            let Some(slot) = self
+                .slot_with_remaining_space(&current)
+                .or_else(|| self.free_slot())
+            else {
+                outcome.leftover = stack;
+                break;
+            };
+            let room = max_stack(&current).saturating_sub(count(self.storage(slot)));
+            let mut part = split(&mut stack, room);
+            if self.add_at(slot, &mut part)
+                && let Some(placed) = self.storage(slot).clone()
+            {
+                outcome.placed.push((slot, placed));
+            }
+        }
+        outcome
+    }
+
+    pub fn insert(&mut self, item: ItemId, count: u32, max_stack: u8) -> InsertOutcome {
+        let max = u32::from(max_stack.max(1));
+        let mut remaining = count;
+        let mut changed = Vec::new();
+        let order: Vec<usize> = (HOTBAR_START..HOTBAR_START + 9)
+            .chain(9..HOTBAR_START)
+            .collect();
+        for &slot in &order {
+            if remaining == 0 {
+                break;
+            }
+            let Some(existing) = self.slots[slot].as_mut() else {
+                continue;
+            };
+            if existing.item != item || !existing.components.is_empty() {
+                continue;
+            }
+            let added = max
+                .saturating_sub(u32::from(existing.count.get()))
+                .min(remaining);
+            if added > 0 {
+                existing.count = NonZeroU8::new((u32::from(existing.count.get()) + added) as u8)
+                    .unwrap_or(existing.count);
+                remaining -= added;
+                changed.push(slot);
+            }
+        }
+        for &slot in &order {
+            if remaining == 0 {
+                break;
+            }
+            if self.slots[slot].is_none() {
+                let added = max.min(remaining);
+                if let Some(count) = NonZeroU8::new(added as u8) {
+                    self.slots[slot] = Some(ItemStack::new(item, count));
+                    remaining -= added;
+                    changed.push(slot);
+                }
+            }
+        }
+        InsertOutcome { remaining, changed }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InsertOutcome {
+    pub remaining: u32,
+    pub changed: Vec<usize>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_merges_hotbar_first_then_fills_empty_slots() {
+        let mut inventory = Inventory::default();
+        inventory.set(
+            HOTBAR_START + 2,
+            Some(ItemStack::new(ItemId(5), NonZeroU8::new(60).unwrap())),
+        );
+        let outcome = inventory.insert(ItemId(5), 10, 64);
+        assert_eq!(outcome.remaining, 0);
+        assert_eq!(outcome.changed, vec![HOTBAR_START + 2, HOTBAR_START]);
+        assert_eq!(
+            inventory.get(HOTBAR_START + 2).map(|s| s.count.get()),
+            Some(64)
+        );
+        assert_eq!(inventory.get(HOTBAR_START).map(|s| s.count.get()), Some(6));
+    }
+
+    fn stone(count: u8) -> ItemStack {
+        ItemStack::new(ItemId(1), NonZeroU8::new(count).unwrap())
+    }
+
+    #[test]
+    fn add_fills_the_selected_slot_then_the_offhand_then_storage_in_order() {
+        let mut inventory = Inventory {
+            selected_hotbar: 4,
+            ..Inventory::default()
+        };
+        inventory.set(HOTBAR_START + 4, Some(stone(60)));
+        inventory.set(OFFHAND_SLOT, Some(stone(62)));
+        inventory.set(20, Some(stone(63)));
+        let mut stack = Some(stone(10));
+        assert!(inventory.add(&mut stack, false));
+        assert_eq!(stack, None);
+        assert_eq!(inventory.get(HOTBAR_START + 4), Some(&stone(64)));
+        assert_eq!(inventory.get(OFFHAND_SLOT), Some(&stone(64)));
+        assert_eq!(inventory.get(20), Some(&stone(64)));
+        assert_eq!(inventory.get(HOTBAR_START), Some(&stone(3)));
+    }
+
+    #[test]
+    fn add_reports_partial_fits_and_creative_voids_the_rest() {
+        let mut inventory = Inventory::default();
+        for slot in 9..HOTBAR_START + 9 {
+            inventory.set(slot, Some(stone(64)));
+        }
+        inventory.set(9, Some(stone(60)));
+        let mut stack = Some(stone(10));
+        assert!(!inventory.add(&mut stack, false));
+        assert_eq!(stack, Some(stone(6)));
+        assert!(inventory.add(&mut stack, true));
+        assert_eq!(stack, None);
+        assert!(!inventory.add(&mut None, true));
+    }
+
+    #[test]
+    fn place_back_reports_each_slot_and_the_leftover() {
+        let mut inventory = Inventory::default();
+        for slot in 9..HOTBAR_START + 9 {
+            inventory.set(slot, Some(stone(64)));
+        }
+        inventory.set(HOTBAR_START + 2, Some(stone(61)));
+        let outcome = inventory.place_back(stone(5));
+        assert_eq!(outcome.placed, vec![(2, stone(64))]);
+        assert_eq!(outcome.leftover, Some(stone(2)));
+    }
+
+    #[test]
+    fn menu_slots_map_vanilla_inventory_indices() {
+        assert_eq!(menu_slot(0), Some(HOTBAR_START));
+        assert_eq!(menu_slot(8), Some(44));
+        assert_eq!(menu_slot(9), Some(9));
+        assert_eq!(menu_slot(36), Some(8));
+        assert_eq!(menu_slot(39), Some(5));
+        assert_eq!(menu_slot(40), Some(OFFHAND_SLOT));
+        assert_eq!(menu_slot(41), None);
+    }
+
+    #[test]
+    fn insert_reports_leftover_when_full() {
+        let mut inventory = Inventory::default();
+        for slot in 9..HOTBAR_START + 9 {
+            inventory.set(
+                slot,
+                Some(ItemStack::new(ItemId(1), NonZeroU8::new(64).unwrap())),
+            );
+        }
+        assert_eq!(inventory.insert(ItemId(2), 3, 64).remaining, 3);
+        assert_eq!(inventory.insert(ItemId(1), 3, 64).remaining, 3);
     }
 }

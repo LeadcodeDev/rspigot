@@ -1197,18 +1197,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspigot-ai"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rspigot-blocks",
+ "rspigot-data",
+ "rspigot-domain",
+ "rspigot-entities",
+ "rspigot-items",
+ "uuid",
+]
+
+[[package]]
 name = "rspigot-anvil"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "lz4_flex",
  "parking_lot",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",
  "rspigot-nbt",
  "thiserror",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1224,14 +1239,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspigot-blocks"
+version = "0.1.0"
+
+[[package]]
 name = "rspigot-core"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "proptest",
+ "rand 0.9.5",
+ "rspigot-ai",
+ "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",
+ "rspigot-entities",
+ "rspigot-items",
  "rspigot-nbt",
  "rustc-hash",
  "sha2",
@@ -1250,10 +1274,38 @@ version = "0.1.0"
 dependencies = [
  "md-5",
  "proptest",
+ "rspigot-blocks",
  "rspigot-data",
+ "rspigot-effects",
+ "rspigot-entities",
+ "rspigot-items",
  "rspigot-nbt",
+ "rustc-hash",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "rspigot-effects"
+version = "0.1.0"
+dependencies = [
+ "rspigot-data",
+]
+
+[[package]]
+name = "rspigot-entities"
+version = "0.1.0"
+dependencies = [
+ "rspigot-data",
+ "rspigot-items",
+]
+
+[[package]]
+name = "rspigot-items"
+version = "0.1.0"
+dependencies = [
+ "rspigot-blocks",
+ "rspigot-data",
 ]
 
 [[package]]
@@ -1274,6 +1326,7 @@ dependencies = [
  "parking_lot",
  "quick_cache",
  "rand 0.9.5",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",
@@ -1318,6 +1371,7 @@ name = "rspigot-worldgen"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",

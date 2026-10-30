@@ -106,7 +106,6 @@ fn conifer_crown(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rspigot_data::blocks;
     use rspigot_domain::BlockStateId;
     use rspigot_domain::world::WorldHeight;
 
@@ -127,7 +126,9 @@ mod tests {
     }
 
     fn is_leaf(state: BlockStateId) -> bool {
-        blocks::block_name(state.0).is_some_and(|n| n.ends_with("_leaves"))
+        state
+            .kind()
+            .is_some_and(|kind| kind.name().ends_with("_leaves"))
     }
 
     #[test]
@@ -174,12 +175,10 @@ mod tests {
                     for x in 0..16usize {
                         let state = buffer.get(x, y, z);
                         if is_leaf(state) {
-                            let distance: i32 = blocks::property(state.0, "distance")
-                                .unwrap()
-                                .parse()
-                                .unwrap();
+                            let distance: i32 =
+                                state.property("distance").unwrap().parse().unwrap();
                             assert!((1..=6).contains(&distance));
-                            assert_eq!(blocks::property(state.0, "persistent"), Some("false"));
+                            assert_eq!(state.property("persistent"), Some("false"));
                         }
                     }
                 }

@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use rspigot_core::ports::{ChunkStore, StoreError};
+use rspigot_core::ports::{ChunkStore, EntityStore, StoreError};
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::world::WorldHeight;
 use rspigot_domain::{ChunkPos, Identifier};
+use rspigot_nbt::{Compound, Tag, read_named, write_named};
 
 use crate::chunk;
 use crate::compression::Compression;
@@ -33,8 +34,15 @@ impl Default for AnvilOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Storage {
+    Chunks,
+    Entities,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RegionKey {
+    storage: Storage,
     dimension: Identifier,
     x: i32,
     z: i32,
@@ -75,8 +83,12 @@ impl AnvilStore {
     ) -> Result<Self, StoreError> {
         options.max_open_regions = options.max_open_regions.max(1);
         for dimension in ["overworld", "the_nether", "the_end"] {
+            let dimension = Identifier::minecraft(dimension);
             layout
-                .region_dir(world_root, &Identifier::minecraft(dimension))
+                .region_dir(world_root, &dimension)
+                .map_err(AnvilError::into_store_io)?;
+            layout
+                .entities_dir(world_root, &dimension)
                 .map_err(AnvilError::into_store_io)?;
         }
         Ok(Self {
@@ -126,10 +138,10 @@ impl AnvilStore {
     }
 
     fn chunk_exists(&self, dimension: &Identifier, pos: ChunkPos) -> Result<bool, AnvilError> {
-        let region = self.acquire(dimension, pos);
+        let region = self.acquire(Storage::Chunks, dimension, pos);
         let mut guard = region.lock();
         if guard.is_none() {
-            let path = self.region_path(dimension, pos)?;
+            let path = self.region_path(Storage::Chunks, dimension, pos)?;
             *guard = RegionFile::open(&path, false, self.options.sync_writes)?;
         }
         Ok(guard.as_ref().is_some_and(|file| file.has_chunk(pos)))
@@ -142,8 +154,9 @@ impl AnvilStore {
             .map(|(_, height)| *height)
     }
 
-    fn acquire(&self, dimension: &Identifier, pos: ChunkPos) -> Arc<Region> {
+    fn acquire(&self, storage: Storage, dimension: &Identifier, pos: ChunkPos) -> Arc<Region> {
         let key = RegionKey {
+            storage,
             dimension: dimension.clone(),
             x: pos.x >> 5,
             z: pos.z >> 5,
@@ -185,22 +198,29 @@ impl AnvilStore {
         region
     }
 
-    fn region_path(&self, dimension: &Identifier, pos: ChunkPos) -> Result<PathBuf, AnvilError> {
-        Ok(self
-            .layout
-            .region_dir(&self.root, dimension)?
-            .join(region_file_name(pos)))
+    fn region_path(
+        &self,
+        storage: Storage,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<PathBuf, AnvilError> {
+        let dir = match storage {
+            Storage::Chunks => self.layout.region_dir(&self.root, dimension)?,
+            Storage::Entities => self.layout.entities_dir(&self.root, dimension)?,
+        };
+        Ok(dir.join(region_file_name(pos)))
     }
 
     fn read_stored(
         &self,
+        storage: Storage,
         dimension: &Identifier,
         pos: ChunkPos,
     ) -> Result<Option<StoredChunk>, AnvilError> {
-        let region = self.acquire(dimension, pos);
+        let region = self.acquire(storage, dimension, pos);
         let mut guard = region.lock();
         if guard.is_none() {
-            let path = self.region_path(dimension, pos)?;
+            let path = self.region_path(storage, dimension, pos)?;
             *guard = RegionFile::open(&path, false, self.options.sync_writes)?;
         }
         match guard.as_mut() {
@@ -214,28 +234,101 @@ impl AnvilStore {
         dimension: &Identifier,
         pos: ChunkPos,
     ) -> Result<Option<ChunkColumn>, AnvilError> {
-        let Some(stored) = self.read_stored(dimension, pos)? else {
+        let Some(bytes) = self.read_bytes(Storage::Chunks, dimension, pos)? else {
+            return Ok(None);
+        };
+        chunk::decode(&bytes, pos, self.height_for(dimension))
+    }
+
+    fn read_bytes(
+        &self,
+        storage: Storage,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<Option<Vec<u8>>, AnvilError> {
+        let Some(stored) = self.read_stored(storage, dimension, pos)? else {
             return Ok(None);
         };
         let compression = Compression::from_id(stored.compression_id)
             .ok_or(AnvilError::UnsupportedCompression(stored.compression_id))?;
-        let bytes = compression.decompress(&stored.data)?;
-        chunk::decode(&bytes, pos, self.height_for(dimension))
+        compression.decompress(&stored.data).map(Some)
     }
 
-    fn save_chunk(&self, dimension: &Identifier, column: &ChunkColumn) -> Result<(), AnvilError> {
-        let pos = column.pos();
-        if let Some(expected) = self.height_for(dimension)
-            && expected != column.height()
-        {
-            return Err(AnvilError::corrupt(format!(
-                "chunk height {:?} does not match the height {expected:?} of {dimension}",
-                column.height()
-            )));
+    fn load_entity_chunk(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<Option<Vec<Compound>>, AnvilError> {
+        let Some(bytes) = self.read_bytes(Storage::Entities, dimension, pos)? else {
+            return Ok(None);
+        };
+        let mut input = bytes.as_slice();
+        let (_, root) = read_named(&mut input)?;
+        let version = root.get_i32("DataVersion").unwrap_or(0);
+        if version > chunk::DATA_VERSION {
+            return Err(AnvilError::NewerDataVersion {
+                found: version,
+                supported: chunk::DATA_VERSION,
+            });
         }
+        if let Some([x, z]) = root
+            .get_int_array("Position")
+            .map(|p| [p.first(), p.get(1)])
+            && (x.copied(), z.copied()) != (Some(pos.x), Some(pos.z))
+        {
+            tracing::error!(
+                "Entity chunk file at {pos:?} is in the wrong location. (Expected {pos:?}, got [{:?}, {:?}])",
+                x,
+                z
+            );
+        }
+        let entities = root
+            .get_list("Entities")
+            .map(|list| list.iter().filter_map(Tag::as_compound).cloned().collect())
+            .unwrap_or_default();
+        Ok(Some(entities))
+    }
+
+    fn save_entity_chunk(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+        entities: &[Compound],
+    ) -> Result<(), AnvilError> {
+        if entities.is_empty() {
+            let region = self.acquire(Storage::Entities, dimension, pos);
+            let mut guard = region.lock();
+            if guard.is_none() {
+                let path = self.region_path(Storage::Entities, dimension, pos)?;
+                *guard = RegionFile::open(&path, false, self.options.sync_writes)?;
+            }
+            return match guard.as_mut() {
+                Some(file) => file.clear(pos),
+                None => Ok(()),
+            };
+        }
+        let root = Compound::new()
+            .with("DataVersion", chunk::DATA_VERSION)
+            .with(
+                "Entities",
+                Tag::List(entities.iter().cloned().map(Tag::Compound).collect()),
+            )
+            .with("Position", Tag::IntArray(vec![pos.x, pos.z]));
+        let mut bytes = Vec::with_capacity(1024);
+        write_named(&mut bytes, "", &root);
+        self.write_bytes(Storage::Entities, dimension, pos, &bytes)
+    }
+
+    fn write_bytes(
+        &self,
+        storage: Storage,
+        dimension: &Identifier,
+        pos: ChunkPos,
+        bytes: &[u8],
+    ) -> Result<(), AnvilError> {
         let compression = self.options.compression;
-        let data = compression.compress(&chunk::encode(column))?;
-        let path = self.region_path(dimension, pos)?;
+        let data = compression.compress(bytes)?;
+        let path = self.region_path(storage, dimension, pos)?;
         let staged = if needs_external(data.len()) {
             let dir = path.parent().unwrap_or_else(|| Path::new("."));
             Some(stage_external(dir, pos, &data)?)
@@ -243,6 +336,7 @@ impl AnvilStore {
             None
         };
         let result = self.commit(
+            storage,
             dimension,
             pos,
             &path,
@@ -258,8 +352,23 @@ impl AnvilStore {
         result
     }
 
+    fn save_chunk(&self, dimension: &Identifier, column: &ChunkColumn) -> Result<(), AnvilError> {
+        let pos = column.pos();
+        if let Some(expected) = self.height_for(dimension)
+            && expected != column.height()
+        {
+            return Err(AnvilError::corrupt(format!(
+                "chunk height {:?} does not match the height {expected:?} of {dimension}",
+                column.height()
+            )));
+        }
+        self.write_bytes(Storage::Chunks, dimension, pos, &chunk::encode(column))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn commit(
         &self,
+        storage: Storage,
         dimension: &Identifier,
         pos: ChunkPos,
         path: &Path,
@@ -267,7 +376,7 @@ impl AnvilStore {
         data: &[u8],
         staged: Option<&Path>,
     ) -> Result<(), AnvilError> {
-        let region = self.acquire(dimension, pos);
+        let region = self.acquire(storage, dimension, pos);
         let mut guard = region.lock();
         if guard.is_none() {
             *guard = RegionFile::open(path, true, self.options.sync_writes)?;
@@ -329,6 +438,27 @@ impl ChunkStore for AnvilStore {
             }
         }
         failure.map_or(Ok(()), |error| Err(error.into_store_io()))
+    }
+}
+
+impl EntityStore for AnvilStore {
+    fn load_entities(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<Option<Vec<Compound>>, StoreError> {
+        self.load_entity_chunk(dimension, pos)
+            .map_err(|error| error.into_store(pos))
+    }
+
+    fn save_entities(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+        entities: &[Compound],
+    ) -> Result<(), StoreError> {
+        self.save_entity_chunk(dimension, pos, entities)
+            .map_err(|error| error.into_store(pos))
     }
 }
 

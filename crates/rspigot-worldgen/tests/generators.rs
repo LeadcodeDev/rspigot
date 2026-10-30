@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
+use rspigot_blocks::{BlockKind, STATE_COUNT};
 use rspigot_core::ports::ChunkGenerator;
-use rspigot_data::{blocks, registries};
+use rspigot_data::registries;
 use rspigot_domain::chunk::{ChunkColumn, ChunkStatus, HeightmapKind};
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{BlockPos, ChunkPos};
@@ -27,7 +28,7 @@ fn name_at(column: &ChunkColumn, x: i32, y: i32, z: i32) -> &'static str {
         y,
         column.pos().min_block_z() + z,
     );
-    blocks::block_name(column.block(pos).unwrap().0).unwrap()
+    column.block(pos).unwrap().kind().unwrap().name()
 }
 
 fn for_each_block(column: &ChunkColumn, mut visit: impl FnMut(i32, i32, i32, &'static str)) {
@@ -41,7 +42,7 @@ fn for_each_block(column: &ChunkColumn, mut visit: impl FnMut(i32, i32, i32, &'s
                         x as i32,
                         min_y + index as i32 * 16 + y as i32,
                         z as i32,
-                        blocks::block_name(id.0).unwrap(),
+                        id.kind().unwrap().name(),
                     );
                 }
             }
@@ -390,7 +391,7 @@ fn assert_standing_spot(generator: &NoiseGenerator, dimension: &Dimension, conte
     let column = generator.generate(dimension, feet.chunk());
     let at = |dy: i32| {
         let pos = feet.offset(0, dy, 0);
-        blocks::block_name(column.block(pos).unwrap().0).unwrap()
+        column.block(pos).unwrap().kind().unwrap().name()
     };
     let floor = at(-1);
     assert_ne!(floor, "minecraft:air", "{context}");
@@ -454,7 +455,7 @@ fn negative_chunk_coordinates_are_handled() {
         let block = BlockPos::new(pos.x * 16 + 15, -64, pos.z * 16);
         assert_eq!(block.chunk(), pos);
         assert_eq!(
-            blocks::block_name(column.block(block).unwrap().0),
+            column.block(block).unwrap().kind().map(BlockKind::name),
             Some("minecraft:bedrock")
         );
         assert_eq!(
@@ -720,7 +721,7 @@ fn block_states_in_every_section_are_valid() {
             let column = generator.generate(&dimension, pos);
             for section in column.sections() {
                 for state in section.blocks().palette() {
-                    assert!(usize::from(state.0) < blocks::STATE_COUNT);
+                    assert!(usize::from(state.0) < STATE_COUNT);
                 }
                 for biome in section.biomes().palette() {
                     assert!(registries::biome_name(biome.0).is_some());
@@ -942,7 +943,7 @@ fn emeralds_only_appear_inside_mountain_biomes() {
             let min_y = column.height().min_y;
             for (index, section) in column.sections().iter().enumerate() {
                 for i in 0..4096usize {
-                    let name = blocks::block_name(section.blocks().get(i).0).unwrap();
+                    let name = section.blocks().get(i).kind().unwrap().name();
                     if name.ends_with("emerald_ore") {
                         let (x, y, z) = (i & 15, (i >> 8) & 15, (i >> 4) & 15);
                         let biome = registries::biome_name(section.biome(x >> 2, y >> 2, z >> 2).0);

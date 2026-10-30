@@ -1,0 +1,526 @@
+use rspigot_domain::{EntityId, ItemId, Vec3};
+use rspigot_items::ItemKind;
+
+use crate::brain::AiContext;
+use crate::control::{MAX_HEAD_X_ROT, MAX_HEAD_Y_ROT};
+use crate::goal::{Flag, Flags, Goal, adjusted_tick_delay, reduced_tick_delay};
+use crate::random_pos::{self, mob_light_magic_value};
+use crate::targeting::{self, TargetingConditions};
+use crate::world::{AiWorld, Living, TargetKind, inflate};
+
+const ITEM_TAGS: &str = "minecraft:item";
+const STROLL_INTERVAL: i32 = 120;
+const NO_ACTION_LIMIT: i32 = 100;
+const WATER_AVOIDING_PROBABILITY: f32 = 0.001;
+const LOOK_PROBABILITY: f32 = 0.02;
+const TEMPT_STOP_DISTANCE: f64 = 2.5;
+const TEMPT_CALM_DOWN: i32 = 100;
+const TARGET_INTERVAL: i32 = 10;
+const UNSEEN_MEMORY_TICKS: i32 = 60;
+const SPIDER_LIGHT_LIMIT: f32 = 0.5;
+const FLOAT_CHANCE: f32 = 0.8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatGoal;
+
+impl FloatGoal {
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        let mob = context.mob;
+        let threshold = if f64::from(mob.eye_height) < 0.4 {
+            0.0
+        } else {
+            0.4
+        };
+        mob.fluid.water_height > threshold || mob.fluid.in_lava()
+    }
+
+    fn tick<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        if context.brain.random.next_float() < FLOAT_CHANCE {
+            context.brain.jump.jump();
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RandomStrollGoal {
+    speed_modifier: f64,
+    interval: i32,
+    force_trigger: bool,
+    check_no_action_time: bool,
+    water_avoiding: Option<f32>,
+    wanted: Vec3,
+}
+
+impl RandomStrollGoal {
+    pub fn new(speed_modifier: f64) -> Self {
+        Self {
+            speed_modifier,
+            interval: STROLL_INTERVAL,
+            force_trigger: false,
+            check_no_action_time: true,
+            water_avoiding: None,
+            wanted: Vec3::ZERO,
+        }
+    }
+
+    pub fn water_avoiding(speed_modifier: f64) -> Self {
+        Self {
+            water_avoiding: Some(WATER_AVOIDING_PROBABILITY),
+            ..Self::new(speed_modifier)
+        }
+    }
+
+    pub fn trigger(&mut self) {
+        self.force_trigger = true;
+    }
+
+    fn position<W: AiWorld>(&self, context: &mut AiContext<'_, W>) -> Option<Vec3> {
+        let Some(probability) = self.water_avoiding else {
+            return random_pos::default_pos(context, 10, 7);
+        };
+        if context.mob.fluid.in_water {
+            let land = random_pos::land_pos(context, 15, 7);
+            return land.or_else(|| random_pos::default_pos(context, 10, 7));
+        }
+        if context.brain.random.next_float() >= probability {
+            random_pos::land_pos(context, 10, 7)
+        } else {
+            random_pos::default_pos(context, 10, 7)
+        }
+    }
+
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        if !self.force_trigger {
+            if self.check_no_action_time && context.mob.no_action_time >= NO_ACTION_LIMIT {
+                return false;
+            }
+            let bound = reduced_tick_delay(self.interval);
+            if context.brain.random.next_int(bound) != 0 {
+                return false;
+            }
+        }
+        let Some(position) = self.position(context) else {
+            return false;
+        };
+        self.wanted = position;
+        self.force_trigger = false;
+        true
+    }
+
+    fn can_continue_to_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        !context.brain.navigation.is_done()
+    }
+
+    fn start<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        context.move_to_pos(self.wanted, self.speed_modifier);
+    }
+
+    fn stop<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        context.stop_navigation();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LookAtPlayerGoal {
+    look_distance: f32,
+    probability: f32,
+    only_horizontal: bool,
+    look_at: Option<EntityId>,
+    look_time: i32,
+}
+
+impl LookAtPlayerGoal {
+    pub fn new(look_distance: f32) -> Self {
+        Self {
+            look_distance,
+            probability: LOOK_PROBABILITY,
+            only_horizontal: false,
+            look_at: None,
+            look_time: 0,
+        }
+    }
+
+    pub fn look_at(&self) -> Option<EntityId> {
+        self.look_at
+    }
+
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        if context.brain.random.next_float() >= self.probability {
+            return false;
+        }
+        let conditions = TargetingConditions::for_non_combat().range(f64::from(self.look_distance));
+        let origin = context.mob.eye_position();
+        self.look_at = targeting::nearest_player(context, conditions, |_| true, origin)
+            .map(|player| player.id);
+        self.look_at.is_some()
+    }
+
+    fn can_continue_to_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        let Some(target) = self.look_at.and_then(|id| context.world.living(id)) else {
+            return false;
+        };
+        if !target.alive {
+            return false;
+        }
+        let distance = f64::from(self.look_distance * self.look_distance);
+        context.mob.distance_to_sqr(target.position) <= distance && self.look_time > 0
+    }
+
+    fn start<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        let ticks = 40 + context.brain.random.next_int(40);
+        self.look_time = adjusted_tick_delay(false, ticks);
+    }
+
+    fn stop(&mut self) {
+        self.look_at = None;
+    }
+
+    fn tick<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        let Some(target) = self.look_at.and_then(|id| context.world.living(id)) else {
+            return;
+        };
+        if !target.alive {
+            return;
+        }
+        let y = if self.only_horizontal {
+            context.mob.eye_y()
+        } else {
+            target.eye_y()
+        };
+        context
+            .brain
+            .look
+            .look_at(Vec3::new(target.position.x, y, target.position.z));
+        self.look_time -= 1;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct RandomLookAroundGoal {
+    rel_x: f64,
+    rel_z: f64,
+    look_time: i32,
+}
+
+impl RandomLookAroundGoal {
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        context.brain.random.next_float() < LOOK_PROBABILITY
+    }
+
+    fn start<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        let angle = std::f64::consts::TAU * context.brain.random.next_double();
+        self.rel_x = angle.cos();
+        self.rel_z = angle.sin();
+        self.look_time = 20 + context.brain.random.next_int(20);
+    }
+
+    fn tick<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        self.look_time -= 1;
+        let mob = context.mob;
+        let at = Vec3::new(
+            mob.position.x + self.rel_x,
+            mob.eye_y(),
+            mob.position.z + self.rel_z,
+        );
+        context.brain.look.look_at(at);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemptItems {
+    Tag(&'static str),
+    Item(ItemKind),
+}
+
+impl TemptItems {
+    pub fn matches(self, item: Option<ItemId>) -> bool {
+        let Some(item) = item.filter(|item| *item != ItemId::AIR) else {
+            return false;
+        };
+        match self {
+            Self::Tag(name) => rspigot_data::tags::tag(ITEM_TAGS, name)
+                .is_some_and(|ids| ids.binary_search(&u32::from(item.0)).is_ok()),
+            Self::Item(kind) => kind.id() == item,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TemptGoal {
+    speed_modifier: f64,
+    items: TemptItems,
+    stop_distance: f64,
+    player: Option<EntityId>,
+    calm_down: i32,
+    running: bool,
+}
+
+impl TemptGoal {
+    pub fn new(speed_modifier: f64, items: TemptItems) -> Self {
+        Self {
+            speed_modifier,
+            items,
+            stop_distance: TEMPT_STOP_DISTANCE,
+            player: None,
+            calm_down: 0,
+            running: false,
+        }
+    }
+
+    pub fn player(&self) -> Option<EntityId> {
+        self.player
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        if self.calm_down > 0 {
+            self.calm_down -= 1;
+            return false;
+        }
+        let items = self.items;
+        let conditions = TargetingConditions::for_non_combat()
+            .ignore_line_of_sight()
+            .range(context.mob.tempt_range);
+        let origin = context.mob.position;
+        self.player = targeting::nearest_player(
+            context,
+            conditions,
+            |player| items.matches(player.main_hand) || items.matches(player.off_hand),
+            origin,
+        )
+        .map(|player| player.id);
+        self.player.is_some()
+    }
+
+    fn start(&mut self) {
+        self.running = true;
+    }
+
+    fn stop<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        self.player = None;
+        context.stop_navigation();
+        self.calm_down = reduced_tick_delay(TEMPT_CALM_DOWN);
+        self.running = false;
+    }
+
+    fn tick<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        let Some(player) = self.player.and_then(|id| context.world.living(id)) else {
+            return;
+        };
+        let at = Vec3::new(player.position.x, player.eye_y(), player.position.z);
+        context
+            .brain
+            .look
+            .set_look_at(at, MAX_HEAD_Y_ROT + 20.0, MAX_HEAD_X_ROT);
+        if context.mob.distance_to_sqr(player.position) < self.stop_distance * self.stop_distance {
+            context.stop_navigation();
+        } else {
+            context.move_to_entity(&player, self.speed_modifier);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetFilter {
+    Any,
+    BabyOnLand,
+}
+
+impl TargetFilter {
+    fn accepts(self, target: &Living) -> bool {
+        match self {
+            Self::Any => true,
+            Self::BabyOnLand => target.baby && !target.in_water,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NearestAttackableTargetGoal {
+    kind: TargetKind,
+    random_interval: i32,
+    must_see: bool,
+    filter: TargetFilter,
+    needs_darkness: bool,
+    found: Option<Living>,
+    unseen_ticks: i32,
+}
+
+impl NearestAttackableTargetGoal {
+    pub fn new(kind: TargetKind, must_see: bool) -> Self {
+        Self::with(kind, TARGET_INTERVAL, must_see, TargetFilter::Any)
+    }
+
+    pub fn with(kind: TargetKind, interval: i32, must_see: bool, filter: TargetFilter) -> Self {
+        Self {
+            kind,
+            random_interval: reduced_tick_delay(interval),
+            must_see,
+            filter,
+            needs_darkness: false,
+            found: None,
+            unseen_ticks: 0,
+        }
+    }
+
+    pub fn spider(kind: TargetKind) -> Self {
+        Self {
+            needs_darkness: true,
+            ..Self::new(kind, true)
+        }
+    }
+
+    fn find_target<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        let conditions = TargetingConditions::for_combat().range(context.mob.follow_range);
+        let origin = context.mob.eye_position();
+        let filter = self.filter;
+        self.found = if self.kind == TargetKind::Player {
+            targeting::nearest_player(context, conditions, |t| filter.accepts(t), origin)
+        } else {
+            let follow = context.mob.follow_range;
+            let area = inflate(&context.mob.bounds(), follow, follow, follow);
+            let candidates = context.world.living_of(self.kind, &area);
+            targeting::nearest(
+                context,
+                candidates,
+                conditions,
+                |t| filter.accepts(t),
+                origin,
+            )
+        };
+    }
+
+    fn can_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        if self.needs_darkness
+            && mob_light_magic_value(context.world, context.mob) >= SPIDER_LIGHT_LIMIT
+        {
+            return false;
+        }
+        if self.random_interval > 0 && context.brain.random.next_int(self.random_interval) != 0 {
+            return false;
+        }
+        self.find_target(context);
+        self.found.is_some()
+    }
+
+    fn can_continue_to_use<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        let Some(target) = context.target() else {
+            return false;
+        };
+        if !targeting::can_attack(context.world, &target) {
+            return false;
+        }
+        let follow = context.mob.follow_range;
+        if context.mob.distance_to_sqr(target.position) > follow * follow {
+            return false;
+        }
+        if self.must_see {
+            let world = context.world;
+            if context
+                .brain
+                .sensing
+                .has_line_of_sight(world, context.mob, &target)
+            {
+                self.unseen_ticks = 0;
+            } else {
+                self.unseen_ticks += 1;
+                if self.unseen_ticks > reduced_tick_delay(UNSEEN_MEMORY_TICKS) {
+                    return false;
+                }
+            }
+        }
+        context.set_target(Some(target));
+        true
+    }
+
+    fn start<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        context.set_target(self.found);
+        self.unseen_ticks = 0;
+    }
+
+    fn stop<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
+        context.set_target(None);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MobGoal {
+    Float(FloatGoal),
+    Stroll(RandomStrollGoal),
+    LookAtPlayer(LookAtPlayerGoal),
+    RandomLookAround(RandomLookAroundGoal),
+    Tempt(TemptGoal),
+    NearestAttackableTarget(NearestAttackableTargetGoal),
+}
+
+impl<W: AiWorld> Goal<AiContext<'_, W>> for MobGoal {
+    fn flags(&self) -> Flags {
+        match self {
+            Self::Float(_) => Flags::of(Flag::Jump),
+            Self::Stroll(_) => Flags::of(Flag::Move),
+            Self::LookAtPlayer(_) => Flags::of(Flag::Look),
+            Self::RandomLookAround(_) | Self::Tempt(_) => Flags::of(Flag::Move).with(Flag::Look),
+            Self::NearestAttackableTarget(_) => Flags::of(Flag::Target),
+        }
+    }
+
+    fn can_use(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        match self {
+            Self::Float(goal) => goal.can_use(context),
+            Self::Stroll(goal) => goal.can_use(context),
+            Self::LookAtPlayer(goal) => goal.can_use(context),
+            Self::RandomLookAround(goal) => goal.can_use(context),
+            Self::Tempt(goal) => goal.can_use(context),
+            Self::NearestAttackableTarget(goal) => goal.can_use(context),
+        }
+    }
+
+    fn can_continue_to_use(&mut self, context: &mut AiContext<'_, W>) -> bool {
+        match self {
+            Self::Float(goal) => goal.can_use(context),
+            Self::Stroll(goal) => goal.can_continue_to_use(context),
+            Self::LookAtPlayer(goal) => goal.can_continue_to_use(context),
+            Self::RandomLookAround(goal) => goal.look_time >= 0,
+            Self::Tempt(goal) => goal.can_use(context),
+            Self::NearestAttackableTarget(goal) => goal.can_continue_to_use(context),
+        }
+    }
+
+    fn start(&mut self, context: &mut AiContext<'_, W>) {
+        match self {
+            Self::Float(_) => {}
+            Self::Stroll(goal) => goal.start(context),
+            Self::LookAtPlayer(goal) => goal.start(context),
+            Self::RandomLookAround(goal) => goal.start(context),
+            Self::Tempt(goal) => goal.start(),
+            Self::NearestAttackableTarget(goal) => goal.start(context),
+        }
+    }
+
+    fn stop(&mut self, context: &mut AiContext<'_, W>) {
+        match self {
+            Self::Float(_) | Self::RandomLookAround(_) => {}
+            Self::Stroll(goal) => goal.stop(context),
+            Self::LookAtPlayer(goal) => goal.stop(),
+            Self::Tempt(goal) => goal.stop(context),
+            Self::NearestAttackableTarget(goal) => goal.stop(context),
+        }
+    }
+
+    fn requires_update_every_tick(&self) -> bool {
+        matches!(self, Self::Float(_) | Self::RandomLookAround(_))
+    }
+
+    fn tick(&mut self, context: &mut AiContext<'_, W>) {
+        match self {
+            Self::Float(goal) => goal.tick(context),
+            Self::LookAtPlayer(goal) => goal.tick(context),
+            Self::RandomLookAround(goal) => goal.tick(context),
+            Self::Tempt(goal) => goal.tick(context),
+            Self::Stroll(_) | Self::NearestAttackableTarget(_) => {}
+        }
+    }
+}

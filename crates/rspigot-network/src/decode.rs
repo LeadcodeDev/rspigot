@@ -1,6 +1,9 @@
 use std::num::NonZeroU8;
 
-use rspigot_core::events::{DigAction, Direction, Hand, InputState, MovementAction, PlayerInput};
+use rspigot_core::events::{
+    ClickInput, ContainerClick, DigAction, Direction, Hand, HashedItem, HashedSlot, InputState,
+    MovementAction, PlayerInput,
+};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::GameMode;
 use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
@@ -8,9 +11,9 @@ use rspigot_nbt::Compound;
 use rspigot_protocol::codec::Position;
 use rspigot_protocol::play::ServerboundPlay;
 use rspigot_protocol::play::serverbound::{
-    ClientCommandAction, PlayerActionKind, PlayerCommandAction,
+    ClientCommandAction, ContainerInput, PlayerActionKind, PlayerCommandAction,
 };
-use rspigot_protocol::play::slot::ItemStack as WireStack;
+use rspigot_protocol::play::slot::{HashedStack, ItemStack as WireStack};
 use rspigot_protocol::play::types::{
     Direction as WireDirection, GameMode as WireGameMode, Hand as WireHand,
 };
@@ -66,6 +69,26 @@ pub fn item_stack(stack: &WireStack) -> Option<ItemStack> {
         count,
         components: Compound::new(),
     })
+}
+
+fn hashed(stack: &HashedStack) -> HashedSlot {
+    HashedSlot(stack.0.as_ref().map(|item| HashedItem {
+        item: item.item,
+        count: item.count,
+        patched: !item.added.is_empty() || !item.removed.is_empty(),
+    }))
+}
+
+fn click_input(input: ContainerInput) -> ClickInput {
+    match input {
+        ContainerInput::Pickup => ClickInput::Pickup,
+        ContainerInput::QuickMove => ClickInput::QuickMove,
+        ContainerInput::Swap => ClickInput::Swap,
+        ContainerInput::Clone => ClickInput::Clone,
+        ContainerInput::Throw => ClickInput::Throw,
+        ContainerInput::QuickCraft => ClickInput::QuickCraft,
+        ContainerInput::PickupAll => ClickInput::PickupAll,
+    }
 }
 
 fn finite(value: f64) -> bool {
@@ -204,8 +227,86 @@ pub fn decode(packet: ServerboundPlay) -> Decoded {
             hand: hand(p.hand),
             sneaking: p.using_secondary_action,
         }),
+        ServerboundPlay::ContainerClick(p) => input(PlayerInput::ContainerClick(ContainerClick {
+            container: p.container_id,
+            state_id: p.state_id,
+            slot: p.slot,
+            button: p.button,
+            input: click_input(p.input),
+            changed: p
+                .changed_slots
+                .iter()
+                .map(|changed| (changed.slot, hashed(&changed.item)))
+                .collect(),
+            carried: hashed(&p.carried),
+        })),
+        ServerboundPlay::ContainerClose(p) => input(PlayerInput::ContainerClose(p.container_id)),
         ServerboundPlay::KeepAlive(p) => Decoded::KeepAlive(p.id),
         ServerboundPlay::PingRequest(p) => Decoded::Ping(p.time),
         _ => Decoded::Ignored,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rspigot_protocol::ids::play::serverbound as sb;
+
+    use super::*;
+
+    fn decoded(id: i32, body: &[u8]) -> PlayerInput {
+        match decode(ServerboundPlay::decode(id, body).unwrap()) {
+            Decoded::Input(input) => input,
+            _ => panic!("packet {id} was not turned into a player input"),
+        }
+    }
+
+    #[test]
+    fn container_click_golden_bytes_become_a_click() {
+        let body = [0, 3, 0xFC, 0x19, 1, 4, 1, 0, 36, 1, 1, 4, 0, 0, 0];
+        assert_eq!(
+            decoded(sb::CONTAINER_CLICK, &body),
+            PlayerInput::ContainerClick(ContainerClick {
+                container: 0,
+                state_id: 3,
+                slot: -999,
+                button: 1,
+                input: ClickInput::Throw,
+                changed: vec![(
+                    36,
+                    HashedSlot(Some(HashedItem {
+                        item: 1,
+                        count: 4,
+                        patched: false,
+                    }))
+                )],
+                carried: HashedSlot::EMPTY,
+            })
+        );
+    }
+
+    #[test]
+    fn container_click_with_component_hashes_is_marked_patched() {
+        let body = [0, 1, 0, 36, 0, 0, 0, 1, 1, 5, 1, 7, 0, 0, 0, 9, 0];
+        let PlayerInput::ContainerClick(click) = decoded(sb::CONTAINER_CLICK, &body) else {
+            panic!("not a click");
+        };
+        assert_eq!(click.input, ClickInput::Pickup);
+        assert!(click.changed.is_empty());
+        assert_eq!(
+            click.carried,
+            HashedSlot(Some(HashedItem {
+                item: 1,
+                count: 5,
+                patched: true,
+            }))
+        );
+    }
+
+    #[test]
+    fn container_close_golden_bytes_become_a_close() {
+        assert_eq!(
+            decoded(sb::CONTAINER_CLOSE, &[0]),
+            PlayerInput::ContainerClose(0)
+        );
     }
 }

@@ -1,13 +1,13 @@
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
 use bytes::Bytes;
 use rspigot_core::commands::{
     ArgumentParser as CoreParser, CommandNodeKind as CoreNodeKind, CommandTree,
 };
 use rspigot_core::events::{
-    Abilities, Animation, ClientEvent, EntityKind, EquipmentSlot as CoreSlot,
-    GameEvent as CoreGameEvent, MetadataValue, PlayerListEntry, Pose as CorePose, SpawnInfo,
+    Abilities, Animation, ClientEvent, EntityKind, EntityStatus, EquipmentSlot as CoreSlot,
+    GameEvent as CoreGameEvent, MetadataValue, MoveDelta, Movement, PlayerListEntry,
+    Pose as CorePose, PositionPath as CorePath, SpawnInfo,
 };
 use rspigot_domain::chunk::{
     ChunkColumn, HeightmapKind as DomainHeightmap, LightArray as DomainLight,
@@ -17,7 +17,7 @@ use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::GameMode as DomainGameMode;
 use rspigot_domain::world::Difficulty as DomainDifficulty;
 use rspigot_domain::{BlockPos, ChunkPos, Rotation, Vec3};
-use rspigot_protocol::codec::{Angle, Encode, Position};
+use rspigot_protocol::codec::{Angle, Position};
 use rspigot_protocol::frame::{Compression, build_frame};
 use rspigot_protocol::play::chat::ChatTypeBound;
 use rspigot_protocol::play::chunk::{
@@ -33,7 +33,8 @@ use rspigot_protocol::play::commands::{
 use rspigot_protocol::play::effect::{FLAG_AMBIENT, FLAG_BLEND, FLAG_SHOW_ICON, FLAG_VISIBLE};
 use rspigot_protocol::play::entity::{
     AttributeModifier as WireModifier, AttributeOperation as WireOperation, AttributeSnapshot,
-    EquipmentSlot as WireSlot, PositionPath, SwingAnimationStyle, SwingAnimationType, VecDelta,
+    DeltaStep, EquipmentSlot as WireSlot, PositionPath, PositionStep, SwingAnimationStyle,
+    SwingAnimationType, VecDelta,
 };
 use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue};
 use rspigot_protocol::play::player::{CommonPlayerSpawnInfo, PlayerInfoActions, PlayerInfoEntry};
@@ -45,21 +46,24 @@ use rspigot_protocol::play::types::{
 };
 use rspigot_protocol::play::world::{ClockState, ClockUpdate, GameEventKind};
 use rspigot_protocol::types::{ProfileProperty, Text};
-use rspigot_protocol::{Packet, ids, write_packet};
+use rspigot_protocol::{Encode, Packet, write_packet};
 
 use crate::cache::ChunkPacketCache;
 use crate::connection::{ConnectionError, PacketWriter};
 use crate::text::to_nbt;
 
-struct EntityEvent {
-    entity: i32,
-    status: i8,
+pub trait PacketSink {
+    fn queue<P: Encode + ?Sized>(&mut self, id: i32, packet: &P) -> Result<(), ConnectionError>;
+    fn queue_prebuilt(&mut self, frame: &[u8]);
 }
 
-impl Encode for EntityEvent {
-    fn encode(&self, out: &mut Vec<u8>) {
-        self.entity.encode(out);
-        self.status.encode(out);
+impl PacketSink for PacketWriter {
+    fn queue<P: Encode + ?Sized>(&mut self, id: i32, packet: &P) -> Result<(), ConnectionError> {
+        PacketWriter::queue(self, id, packet)
+    }
+
+    fn queue_prebuilt(&mut self, frame: &[u8]) {
+        PacketWriter::queue_prebuilt(self, frame);
     }
 }
 
@@ -177,6 +181,7 @@ fn entity_type(kind: EntityKind) -> i32 {
     let name = match kind {
         EntityKind::Player => "minecraft:player",
         EntityKind::Item => "minecraft:item",
+        EntityKind::FallingBlock => "minecraft:falling_block",
         EntityKind::Other(id) => return i32::from(id),
     };
     rspigot_data::registries::static_index("minecraft:entity_type", name).map_or(0, |id| id as i32)
@@ -253,6 +258,7 @@ fn parser(p: &CoreParser) -> WireParser {
         CoreParser::Resource { registry } => WireParser::Resource {
             registry: registry.clone(),
         },
+        CoreParser::NbtCompoundTag => simple(parser::NBT_COMPOUND_TAG),
     }
 }
 
@@ -311,35 +317,12 @@ fn game_event(event: CoreGameEvent) -> cb::GameEvent {
     cb::GameEvent { event: kind, param }
 }
 
-fn fluid_table() -> &'static [bool] {
-    static TABLE: OnceLock<Box<[bool]>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        (0..rspigot_data::blocks::STATE_COUNT)
-            .map(|state| {
-                let state = state as u16;
-                let name = rspigot_data::blocks::block_name(state).unwrap_or("");
-                matches!(
-                    name,
-                    "minecraft:water"
-                        | "minecraft:lava"
-                        | "minecraft:bubble_column"
-                        | "minecraft:kelp"
-                        | "minecraft:kelp_plant"
-                        | "minecraft:seagrass"
-                        | "minecraft:tall_seagrass"
-                ) || rspigot_data::blocks::property(state, "waterlogged") == Some("true")
-            })
-            .collect()
-    })
-}
-
 fn fluid_count(section: &rspigot_domain::chunk::ChunkSection) -> i16 {
-    let table = fluid_table();
     let blocks = section.blocks();
     let fluid_slots: Vec<bool> = blocks
         .palette()
         .iter()
-        .map(|s| table.get(usize::from(s.0)).copied().unwrap_or(false))
+        .map(|state| state.flags().has_fluid())
         .collect();
     if !fluid_slots.iter().any(|f| *f) {
         return 0;
@@ -407,7 +390,7 @@ fn heightmap_kind(kind: DomainHeightmap) -> WireHeightmap2 {
 }
 
 pub fn chunk_packet(chunk: &ChunkColumn, out: &mut Vec<u8>) {
-    let blocks = PaletteStrategy::blocks(rspigot_data::blocks::STATE_COUNT as u32);
+    let blocks = PaletteStrategy::blocks(rspigot_blocks::STATE_COUNT as u32);
     let biome_count = rspigot_data::registries::synced_entries("minecraft:worldgen/biome")
         .map_or(1, <[&str]>::len) as u32;
     let biomes = PaletteStrategy::biomes(biome_count);
@@ -499,7 +482,7 @@ fn attribute_snapshot(state: &AttributeState) -> Option<AttributeSnapshot> {
             .modifiers
             .iter()
             .map(|m| WireModifier {
-                id: m.id.to_owned(),
+                id: m.id.to_string(),
                 amount: m.amount,
                 operation: match m.operation {
                     AttributeOperation::AddValue => WireOperation::AddValue,
@@ -509,6 +492,27 @@ fn attribute_snapshot(state: &AttributeState) -> Option<AttributeSnapshot> {
             })
             .collect(),
     })
+}
+
+fn wire_delta(delta: &MoveDelta) -> VecDelta {
+    match delta {
+        MoveDelta::Linear { xa, ya, za } => VecDelta::Linear {
+            xa: *xa,
+            ya: *ya,
+            za: *za,
+        },
+        MoveDelta::Stepped(steps) => VecDelta::Stepped(
+            steps
+                .iter()
+                .map(|step| DeltaStep {
+                    ticks: step.ticks,
+                    xa: step.xa,
+                    ya: step.ya,
+                    za: step.za,
+                })
+                .collect(),
+        ),
+    }
 }
 
 fn fixed(value: f64) -> i64 {
@@ -531,12 +535,12 @@ impl Encoder {
         Self { online_mode }
     }
 
-    fn queue<P: Packet>(writer: &mut PacketWriter, packet: &P) -> Result<(), ConnectionError> {
+    fn queue<P: Packet, W: PacketSink>(writer: &mut W, packet: &P) -> Result<(), ConnectionError> {
         writer.queue(P::ID, packet)
     }
 
-    fn chunk(
-        writer: &mut PacketWriter,
+    fn chunk<W: PacketSink>(
+        writer: &mut W,
         dimension: &rspigot_domain::Identifier,
         chunk: &ChunkColumn,
         cache: &ChunkPacketCache,
@@ -553,10 +557,10 @@ impl Encoder {
         Ok(())
     }
 
-    pub fn encode(
+    pub fn encode<W: PacketSink>(
         &mut self,
         event: &ClientEvent,
-        writer: &mut PacketWriter,
+        writer: &mut W,
         cache: &ChunkPacketCache,
         threshold: Option<usize>,
         level: u32,
@@ -823,6 +827,17 @@ impl Encoder {
                 rotation,
                 on_ground,
             } => Self::entity_moved(writer, entity.0, *from, *to, *rotation, *on_ground),
+            ClientEvent::EntityMove { entity, movement } => {
+                Self::entity_move(writer, entity.0, movement)
+            }
+            ClientEvent::BundleDelimiter => Self::queue(writer, &cb::BundleDelimiter),
+            ClientEvent::EntityVelocity { entity, velocity } => Self::queue(
+                writer,
+                &cb::SetEntityMotion {
+                    entity_id: entity.0,
+                    movement: LpVec3(wire_vec(*velocity)),
+                },
+            ),
             ClientEvent::EntityHeadRotation { entity, yaw } => Self::queue(
                 writer,
                 &cb::RotateHead {
@@ -875,6 +890,12 @@ impl Encoder {
                                     EntityDataValue::OptionalComponent(c.as_ref().map(text))
                                 }
                                 MetadataValue::Boolean(b) => EntityDataValue::Boolean(*b),
+                                MetadataValue::Item(item) => {
+                                    EntityDataValue::ItemStack(stack(item))
+                                }
+                                MetadataValue::BlockPos(pos) => {
+                                    EntityDataValue::BlockPos(position(*pos))
+                                }
                             },
                         })
                         .collect(),
@@ -918,6 +939,16 @@ impl Encoder {
                 &cb::ContainerSetSlot {
                     container_id: 0,
                     state_id: *state_id,
+                    slot: *slot,
+                    item: stack(item),
+                },
+            ),
+            ClientEvent::CursorItem(item) => {
+                Self::queue(writer, &cb::SetCursorItem { item: stack(item) })
+            }
+            ClientEvent::PlayerInventorySlot { slot, stack: item } => Self::queue(
+                writer,
+                &cb::SetPlayerInventory {
                     slot: *slot,
                     item: stack(item),
                 },
@@ -979,11 +1010,54 @@ impl Encoder {
                     amount: *amount,
                 },
             ),
-            ClientEvent::OperatorLevel { entity, level } => writer.queue(
-                ids::play::clientbound::ENTITY_EVENT,
-                &EntityEvent {
-                    entity: entity.0,
-                    status: 24 + (*level).min(4) as i8,
+            ClientEvent::OperatorLevel { entity, level } => Self::queue(
+                writer,
+                &cb::EntityEvent {
+                    entity_id: entity.0,
+                    event: cb::EntityEvent::OPERATOR_LEVEL_BASE + (*level).min(4) as i8,
+                },
+            ),
+            ClientEvent::EntityStatus { entity, status } => Self::queue(
+                writer,
+                &cb::EntityEvent {
+                    entity_id: entity.0,
+                    event: match status {
+                        EntityStatus::Death => cb::EntityEvent::DEATH,
+                        EntityStatus::Poof => cb::EntityEvent::POOF,
+                    },
+                },
+            ),
+            ClientEvent::DamageEvent {
+                entity,
+                kind,
+                cause,
+                direct,
+                position: at,
+            } => match kind.registry_id() {
+                Some(source_type) => Self::queue(
+                    writer,
+                    &cb::DamageEvent {
+                        entity_id: entity.0,
+                        source_type,
+                        source_cause_id: cause.map(|e| e.0),
+                        source_direct_id: direct.map(|e| e.0),
+                        source_position: at.map(wire_vec),
+                    },
+                ),
+                None => Ok(()),
+            },
+            ClientEvent::HurtAnimation { entity, yaw } => Self::queue(
+                writer,
+                &cb::HurtAnimation {
+                    entity_id: entity.0,
+                    yaw: *yaw,
+                },
+            ),
+            ClientEvent::CombatKill { player, message } => Self::queue(
+                writer,
+                &cb::PlayerCombatKill {
+                    player_id: player.0,
+                    message: text(message),
                 },
             ),
             ClientEvent::EffectApplied {
@@ -1018,8 +1092,79 @@ impl Encoder {
         }
     }
 
-    fn entity_moved(
-        writer: &mut PacketWriter,
+    fn entity_move<W: PacketSink>(
+        writer: &mut W,
+        entity: i32,
+        movement: &Movement,
+    ) -> Result<(), ConnectionError> {
+        match movement {
+            Movement::Position { delta, on_ground } => Self::queue(
+                writer,
+                &cb::MoveEntityPos {
+                    entity_id: entity,
+                    on_ground: *on_ground,
+                    delta: wire_delta(delta),
+                },
+            ),
+            Movement::PositionRotation {
+                delta,
+                yaw,
+                pitch,
+                on_ground,
+            } => Self::queue(
+                writer,
+                &cb::MoveEntityPosRot {
+                    entity_id: entity,
+                    on_ground: *on_ground,
+                    delta: wire_delta(delta),
+                    y_rot: Angle(*yaw),
+                    x_rot: Angle(*pitch),
+                },
+            ),
+            Movement::Rotation {
+                yaw,
+                pitch,
+                on_ground,
+            } => Self::queue(
+                writer,
+                &cb::MoveEntityRot {
+                    entity_id: entity,
+                    on_ground: *on_ground,
+                    y_rot: Angle(*yaw),
+                    x_rot: Angle(*pitch),
+                },
+            ),
+            Movement::Sync {
+                path,
+                yaw,
+                pitch,
+                on_ground,
+            } => Self::queue(
+                writer,
+                &cb::EntityPositionSync {
+                    entity_id: entity,
+                    position: match path {
+                        CorePath::Linear(end) => PositionPath::Linear(wire_vec(*end)),
+                        CorePath::Stepped(steps) => PositionPath::Stepped(
+                            steps
+                                .iter()
+                                .map(|(position, ticks)| PositionStep {
+                                    position: wire_vec(*position),
+                                    tick_offset: *ticks,
+                                })
+                                .collect(),
+                        ),
+                    },
+                    y_rot: *yaw,
+                    x_rot: *pitch,
+                    on_ground: *on_ground,
+                },
+            ),
+        }
+    }
+
+    fn entity_moved<W: PacketSink>(
+        writer: &mut W,
         entity: i32,
         from: Vec3,
         to: Vec3,
@@ -1072,5 +1217,195 @@ impl Encoder {
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rspigot_core::events::{DeltaStep as CoreStep, MetadataEntry};
+    use rspigot_domain::{BlockPos, EntityId};
+    use rspigot_protocol::ids::play::clientbound as id;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct Captured(Vec<(i32, Vec<u8>)>);
+
+    impl PacketSink for Captured {
+        fn queue<P: Encode + ?Sized>(
+            &mut self,
+            id: i32,
+            packet: &P,
+        ) -> Result<(), ConnectionError> {
+            let mut body = Vec::new();
+            packet.encode(&mut body);
+            self.0.push((id, body));
+            Ok(())
+        }
+
+        fn queue_prebuilt(&mut self, _: &[u8]) {}
+    }
+
+    fn encode(event: ClientEvent) -> Vec<(i32, Vec<u8>)> {
+        let mut sink = Captured::default();
+        Encoder::new(false)
+            .encode(&event, &mut sink, &ChunkPacketCache::new(1024), None, 0)
+            .unwrap();
+        sink.0
+    }
+
+    #[test]
+    fn bundle_delimiter_is_an_empty_packet() {
+        assert_eq!(
+            encode(ClientEvent::BundleDelimiter),
+            vec![(id::BUNDLE_DELIMITER, Vec::new())]
+        );
+    }
+
+    #[test]
+    fn linear_position_move_golden_bytes() {
+        let event = ClientEvent::EntityMove {
+            entity: EntityId(5),
+            movement: Movement::Position {
+                delta: MoveDelta::Linear {
+                    xa: 0,
+                    ya: -2048,
+                    za: 1,
+                },
+                on_ground: true,
+            },
+        };
+        assert_eq!(
+            encode(event),
+            vec![(id::MOVE_ENTITY_POS, vec![5, 1, 0, 0, 0xF8, 0x00, 0, 1])]
+        );
+    }
+
+    #[test]
+    fn stepped_position_rotation_move_golden_bytes() {
+        let event = ClientEvent::EntityMove {
+            entity: EntityId(1),
+            movement: Movement::PositionRotation {
+                delta: MoveDelta::Stepped(vec![CoreStep {
+                    ticks: 3,
+                    xa: 0,
+                    ya: -2048,
+                    za: 0,
+                }]),
+                yaw: 64,
+                pitch: 192,
+                on_ground: false,
+            },
+        };
+        assert_eq!(
+            encode(event),
+            vec![(
+                id::MOVE_ENTITY_POS_ROT,
+                vec![1, 2, 3, 0, 0, 0xF8, 0x00, 0, 0, 64, 192]
+            )]
+        );
+    }
+
+    #[test]
+    fn rotation_move_puts_on_ground_before_the_angles() {
+        let event = ClientEvent::EntityMove {
+            entity: EntityId(9),
+            movement: Movement::Rotation {
+                yaw: 1,
+                pitch: 2,
+                on_ground: true,
+            },
+        };
+        assert_eq!(encode(event), vec![(id::MOVE_ENTITY_ROT, vec![9, 1, 1, 2])]);
+    }
+
+    #[test]
+    fn position_sync_golden_bytes() {
+        let event = ClientEvent::EntityMove {
+            entity: EntityId(2),
+            movement: Movement::Sync {
+                path: CorePath::Linear(Vec3::new(1.0, 64.0, -2.5)),
+                yaw: 90.0,
+                pitch: 0.0,
+                on_ground: true,
+            },
+        };
+        let mut expected = vec![2, 0];
+        expected.extend_from_slice(&1.0f64.to_be_bytes());
+        expected.extend_from_slice(&64.0f64.to_be_bytes());
+        expected.extend_from_slice(&(-2.5f64).to_be_bytes());
+        expected.extend_from_slice(&90.0f32.to_be_bytes());
+        expected.extend_from_slice(&0.0f32.to_be_bytes());
+        expected.push(1);
+        assert_eq!(encode(event), vec![(id::ENTITY_POSITION_SYNC, expected)]);
+    }
+
+    #[test]
+    fn falling_block_start_pos_metadata_golden_bytes() {
+        let event = ClientEvent::EntityMetadata {
+            entity: EntityId(3),
+            entries: vec![MetadataEntry {
+                index: 8,
+                value: MetadataValue::BlockPos(BlockPos::new(1, 64, -1)),
+            }],
+        };
+        let packed: i64 = (1i64 << 38) | (0x3FF_FFFF << 12) | 64;
+        let mut expected = vec![3, 8, 10];
+        expected.extend_from_slice(&packed.to_be_bytes());
+        expected.push(0xFF);
+        assert_eq!(encode(event), vec![(id::SET_ENTITY_DATA, expected)]);
+    }
+
+    fn stone(count: u8) -> rspigot_domain::item::Slot {
+        Some(ItemStack::new(
+            rspigot_domain::ItemId(1),
+            std::num::NonZeroU8::new(count).unwrap(),
+        ))
+    }
+
+    #[test]
+    fn cursor_item_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::CursorItem(stone(3))),
+            vec![(id::SET_CURSOR_ITEM, vec![3, 1, 0, 0])]
+        );
+        assert_eq!(
+            encode(ClientEvent::CursorItem(None)),
+            vec![(id::SET_CURSOR_ITEM, vec![0])]
+        );
+    }
+
+    #[test]
+    fn player_inventory_slot_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::PlayerInventorySlot {
+                slot: 40,
+                stack: stone(2),
+            }),
+            vec![(id::SET_PLAYER_INVENTORY, vec![40, 2, 1, 0, 0])]
+        );
+    }
+
+    #[test]
+    fn inventory_content_carries_the_cursor_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::InventoryContent {
+                state_id: 7,
+                slots: vec![None, stone(64)],
+                carried: stone(5),
+            }),
+            vec![(
+                id::CONTAINER_SET_CONTENT,
+                vec![0, 7, 2, 0, 64, 1, 0, 0, 5, 1, 0, 0]
+            )]
+        );
+        assert_eq!(
+            encode(ClientEvent::InventorySlot {
+                state_id: 8,
+                slot: 0,
+                stack: None,
+            }),
+            vec![(id::CONTAINER_SET_SLOT, vec![0, 8, 0, 0, 0])]
+        );
     }
 }

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::config::{GameConfig, LevelData};
 use rspigot_core::events::{ClientEvent, DigAction, Direction, Inbound, PlayerInput};
-use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, StoreError};
+use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, StoreError};
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
 use rspigot_domain::chunk::ChunkColumn;
@@ -61,6 +61,25 @@ impl ChunkStore for NoStore {
     }
 }
 
+impl EntityStore for NoStore {
+    fn load_entities(
+        &self,
+        _: &Identifier,
+        _: ChunkPos,
+    ) -> Result<Option<Vec<rspigot_nbt::Compound>>, StoreError> {
+        Ok(None)
+    }
+
+    fn save_entities(
+        &self,
+        _: &Identifier,
+        _: ChunkPos,
+        _: &[rspigot_nbt::Compound],
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+}
+
 struct Floor;
 
 impl ChunkGenerator for Floor {
@@ -68,10 +87,12 @@ impl ChunkGenerator for Floor {
         let mut chunk = ChunkColumn::empty(pos, dimension.height, BiomeId(0));
         for x in 0..16 {
             for z in 0..16 {
-                chunk.set_block(
-                    BlockPos::new(pos.min_block_x() + x, 63, pos.min_block_z() + z),
-                    BlockStateId(1),
-                );
+                for y in 60..=63 {
+                    chunk.set_block(
+                        BlockPos::new(pos.min_block_x() + x, y, pos.min_block_z() + z),
+                        BlockStateId(1),
+                    );
+                }
             }
         }
         chunk
@@ -95,9 +116,22 @@ fn server(operators: Vec<String>) -> Server<Link> {
 }
 
 fn server_with(operators: Vec<String>, whitelist_enabled: bool) -> Server<Link> {
+    server_configured(
+        operators,
+        whitelist_enabled,
+        GameConfig::default().item_despawn_ticks,
+    )
+}
+
+fn server_configured(
+    operators: Vec<String>,
+    whitelist_enabled: bool,
+    item_despawn_ticks: u32,
+) -> Server<Link> {
     let config = GameConfig {
         view_distance: 3,
         chunk_workers: 2,
+        item_despawn_ticks,
         admin: AdminLists {
             operators: operators
                 .iter()
@@ -492,4 +526,236 @@ fn non_operator_cannot_give_effects() {
     link.take();
     command(&mut server, alice, "effect give @s speed");
     assert!(effect_events(&link.take()).0.is_empty());
+}
+
+#[test]
+fn door_item_places_both_halves_and_use_opens_both() {
+    use rspigot_blocks::{Block, BlockKind, OakDoor};
+    use rspigot_core::events::{Hand, PlayerInput};
+    use rspigot_domain::item::ItemStack;
+    use std::num::NonZeroU8;
+
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, alice_link) = join(&mut server, "Alice");
+    let mut log = vec![Vec::new()];
+    confirm_teleport(&mut server, alice, &alice_link.take());
+    run_ticks(&mut server, 30, &[(alice, &alice_link)], &mut log);
+    command(&mut server, alice, "gamemode creative");
+    let door_item = OakDoor::ITEM.unwrap_or_default();
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::CreativeSlot {
+            slot: 36,
+            stack: Some(ItemStack::new(
+                rspigot_domain::ItemId(door_item),
+                NonZeroU8::MIN,
+            )),
+        },
+    });
+    let ground = BlockPos::new(2, 63, 0);
+    let use_on = |pos: BlockPos, sequence: i32| Inbound::Input {
+        player: alice,
+        input: PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos,
+            face: Direction::Up,
+            cursor: Vec3::new(0.5, 1.0, 0.5),
+            inside_block: false,
+            sequence,
+        },
+    };
+    alice_link.take();
+    server.handle(use_on(ground, 1));
+    server.deliver();
+    let placed: Vec<(BlockPos, BlockStateId)> = alice_link
+        .take()
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::BlockUpdate { pos, state } => Some((*pos, *state)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(placed.len(), 2);
+    assert!(
+        placed
+            .iter()
+            .all(|(_, s)| s.kind() == BlockKind::from_name("oak_door"))
+    );
+    assert_eq!(placed[0].1.property("half"), Some("lower"));
+    assert_eq!(placed[1].0, BlockPos::new(2, 65, 0));
+    assert_eq!(placed[1].1.property("half"), Some("upper"));
+    server.handle(use_on(BlockPos::new(2, 64, 0), 2));
+    server.deliver();
+    let opened: Vec<Option<&str>> = alice_link
+        .take()
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::BlockUpdate { state, .. } => Some(state.property("open")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(opened, vec![Some("true"), Some("true")]);
+}
+
+fn dig(server: &mut Server<Link>, player: PlayerId, pos: BlockPos, action: DigAction) {
+    server.handle(Inbound::Input {
+        player,
+        input: PlayerInput::Dig {
+            action,
+            pos,
+            face: Direction::Up,
+            sequence: 1,
+        },
+    });
+    server.deliver();
+}
+
+fn spawned_items(events: &[ClientEvent]) -> Vec<rspigot_domain::EntityId> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::SpawnEntity {
+                entity,
+                kind: rspigot_core::events::EntityKind::Item,
+                ..
+            } => Some(*entity),
+            _ => None,
+        })
+        .collect()
+}
+
+fn dropped_item_name(events: &[ClientEvent]) -> Option<&'static str> {
+    events.iter().find_map(|e| match e {
+        ClientEvent::EntityMetadata { entries, .. } => {
+            entries.iter().find_map(|m| match &m.value {
+                rspigot_core::events::MetadataValue::Item(Some(stack)) => {
+                    stack.item.kind().map(rspigot_items::ItemKind::name)
+                }
+                _ => None,
+            })
+        }
+        _ => None,
+    })
+}
+
+fn ready_player(server: &mut Server<Link>, name: &str) -> (PlayerId, Link) {
+    let (id, link) = join(server, name);
+    let mut log = vec![Vec::new()];
+    confirm_teleport(server, id, &link.take());
+    run_ticks(server, 30, &[(id, &link)], &mut log);
+    (id, link)
+}
+
+#[test]
+fn stone_mined_with_a_pickaxe_drops_cobblestone_seen_by_others() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, alice_link) = ready_player(&mut server, "Alice");
+    let (bob, bob_link) = join(&mut server, "Bob");
+    let mut log = vec![Vec::new(), Vec::new()];
+    confirm_teleport(&mut server, bob, &bob_link.take());
+    run_ticks(
+        &mut server,
+        30,
+        &[(alice, &alice_link), (bob, &bob_link)],
+        &mut log,
+    );
+    command(&mut server, alice, "give Alice stone_pickaxe");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(3, 63, 3),
+        DigAction::Finish,
+    );
+    assert_eq!(server.items_on_ground(), 1);
+    server.tick();
+    let seen = bob_link.take();
+    assert_eq!(spawned_items(&seen).len(), 1);
+    assert_eq!(dropped_item_name(&seen), Some("minecraft:cobblestone"));
+}
+
+#[test]
+fn stone_mined_by_hand_drops_nothing_and_creative_never_drops() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, _link) = ready_player(&mut server, "Alice");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(3, 63, 3),
+        DigAction::Finish,
+    );
+    assert_eq!(server.items_on_ground(), 0);
+    command(&mut server, alice, "give Alice stone_pickaxe");
+    command(&mut server, alice, "gamemode creative");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(4, 63, 4),
+        DigAction::Start,
+    );
+    assert_eq!(server.items_on_ground(), 0);
+}
+
+#[test]
+fn nearby_player_picks_up_the_drop_after_the_delay() {
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, link) = ready_player(&mut server, "Alice");
+    command(&mut server, alice, "give Alice stone_pickaxe");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(1, 63, 1),
+        DigAction::Finish,
+    );
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::Move {
+            position: Some(Vec3::new(1.5, 63.0, 1.5)),
+            rotation: None,
+            on_ground: true,
+        },
+    });
+    link.take();
+    for _ in 0..5 {
+        server.tick();
+    }
+    assert_eq!(server.items_on_ground(), 1);
+    for _ in 0..20 {
+        server.tick();
+    }
+    assert_eq!(server.items_on_ground(), 0);
+    let events = link.take();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ClientEvent::ItemPickup { amount: 1, .. }))
+    );
+    let cobblestone = rspigot_items::ItemKind::Cobblestone.id();
+    assert!(events.iter().any(
+        |e| matches!(e, ClientEvent::InventorySlot { stack: Some(s), .. } if s.item == cobblestone)
+    ));
+}
+
+#[test]
+fn unpicked_drop_despawns() {
+    let mut server = server_configured(vec!["alice".to_owned()], false, 40);
+    let (alice, link) = ready_player(&mut server, "Alice");
+    command(&mut server, alice, "give Alice stone_pickaxe");
+    command(&mut server, alice, "tp 0.5 64 40.5");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(0, 63, 38),
+        DigAction::Finish,
+    );
+    link.take();
+    assert_eq!(server.items_on_ground(), 1);
+    for _ in 0..45 {
+        server.tick();
+    }
+    assert_eq!(server.items_on_ground(), 0);
+    assert!(
+        link.take()
+            .iter()
+            .any(|e| matches!(e, ClientEvent::RemoveEntities(_)))
+    );
 }

@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rspigot_data::blocks::state_with;
+use rspigot_blocks::BlockKind;
 use rspigot_data::registries::biome_id;
 use rspigot_domain::chunk::{
     Biomes, BlockEntity, Blocks, ChunkColumn, ChunkLight, ChunkSection, ChunkStatus, Heightmap,
@@ -78,7 +78,7 @@ pub fn end() -> Identifier {
 }
 
 pub fn block(name: &str) -> BlockStateId {
-    BlockStateId(state_with(name, &[]).unwrap())
+    BlockKind::from_name(name).unwrap().default_state()
 }
 
 pub fn biome(name: &str) -> BiomeId {
@@ -131,18 +131,14 @@ pub fn rich_column(pos: ChunkPos) -> ChunkColumn {
         sections[2].blocks().clone(),
         PalettedContainer::<BiomeId, Biomes>::from_values(&biomes),
     );
-    let stairs = BlockStateId(
-        state_with(
-            "minecraft:oak_stairs",
-            &[
-                ("facing", "east"),
-                ("half", "top"),
-                ("shape", "inner_left"),
-                ("waterlogged", "true"),
-            ],
-        )
-        .unwrap(),
-    );
+    let stairs = BlockKind::OakStairs
+        .state_with(&[
+            ("facing", "east"),
+            ("half", "top"),
+            ("shape", "inner_left"),
+            ("waterlogged", "true"),
+        ])
+        .unwrap();
     let mut blocks = PalettedContainer::<BlockStateId, Blocks>::single(BlockStateId::AIR);
     blocks.set(100, stairs);
     blocks.set(101, block("minecraft:stone"));

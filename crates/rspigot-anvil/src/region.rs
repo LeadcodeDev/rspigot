@@ -394,6 +394,27 @@ impl RegionFile {
         }
     }
 
+    pub fn clear(&mut self, pos: ChunkPos) -> Result<(), AnvilError> {
+        let index = local_index(pos);
+        let old = self.entry(index);
+        if old == 0 {
+            return Ok(());
+        }
+        self.set_entry(index, 0);
+        self.set_timestamp(index, now_seconds());
+        self.write_header()?;
+        self.sync_data()?;
+        let external = external_path(&self.dir, pos);
+        if let Err(error) = std::fs::remove_file(&external)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(error.into());
+        }
+        self.release(old);
+        self.dirty = !self.sync;
+        Ok(())
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -594,6 +615,29 @@ mod tests {
             region.read(ChunkPos::new(0, 0)),
             Err(AnvilError::Corrupt(_))
         ));
+    }
+
+    #[test]
+    fn clear_removes_the_chunk_and_frees_its_sectors() {
+        let dir = TempDir::new("region-clear");
+        let mut region = open_new(&dir);
+        let pos = ChunkPos::new(3, 4);
+        region
+            .write(pos, 2, ChunkBody::Inline(&pattern(5000, 7)))
+            .unwrap();
+        assert!(region.has_chunk(pos));
+        region.clear(pos).unwrap();
+        assert!(!region.has_chunk(pos));
+        assert_eq!(region.read(pos).unwrap(), None);
+        region.clear(pos).unwrap();
+        let other = ChunkPos::new(5, 5);
+        region
+            .write(other, 2, ChunkBody::Inline(&pattern(100, 1)))
+            .unwrap();
+        assert_eq!(
+            header_entry(&dir.path().join("r.0.0.mca"), local_index(other)) >> 8,
+            2
+        );
     }
 
     #[test]

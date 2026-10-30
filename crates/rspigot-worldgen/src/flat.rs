@@ -1,5 +1,6 @@
+use rspigot_blocks::BlockKind;
 use rspigot_core::ports::ChunkGenerator;
-use rspigot_data::{blocks, registries};
+use rspigot_data::registries;
 use rspigot_domain::chunk::{ChunkColumn, ChunkSection, PalettedContainer};
 use rspigot_domain::world::{Dimension, WorldHeight};
 use rspigot_domain::{BiomeId, BlockStateId, ChunkPos, Vec3};
@@ -86,8 +87,8 @@ impl FlatGenerator {
             .iter()
             .map(|layer| {
                 let name = qualified(&layer.block);
-                blocks::default_state(&name)
-                    .map(|state| (BlockStateId(state), layer.height))
+                BlockKind::from_name(&name)
+                    .map(|kind| (kind.default_state(), layer.height))
                     .ok_or(FlatSettingsError::UnknownBlock(name))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -103,8 +104,9 @@ impl FlatGenerator {
             .layers
             .iter()
             .map(|layer| {
-                let state = blocks::default_state(&layer.block).unwrap_or(0);
-                (BlockStateId(state), layer.height)
+                let state = BlockKind::from_name(&layer.block)
+                    .map_or(BlockStateId::AIR, BlockKind::default_state);
+                (state, layer.height)
             })
             .collect();
         Self::assemble(layers, biome_id("minecraft:plains"), seed)
@@ -193,7 +195,7 @@ mod tests {
     use rspigot_domain::chunk::HeightmapKind;
 
     fn state(name: &str) -> BlockStateId {
-        BlockStateId(blocks::default_state(name).unwrap())
+        BlockKind::from_name(name).unwrap().default_state()
     }
 
     #[test]

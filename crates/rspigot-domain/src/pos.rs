@@ -103,6 +103,35 @@ impl Vec3 {
     pub fn is_finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
     }
+
+    pub fn length_sqr(self) -> f64 {
+        self.x * self.x + self.y * self.y + self.z * self.z
+    }
+
+    pub fn length(self) -> f64 {
+        self.length_sqr().sqrt()
+    }
+
+    pub fn horizontal_distance_sqr(self) -> f64 {
+        self.x * self.x + self.z * self.z
+    }
+
+    pub fn scale(self, factor: f64) -> Self {
+        Self::new(self.x * factor, self.y * factor, self.z * factor)
+    }
+
+    pub fn multiply(self, x: f64, y: f64, z: f64) -> Self {
+        Self::new(self.x * x, self.y * y, self.z * z)
+    }
+
+    pub fn normalize(self) -> Self {
+        let length = self.length();
+        if length < 9.999_999_747_378_752e-6 {
+            Self::ZERO
+        } else {
+            Self::new(self.x / length, self.y / length, self.z / length)
+        }
+    }
 }
 
 impl Add for Vec3 {

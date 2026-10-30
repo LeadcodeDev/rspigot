@@ -19,6 +19,7 @@ pub enum ArgumentParser {
     Dimension,
     ResourceLocation,
     Resource { registry: String },
+    NbtCompoundTag,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,6 +90,25 @@ impl TreeBuilder {
         )
     }
 
+    fn suggesting(
+        &mut self,
+        parent: usize,
+        name: &str,
+        parser: ArgumentParser,
+        suggests: &str,
+        executable: bool,
+    ) -> usize {
+        self.add(
+            parent,
+            CommandNodeKind::Argument {
+                name: name.to_owned(),
+                parser,
+                suggests: Some(suggests.to_owned()),
+            },
+            executable,
+        )
+    }
+
     fn alias(&mut self, parent: usize, name: &str, target: usize) {
         let index = self.literal(parent, name, false);
         self.nodes[index].redirect = Some(target);
@@ -98,6 +118,13 @@ impl TreeBuilder {
 fn entities() -> ArgumentParser {
     ArgumentParser::Entity {
         single: false,
+        players_only: false,
+    }
+}
+
+fn single_entity() -> ArgumentParser {
+    ArgumentParser::Entity {
+        single: true,
         players_only: false,
     }
 }
@@ -143,11 +170,25 @@ pub fn build_tree(operator: bool) -> CommandTree {
             let m = b.literal(gamemode, mode, true);
             b.argument(m, "target", player_arg(), true);
         }
-        let tp = b.literal(root, "tp", false);
-        b.argument(tp, "location", ArgumentParser::Vec3, true);
-        let dest = b.argument(tp, "destination", player_arg(), true);
-        b.argument(dest, "destination", player_arg(), true);
-        b.alias(root, "teleport", tp);
+        let teleport = b.literal(root, "teleport", false);
+        let targets = b.argument(teleport, "targets", entities(), false);
+        b.argument(targets, "location", ArgumentParser::Vec3, true);
+        b.argument(targets, "destination", single_entity(), true);
+        b.argument(teleport, "location", ArgumentParser::Vec3, true);
+        b.argument(teleport, "destination", single_entity(), true);
+        b.alias(root, "tp", teleport);
+        let summon = b.literal(root, "summon", false);
+        let entity = b.suggesting(
+            summon,
+            "entity",
+            ArgumentParser::Resource {
+                registry: "minecraft:entity_type".to_owned(),
+            },
+            "minecraft:summonable_entities",
+            true,
+        );
+        let pos = b.argument(entity, "pos", ArgumentParser::Vec3, true);
+        b.argument(pos, "nbt", ArgumentParser::NbtCompoundTag, true);
         let time = b.literal(root, "time", false);
         let set = b.literal(time, "set", false);
         for preset in ["day", "noon", "night", "midnight"] {
@@ -174,6 +215,8 @@ pub fn build_tree(operator: bool) -> CommandTree {
         );
         let clear = b.literal(root, "clear", true);
         b.argument(clear, "targets", player_arg(), true);
+        let kill = b.literal(root, "kill", true);
+        b.argument(kill, "targets", entities(), true);
         let kick = b.literal(root, "kick", false);
         let kicked = b.argument(kick, "targets", player_arg(), true);
         b.argument(kicked, "reason", ArgumentParser::Message, true);
@@ -254,6 +297,12 @@ mod tests {
             .collect();
         assert!(names.contains(&"gamemode"));
         assert!(names.contains(&"tp"));
+        assert!(names.contains(&"summon"));
+        let summon_entity = tree.nodes.iter().find(|n| {
+            matches!(&n.kind, CommandNodeKind::Argument { name, suggests, .. }
+                if name == "entity" && suggests.as_deref() == Some("minecraft:summonable_entities"))
+        });
+        assert!(summon_entity.is_some());
         for node in &tree.nodes {
             if let Some(target) = node.redirect {
                 assert!(target < tree.nodes.len());

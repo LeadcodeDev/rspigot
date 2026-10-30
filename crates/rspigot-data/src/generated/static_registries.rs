@@ -1,7 +1,6 @@
 use crate::registries::StaticRegistry;
 
 pub(crate) const ENTITY_TYPE: usize = 27;
-pub(crate) const ITEM: usize = 37;
 
 pub(crate) static STATIC: [StaticRegistry; 95] = [
     StaticRegistry {

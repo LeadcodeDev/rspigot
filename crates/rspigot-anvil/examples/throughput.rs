@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use rspigot_anvil::{AnvilOptions, AnvilStore, Compression, DimensionLayout};
+use rspigot_blocks::BlockKind;
 use rspigot_core::ports::{ChunkStore, StoreError};
-use rspigot_data::blocks::state_with;
 use rspigot_data::registries::biome_id;
 use rspigot_domain::chunk::{
     Biomes, Blocks, ChunkColumn, ChunkLight, ChunkSection, Heightmap, HeightmapKind, LightArray,
@@ -19,7 +19,7 @@ fn failure(reason: &str) -> StoreError {
 }
 
 fn state(name: &str) -> BlockStateId {
-    BlockStateId(state_with(name, &[]).unwrap_or(0))
+    BlockKind::from_name(name).map_or(BlockStateId::AIR, BlockKind::default_state)
 }
 
 fn terrain_column(pos: ChunkPos) -> Result<ChunkColumn, StoreError> {

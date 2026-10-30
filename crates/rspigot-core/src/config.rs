@@ -1,4 +1,5 @@
 use rspigot_domain::BlockPos;
+use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
 use rspigot_domain::world::Difficulty;
 use sha2::{Digest, Sha256};
@@ -6,6 +7,48 @@ use sha2::{Digest, Sha256};
 use crate::admin::AdminLists;
 use crate::chunks::ChunkManagerConfig;
 use crate::streaming::StreamConfig;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameRules {
+    pub natural_regeneration: bool,
+    pub keep_inventory: bool,
+    pub show_death_messages: bool,
+    pub immediate_respawn: bool,
+    pub fall_damage: bool,
+}
+
+impl Default for GameRules {
+    fn default() -> Self {
+        Self {
+            natural_regeneration: true,
+            keep_inventory: false,
+            show_death_messages: true,
+            immediate_respawn: false,
+            fall_damage: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivationRanges {
+    pub animals: i32,
+    pub monsters: i32,
+    pub raiders: i32,
+    pub misc: i32,
+    pub ignore_spectators: bool,
+}
+
+impl Default for ActivationRanges {
+    fn default() -> Self {
+        Self {
+            animals: 32,
+            monsters: 32,
+            raiders: 48,
+            misc: 16,
+            ignore_spectators: false,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
@@ -20,6 +63,9 @@ pub struct GameConfig {
     pub allow_flight: bool,
     pub spawn_protection: u32,
     pub player_tracking_range: f64,
+    pub tracking: TrackingRanges,
+    pub activation: ActivationRanges,
+    pub item_despawn_ticks: u32,
     pub chunk_workers: usize,
     pub stream: StreamConfig,
     pub chunks: ChunkManagerConfig,
@@ -27,6 +73,7 @@ pub struct GameConfig {
     pub whitelist_message: String,
     pub is_flat: bool,
     pub spawn_chunk_radius: i32,
+    pub rules: GameRules,
 }
 
 impl Default for GameConfig {
@@ -43,6 +90,9 @@ impl Default for GameConfig {
             allow_flight: false,
             spawn_protection: 16,
             player_tracking_range: 128.0,
+            tracking: TrackingRanges::default(),
+            activation: ActivationRanges::default(),
+            item_despawn_ticks: 6000,
             chunk_workers: std::thread::available_parallelism()
                 .map_or(4, |n| n.get().saturating_sub(2).max(2)),
             stream: StreamConfig::default(),
@@ -51,6 +101,7 @@ impl Default for GameConfig {
             whitelist_message: "You are not whitelisted on this server!".to_owned(),
             is_flat: false,
             spawn_chunk_radius: 2,
+            rules: GameRules::default(),
         }
     }
 }
@@ -66,6 +117,7 @@ pub struct LevelData {
     pub daylight_cycle: bool,
     pub raining: bool,
     pub thundering: bool,
+    pub uuid: Option<uuid::Uuid>,
 }
 
 impl Default for LevelData {
@@ -80,6 +132,7 @@ impl Default for LevelData {
             daylight_cycle: true,
             raining: false,
             thundering: false,
+            uuid: None,
         }
     }
 }

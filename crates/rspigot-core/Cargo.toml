@@ -6,11 +6,16 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rspigot-ai = { workspace = true }
+rspigot-blocks = { workspace = true }
 rspigot-data = { workspace = true }
 rspigot-domain = { workspace = true }
+rspigot-entities = { workspace = true }
+rspigot-items = { workspace = true }
 rspigot-nbt = { workspace = true }
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
+rand = "0.9"
 rustc-hash = "2"
 sha2 = "0.10"
 thiserror = "2"

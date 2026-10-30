@@ -103,6 +103,8 @@ fn main() -> anyhow::Result<()> {
         ..LevelData::default()
     });
     level.name = level_name;
+    level.uuid =
+        Some(rspigot_anvil::read_or_create_world_uuid(&world_root).context("reading uid.dat")?);
     tracing::info!("Preparing level \"{}\"", level.name);
     let options = AnvilOptions {
         compression: Compression::from_property(files.properties.string("region-file-compression"))

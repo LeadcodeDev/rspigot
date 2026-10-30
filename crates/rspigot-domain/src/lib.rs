@@ -1,8 +1,15 @@
+pub mod attribute;
 pub mod chunk;
+pub mod combat;
+pub mod damage;
 pub mod effect;
+pub mod entity;
+pub mod food;
 pub mod ident;
 pub mod ids;
 pub mod item;
+pub mod menu;
+pub mod mth;
 pub mod player;
 pub mod pos;
 pub mod text;
