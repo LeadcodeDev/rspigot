@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct WeatheredCopperChest;
 
@@ -35,5 +37,7 @@ impl Block for WeatheredCopperChest {
         StateFlags(558), StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558),
         StateFlags(654), StateFlags(558), StateFlags(654), StateFlags(558),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CHEST);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_CHEST);
     type Behavior = crate::family::HorizontalAway;
 }

@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct OxidizedCopperChain;
 
@@ -31,5 +33,7 @@ impl Block for OxidizedCopperChain {
         StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134),
         StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_IRON_CHAIN);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_IRON_CHAIN);
     type Behavior = crate::family::Pillar;
 }

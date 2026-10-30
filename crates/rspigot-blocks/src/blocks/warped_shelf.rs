@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct WarpedShelf;
 
@@ -46,5 +48,8 @@ impl Block for WarpedShelf {
         StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
         StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_ACACIA_SHELF);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_ACACIA_SHELF);
     type Behavior = crate::family::HorizontalAway;
 }

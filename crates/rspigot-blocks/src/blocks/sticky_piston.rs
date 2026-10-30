@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct StickyPiston;
 
@@ -32,5 +34,8 @@ impl Block for StickyPiston {
         StateFlags(46), StateFlags(1054), StateFlags(1054), StateFlags(1054), StateFlags(1054),
         StateFlags(1054), StateFlags(1054),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_STICKY_PISTON);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_STICKY_PISTON);
     type Behavior = crate::family::Directional<true>;
 }

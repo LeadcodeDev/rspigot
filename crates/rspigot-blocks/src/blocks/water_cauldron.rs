@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct WaterCauldron;
 
@@ -25,5 +27,7 @@ impl Block for WaterCauldron {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(38));
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(153));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 2));
     type Behavior = crate::family::Plain;
 }

@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct DecoratedPot;
 
@@ -34,5 +36,7 @@ impl Block for DecoratedPot {
         StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134),
         StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(156));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 3, 0));
     type Behavior = crate::family::HorizontalToward;
 }

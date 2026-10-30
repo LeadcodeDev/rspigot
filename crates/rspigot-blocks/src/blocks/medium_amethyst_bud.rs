@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct MediumAmethystBud;
 
@@ -32,5 +34,9 @@ impl Block for MediumAmethystBud {
         StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38),
         StateFlags(134), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> =
+        PerState::Varies(crate::shapes::COLLISION_MEDIUM_AMETHYST_BUD);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_AMETHYST_CLUSTER);
     type Behavior = crate::family::FaceAttached;
 }

@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct MossyStoneBrickWall;
 
@@ -108,5 +110,9 @@ impl Block for MossyStoneBrickWall {
         StateFlags(46), StateFlags(46), StateFlags(46), StateFlags(142), StateFlags(142),
         StateFlags(142), StateFlags(46), StateFlags(46), StateFlags(46),
     ]);
+    const COLLISION: PerState<ShapeId> =
+        PerState::Varies(crate::shapes::COLLISION_RESIN_BRICK_WALL);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_RESIN_BRICK_WALL);
     type Behavior = crate::family::Plain;
 }

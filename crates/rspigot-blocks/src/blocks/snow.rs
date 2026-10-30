@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Snow;
 
@@ -30,5 +32,7 @@ impl Block for Snow {
         StateFlags(616), StateFlags(620), StateFlags(620), StateFlags(620), StateFlags(620),
         StateFlags(620), StateFlags(620), StateFlags(604),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_SNOW);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_SNOW);
     type Behavior = crate::family::Plain;
 }

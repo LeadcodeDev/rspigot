@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Ladder;
 
@@ -31,5 +33,7 @@ impl Block for Ladder {
         StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
         StateFlags(36), StateFlags(132), StateFlags(36),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_LADDER);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_LADDER);
     type Behavior = crate::family::FaceAttached;
 }

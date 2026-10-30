@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Scaffolding;
 
@@ -38,5 +40,7 @@ impl Block for Scaffolding {
         StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36),
         StateFlags(132), StateFlags(36),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(275));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(2, 2, 2));
     type Behavior = crate::family::Scaffolding;
 }

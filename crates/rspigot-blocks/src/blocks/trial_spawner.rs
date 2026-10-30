@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct TrialSpawner;
 
@@ -34,5 +36,7 @@ impl Block for TrialSpawner {
     ]);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(1030));
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
     type Behavior = crate::family::Plain;
 }

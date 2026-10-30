@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct OrangeStainedGlassPane;
 
@@ -40,5 +42,7 @@ impl Block for OrangeStainedGlassPane {
         StateFlags(134), StateFlags(38), StateFlags(38), StateFlags(134), StateFlags(134),
         StateFlags(38), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_IRON_BARS);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_OAK_FENCE);
     type Behavior = crate::family::Plain;
 }

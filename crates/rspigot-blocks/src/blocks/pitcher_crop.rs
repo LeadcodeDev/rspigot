@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct PitcherCrop;
 
@@ -29,5 +31,8 @@ impl Block for PitcherCrop {
         StateFlags(32), StateFlags(548), StateFlags(32), StateFlags(548), StateFlags(32),
         StateFlags(548), StateFlags(32), StateFlags(548), StateFlags(32), StateFlags(36),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_PITCHER_CROP);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_PITCHER_CROP);
     type Behavior = crate::family::Plain;
 }

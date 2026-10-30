@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct PistonHead;
 
@@ -27,5 +29,8 @@ impl Block for PistonHead {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(46));
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_PISTON_HEAD);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_PISTON_HEAD);
     type Behavior = crate::family::Plain;
 }

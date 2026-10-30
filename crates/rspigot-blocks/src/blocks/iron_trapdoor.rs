@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct IronTrapdoor;
 
@@ -47,5 +49,8 @@ impl Block for IronTrapdoor {
         StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38),
         StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_TRAPDOOR);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_OAK_TRAPDOOR);
     type Behavior = crate::family::Trapdoor<false>;
 }

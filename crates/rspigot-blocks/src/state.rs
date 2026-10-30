@@ -1,5 +1,8 @@
 use crate::kind::{ITEMS, NAMES, STATE_COUNT};
-use crate::{BlockId, BlockKind, PerState, Property, StateFlags, StateId};
+use crate::{
+    Aabb, BlockId, BlockKind, Face, FaceSupport, PerState, Property, SHAPE_COUNT, ShapeId,
+    StateFlags, StateId, Support,
+};
 
 macro_rules! block_kinds {
     (blocks: $blocks:literal, states: $states:literal, kinds: [$($kind:ident),* $(,)?] $(,)?) => {
@@ -87,6 +90,18 @@ macro_rules! block_kinds {
                 }
             }
 
+            pub(crate) const fn collision_per_state(self) -> $crate::PerState<$crate::ShapeId> {
+                match self {
+                    $(Self::$kind => <$crate::blocks::$kind as $crate::Block>::COLLISION,)*
+                }
+            }
+
+            pub(crate) const fn face_support_per_state(self) -> $crate::PerState<$crate::FaceSupport> {
+                match self {
+                    $(Self::$kind => <$crate::blocks::$kind as $crate::Block>::FACE_SUPPORT,)*
+                }
+            }
+
             pub fn place(self, context: &$crate::PlaceContext) -> Option<$crate::Placement> {
                 match self {
                     $(Self::$kind => <<$crate::blocks::$kind as $crate::Block>::Behavior as $crate::BlockBehavior>::place(context),)*
@@ -120,6 +135,8 @@ struct StateInfo {
     flags: StateFlags,
     light_emission: u8,
     light_dampening: u8,
+    collision: ShapeId,
+    support: FaceSupport,
 }
 
 static STATES: [StateInfo; STATE_COUNT] = build_states();
@@ -147,6 +164,8 @@ const fn build_states() -> [StateInfo; STATE_COUNT] {
         flags: StateFlags(0),
         light_emission: 0,
         light_dampening: 0,
+        collision: ShapeId::EMPTY,
+        support: FaceSupport::NONE,
     }; STATE_COUNT];
     let mut next = 0;
     let mut index = 0;
@@ -158,19 +177,26 @@ const fn build_states() -> [StateInfo; STATE_COUNT] {
         let emission = kind.light_emission_per_state();
         let dampening = kind.light_dampening_per_state();
         let flags = kind.flags_per_state();
+        let collision = kind.collision_per_state();
+        let support = kind.face_support_per_state();
         assert!(kind.id().0 as usize == index);
         assert!(first as usize == next);
         assert!(count > 0);
         assert!(combinations(kind.properties()) == count as usize);
         assert!(default >= first && default - first < count);
         assert!(covers(&emission, count) && covers(&dampening, count) && covers(&flags, count));
+        assert!(covers(&collision, count) && covers(&support, count));
         let mut offset = 0;
         while offset < count {
+            let shape = collision.get(offset);
+            assert!((shape.0 as usize) < SHAPE_COUNT);
             states[next] = StateInfo {
                 kind,
                 flags: flags.get(offset),
                 light_emission: emission.get(offset),
                 light_dampening: dampening.get(offset),
+                collision: shape,
+                support: support.get(offset),
             };
             next += 1;
             offset += 1;
@@ -255,6 +281,22 @@ impl StateId {
 
     pub fn flags(self) -> StateFlags {
         self.info().map_or(StateFlags(0), |info| info.flags)
+    }
+
+    pub fn collision_shape_id(self) -> ShapeId {
+        self.info().map_or(ShapeId::EMPTY, |info| info.collision)
+    }
+
+    pub fn collision_shape(self) -> &'static [Aabb] {
+        self.collision_shape_id().boxes()
+    }
+
+    pub fn face_support(self) -> FaceSupport {
+        self.info().map_or(FaceSupport::NONE, |info| info.support)
+    }
+
+    pub fn is_face_sturdy(self, face: Face, support: Support) -> bool {
+        self.face_support().is_sturdy(face, support)
     }
 }
 

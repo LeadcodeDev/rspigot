@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.Bootstrap;
@@ -26,12 +27,17 @@ import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SupportType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 public final class BlockDump {
+    private static final Direction[] FACES = {Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
+
     private BlockDump() {
     }
 
@@ -50,8 +56,11 @@ public final class BlockDump {
             json.setIndent(" ");
             json.beginObject();
             json.name("version").value(SharedConstants.getCurrentVersion().name());
+            Map<List<Double>, Integer> shapes = new LinkedHashMap<>();
             json.name("blocks");
-            writeBlocks(json);
+            writeBlocks(json, shapes);
+            json.name("collision_shapes");
+            writeShapes(json, shapes);
             json.name("block_items");
             writeBlockItems(json);
             json.endObject();
@@ -70,7 +79,7 @@ public final class BlockDump {
         }
     }
 
-    private static void writeBlocks(JsonWriter json) throws IOException {
+    private static void writeBlocks(JsonWriter json, Map<List<Double>, Integer> shapes) throws IOException {
         json.beginArray();
         int expectedState = 0;
         for (int id = 0; id < BuiltInRegistries.BLOCK.size(); id++) {
@@ -129,7 +138,7 @@ public final class BlockDump {
                     throw new IllegalStateException("state id " + stateId + " expected " + expectedState);
                 }
                 expectedState++;
-                writeState(json, state, stateId);
+                writeState(json, state, stateId, shapes);
             }
             json.endArray();
             json.endObject();
@@ -137,8 +146,9 @@ public final class BlockDump {
         json.endArray();
     }
 
-    private static void writeState(JsonWriter json, BlockState state, int stateId) throws IOException {
+    private static void writeState(JsonWriter json, BlockState state, int stateId, Map<List<Double>, Integer> shapes) throws IOException {
         FluidState fluid = state.getFluidState();
+        VoxelShape collision = state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
         json.beginObject();
         json.name("id").value(stateId);
         json.name("properties").beginObject();
@@ -150,7 +160,7 @@ public final class BlockDump {
         json.name("light_dampening").value(state.getLightDampening());
         json.name("is_air").value(state.isAir());
         json.name("blocks_motion").value(state.is(BlockTags.BLOCKS_MOTION_IN_HEIGHTMAP));
-        json.name("has_collision").value(!state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+        json.name("has_collision").value(!collision.isEmpty());
         json.name("can_occlude").value(state.canOcclude());
         json.name("is_solid_render").value(state.isSolidRender());
         json.name("propagates_skylight_down").value(state.propagatesSkylightDown());
@@ -159,7 +169,56 @@ public final class BlockDump {
         json.name("lava").value(fluid.getType().isSame(Fluids.LAVA));
         json.name("is_randomly_ticking").value(state.isRandomlyTicking());
         json.name("is_collision_shape_full_block").value(state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+        json.name("collision_shape").value(internShape(shapes, collision));
+        json.name("sturdy_full").value(sturdyMask(state, SupportType.FULL));
+        json.name("sturdy_center").value(sturdyMask(state, SupportType.CENTER));
+        json.name("sturdy_rigid").value(sturdyMask(state, SupportType.RIGID));
         json.endObject();
+    }
+
+    private static int internShape(Map<List<Double>, Integer> shapes, VoxelShape shape) {
+        List<Double> key = new ArrayList<>();
+        for (AABB box : shape.toAabbs()) {
+            key.add(box.minX);
+            key.add(box.minY);
+            key.add(box.minZ);
+            key.add(box.maxX);
+            key.add(box.maxY);
+            key.add(box.maxZ);
+        }
+        return shapes.computeIfAbsent(List.copyOf(key), ignored -> shapes.size());
+    }
+
+    private static int sturdyMask(BlockState state, SupportType support) {
+        int mask = 0;
+        for (int index = 0; index < FACES.length; index++) {
+            if (state.isFaceSturdy(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, FACES[index], support)) {
+                mask |= 1 << index;
+            }
+        }
+        return mask;
+    }
+
+    private static void writeShapes(JsonWriter json, Map<List<Double>, Integer> shapes) throws IOException {
+        json.beginArray();
+        int expected = 0;
+        for (Map.Entry<List<Double>, Integer> entry : shapes.entrySet()) {
+            if (entry.getValue() != expected) {
+                throw new IllegalStateException("shape id " + entry.getValue() + " expected " + expected);
+            }
+            expected++;
+            List<Double> values = entry.getKey();
+            json.beginArray();
+            for (int box = 0; box < values.size(); box += 6) {
+                json.beginArray();
+                for (int axis = 0; axis < 6; axis++) {
+                    json.value(values.get(box + axis).doubleValue());
+                }
+                json.endArray();
+            }
+            json.endArray();
+        }
+        json.endArray();
     }
 
     private static Block wallBlock(StandingAndWallBlockItem item) {

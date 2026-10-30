@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct PaleMossCarpet;
 
@@ -63,5 +65,9 @@ impl Block for PaleMossCarpet {
         StateFlags(32), StateFlags(32), StateFlags(32), StateFlags(32), StateFlags(32),
         StateFlags(32), StateFlags(32),
     ]);
+    const COLLISION: PerState<ShapeId> =
+        PerState::Varies(crate::shapes::COLLISION_PALE_MOSS_CARPET);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_PALE_MOSS_CARPET);
     type Behavior = crate::family::Plain;
 }

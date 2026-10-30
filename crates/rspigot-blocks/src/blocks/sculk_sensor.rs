@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SculkSensor;
 
@@ -59,5 +61,7 @@ impl Block for SculkSensor {
         StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
         StateFlags(46),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(54));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(1, 1, 1));
     type Behavior = crate::family::Plain;
 }

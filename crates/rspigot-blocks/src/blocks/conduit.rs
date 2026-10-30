@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Conduit;
 
@@ -29,5 +31,7 @@ impl Block for Conduit {
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
         StateFlags(134), StateFlags(38),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(273));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::Plain;
 }

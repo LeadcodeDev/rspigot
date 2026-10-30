@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SpruceDoor;
 
@@ -29,5 +31,7 @@ impl Block for SpruceDoor {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(38));
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_DOOR);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_OAK_DOOR);
     type Behavior = crate::family::Door<true>;
 }

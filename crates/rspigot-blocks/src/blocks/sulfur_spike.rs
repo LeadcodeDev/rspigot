@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct SulfurSpike;
 
@@ -34,5 +36,9 @@ impl Block for SulfurSpike {
         StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
         StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
     ]);
+    const COLLISION: PerState<ShapeId> =
+        PerState::Varies(crate::shapes::COLLISION_POINTED_DRIPSTONE);
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_POINTED_DRIPSTONE);
     type Behavior = crate::family::Speleothem;
 }

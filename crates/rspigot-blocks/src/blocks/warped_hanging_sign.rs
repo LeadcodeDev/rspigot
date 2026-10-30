@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct WarpedHangingSign;
 
@@ -51,5 +53,8 @@ impl Block for WarpedHangingSign {
         StateFlags(34), StateFlags(130), StateFlags(34), StateFlags(130), StateFlags(34),
         StateFlags(130), StateFlags(34), StateFlags(130), StateFlags(34),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
+    const FACE_SUPPORT: PerState<FaceSupport> =
+        PerState::Varies(crate::shapes::SUPPORT_OAK_HANGING_SIGN);
     type Behavior = crate::family::StandingWithWall;
 }

@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct Light;
 
@@ -46,5 +48,7 @@ impl Block for Light {
         StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96),
         StateFlags(192), StateFlags(96),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::Plain;
 }

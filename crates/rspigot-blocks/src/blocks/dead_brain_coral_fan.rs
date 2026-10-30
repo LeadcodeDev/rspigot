@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct DeadBrainCoralFan;
 
@@ -29,5 +31,7 @@ impl Block for DeadBrainCoralFan {
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
         StateFlags(130), StateFlags(34),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));
     type Behavior = crate::family::StandingWithWall;
 }

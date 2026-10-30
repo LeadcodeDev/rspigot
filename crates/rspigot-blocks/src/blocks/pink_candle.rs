@@ -1,4 +1,6 @@
-use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+use crate::{
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+};
 
 pub struct PinkCandle;
 
@@ -36,5 +38,7 @@ impl Block for PinkCandle {
         StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
         StateFlags(36),
     ]);
+    const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CANDLE);
+    const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;
 }
