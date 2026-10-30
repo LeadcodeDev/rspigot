@@ -3,3 +3,10 @@
 *.jar
 .DS_Store
 /docs
+/world*
+/server.properties
+/spigot.yml
+/bukkit.yml
+/ops.json
+/whitelist.json
+/logs
