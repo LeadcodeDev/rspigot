@@ -328,7 +328,7 @@ fn operation_from(name: &str) -> Option<AttributeOperation> {
     })
 }
 
-fn effect_to_nbt(effect: &EffectInstance) -> Compound {
+pub fn effect_to_nbt(effect: &EffectInstance) -> Compound {
     let mut out = Compound::new();
     out.insert("id", effect.effect.name().unwrap_or_default());
     if effect.amplifier != 0 {
@@ -348,7 +348,7 @@ fn effect_to_nbt(effect: &EffectInstance) -> Compound {
     out
 }
 
-fn effect_from_nbt(compound: &Compound) -> Option<EffectInstance> {
+pub fn effect_from_nbt(compound: &Compound) -> Option<EffectInstance> {
     let effect = EffectId::from_name(compound.get_str("id")?)?;
     let amplifier = compound.get_i64("amplifier").unwrap_or(0) as u8;
     let duration = match compound.get_i64("duration").unwrap_or(0) {

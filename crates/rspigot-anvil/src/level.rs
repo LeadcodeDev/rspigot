@@ -75,7 +75,11 @@ pub(crate) fn read_gzip_nbt(path: &Path) -> Result<Option<Compound>, AnvilError>
     Ok(Some(root))
 }
 
-fn write_gzip_nbt(path: &Path, root: &Compound, backup: Option<&Path>) -> Result<(), AnvilError> {
+pub(crate) fn write_gzip_nbt(
+    path: &Path,
+    root: &Compound,
+    backup: Option<&Path>,
+) -> Result<(), AnvilError> {
     let mut raw = Vec::new();
     write_named(&mut raw, "", root);
     let packed = Compression::Gzip.compress(&raw)?;

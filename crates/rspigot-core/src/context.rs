@@ -362,6 +362,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
 
     fn save_all(&mut self) -> usize {
         self.save_all_entities();
+        self.persist_all_players();
         let count = self.world.chunks.save_dirty(&self.workers);
         self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
         count

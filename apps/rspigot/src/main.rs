@@ -137,7 +137,8 @@ fn main() -> anyhow::Result<()> {
         generator,
         status.clone(),
     )
-    .with_admin_sink(admin_updates);
+    .with_admin_sink(admin_updates)
+    .with_player_store(Arc::clone(&store));
     let spawn_chunks = server.wait_for_spawn(Duration::from_secs(60));
     tracing::info!("Preparing spawn area: {spawn_chunks} chunks");
     let runtime = tokio::runtime::Builder::new_multi_thread()

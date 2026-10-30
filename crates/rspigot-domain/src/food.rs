@@ -53,6 +53,19 @@ impl FoodData {
         }
     }
 
+    pub const fn restore(food: i32, saturation: f32, exhaustion: f32, tick_timer: i32) -> Self {
+        Self {
+            food,
+            saturation,
+            exhaustion,
+            tick_timer,
+        }
+    }
+
+    pub const fn tick_timer(&self) -> i32 {
+        self.tick_timer
+    }
+
     pub fn add_exhaustion(&mut self, amount: f32) {
         self.exhaustion = (self.exhaustion + amount).min(MAX_EXHAUSTION);
     }

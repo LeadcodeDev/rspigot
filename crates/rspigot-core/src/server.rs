@@ -23,7 +23,8 @@ use crate::events::{
 };
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
-use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore};
+use crate::player_io::PlayerIo;
+use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore};
 use crate::spawning::Spawning;
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
@@ -90,6 +91,7 @@ pub struct Server<L> {
     pub(crate) outbox: Vec<(Audience, ClientEvent)>,
     pub(crate) admin: AdminLists,
     pub(crate) admin_sink: Option<Sender<AdminLists>>,
+    pub(crate) player_io: Option<PlayerIo>,
     pub(crate) running: bool,
     pub(crate) entities: EntityWorld,
     pub(crate) falls: ScheduledFalls,
@@ -150,6 +152,7 @@ impl<L: ClientLink> Server<L> {
             outbox: Vec::new(),
             admin,
             admin_sink: None,
+            player_io: None,
             running: true,
             entities: EntityWorld::default(),
             falls: ScheduledFalls::default(),
@@ -163,6 +166,11 @@ impl<L: ClientLink> Server<L> {
             tps: TpsMeter::new(),
             config,
         }
+    }
+
+    pub fn with_player_store<S: PlayerStore>(mut self, store: Arc<S>) -> Self {
+        self.player_io = Some(PlayerIo::spawn(store));
+        self
     }
 
     pub fn with_admin_sink(mut self, sink: Sender<AdminLists>) -> Self {
@@ -370,8 +378,12 @@ impl<L: ClientLink> Server<L> {
             ));
             return;
         }
+        let saved = self.load_saved_player(&profile);
         let entity_id = self.allocate_entity_id();
-        let position = self.world.spawn;
+        let position = saved
+            .as_ref()
+            .filter(|save| !save.is_dead())
+            .map_or(self.world.spawn, |save| save.position);
         let view_distance = self.config.view_distance.min(settings.view_distance.max(2));
         let mut player = Player {
             id: profile.id,
@@ -402,6 +414,9 @@ impl<L: ClientLink> Server<L> {
             known_movement: Vec3::ZERO,
             moved_this_tick: false,
         };
+        if let Some(save) = &saved {
+            save.restore(&mut player, self.world.spawn, self.world.level.spawn_angle);
+        }
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
             player.name(),
@@ -431,6 +446,9 @@ impl<L: ClientLink> Server<L> {
         let id = player.id;
         self.players.insert(id, player);
         self.update_player_view(id);
+        if let Some(save) = &saved {
+            self.announce_restored(id, save);
+        }
         let joined =
             Component::translatable("multiplayer.player.joined", vec![Component::text(name)])
                 .color(NamedColor::Yellow);
@@ -523,6 +541,7 @@ impl<L: ClientLink> Server<L> {
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };
+        self.persist_player(&player);
         player.streamer.release_all(&mut self.world.chunks);
         for other in self.players.values_mut() {
             if other.tracked.remove(&player.entity_id) {
@@ -734,6 +753,9 @@ impl<L: ClientLink> Server<L> {
         let saved = self.world.chunks.save_dirty(&self.workers);
         self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
         self.workers.shutdown();
+        if let Some(io) = self.player_io.take() {
+            io.shutdown();
+        }
         let stats = self.world.chunks.stats();
         tracing::info!(
             "Saved {saved} chunks ({} loaded from disk, {} generated, {} unloaded, {} cancelled, average load {:.2} ms)",
