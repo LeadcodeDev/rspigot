@@ -1,0 +1,24 @@
+[package]
+name = "rspigot-worldgen"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-core = { workspace = true }
+rspigot-domain = { workspace = true }
+rspigot-data = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+criterion = "0.8"
+
+[[bench]]
+name = "generate"
+harness = false
+
+[lints]
+workspace = true
