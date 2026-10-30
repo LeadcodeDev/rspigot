@@ -15,6 +15,7 @@ pub struct GameRules {
     pub show_death_messages: bool,
     pub immediate_respawn: bool,
     pub fall_damage: bool,
+    pub mob_drops: bool,
 }
 
 impl Default for GameRules {
@@ -25,6 +26,7 @@ impl Default for GameRules {
             show_death_messages: true,
             immediate_respawn: false,
             fall_damage: true,
+            mob_drops: true,
         }
     }
 }

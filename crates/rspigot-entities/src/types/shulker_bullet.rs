@@ -1,4 +1,4 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
 
 pub struct ShulkerBullet;
 
@@ -22,5 +22,6 @@ impl EntityType for ShulkerBullet {
     const LIVING: bool = false;
     const ANCESTORS: &'static [&'static str] = &["ShulkerBullet", "Projectile", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
+    const SOUNDS: Option<CreatureSounds> = None;
     type Behavior = crate::family::Plain;
 }

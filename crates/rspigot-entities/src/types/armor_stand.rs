@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct ArmorStand;
 
@@ -49,5 +52,15 @@ impl EntityType for ArmorStand {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Fixed(Some("minecraft:entity.armor_stand.hit")),
+        death: CreatureSound::Fixed(Some("minecraft:entity.armor_stand.break")),
+        small_fall: "minecraft:entity.armor_stand.fall",
+        big_fall: "minecraft:entity.armor_stand.fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
     type Behavior = crate::family::Plain;
 }

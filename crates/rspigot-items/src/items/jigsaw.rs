@@ -10,6 +10,7 @@ impl Item for Jigsaw {
     const CLASS: &'static str = "GameMasterBlockItem";
     const MAX_STACK_SIZE: u8 = 64;
     const MAX_DAMAGE: Option<u32> = None;
+    const WEAPON_DAMAGE: Option<u32> = None;
     const RARITY: Rarity = Rarity::Epic;
     const BLOCK: Option<BlockId> = Some(BlockId(996));
     const TOOL: Option<Tool> = None;

@@ -241,6 +241,7 @@ pub trait Item: 'static {
     const CLASS: &'static str;
     const MAX_STACK_SIZE: u8;
     const MAX_DAMAGE: Option<u32>;
+    const WEAPON_DAMAGE: Option<u32>;
     const RARITY: Rarity;
     const BLOCK: Option<BlockId>;
     const TOOL: Option<Tool>;

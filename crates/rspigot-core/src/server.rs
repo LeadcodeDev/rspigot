@@ -33,6 +33,11 @@ pub(crate) enum Audience {
     Trackers(EntityId),
     TrackersExcept(EntityId, PlayerId),
     ChunkViewers(ChunkPos),
+    Nearby {
+        position: Vec3,
+        range: f64,
+        except: Option<PlayerId>,
+    },
 }
 
 pub struct World {
@@ -281,6 +286,18 @@ impl<L: ClientLink> Server<L> {
                         player.link.send(event.clone());
                     }
                 }
+                Audience::Nearby {
+                    position,
+                    range,
+                    except,
+                } => {
+                    for player in self.players.values().filter(|p| {
+                        Some(p.id) != except
+                            && p.position.distance_squared(position) < range * range
+                    }) {
+                        player.link.send(event.clone());
+                    }
+                }
             }
         }
     }
@@ -373,6 +390,8 @@ impl<L: ClientLink> Server<L> {
             operator,
             effects: Default::default(),
             vitals: Default::default(),
+            known_movement: Vec3::ZERO,
+            moved_this_tick: false,
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
@@ -549,6 +568,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_health();
         self.tick_entities();
         self.collect_items();
+        self.collect_orbs();
         self.tick_inventories();
         self.tick_falling_blocks();
         self.update_tracking();

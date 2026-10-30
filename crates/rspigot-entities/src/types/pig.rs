@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct Pig;
 
@@ -59,5 +62,41 @@ impl EntityType for Pig {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+            Some("minecraft:entity.baby_pig.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+            Some("minecraft:entity.baby_pig.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::Fixed(1.0),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
     type Behavior = crate::family::Plain;
 }

@@ -10,6 +10,7 @@ impl Item for SpruceChestBoat {
     const CLASS: &'static str = "BoatItem";
     const MAX_STACK_SIZE: u8 = 1;
     const MAX_DAMAGE: Option<u32> = None;
+    const WEAPON_DAMAGE: Option<u32> = None;
     const RARITY: Rarity = Rarity::Common;
     const BLOCK: Option<BlockId> = None;
     const TOOL: Option<Tool> = None;

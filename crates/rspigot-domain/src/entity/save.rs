@@ -14,6 +14,7 @@ use super::living::{
     self, EQUIPMENT_SLOTS, LivingState, MobState, health, is_left_handed, is_no_ai, set_health,
     set_left_handed, set_no_ai,
 };
+use super::orb::{self, OrbState};
 use super::{Entity, EntityState};
 use crate::effect::{
     AttributeModifier, AttributeOperation, EffectDuration, EffectId, EffectInstance,
@@ -78,6 +79,7 @@ const LIVING_KEYS: [&str; 18] = [
     "home_radius",
 ];
 const ITEM_KEYS: [&str; 6] = ["Health", "Age", "PickupDelay", "Thrower", "Owner", "Item"];
+const ORB_KEYS: [&str; 4] = ["Health", "Age", "Value", "Count"];
 const FALLING_KEYS: [&str; 8] = [
     "BlockState",
     "Time",
@@ -104,8 +106,10 @@ pub enum LoadError {
 }
 
 pub fn is_simulated(kind: EntityKind) -> bool {
-    matches!(kind, EntityKind::Item | EntityKind::FallingBlock)
-        || (kind.extends("Mob") && kind != EntityKind::EnderDragon)
+    matches!(
+        kind,
+        EntityKind::Item | EntityKind::FallingBlock | EntityKind::ExperienceOrb
+    ) || (kind.extends("Mob") && kind != EntityKind::EnderDragon)
 }
 
 fn doubles(v: Vec3) -> Tag {
@@ -516,6 +520,7 @@ pub fn load_entity(nbt: &Compound, id: EntityId, fallback_uuid: Uuid) -> Result<
             BlockKind::Sand.default_state(),
             BlockPos::new(0, 0, 0),
         )),
+        EntityKind::ExperienceOrb => EntityState::Orb(OrbState::new(&mut base, 0)),
         _ => EntityState::Living(Box::new(LivingState::new(&mut base, 0.0))),
     };
     read_base(nbt, &mut base)?;
@@ -551,6 +556,18 @@ pub fn load_entity(nbt: &Compound, id: EntityId, fallback_uuid: Uuid) -> Result<
         EntityState::Living(living_state) => {
             read_living(nbt, &mut base, living_state);
             &[&ENTITY_KEYS, &LIVING_KEYS]
+        }
+        EntityState::Orb(orb_state) => {
+            orb_state.health = nbt
+                .get_i64("Health")
+                .map_or(orb::DEFAULT_HEALTH, |v| i32::from(v as i16));
+            orb_state.age = nbt.get_i64("Age").map_or(0, |v| i32::from(v as i16));
+            orb::set_value(
+                &mut base,
+                nbt.get_i64("Value").map_or(0, |v| i32::from(v as i16)),
+            );
+            orb_state.count = nbt.get_i32("Count").filter(|count| *count > 0).unwrap_or(1);
+            &[&ENTITY_KEYS, &ORB_KEYS]
         }
         EntityState::Inert(_) => &[],
     };
@@ -782,6 +799,12 @@ pub fn save_entity(entity: &Entity, world: Option<Uuid>) -> Option<Compound> {
             out.insert("CancelDrop", bool_tag(falling.cancel_drop));
         }
         EntityState::Living(living_state) => write_living(&entity.base, living_state, &mut out),
+        EntityState::Orb(orb_state) => {
+            out.insert("Health", orb_state.health as i16);
+            out.insert("Age", orb_state.age as i16);
+            out.insert("Value", orb::value(&entity.base) as i16);
+            out.insert("Count", orb_state.count);
+        }
         EntityState::Inert(_) => {}
     }
     for (key, value) in entity.extra.iter() {
@@ -869,6 +892,38 @@ mod tests {
         let nbt = cow_nbt().with("Motion", doubles(Vec3::new(11.0, -0.5, 3.0)));
         let entity = load_entity(&nbt, EntityId(1), Uuid::from_u128(1)).unwrap();
         assert_eq!(entity.base.velocity, Vec3::new(0.0, -0.5, 3.0));
+    }
+
+    #[test]
+    fn experience_orbs_keep_value_count_and_age() {
+        let nbt = Compound::new()
+            .with("id", "minecraft:experience_orb")
+            .with("Pos", doubles(Vec3::new(0.5, 65.0, 0.5)))
+            .with("Value", 7i16)
+            .with("Count", 3)
+            .with("Age", 120i16)
+            .with("Health", 4i16);
+        let entity = load_entity(&nbt, EntityId(1), Uuid::from_u128(1)).unwrap();
+        let EntityState::Orb(state) = &entity.state else {
+            panic!("not an orb");
+        };
+        assert_eq!((state.count, state.age, state.health), (3, 120, 4));
+        assert_eq!(orb::value(&entity.base), 7);
+        let saved = save_entity(&entity, None).unwrap();
+        assert_eq!(saved.get("Value"), Some(&Tag::Short(7)));
+        assert_eq!(saved.get("Count"), Some(&Tag::Int(3)));
+        assert_eq!(saved.get("Age"), Some(&Tag::Short(120)));
+        assert_eq!(saved.get("Health"), Some(&Tag::Short(4)));
+        let invalid = load_entity(
+            &nbt.clone().with("Count", 0),
+            EntityId(2),
+            Uuid::from_u128(2),
+        )
+        .unwrap();
+        assert!(matches!(
+            invalid.state,
+            EntityState::Orb(OrbState { count: 1, .. })
+        ));
     }
 
     #[test]

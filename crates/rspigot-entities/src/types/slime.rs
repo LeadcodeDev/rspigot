@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct Slime;
 
@@ -59,5 +62,41 @@ impl EntityType for Slime {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt_small"),
+            Some("minecraft:entity.slime.hurt_small"),
+            Some("minecraft:entity.slime.hurt_small"),
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt"),
+            Some("minecraft:entity.slime.hurt_small"),
+            Some("minecraft:entity.slime.hurt_small"),
+            Some("minecraft:entity.slime.hurt_small"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death_small"),
+            Some("minecraft:entity.slime.death_small"),
+            Some("minecraft:entity.slime.death_small"),
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death"),
+            Some("minecraft:entity.slime.death_small"),
+            Some("minecraft:entity.slime.death_small"),
+            Some("minecraft:entity.slime.death_small"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::PerSize(0.4),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Hostile,
+        can_be_baby: false,
+    });
     type Behavior = crate::family::Plain;
 }

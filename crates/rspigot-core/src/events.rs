@@ -132,6 +132,7 @@ pub enum PlayerInput {
         flying: bool,
     },
     Respawn,
+    ClientTickEnd,
     Attack(EntityId),
     Interact {
         target: EntityId,
@@ -288,7 +289,10 @@ pub enum EquipmentSlot {
 pub enum EntityStatus {
     Death,
     Poof,
+    EquipmentBreak(EquipmentSlot),
 }
+
+pub use rspigot_entities::SoundSource;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Abilities {
@@ -486,6 +490,14 @@ pub enum ClientEvent {
     EntityStatus {
         entity: EntityId,
         status: EntityStatus,
+    },
+    Sound {
+        sound: &'static str,
+        source: SoundSource,
+        position: Vec3,
+        volume: f32,
+        pitch: f32,
+        seed: i64,
     },
     Disconnect(Component),
 }
