@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::config::{GameConfig, LevelData};
 use rspigot_core::events::{ClientEvent, DigAction, Direction, Inbound, PlayerInput};
 use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, StoreError};
@@ -90,10 +91,21 @@ fn profile(name: &str) -> GameProfile {
 }
 
 fn server(operators: Vec<String>) -> Server<Link> {
+    server_with(operators, false)
+}
+
+fn server_with(operators: Vec<String>, whitelist_enabled: bool) -> Server<Link> {
     let config = GameConfig {
         view_distance: 3,
         chunk_workers: 2,
-        operators,
+        admin: AdminLists {
+            operators: operators
+                .iter()
+                .map(|name| ListEntry::named(name))
+                .collect(),
+            whitelist: Vec::new(),
+            whitelist_enabled,
+        },
         ..GameConfig::default()
     };
     let mut server = Server::new(
@@ -325,4 +337,18 @@ fn non_operator_survival_player_cannot_use_gamemode() {
             .iter()
             .any(|e| matches!(e, ClientEvent::SystemChat { .. }))
     );
+}
+
+#[test]
+fn whitelist_rejects_unlisted_player_and_admits_after_add() {
+    let mut server = server_with(vec!["alice".to_owned()], true);
+    let (_, bob_link) = join(&mut server, "Bob");
+    assert!(!bob_link.is_connected());
+    assert_eq!(server.players_online(), 0);
+    let (_, alice_link) = join(&mut server, "Alice");
+    assert!(alice_link.is_connected());
+    server.handle(Inbound::Console("whitelist add Bob".to_owned()));
+    let (_, bob_again) = join(&mut server, "Bob");
+    assert!(bob_again.is_connected());
+    assert_eq!(server.players_online(), 2);
 }

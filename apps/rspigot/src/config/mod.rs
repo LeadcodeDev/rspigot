@@ -4,6 +4,7 @@ mod yaml;
 use std::path::Path;
 use std::time::Duration;
 
+use rspigot_core::admin::AdminLists;
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::GameConfig;
 use rspigot_core::streaming::StreamConfig;
@@ -38,7 +39,7 @@ impl ServerFiles {
         value.clamp(2, 32) as u8
     }
 
-    pub fn game_config(&self, operators: Vec<String>) -> GameConfig {
+    pub fn game_config(&self, admin: AdminLists) -> GameConfig {
         let p = &self.properties;
         GameConfig {
             max_players: p.int("max-players", 20).clamp(0, i64::from(i32::MAX)) as u32,
@@ -64,7 +65,11 @@ impl ServerFiles {
                 autosave_interval_ticks: self.bukkit.int("ticks-per.autosave", 6000).max(0) as u64,
                 ..ChunkManagerConfig::default()
             },
-            operators,
+            admin,
+            whitelist_message: self.spigot.string(
+                "messages.whitelist",
+                "You are not whitelisted on this server!",
+            ),
             is_flat: p.string("level-type").ends_with("flat"),
             ..GameConfig::default()
         }

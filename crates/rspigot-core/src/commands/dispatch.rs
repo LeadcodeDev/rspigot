@@ -43,6 +43,10 @@ pub trait CommandContext {
     fn clear_inventory(&mut self, player: PlayerId) -> u32;
     fn kick(&mut self, player: PlayerId, reason: Component);
     fn set_operator(&mut self, name: &str, operator: bool) -> bool;
+    fn set_whitelist_enabled(&mut self, enabled: bool) -> bool;
+    fn whitelist_add(&mut self, name: &str) -> bool;
+    fn whitelist_remove(&mut self, name: &str) -> bool;
+    fn whitelist_names(&self) -> Vec<String>;
     fn seed(&self) -> i64;
     fn difficulty(&self) -> Difficulty;
     fn set_difficulty(&mut self, difficulty: Difficulty);
@@ -53,7 +57,8 @@ pub trait CommandContext {
     fn stop(&mut self);
 }
 
-const ADMIN_COMMANDS: [&str; 16] = [
+const ADMIN_COMMANDS: [&str; 17] = [
+    "whitelist",
     "say",
     "gamemode",
     "tp",
@@ -159,6 +164,7 @@ pub fn execute<C: CommandContext>(
         "clear" => clear(ctx, sender, &args),
         "kick" => kick(ctx, sender, &args),
         "op" | "deop" => operator(ctx, sender, &args, label == "op"),
+        "whitelist" => whitelist(ctx, sender, &args),
         "difficulty" => difficulty(ctx, sender, &args),
         "weather" => weather(ctx, sender, &args),
         "setworldspawn" => set_world_spawn(ctx, sender, &args),
@@ -624,6 +630,74 @@ fn operator<C: CommandContext>(
     CommandOutcome::Success
 }
 
+fn whitelist<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    args: &[&str],
+) -> CommandOutcome {
+    let reply = |ctx: &mut C, key: &str, args: Vec<Component>| {
+        ctx.reply(sender, Component::translatable(key, args))
+    };
+    match (args.first().copied(), args.get(1).copied()) {
+        (Some("on"), _) => {
+            let key = if ctx.set_whitelist_enabled(true) {
+                "commands.whitelist.enabled"
+            } else {
+                "commands.whitelist.alreadyOn"
+            };
+            reply(ctx, key, Vec::new());
+        }
+        (Some("off"), _) => {
+            let key = if ctx.set_whitelist_enabled(false) {
+                "commands.whitelist.disabled"
+            } else {
+                "commands.whitelist.alreadyOff"
+            };
+            reply(ctx, key, Vec::new());
+        }
+        (Some("add"), Some(name)) => {
+            let key = if ctx.whitelist_add(name) {
+                "commands.whitelist.add.success"
+            } else {
+                "commands.whitelist.add.failed"
+            };
+            reply(ctx, key, vec![Component::text(name)]);
+        }
+        (Some("remove"), Some(name)) => {
+            let key = if ctx.whitelist_remove(name) {
+                "commands.whitelist.remove.success"
+            } else {
+                "commands.whitelist.remove.failed"
+            };
+            reply(ctx, key, vec![Component::text(name)]);
+        }
+        (Some("list"), _) => {
+            let names = ctx.whitelist_names();
+            if names.is_empty() {
+                reply(ctx, "commands.whitelist.none", Vec::new());
+            } else {
+                reply(
+                    ctx,
+                    "commands.whitelist.list",
+                    vec![
+                        Component::text(names.len().to_string()),
+                        Component::text(names.join(", ")),
+                    ],
+                );
+            }
+        }
+        (Some("reload"), _) => reply(ctx, "commands.whitelist.reloaded", Vec::new()),
+        _ => {
+            return usage(
+                ctx,
+                sender,
+                "/whitelist <on|off|add|remove|list|reload> [player]",
+            );
+        }
+    }
+    CommandOutcome::Success
+}
+
 fn difficulty<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
@@ -783,6 +857,18 @@ mod tests {
         fn kick(&mut self, _: PlayerId, _: Component) {}
         fn set_operator(&mut self, _: &str, _: bool) -> bool {
             true
+        }
+        fn set_whitelist_enabled(&mut self, _: bool) -> bool {
+            true
+        }
+        fn whitelist_add(&mut self, _: &str) -> bool {
+            true
+        }
+        fn whitelist_remove(&mut self, _: &str) -> bool {
+            true
+        }
+        fn whitelist_names(&self) -> Vec<String> {
+            Vec::new()
         }
         fn seed(&self) -> i64 {
             42

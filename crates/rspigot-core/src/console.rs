@@ -44,6 +44,17 @@ fn english(key: &str) -> Option<&'static str> {
         "multiplayer.disconnect.invalid_player_data" => "Invalid player data",
         "multiplayer.disconnect.unverified_username" => "Failed to verify username!",
         "disconnect.timeout" => "Timed out",
+        "commands.whitelist.enabled" => "Whitelist is now turned on",
+        "commands.whitelist.disabled" => "Whitelist is now turned off",
+        "commands.whitelist.alreadyOn" => "Whitelist is already turned on",
+        "commands.whitelist.alreadyOff" => "Whitelist is already turned off",
+        "commands.whitelist.add.success" => "Added %s to the whitelist",
+        "commands.whitelist.add.failed" => "Player is already whitelisted",
+        "commands.whitelist.remove.success" => "Removed %s from the whitelist",
+        "commands.whitelist.remove.failed" => "Player is not whitelisted",
+        "commands.whitelist.list" => "There are %s whitelisted player(s): %s",
+        "commands.whitelist.none" => "There are no whitelisted players",
+        "commands.whitelist.reloaded" => "Reloaded the whitelist",
         _ => return None,
     })
 }

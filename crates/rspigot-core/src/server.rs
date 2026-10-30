@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{Receiver, select};
+use crossbeam_channel::{Receiver, Sender, select};
 use rspigot_domain::item::HOTBAR_START;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::{Component, NamedColor};
@@ -9,6 +9,7 @@ use rspigot_domain::world::{Difficulty, Dimension};
 use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::admin::AdminLists;
 use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
@@ -75,7 +76,8 @@ pub struct Server<L> {
     pub(crate) workers: ChunkWorkers,
     pub(crate) players: FxHashMap<PlayerId, Player<L>>,
     pub(crate) outbox: Vec<(Audience, ClientEvent)>,
-    pub(crate) operators: FxHashSet<String>,
+    pub(crate) admin: AdminLists,
+    pub(crate) admin_sink: Option<Sender<AdminLists>>,
     pub(crate) running: bool,
     next_entity_id: i32,
     status: StatusBoard,
@@ -111,11 +113,7 @@ impl<L: ClientLink> Server<L> {
                 );
             }
         }
-        let operators = config
-            .operators
-            .iter()
-            .map(|o| o.to_ascii_lowercase())
-            .collect();
+        let admin = config.admin.clone();
         status.update(|s| s.max_players = config.max_players);
         Self {
             world: World {
@@ -128,7 +126,8 @@ impl<L: ClientLink> Server<L> {
             workers,
             players: FxHashMap::default(),
             outbox: Vec::new(),
-            operators,
+            admin,
+            admin_sink: None,
             running: true,
             next_entity_id: 1,
             status,
@@ -137,6 +136,17 @@ impl<L: ClientLink> Server<L> {
             tick: 0,
             tps: TpsMeter::new(),
             config,
+        }
+    }
+
+    pub fn with_admin_sink(mut self, sink: Sender<AdminLists>) -> Self {
+        self.admin_sink = Some(sink);
+        self
+    }
+
+    pub(crate) fn publish_admin(&self) {
+        if let Some(sink) = &self.admin_sink {
+            let _ = sink.send(self.admin.clone());
         }
     }
 
@@ -285,8 +295,17 @@ impl<L: ClientLink> Server<L> {
             }
             self.remove_player(profile.id, true);
         }
-        let operator = self.operators.contains(&profile.name.to_ascii_lowercase())
-            || self.operators.contains(&profile.id.to_string());
+        let operator = self.admin.is_operator(&profile);
+        if !self.admin.may_join(&profile) {
+            tracing::info!(
+                "Disconnecting {} ({}): {}",
+                profile.name,
+                profile.id,
+                self.config.whitelist_message
+            );
+            link.disconnect(Component::text(self.config.whitelist_message.clone()));
+            return;
+        }
         if self.players.len() as u32 >= self.config.max_players && !operator {
             link.disconnect(Component::translatable(
                 "multiplayer.disconnect.server_full",

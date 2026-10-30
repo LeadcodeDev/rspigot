@@ -3,6 +3,7 @@ use rspigot_domain::player::GameMode;
 use rspigot_domain::world::Difficulty;
 use sha2::{Digest, Sha256};
 
+use crate::admin::AdminLists;
 use crate::chunks::ChunkManagerConfig;
 use crate::streaming::StreamConfig;
 
@@ -22,7 +23,8 @@ pub struct GameConfig {
     pub chunk_workers: usize,
     pub stream: StreamConfig,
     pub chunks: ChunkManagerConfig,
-    pub operators: Vec<String>,
+    pub admin: AdminLists,
+    pub whitelist_message: String,
     pub is_flat: bool,
     pub spawn_chunk_radius: i32,
 }
@@ -45,7 +47,8 @@ impl Default for GameConfig {
                 .map_or(4, |n| n.get().saturating_sub(2).max(2)),
             stream: StreamConfig::default(),
             chunks: ChunkManagerConfig::default(),
-            operators: Vec::new(),
+            admin: AdminLists::default(),
+            whitelist_message: "You are not whitelisted on this server!".to_owned(),
             is_flat: false,
             spawn_chunk_radius: 2,
         }

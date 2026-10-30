@@ -6,6 +6,7 @@ use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, ItemId, Vec3};
 
+use crate::admin::{AdminLists, ListEntry};
 use crate::chunks::{ChunkJob, Priority};
 use crate::commands::Weather;
 use crate::commands::{CommandContext, CommandSender};
@@ -187,13 +188,19 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_operator(&mut self, name: &str, operator: bool) -> bool {
-        let key = name.to_ascii_lowercase();
+        let online = self.find_player(name);
+        let entry = online
+            .and_then(|id| self.players.get(&id))
+            .map_or_else(|| ListEntry::named(name), |p| ListEntry::of(&p.profile));
         let changed = if operator {
-            self.operators.insert(key)
+            AdminLists::add(&mut self.admin.operators, entry)
         } else {
-            self.operators.remove(&key)
+            AdminLists::remove(&mut self.admin.operators, name)
         };
-        if let Some(id) = self.find_player(name) {
+        if changed {
+            self.publish_admin();
+        }
+        if let Some(id) = online {
             let tree = self.command_tree(operator);
             if let Some(p) = self.players.get_mut(&id) {
                 p.operator = operator;
@@ -205,6 +212,43 @@ impl<L: ClientLink> CommandContext for Server<L> {
             }
         }
         changed
+    }
+
+    fn set_whitelist_enabled(&mut self, enabled: bool) -> bool {
+        if self.admin.whitelist_enabled == enabled {
+            return false;
+        }
+        self.admin.whitelist_enabled = enabled;
+        self.publish_admin();
+        true
+    }
+
+    fn whitelist_add(&mut self, name: &str) -> bool {
+        let entry = self
+            .find_player(name)
+            .and_then(|id| self.players.get(&id))
+            .map_or_else(|| ListEntry::named(name), |p| ListEntry::of(&p.profile));
+        let changed = AdminLists::add(&mut self.admin.whitelist, entry);
+        if changed {
+            self.publish_admin();
+        }
+        changed
+    }
+
+    fn whitelist_remove(&mut self, name: &str) -> bool {
+        let changed = AdminLists::remove(&mut self.admin.whitelist, name);
+        if changed {
+            self.publish_admin();
+        }
+        changed
+    }
+
+    fn whitelist_names(&self) -> Vec<String> {
+        self.admin
+            .whitelist
+            .iter()
+            .map(|e| e.name.clone())
+            .collect()
     }
 
     fn seed(&self) -> i64 {

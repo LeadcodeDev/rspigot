@@ -260,7 +260,7 @@ impl<L: ClientLink> Server<L> {
         let radius = self.config.spawn_protection as i32;
         if radius == 0
             || self.players.get(&id).is_some_and(|p| p.operator)
-            || self.players.len() <= 1 && self.operators.is_empty()
+            || self.players.len() <= 1 && self.admin.operators.is_empty()
         {
             return false;
         }
