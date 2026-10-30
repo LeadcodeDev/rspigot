@@ -1235,6 +1235,7 @@ dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "proptest",
+ "rand 0.9.5",
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",
@@ -1258,9 +1259,24 @@ dependencies = [
  "proptest",
  "rspigot-blocks",
  "rspigot-data",
+ "rspigot-effects",
  "rspigot-nbt",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "rspigot-effects"
+version = "0.1.0"
+dependencies = [
+ "rspigot-data",
+]
+
+[[package]]
+name = "rspigot-entities"
+version = "0.1.0"
+dependencies = [
+ "rspigot-data",
 ]
 
 [[package]]
