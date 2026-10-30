@@ -236,7 +236,7 @@ impl<L: ClientLink> Server<L> {
         let outcome = player.inventory.insert(
             stack.item,
             u32::from(stack.count.get()),
-            rspigot_data::items::max_stack_size(stack.item.0),
+            stack.item.max_stack_size(),
         );
         let taken = u32::from(stack.count.get()) - outcome.remaining;
         if taken == 0 {

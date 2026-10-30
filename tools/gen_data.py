@@ -216,7 +216,6 @@ def emit_static_registries(static_registries):
         "use crate::registries::StaticRegistry;",
         "",
         "pub(crate) const ENTITY_TYPE: usize = %d;" % index_of["minecraft:entity_type"],
-        "pub(crate) const ITEM: usize = %d;" % index_of["minecraft:item"],
         "",
         "pub(crate) static STATIC: [StaticRegistry; %d] = [" % len(static_registries),
     ]
@@ -226,33 +225,6 @@ def emit_static_registries(static_registries):
         out.extend(array_lines(quoted(by_id), "        ", "entries: ", ","))
         out.extend(array_lines([str(i) for i in by_name], "        ", "by_name: ", ","))
         out.append("    },")
-    out.append("];")
-    return "\n".join(out) + "\n"
-
-
-def build_items(registries, components_dir):
-    entries = registries["minecraft:item"]["entries"]
-    order = sorted(entries, key=lambda name: entries[name]["protocol_id"])
-    assert [entries[name]["protocol_id"] for name in order] == list(range(len(order)))
-    assert len(order) < 65535
-    files = {
-        filename[: -len(".json")]
-        for filename in os.listdir(components_dir)
-        if filename.endswith(".json")
-    }
-    assert files == {name.split(":", 1)[1] for name in order}
-    stacks = []
-    for name in order:
-        path = os.path.join(components_dir, name.split(":", 1)[1] + ".json")
-        stack = load_json(path)["components"]["minecraft:max_stack_size"]
-        assert isinstance(stack, int) and 1 <= stack <= 99, (name, stack)
-        stacks.append(stack)
-    return order, stacks
-
-
-def emit_items(stacks):
-    out = ["pub(crate) static MAX_STACK: [u8; %d] = [" % len(stacks)]
-    out.extend(wrapped([str(stack) for stack in stacks], "    "))
     out.append("];")
     return "\n".join(out) + "\n"
 
@@ -1039,82 +1011,13 @@ def emit_loot(tables, block_tables, predicates):
     return "\n".join(head) + "\n\n" + text
 
 
-def build_tools(registries, components_dir, static_registries, tag_table):
-    static_ids = {
-        registry_id: {name: i for i, name in enumerate(by_id)}
-        for registry_id, by_id, _ in static_registries
-    }
-    builder = LootBuilder(static_ids["minecraft:block"], static_ids["minecraft:item"], set(), {}, tag_table, "")
-    entries = registries["minecraft:item"]["entries"]
-    order = sorted(entries, key=lambda name: entries[name]["protocol_id"])
-    tools = []
-    for index, name in enumerate(order):
-        path = os.path.join(components_dir, name.split(":", 1)[1] + ".json")
-        tool = load_json(path)["components"].get("minecraft:tool")
-        if tool is None:
-            continue
-        builder.where = name
-        expect_keys(
-            tool,
-            {"rules", "default_mining_speed", "damage_per_block", "can_destroy_blocks_in_creative"},
-            name,
-        )
-        rules = []
-        for rule in tool["rules"]:
-            expect_keys(rule, {"blocks", "speed", "correct_for_drops"}, name)
-            rules.append(
-                rs_struct(
-                    "ToolRule",
-                    [
-                        ("blocks", builder.holder_set(rule["blocks"], "minecraft:block")),
-                        ("speed", rs_option(None if "speed" not in rule else rs_f32(rule["speed"]))),
-                        (
-                            "correct_for_drops",
-                            rs_option(
-                                None
-                                if "correct_for_drops" not in rule
-                                else rs_bool(rule["correct_for_drops"])
-                            ),
-                        ),
-                    ],
-                )
-            )
-        node = rs_struct(
-            "Tool",
-            [
-                ("rules", rs_slice(rules)),
-                ("default_mining_speed", rs_f32(tool.get("default_mining_speed", 1.0))),
-                ("damage_per_block", rs_int(tool.get("damage_per_block", 1))),
-                (
-                    "can_destroy_blocks_in_creative",
-                    rs_bool(tool.get("can_destroy_blocks_in_creative", True)),
-                ),
-            ],
-        )
-        tools.append((index, node))
-    return tools
-
-
-def emit_tools(tools):
-    body = ["pub(crate) static TOOLS: [(u16, Tool); %d] = [" % len(tools)]
-    for index, node in tools:
-        body.extend(render(rs_tuple([Atom(str(index)), node]), "    ", "", ","))
-    body.append("];")
-    text = "\n".join(body) + "\n"
-    head = ["use crate::items::{%s};" % ", ".join(used_imports(text, ["Tool", "ToolRule"]))]
-    head.append("use crate::tags::HolderSet;")
-    return "\n".join(head) + "\n\n" + text
-
-
 def emit_mod():
     return "\n".join(
         [
-            "pub mod items;",
             "pub mod loot;",
             "pub mod static_registries;",
             "pub mod synced;",
             "pub mod tags;",
-            "pub mod tools;",
             "",
         ]
     )
@@ -1144,10 +1047,6 @@ def main():
 
     registries = load_json(os.path.join(args.reports, "registries.json"))
 
-    item_order, stacks = build_items(
-        registries,
-        os.path.join(args.reports, "minecraft", "components", "item"),
-    )
     static_registries = build_static_registries(registries)
     synced, missing = build_synced(args.datapack)
     tag_table, skipped = build_tags(args.datapack, static_registries, synced)
@@ -1155,21 +1054,13 @@ def main():
     tables, block_tables, predicates, wall_mapped, ignored = build_loot(
         args.datapack, block_reports, static_registries, synced, tag_table
     )
-    tools = build_tools(
-        registries,
-        os.path.join(args.reports, "minecraft", "components", "item"),
-        static_registries,
-        tag_table,
-    )
 
     files = {
         "mod.rs": emit_mod(),
-        "items.rs": emit_items(stacks),
         "static_registries.rs": emit_static_registries(static_registries),
         "synced.rs": emit_synced(synced),
         "tags.rs": emit_tags(tag_table),
         "loot.rs": emit_loot(tables, block_tables, predicates),
-        "tools.rs": emit_tools(tools),
     }
     write_files(args.out, files)
 
@@ -1179,7 +1070,7 @@ def main():
         total += size
         print("%-24s %9d bytes" % (filename, size))
     print("%-24s %9d bytes" % ("total", total))
-    print("items %d" % len(item_order))
+    print("items %d" % len(registries["minecraft:item"]["entries"]))
     print("static registries %d" % len(static_registries))
     print("javap verification %s" % ("passed" if verified else "skipped"))
     for _, registry_id, entries in synced:
@@ -1192,7 +1083,6 @@ def main():
     print("blocks with loot table %d" % sum(1 for index in block_tables if index != 65535))
     print("wall variants using floor table %d" % len(wall_mapped))
     print("named predicates %d" % len(predicates))
-    print("tools %d" % len(tools))
     for construct in sorted(ignored):
         owners = sorted(ignored[construct])
         print("ignored %s in %d tables: %s" % (construct, len(owners), ", ".join(owners)))

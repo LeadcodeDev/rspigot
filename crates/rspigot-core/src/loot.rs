@@ -1,13 +1,13 @@
 use std::num::NonZeroU8;
 
 use rand::Rng;
-use rspigot_data::items;
 use rspigot_data::loot::{
     self, BlockPredicate, BonusFormula, Condition, EnchantmentPredicate, EntityTarget, Entry,
     EntryKind, Function, FunctionKind, IntProvider, ItemPredicate, Leaf, LootTable, Output, Pool,
 };
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::{BlockStateId, ItemId};
+use rspigot_items::ItemKind;
 
 const BLOCK_REGISTRY: &str = "minecraft:block";
 const ITEM_REGISTRY: &str = "minecraft:item";
@@ -24,8 +24,9 @@ pub fn tool_is_correct(tool: Option<&ItemStack>, state: BlockStateId) -> bool {
     };
     !kind.settings().requires_correct_tool
         || tool
-            .and_then(|stack| items::tool(stack.item.0))
-            .is_some_and(|rules| rules.is_correct_for_drops(u32::from(kind.id().0)))
+            .and_then(|stack| stack.item.kind())
+            .and_then(ItemKind::tool)
+            .is_some_and(|rules| rules.is_correct_for_drops(kind.id()))
 }
 
 pub fn block_drops<R: Rng + ?Sized>(context: &LootContext<'_>, rng: &mut R) -> Vec<ItemStack> {
@@ -256,7 +257,7 @@ impl<R: Rng + ?Sized> Roller<'_, '_, R> {
         if item == ItemId::AIR.0 {
             return;
         }
-        let max = i32::from(items::max_stack_size(item)).max(1);
+        let max = i32::from(ItemId(item).max_stack_size()).max(1);
         let mut remaining = count;
         while remaining > 0 {
             let size = remaining.min(max);
@@ -383,7 +384,6 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use rspigot_blocks::BlockKind;
-    use rspigot_data::items;
     use rspigot_data::loot::{
         Condition, Entry, EntryKind, Function, FunctionKind, IntProvider, Leaf, Output, Pool,
     };
@@ -395,7 +395,7 @@ mod tests {
     const RUNS: u64 = 10_000;
 
     fn item(name: &str) -> u16 {
-        items::id(name).unwrap()
+        ItemKind::from_name(name).unwrap().id().0
     }
 
     fn stack(name: &str) -> ItemStack {
@@ -417,7 +417,7 @@ mod tests {
     fn summary(drops: &[ItemStack]) -> Vec<(&'static str, u8)> {
         drops
             .iter()
-            .map(|stack| (items::name(stack.item.0).unwrap(), stack.count.get()))
+            .map(|stack| (stack.item.kind().unwrap().name(), stack.count.get()))
             .collect()
     }
 

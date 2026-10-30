@@ -610,7 +610,7 @@ fn dropped_item_name(events: &[ClientEvent]) -> Option<&'static str> {
         ClientEvent::EntityMetadata { entries, .. } => {
             entries.iter().find_map(|m| match &m.value {
                 rspigot_core::events::MetadataValue::Item(Some(stack)) => {
-                    rspigot_data::items::name(stack.item.0)
+                    stack.item.kind().map(rspigot_items::ItemKind::name)
                 }
                 _ => None,
             })
@@ -710,8 +710,10 @@ fn nearby_player_picks_up_the_drop_after_the_delay() {
             .iter()
             .any(|e| matches!(e, ClientEvent::ItemPickup { amount: 1, .. }))
     );
-    let cobblestone = rspigot_data::items::id("minecraft:cobblestone");
-    assert!(events.iter().any(|e| matches!(e, ClientEvent::InventorySlot { stack: Some(s), .. } if Some(s.item.0) == cobblestone)));
+    let cobblestone = rspigot_items::ItemKind::Cobblestone.id();
+    assert!(events.iter().any(
+        |e| matches!(e, ClientEvent::InventorySlot { stack: Some(s), .. } if s.item == cobblestone)
+    ));
 }
 
 #[test]

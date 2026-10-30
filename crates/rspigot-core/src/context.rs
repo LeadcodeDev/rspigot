@@ -122,9 +122,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
         let Some(p) = self.players.get_mut(&player) else {
             return false;
         };
-        let outcome = p
-            .inventory
-            .insert(item, count, rspigot_data::items::max_stack_size(item.0));
+        let outcome = p.inventory.insert(item, count, item.max_stack_size());
         let remaining = outcome.remaining;
         self.send_inventory(player);
         self.broadcast_held_item(player);

@@ -1,7 +1,8 @@
-use rspigot_data::{entities, items, registries};
+use rspigot_data::{entities, registries};
 use rspigot_entities::{
     Cow, EntityDimensions, EntityKind, EntityType, EntityTypeId, Item, MobCategory, Player, Zombie,
 };
+use rspigot_items::{ItemId, ItemKind};
 
 #[test]
 fn every_vanilla_type_is_generated_in_registry_order() {
@@ -155,13 +156,14 @@ fn lookups_by_name() {
 
 #[test]
 fn spawn_eggs_resolve_to_their_entity() {
-    let egg = items::id("minecraft:zombie_spawn_egg").unwrap();
+    let item_id = |name: &str| ItemKind::from_name(name).map(|kind| kind.id().0);
+    let egg = item_id("minecraft:zombie_spawn_egg").unwrap();
     assert_eq!(egg, 1333);
     assert_eq!(EntityKind::from_spawn_egg(egg), Some(EntityKind::Zombie));
     assert_eq!(Zombie::SPAWN_EGG, Some(egg));
-    assert_eq!(Cow::SPAWN_EGG, items::id("minecraft:cow_spawn_egg"));
+    assert_eq!(Cow::SPAWN_EGG, item_id("minecraft:cow_spawn_egg"));
     assert_eq!(
-        EntityKind::from_spawn_egg(items::id("minecraft:stone").unwrap()),
+        EntityKind::from_spawn_egg(item_id("minecraft:stone").unwrap()),
         None
     );
     let mut count = 0;
@@ -170,7 +172,7 @@ fn spawn_eggs_resolve_to_their_entity() {
             count += 1;
             assert_eq!(EntityKind::from_spawn_egg(item), Some(kind));
             assert_eq!(
-                items::name(item),
+                ItemKind::from_id(ItemId(item)).map(ItemKind::name),
                 Some(format!("{}_spawn_egg", kind.name()).as_str())
             );
         }

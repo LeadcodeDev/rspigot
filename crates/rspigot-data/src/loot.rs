@@ -177,8 +177,8 @@ mod tests {
     use std::ptr;
 
     use super::*;
+    use crate::registries;
     use crate::tags::HolderSet;
-    use crate::{items, registries};
 
     const BLOCK_TABLE_FILES: usize = 1201;
     const WALL_VARIANTS_WITHOUT_OWN_TABLE: usize = 63;
@@ -188,7 +188,7 @@ mod tests {
     }
 
     fn item_id(name: &str) -> u16 {
-        items::id(name).unwrap()
+        u16::try_from(registries::static_index("minecraft:item", name).unwrap()).unwrap()
     }
 
     fn visit_condition<'a>(condition: &'a Condition, out: &mut Vec<&'a Condition>) {

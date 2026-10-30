@@ -15,6 +15,7 @@ rspigot-data = { path = "crates/rspigot-data" }
 rspigot-domain = { path = "crates/rspigot-domain" }
 rspigot-effects = { path = "crates/rspigot-effects" }
 rspigot-entities = { path = "crates/rspigot-entities" }
+rspigot-items = { path = "crates/rspigot-items" }
 rspigot-core = { path = "crates/rspigot-core" }
 rspigot-protocol = { path = "crates/rspigot-protocol" }
 rspigot-network = { path = "crates/rspigot-network" }
