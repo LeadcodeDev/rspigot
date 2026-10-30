@@ -1,4 +1,5 @@
 pub mod admin;
+mod bow;
 pub mod chunks;
 mod combat;
 pub mod commands;

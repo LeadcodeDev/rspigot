@@ -401,6 +401,7 @@ impl<L: ClientLink> Server<L> {
             vitals: Default::default(),
             known_movement: Vec3::ZERO,
             moved_this_tick: false,
+            using_item: None,
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",

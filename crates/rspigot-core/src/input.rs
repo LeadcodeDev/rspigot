@@ -65,14 +65,19 @@ impl<L: ClientLink> Server<L> {
                 sequence,
                 ..
             } => self.handle_use_item_on(id, hand, pos, face, cursor, sequence),
-            PlayerInput::UseItem { sequence, .. } => {
+            PlayerInput::UseItem { hand, sequence, .. } => {
+                self.start_using_item(id, hand);
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
             }
             PlayerInput::HeldSlot(slot) => {
                 if slot < 9
                     && let Some(player) = self.players.get_mut(&id)
                 {
+                    let changed = player.inventory.selected_hotbar != slot;
                     player.inventory.selected_hotbar = slot;
+                    if changed {
+                        self.stop_using_main_hand(id);
+                    }
                     self.broadcast_held_item(id);
                 }
             }
@@ -363,7 +368,8 @@ impl<L: ClientLink> Server<L> {
             }
             DigAction::DropItem => self.handle_drop_action(id, false),
             DigAction::DropStack => self.handle_drop_action(id, true),
-            DigAction::ReleaseUseItem | DigAction::Stab => self.send_inventory(id),
+            DigAction::ReleaseUseItem => self.release_use_item(id),
+            DigAction::Stab => self.send_inventory(id),
         }
     }
 

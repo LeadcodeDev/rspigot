@@ -5,6 +5,7 @@ use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
 use rspigot_domain::{EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
+use crate::bow::UsingItem;
 use crate::drops::DropLimits;
 use crate::events::Abilities;
 use crate::health::Vitals;
@@ -38,6 +39,7 @@ pub struct Player<L> {
     pub vitals: Vitals,
     pub known_movement: Vec3,
     pub moved_this_tick: bool,
+    pub using_item: Option<UsingItem>,
 }
 
 impl<L> Player<L> {
