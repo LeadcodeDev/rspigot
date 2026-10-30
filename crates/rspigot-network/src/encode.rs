@@ -799,6 +799,13 @@ impl Encoder {
                 rotation,
                 on_ground,
             } => Self::entity_moved(writer, entity.0, *from, *to, *rotation, *on_ground),
+            ClientEvent::EntityVelocity { entity, velocity } => Self::queue(
+                writer,
+                &cb::SetEntityMotion {
+                    entity_id: entity.0,
+                    movement: LpVec3(wire_vec(*velocity)),
+                },
+            ),
             ClientEvent::EntityHeadRotation { entity, yaw } => Self::queue(
                 writer,
                 &cb::RotateHead {
@@ -851,6 +858,9 @@ impl Encoder {
                                     EntityDataValue::OptionalComponent(c.as_ref().map(text))
                                 }
                                 MetadataValue::Boolean(b) => EntityDataValue::Boolean(*b),
+                                MetadataValue::Item(item) => {
+                                    EntityDataValue::ItemStack(stack(item))
+                                }
                             },
                         })
                         .collect(),

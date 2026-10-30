@@ -20,6 +20,8 @@ pub struct GameConfig {
     pub allow_flight: bool,
     pub spawn_protection: u32,
     pub player_tracking_range: f64,
+    pub item_tracking_range: f64,
+    pub item_despawn_ticks: u32,
     pub chunk_workers: usize,
     pub stream: StreamConfig,
     pub chunks: ChunkManagerConfig,
@@ -43,6 +45,8 @@ impl Default for GameConfig {
             allow_flight: false,
             spawn_protection: 16,
             player_tracking_range: 128.0,
+            item_tracking_range: 96.0,
+            item_despawn_ticks: 6000,
             chunk_workers: std::thread::available_parallelism()
                 .map_or(4, |n| n.get().saturating_sub(2).max(2)),
             stream: StreamConfig::default(),

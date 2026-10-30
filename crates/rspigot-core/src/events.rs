@@ -255,6 +255,7 @@ pub enum MetadataValue {
     Pose(Pose),
     OptionalComponent(Option<Component>),
     Boolean(bool),
+    Item(Slot),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -376,6 +377,10 @@ pub enum ClientEvent {
     EntityHeadRotation {
         entity: EntityId,
         yaw: f32,
+    },
+    EntityVelocity {
+        entity: EntityId,
+        velocity: Vec3,
     },
     EntityAnimation {
         entity: EntityId,

@@ -2,6 +2,7 @@ pub mod entities;
 #[rustfmt::skip]
 mod generated;
 pub mod items;
+pub mod loot;
 pub mod registries;
 pub mod tags;
 

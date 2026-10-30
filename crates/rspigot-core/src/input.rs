@@ -10,6 +10,7 @@ use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
+use crate::loot::{self, LootContext};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -289,16 +290,27 @@ impl<L: ClientLink> Server<L> {
         };
         match action {
             DigAction::Start | DigAction::Finish => {
-                let breaks = match action {
-                    DigAction::Start => mode == GameMode::Creative,
-                    _ => mode == GameMode::Survival,
+                let Some(state) = self.world.chunks.block(pos) else {
+                    self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                    return;
+                };
+                let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
+                let breaks = match (action, mode) {
+                    (DigAction::Start, GameMode::Creative) => true,
+                    (DigAction::Start, GameMode::Survival) => hardness == 0.0,
+                    (DigAction::Finish, GameMode::Survival) => true,
+                    _ => false,
                 };
                 if breaks {
-                    if !self.within_reach(id, pos) || self.is_protected(id, pos) {
+                    let unbreakable = mode == GameMode::Survival && hardness < 0.0;
+                    if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
                         self.refuse_block(id, pos, sequence);
                         return;
                     }
                     self.set_block(pos, BlockStateId::AIR);
+                    if mode == GameMode::Survival {
+                        self.drop_block_loot(id, pos, state);
+                    }
                 }
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             }
@@ -320,6 +332,23 @@ impl<L: ClientLink> Server<L> {
             | DigAction::DropStack
             | DigAction::ReleaseUseItem
             | DigAction::Stab => self.send_inventory(id),
+        }
+    }
+
+    fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
+        let tool = self
+            .players
+            .get(&id)
+            .and_then(|p| p.inventory.held().cloned());
+        if !loot::tool_is_correct(tool.as_ref(), state) {
+            return;
+        }
+        let context = LootContext {
+            state,
+            tool: tool.as_ref(),
+        };
+        for stack in loot::block_drops(&context, &mut self.rng) {
+            self.spawn_item(pos, stack);
         }
     }
 
