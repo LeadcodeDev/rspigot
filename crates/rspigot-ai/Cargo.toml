@@ -1,0 +1,16 @@
+[package]
+name = "rspigot-ai"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-blocks = { workspace = true }
+rspigot-domain = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true

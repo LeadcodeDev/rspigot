@@ -1197,6 +1197,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspigot-ai"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rspigot-blocks",
+ "rspigot-domain",
+]
+
+[[package]]
 name = "rspigot-anvil"
 version = "0.1.0"
 dependencies = [
