@@ -1,0 +1,14 @@
+MobEffect Plain
+InfestedMobEffect Plain
+OozingMobEffect Plain
+WeavingMobEffect Plain
+WindChargedMobEffect Plain
+AbsorptionMobEffect EveryTick
+BadOmenMobEffect EveryTick
+HungerMobEffect EveryTick
+HealOrHarmMobEffect Instantaneous
+SaturationMobEffect Instantaneous
+PoisonMobEffect Interval<25>
+RegenerationMobEffect Interval<50>
+WitherMobEffect Interval<40>
+RaidOmenMobEffect LastTick
