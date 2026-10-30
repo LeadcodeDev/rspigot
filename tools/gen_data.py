@@ -1682,9 +1682,95 @@ def emit_loot(tables, block_tables, entity_tables, predicates, smelting):
     return "\n".join(head) + "\n\n" + text
 
 
+TRANSFORMER_GROUP_KEYS = [
+    "block_state_provider",
+    "item_damage_per_use",
+    "sound",
+    "particle",
+    "transform_type",
+    "update_from_neighbors",
+]
+
+
+def build_axe_transformers(datapack):
+    path = os.path.join(datapack, "block_transformer", "axe.json")
+    groups = load_json(path)
+    assert isinstance(groups, list) and groups, path
+    out = []
+    for index, group in enumerate(groups):
+        where = "block_transformer/axe.json group %d" % index
+        expect_keys(group, TRANSFORMER_GROUP_KEYS, where)
+        provider = group["block_state_provider"]
+        expect_keys(provider, ["type", "rules"], where)
+        assert provider["type"] == "minecraft:rule_based", (where, provider["type"])
+        rules = []
+        for rule in provider["rules"]:
+            expect_keys(rule, ["if_true", "then"], where)
+            condition = rule["if_true"]
+            expect_keys(condition, ["type", "blocks"], where)
+            assert condition["type"] == "minecraft:matching_blocks", (where, condition)
+            assert isinstance(condition["blocks"], str) and not condition["blocks"].startswith("#"), (
+                where,
+                condition,
+            )
+            then = rule["then"]
+            expect_keys(then, ["type", "source"], where)
+            assert then["type"] == "minecraft:copy_properties", (where, then)
+            source = then["source"]
+            expect_keys(source, ["id", "properties"], where)
+            defaults = sorted((source.get("properties") or {}).items())
+            rules.append((condition["blocks"], source["id"], defaults))
+        assert rules, where
+        out.append(
+            {
+                "sound": group["sound"],
+                "particle": group.get("particle"),
+                "transform_type": group.get("transform_type"),
+                "update_from_neighbors": group.get("update_from_neighbors", True),
+                "damage": group["item_damage_per_use"],
+                "rules": rules,
+            }
+        )
+    return out
+
+
+def emit_transformers(axe):
+    def rule_node(rule):
+        source, target, defaults = rule
+        pairs = [rs_tuple([rs_str(key), rs_str(value)]) for key, value in defaults]
+        return rs_struct(
+            "Rule",
+            [("from", rs_str(source)), ("to", rs_str(target)), ("defaults", rs_slice(pairs))],
+        )
+
+    def group_node(group):
+        return rs_struct(
+            "Group",
+            [
+                ("sound", rs_str(group["sound"])),
+                ("particle", rs_option(None if group["particle"] is None else rs_str(group["particle"]))),
+                (
+                    "transform_type",
+                    rs_option(None if group["transform_type"] is None else rs_str(group["transform_type"])),
+                ),
+                ("update_from_neighbors", rs_bool(group["update_from_neighbors"])),
+                ("damage", rs_int(group["damage"])),
+                ("rules", rs_slice([rule_node(rule) for rule in group["rules"]])),
+            ],
+        )
+
+    body = ["pub(crate) static AXE: [Group; %d] = [" % len(axe)]
+    for group in axe:
+        body.extend(render(group_node(group), "    ", "", ","))
+    body.append("];")
+    return "use crate::transformers::{Group, Rule};\n\n" + "\n".join(body) + "\n"
+
+
+
 def emit_mod():
     return "\n".join(
         [
+            "pub mod block_transformers;",
             "pub mod climate;",
             "pub mod loot;",
             "pub mod spawns;",
@@ -1736,6 +1822,7 @@ def main():
     mob_variants, sound_variants = build_variants(args.datapack, synced, tag_table)
     dye_mixes = build_dye_mixes(args.datapack)
     climate = build_climate(args.datapack, synced)
+    axe_transformers = build_axe_transformers(args.datapack)
 
     files = {
         "mod.rs": emit_mod(),
@@ -1746,6 +1833,7 @@ def main():
         "spawns.rs": emit_spawns(biome_spawns, dimension_spawns),
         "variants.rs": emit_variants(mob_variants, sound_variants, dye_mixes),
         "climate.rs": emit_climate(climate),
+        "block_transformers.rs": emit_transformers(axe_transformers),
     }
     write_files(args.out, files)
 

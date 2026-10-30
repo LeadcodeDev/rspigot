@@ -288,7 +288,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn within_reach(&self, id: PlayerId, pos: BlockPos) -> bool {
+    pub(crate) fn within_reach(&self, id: PlayerId, pos: BlockPos) -> bool {
         self.players.get(&id).is_some_and(|p| {
             p.eye_position()
                 .distance_squared(pos.center() + Vec3::new(0.0, 0.5, 0.0))
@@ -428,6 +428,12 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         if !sneaking && self.use_block(pos, clicked, sneaking) {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        }
+        if let Some(held) = &stack
+            && self.use_axe_on_block(id, hand, pos, clicked, held, sneaking, game_mode)
+        {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
