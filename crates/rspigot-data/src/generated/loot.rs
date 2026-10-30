@@ -1,7 +1,7 @@
 use crate::loot::{BlockPredicate, BonusFormula, Condition, DamageSourcePredicate, EnchantmentPredicate, Entry, EntryKind, EntityFlags, EntityPredicate, EntitySubPredicate, EntityTarget, FloatProvider, Function, FunctionKind, IntProvider, IntRange, ItemPredicate, LevelBasedValue, Leaf, LootTable, Output, Pool, TagPredicate};
 use crate::tags::HolderSet;
 
-pub(crate) static TABLES: [(&str, LootTable); 1311] = [
+pub(crate) static TABLES: [(&str, LootTable); 1335] = [
     (
         "minecraft:blocks/acacia_button",
         LootTable {
@@ -31071,6 +31071,224 @@ pub(crate) static TABLES: [(&str, LootTable); 1311] = [
             modifier: &[],
         },
     ),
+    (
+        "minecraft:charged_creeper/creeper",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1388),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/piglin",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1390),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/root",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[102])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/piglin"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[32])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/creeper"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[118])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/skeleton"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[150])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/wither_skeleton"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: Some(HolderSet::Direct(&[154])),
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:charged_creeper/zombie"),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/skeleton",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1384),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/wither_skeleton",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1385),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:charged_creeper/zombie",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(1387),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
     ("minecraft:entities/allay", LootTable { pools: &[], modifier: &[] }),
     ("minecraft:entities/armadillo", LootTable { pools: &[], modifier: &[] }),
     ("minecraft:entities/armor_stand", LootTable { pools: &[], modifier: &[] }),
@@ -36269,6 +36487,84 @@ pub(crate) static TABLES: [(&str, LootTable); 1311] = [
         },
     ),
     (
+        "minecraft:gameplay/chicken_lay",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[(
+                                        "minecraft:chicken/variant",
+                                        "minecraft:temperate",
+                                    )],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1148),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:chicken/variant", "minecraft:warm")],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1150),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:chicken/variant", "minecraft:cold")],
+                                    sub: &[],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Item(1149),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
         "minecraft:gameplay/fishing/fish",
         LootTable {
             pools: &[Pool {
@@ -36314,6 +36610,664 @@ pub(crate) static TABLES: [(&str, LootTable); 1311] = [
                         }),
                     },
                 ],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Alternatives(&[
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "white")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/white"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "orange")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/orange"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "magenta")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/magenta"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "light_blue")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/light_blue"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "yellow")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/yellow"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "lime")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/lime"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "pink")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/pink"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "gray")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/gray"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "light_gray")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/light_gray"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "cyan")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/cyan"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "purple")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/purple"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "blue")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/blue"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "brown")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/brown"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "green")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/green"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "red")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/red"),
+                            }),
+                        },
+                        Entry {
+                            condition: Some(Condition::EntityProperties {
+                                target: EntityTarget::This,
+                                predicate: Some(&EntityPredicate {
+                                    kind: None,
+                                    flags: EntityFlags { baby: None, on_fire: None },
+                                    mainhand: None,
+                                    vehicle: None,
+                                    components: &[("minecraft:sheep/color", "black")],
+                                    sub: &[EntitySubPredicate::Sheep { sheared: Some(false) }],
+                                }),
+                            }),
+                            modifier: &[],
+                            kind: EntryKind::Leaf(Leaf {
+                                weight: 1,
+                                quality: 0,
+                                output: Output::Table("minecraft:shearing/sheep/black"),
+                            }),
+                        },
+                    ]),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/black",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(265),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(261),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/brown",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(262),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/cyan",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(259),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(257),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/green",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(263),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/light_blue",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(253),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/light_gray",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(258),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/lime",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(255),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/magenta",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(252),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/orange",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(251),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/pink",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(256),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/purple",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(260),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/red",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(264),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/white",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(250),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:shearing/sheep/yellow",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Uniform { min: 1, max: 3 },
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(254),
+                    }),
+                }],
             }],
             modifier: &[],
         },
@@ -36393,17 +37347,17 @@ pub(crate) static BLOCK_TABLES: [u16; 1286] = [
 ];
 
 pub(crate) static ENTITY_TABLES: [u16; 161] = [
-    65535, 65535, 1201, 65535, 1202, 1203, 65535, 1204, 65535, 65535, 1205, 1206, 65535, 65535,
-    1207, 65535, 1208, 1209, 65535, 1210, 1211, 1212, 1213, 65535, 65535, 65535, 1214, 1215, 1216,
-    65535, 1217, 1218, 1219, 65535, 65535, 65535, 1220, 1221, 65535, 1222, 65535, 1223, 1225, 1226,
-    1224, 65535, 65535, 1227, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 1228, 1229, 65535,
-    1230, 1235, 1231, 65535, 1232, 1233, 1234, 1236, 65535, 1237, 1238, 1239, 65535, 1240, 65535,
-    65535, 65535, 65535, 65535, 65535, 65535, 1241, 65535, 1242, 65535, 65535, 1243, 65535, 65535,
-    1244, 1245, 1246, 65535, 65535, 1247, 65535, 65535, 65535, 65535, 1248, 1249, 1250, 1251, 1252,
-    1253, 1254, 1255, 1257, 65535, 65535, 65535, 65535, 1258, 1259, 1260, 1261, 1262, 1279, 65535,
-    1280, 1281, 1282, 1283, 65535, 1284, 65535, 1285, 65535, 65535, 1286, 65535, 65535, 1287, 1288,
-    1289, 1290, 1291, 65535, 65535, 65535, 1292, 65535, 1293, 1294, 1295, 1296, 1297, 1298, 1299,
-    65535, 1300, 1301, 1302, 65535, 1303, 1304, 1305, 1306, 1307, 1308, 1309, 1256, 65535,
+    65535, 65535, 1207, 65535, 1208, 1209, 65535, 1210, 65535, 65535, 1211, 1212, 65535, 65535,
+    1213, 65535, 1214, 1215, 65535, 1216, 1217, 1218, 1219, 65535, 65535, 65535, 1220, 1221, 1222,
+    65535, 1223, 1224, 1225, 65535, 65535, 65535, 1226, 1227, 65535, 1228, 65535, 1229, 1231, 1232,
+    1230, 65535, 65535, 1233, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 1234, 1235, 65535,
+    1236, 1241, 1237, 65535, 1238, 1239, 1240, 1242, 65535, 1243, 1244, 1245, 65535, 1246, 65535,
+    65535, 65535, 65535, 65535, 65535, 65535, 1247, 65535, 1248, 65535, 65535, 1249, 65535, 65535,
+    1250, 1251, 1252, 65535, 65535, 1253, 65535, 65535, 65535, 65535, 1254, 1255, 1256, 1257, 1258,
+    1259, 1260, 1261, 1263, 65535, 65535, 65535, 65535, 1264, 1265, 1266, 1267, 1268, 1285, 65535,
+    1286, 1287, 1288, 1289, 65535, 1290, 65535, 1291, 65535, 65535, 1292, 65535, 65535, 1293, 1294,
+    1295, 1296, 1297, 65535, 65535, 65535, 1298, 65535, 1299, 1300, 1301, 1302, 1303, 1304, 1305,
+    65535, 1306, 1307, 1308, 65535, 1309, 1310, 1311, 1312, 1313, 1314, 1315, 1262, 65535,
 ];
 
 pub(crate) static SMELTING: [(u16, u16); 163] = [

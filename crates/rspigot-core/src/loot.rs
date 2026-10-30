@@ -67,6 +67,7 @@ pub struct LootContext<'a> {
     pub damage: Option<&'a LootDamage>,
     pub player: Option<&'a LootEntity>,
     pub luck: f32,
+    pub explosion_radius: Option<f32>,
 }
 
 impl<'a> LootContext<'a> {
@@ -534,7 +535,19 @@ impl<R: Rng + ?Sized> Roller<'_, '_, R> {
                 let level = self.int(amplifier).clamp(0, MAX_OMINOUS_AMPLIFIER);
                 stack.components.insert(OMINOUS_BOTTLE_AMPLIFIER, level);
             }
-            FunctionKind::ExplosionDecay | FunctionKind::Components(_) => {}
+            FunctionKind::ExplosionDecay => {
+                if let Some(radius) = self.context.explosion_radius {
+                    let chance = 1.0 / radius;
+                    let mut kept = 0;
+                    for _ in 0..stack.count {
+                        if self.rng.random::<f32>() <= chance {
+                            kept += 1;
+                        }
+                    }
+                    stack.count = kept;
+                }
+            }
+            FunctionKind::Components(_) => {}
         }
         stack
     }
@@ -606,7 +619,11 @@ impl<R: Rng + ?Sized> Roller<'_, '_, R> {
 
     fn test(&mut self, condition: &Condition) -> bool {
         match condition {
-            Condition::SurvivesExplosion | Condition::LocationCheck { .. } => true,
+            Condition::SurvivesExplosion => match self.context.explosion_radius {
+                Some(radius) => self.rng.random::<f32>() <= 1.0 / radius,
+                None => true,
+            },
+            Condition::LocationCheck { .. } => true,
             Condition::MatchBlock(predicate) => block_matches(predicate, self.context.block),
             Condition::MatchTool(predicate) => item_matches(predicate, self.context.tool),
             Condition::EntityProperties { target, predicate } => predicate

@@ -579,6 +579,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_spawning();
         self.tick_entities();
         self.collect_items();
+        self.collect_arrows();
         self.collect_orbs();
         self.tick_inventories();
         self.tick_falling_blocks();
@@ -615,6 +616,12 @@ impl<L: ClientLink> Server<L> {
                 }),
             },
         ]
+        .into_iter()
+        .chain((player.vitals.arrow_count > 0).then(|| MetadataEntry {
+            index: 12,
+            value: MetadataValue::VarInt(player.vitals.arrow_count),
+        }))
+        .collect()
     }
 
     fn update_tracking(&mut self) {

@@ -69,6 +69,7 @@ world-settings:
     item-despawn-rate: 6000
     arrow-despawn-rate: 1200
     trident-despawn-rate: 1200
+    zombie-aggressive-towards-villager: true
     entity-activation-range:
       animals: 32
       monsters: 32

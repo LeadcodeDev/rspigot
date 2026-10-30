@@ -7,6 +7,8 @@ use rspigot_items::ItemKind;
 use rspigot_nbt::{Compound, Tag};
 use uuid::Uuid;
 
+use super::ageable::{self, AgeableState};
+use super::arrow::{self, ArrowState};
 use super::base::{EntityBase, MAX_AIR_SUPPLY, RemovalReason};
 use super::falling::FallingState;
 use super::item::{self, ItemState};
@@ -15,6 +17,7 @@ use super::living::{
     set_left_handed, set_no_ai,
 };
 use super::orb::{self, OrbState};
+use super::species::{self, Species};
 use super::{Entity, EntityState};
 use crate::effect::{
     AttributeModifier, AttributeOperation, EffectDuration, EffectId, EffectInstance,
@@ -78,6 +81,36 @@ const LIVING_KEYS: [&str; 18] = [
     "home_pos",
     "home_radius",
 ];
+const AGEABLE_KEYS: [&str; 3] = ["Age", "ForcedAge", "AgeLocked"];
+const ANIMAL_KEYS: [&str; 2] = ["InLove", "LoveCause"];
+const FARM_KEYS: [&str; 2] = ["variant", "sound_variant"];
+const CHICKEN_KEYS: [&str; 4] = ["variant", "sound_variant", "IsChickenJockey", "EggLayTime"];
+const SHEEP_KEYS: [&str; 2] = ["Sheared", "Color"];
+const ZOMBIE_KEYS: [&str; 4] = [
+    "IsBaby",
+    "CanBreakDoors",
+    "InWaterTime",
+    "DrownedConversionTime",
+];
+const SKELETON_KEYS: [&str; 2] = ["FreezingTime", "StrayConversionTime"];
+const CREEPER_KEYS: [&str; 4] = ["powered", "Fuse", "ExplosionRadius", "ignited"];
+const TRANSIENT_MODIFIERS: [&str; 1] = [species::BABY_SPEED_MODIFIER];
+const ARROW_KEYS: [&str; 14] = [
+    "Owner",
+    "LeftOwner",
+    "HasBeenShot",
+    "life",
+    "inBlockState",
+    "shake",
+    "inGround",
+    "pickup",
+    "damage",
+    "crit",
+    "PierceLevel",
+    "SoundEvent",
+    "item",
+    "weapon",
+];
 const ITEM_KEYS: [&str; 6] = ["Health", "Age", "PickupDelay", "Thrower", "Owner", "Item"];
 const ORB_KEYS: [&str; 4] = ["Health", "Age", "Value", "Count"];
 const FALLING_KEYS: [&str; 8] = [
@@ -108,7 +141,7 @@ pub enum LoadError {
 pub fn is_simulated(kind: EntityKind) -> bool {
     matches!(
         kind,
-        EntityKind::Item | EntityKind::FallingBlock | EntityKind::ExperienceOrb
+        EntityKind::Item | EntityKind::FallingBlock | EntityKind::ExperienceOrb | EntityKind::Arrow
     ) || (kind.extends("Mob") && kind != EntityKind::EnderDragon)
 }
 
@@ -488,6 +521,177 @@ fn read_living(nbt: &Compound, base: &mut EntityBase, living: &mut LivingState) 
         set_left_handed(base, nbt.get_bool("LeftHanded").unwrap_or(false));
         set_no_ai(base, nbt.get_bool("NoAI").unwrap_or(false));
     }
+    read_species(nbt, base, living);
+}
+
+fn read_ageable(nbt: &Compound, base: &mut EntityBase, ageable: &mut AgeableState) {
+    if !ageable::can_be_baby(base.kind) {
+        return;
+    }
+    ageable::set_age(base, ageable, nbt.get_i32("Age").unwrap_or(0));
+    ageable.forced_age = nbt.get_i32("ForcedAge").unwrap_or(0);
+    ageable::set_age_locked(base, nbt.get_bool("AgeLocked").unwrap_or(false));
+    if let Some(love) = &mut ageable.love {
+        love.ticks = nbt.get_i32("InLove").unwrap_or(0);
+        love.cause = nbt.get("LoveCause").and_then(read_uuid);
+    }
+}
+
+fn read_tracker(
+    nbt: &Compound,
+    base: &mut EntityBase,
+    keys: (&str, &str),
+    data: u8,
+) -> species::ConversionTracker {
+    let mut tracker = species::ConversionTracker {
+        affliction_time: nbt.get_i32(keys.0).unwrap_or(0),
+        ..species::ConversionTracker::default()
+    };
+    match nbt.get_i32(keys.1).unwrap_or(-1) {
+        -1 => {
+            base.data
+                .set(data, super::data::SyncedValue::Boolean(false));
+        }
+        time => tracker.start(base, data, time, 0),
+    }
+    tracker
+}
+
+fn read_species(nbt: &Compound, base: &mut EntityBase, living: &mut LivingState) {
+    let Some(mob) = &mut living.mob else {
+        return;
+    };
+    if let Some(ageable) = &mut mob.ageable {
+        read_ageable(nbt, base, ageable);
+    }
+    if let Some(farm) = mob.species.farm() {
+        if let Some(id) = nbt
+            .get_str("variant")
+            .and_then(|name| farm.variant_index(name))
+        {
+            species::set_variant(base, farm, id);
+        }
+        if let Some(id) = nbt
+            .get_str("sound_variant")
+            .and_then(|name| farm.sound_variant_index(name))
+        {
+            species::set_sound_variant(base, farm, id);
+        }
+    }
+    match &mut mob.species {
+        Species::Chicken(chicken) => {
+            chicken.jockey = nbt.get_bool("IsChickenJockey").unwrap_or(false);
+            if let Some(time) = nbt.get_i32("EggLayTime") {
+                chicken.egg_time = Some(time);
+            }
+        }
+        Species::Sheep(_) => {
+            species::set_sheared(base, nbt.get_bool("Sheared").unwrap_or(false));
+            let color = nbt
+                .get_i64("Color")
+                .map_or(0, |v| species::dye_by_id(i32::from(v as i8)));
+            species::set_wool_color(base, color);
+        }
+        Species::Zombie(zombie) => {
+            let baby = nbt.get_bool("IsBaby").unwrap_or(false);
+            species::set_zombie_baby(base, &mut living.attributes, baby);
+            zombie.can_break_doors = nbt.get_bool("CanBreakDoors").unwrap_or(false);
+            zombie.drowning = read_tracker(
+                nbt,
+                base,
+                ("InWaterTime", "DrownedConversionTime"),
+                species::ZOMBIE_DATA_DROWNED_CONVERSION,
+            );
+        }
+        Species::Skeleton(skeleton) => {
+            skeleton.freezing = read_tracker(
+                nbt,
+                base,
+                ("FreezingTime", "StrayConversionTime"),
+                species::SKELETON_DATA_STRAY_CONVERSION,
+            );
+        }
+        Species::Creeper(creeper) => {
+            species::set_powered(base, nbt.get_bool("powered").unwrap_or(false));
+            creeper.max_swell = nbt
+                .get_i64("Fuse")
+                .map_or(species::DEFAULT_MAX_SWELL, |v| i32::from(v as i16));
+            creeper.explosion_radius = nbt
+                .get_i64("ExplosionRadius")
+                .map_or(species::DEFAULT_EXPLOSION_RADIUS, |v| i32::from(v as i8));
+            if nbt.get_bool("ignited").unwrap_or(false) {
+                species::ignite(base);
+            }
+        }
+        Species::Plain | Species::Cow | Species::Pig => {}
+    }
+}
+
+fn read_arrow(nbt: &Compound, base: &mut EntityBase, state: &mut ArrowState) {
+    state.owner = nbt.get("Owner").and_then(read_uuid);
+    state.left_owner = nbt.get_bool("LeftOwner").unwrap_or(false);
+    state.has_been_shot = nbt.get_bool("HasBeenShot").unwrap_or(false);
+    state.life = nbt.get_i64("life").map_or(0, |v| i32::from(v as i16));
+    state.last_state = nbt.get_compound("inBlockState").map(block_state_from_nbt);
+    state.shake_time = nbt.get_i64("shake").map_or(0, |v| i32::from(v as u8));
+    arrow::set_in_ground(base, nbt.get_bool("inGround").unwrap_or(false));
+    state.base_damage = nbt.get_f64("damage").unwrap_or(arrow::BASE_DAMAGE);
+    state.pickup = arrow::Pickup::from_id(nbt.get_i64("pickup").map_or(0, |v| v as i8));
+    arrow::set_crit(base, nbt.get_bool("crit").unwrap_or(false));
+    arrow::set_pierce_level(base, nbt.get_i64("PierceLevel").map_or(0, |v| v as i8));
+    state.sound = nbt
+        .get_str("SoundEvent")
+        .map_or(arrow::HIT_SOUND.to_owned(), str::to_owned);
+    state.item = nbt
+        .get_compound("item")
+        .and_then(item_stack_from_nbt)
+        .unwrap_or_else(arrow::default_item);
+    state.weapon = nbt.get_compound("weapon").and_then(item_stack_from_nbt);
+}
+
+fn write_arrow(base: &EntityBase, state: &ArrowState, out: &mut Compound) {
+    if let Some(owner) = state.owner {
+        out.insert("Owner", uuid_tag(owner));
+    }
+    if state.left_owner {
+        out.insert("LeftOwner", true);
+    }
+    out.insert("HasBeenShot", bool_tag(state.has_been_shot));
+    out.insert("life", state.life as i16);
+    if let Some(last) = state.last_state {
+        out.insert("inBlockState", block_state_to_nbt(last));
+    }
+    out.insert("shake", state.shake_time as i8);
+    out.insert("inGround", bool_tag(arrow::in_ground(base)));
+    out.insert("pickup", state.pickup.id());
+    out.insert("damage", state.base_damage);
+    out.insert("crit", bool_tag(arrow::is_crit(base)));
+    out.insert("PierceLevel", arrow::pierce_level(base));
+    out.insert("SoundEvent", state.sound.as_str());
+    out.insert("item", item_stack_to_nbt(&state.item));
+    if let Some(weapon) = &state.weapon {
+        out.insert("weapon", item_stack_to_nbt(weapon));
+    }
+}
+
+fn species_keys(mob: &MobState) -> Vec<&'static [&'static str]> {
+    let mut keys: Vec<&'static [&'static str]> = Vec::new();
+    if let Some(ageable) = &mob.ageable {
+        keys.push(&AGEABLE_KEYS);
+        if ageable.love.is_some() {
+            keys.push(&ANIMAL_KEYS);
+        }
+    }
+    keys.push(match mob.species {
+        Species::Cow | Species::Pig => &FARM_KEYS,
+        Species::Chicken(_) => &CHICKEN_KEYS,
+        Species::Sheep(_) => &SHEEP_KEYS,
+        Species::Zombie(_) => &ZOMBIE_KEYS,
+        Species::Skeleton(_) => &SKELETON_KEYS,
+        Species::Creeper(_) => &CREEPER_KEYS,
+        Species::Plain => &[],
+    });
+    keys
 }
 
 fn extra_keys(nbt: &Compound, known: &[&[&str]]) -> Compound {
@@ -521,6 +725,10 @@ pub fn load_entity(nbt: &Compound, id: EntityId, fallback_uuid: Uuid) -> Result<
             BlockPos::new(0, 0, 0),
         )),
         EntityKind::ExperienceOrb => EntityState::Orb(OrbState::new(&mut base, 0)),
+        EntityKind::Arrow => {
+            let seed = fallback_uuid.as_u64_pair().0 as i64;
+            EntityState::Arrow(Box::new(ArrowState::new(&mut base, seed)))
+        }
         _ => EntityState::Living(Box::new(LivingState::new(&mut base, 0.0))),
     };
     read_base(nbt, &mut base)?;
@@ -555,7 +763,12 @@ pub fn load_entity(nbt: &Compound, id: EntityId, fallback_uuid: Uuid) -> Result<
         }
         EntityState::Living(living_state) => {
             read_living(nbt, &mut base, living_state);
-            &[&ENTITY_KEYS, &LIVING_KEYS]
+            let mut known: Vec<&[&str]> = vec![&ENTITY_KEYS, &LIVING_KEYS];
+            if let Some(mob) = &living_state.mob {
+                known.extend(species_keys(mob));
+            }
+            let extra = extra_keys(nbt, &known);
+            return Ok(Entity { base, state, extra });
         }
         EntityState::Orb(orb_state) => {
             orb_state.health = nbt
@@ -568,6 +781,10 @@ pub fn load_entity(nbt: &Compound, id: EntityId, fallback_uuid: Uuid) -> Result<
             );
             orb_state.count = nbt.get_i32("Count").filter(|count| *count > 0).unwrap_or(1);
             &[&ENTITY_KEYS, &ORB_KEYS]
+        }
+        EntityState::Arrow(arrow_state) => {
+            read_arrow(nbt, &mut base, arrow_state);
+            &[&ENTITY_KEYS, &ARROW_KEYS]
         }
         EntityState::Inert(_) => &[],
     };
@@ -665,12 +882,16 @@ fn write_living(base: &EntityBase, living: &LivingState, out: &mut Compound) {
             let mut entry = Compound::new()
                 .with("id", instance.attribute)
                 .with("base", instance.base);
-            if !instance.modifiers.is_empty() {
+            let saved: Vec<&AttributeModifier> = instance
+                .modifiers
+                .iter()
+                .filter(|m| !TRANSIENT_MODIFIERS.contains(&m.id.as_ref()))
+                .collect();
+            if !saved.is_empty() {
                 entry.insert(
                     "modifiers",
                     Tag::List(
-                        instance
-                            .modifiers
+                        saved
                             .iter()
                             .map(|m| {
                                 Tag::Compound(
@@ -754,6 +975,97 @@ fn write_mob(base: &EntityBase, mob: &MobState, out: &mut Compound) {
         out.insert("NoAI", true);
     }
     out.insert("Bukkit.Aware", bool_tag(mob.aware));
+    write_species(base, mob, out);
+}
+
+fn write_tracker(
+    out: &mut Compound,
+    keys: (&str, &str),
+    tracker: &species::ConversionTracker,
+    converting: bool,
+    afflicted: bool,
+) {
+    out.insert(
+        keys.1,
+        if converting {
+            tracker.conversion_time
+        } else {
+            -1
+        },
+    );
+    out.insert(
+        keys.0,
+        if afflicted {
+            tracker.affliction_time
+        } else {
+            -1
+        },
+    );
+}
+
+fn write_species(base: &EntityBase, mob: &MobState, out: &mut Compound) {
+    if let Some(ageable) = &mob.ageable {
+        if ageable::can_be_baby(base.kind) {
+            out.insert("Age", ageable.age);
+            out.insert("ForcedAge", ageable.forced_age);
+            out.insert("AgeLocked", bool_tag(ageable::is_age_locked(base)));
+        }
+        if let Some(love) = &ageable.love {
+            out.insert("InLove", love.ticks);
+            if let Some(cause) = love.cause {
+                out.insert("LoveCause", uuid_tag(cause));
+            }
+        }
+    }
+    if let Some(farm) = mob.species.farm() {
+        out.insert(
+            "variant",
+            species::variant_name(farm, species::variant(base, farm)),
+        );
+        out.insert(
+            "sound_variant",
+            species::sound_variant_name(farm, species::sound_variant(base, farm)),
+        );
+    }
+    match &mob.species {
+        Species::Chicken(chicken) => {
+            out.insert("IsChickenJockey", bool_tag(chicken.jockey));
+            if let Some(time) = chicken.egg_time {
+                out.insert("EggLayTime", time);
+            }
+        }
+        Species::Sheep(_) => {
+            out.insert("Sheared", bool_tag(species::is_sheared(base)));
+            out.insert("Color", species::wool_color(base) as i8);
+        }
+        Species::Zombie(zombie) => {
+            out.insert("IsBaby", bool_tag(species::zombie_is_baby(base)));
+            out.insert("CanBreakDoors", bool_tag(zombie.can_break_doors));
+            write_tracker(
+                out,
+                ("InWaterTime", "DrownedConversionTime"),
+                &zombie.drowning,
+                base.data.boolean(species::ZOMBIE_DATA_DROWNED_CONVERSION),
+                base.eye_in_water,
+            );
+        }
+        Species::Skeleton(skeleton) => {
+            write_tracker(
+                out,
+                ("FreezingTime", "StrayConversionTime"),
+                &skeleton.freezing,
+                base.data.boolean(species::SKELETON_DATA_STRAY_CONVERSION),
+                base.in_powder_snow,
+            );
+        }
+        Species::Creeper(creeper) => {
+            out.insert("powered", bool_tag(species::is_powered(base)));
+            out.insert("Fuse", creeper.max_swell as i16);
+            out.insert("ExplosionRadius", creeper.explosion_radius as i8);
+            out.insert("ignited", bool_tag(species::is_ignited(base)));
+        }
+        Species::Plain | Species::Cow | Species::Pig => {}
+    }
 }
 
 pub fn save_entity(entity: &Entity, world: Option<Uuid>) -> Option<Compound> {
@@ -805,6 +1117,7 @@ pub fn save_entity(entity: &Entity, world: Option<Uuid>) -> Option<Compound> {
             out.insert("Value", orb::value(&entity.base) as i16);
             out.insert("Count", orb_state.count);
         }
+        EntityState::Arrow(arrow_state) => write_arrow(&entity.base, arrow_state, &mut out),
         EntityState::Inert(_) => {}
     }
     for (key, value) in entity.extra.iter() {

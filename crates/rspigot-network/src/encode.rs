@@ -8,7 +8,9 @@ use rspigot_core::events::{
     Abilities, Animation, ClientEvent, EntityKind, EntityStatus, EquipmentSlot as CoreSlot,
     GameEvent as CoreGameEvent, MetadataValue, MoveDelta, Movement, PlayerListEntry,
     Pose as CorePose, PositionPath as CorePath, SoundSource as CoreSoundSource, SpawnInfo,
+    VariantKind,
 };
+use rspigot_data::variants::Farm;
 use rspigot_domain::chunk::{
     ChunkColumn, HeightmapKind as DomainHeightmap, LightArray as DomainLight,
 };
@@ -36,7 +38,7 @@ use rspigot_protocol::play::entity::{
     DeltaStep, EquipmentSlot as WireSlot, PositionPath, PositionStep, SwingAnimationStyle,
     SwingAnimationType, VecDelta,
 };
-use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue};
+use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue, RegistryVariant};
 use rspigot_protocol::play::player::{CommonPlayerSpawnInfo, PlayerInfoActions, PlayerInfoEntry};
 use rspigot_protocol::play::slot::{ComponentValue, ItemStack as WireStack};
 use rspigot_protocol::play::types::{
@@ -366,6 +368,34 @@ fn commands(tree: &CommandTree) -> cb::Commands {
             .collect(),
         root_index: tree.root as i32,
     }
+}
+
+fn registry_variant(kind: VariantKind) -> RegistryVariant {
+    match kind {
+        VariantKind::Mob(Farm::Cow) => RegistryVariant::Cow,
+        VariantKind::Sound(Farm::Cow) => RegistryVariant::CowSound,
+        VariantKind::Mob(Farm::Pig) => RegistryVariant::Pig,
+        VariantKind::Sound(Farm::Pig) => RegistryVariant::PigSound,
+        VariantKind::Mob(Farm::Chicken) => RegistryVariant::Chicken,
+        VariantKind::Sound(Farm::Chicken) => RegistryVariant::ChickenSound,
+    }
+}
+
+fn particle_options(
+    name: &str,
+    item: Option<rspigot_domain::ItemId>,
+) -> Option<cb::ParticleOptions> {
+    let kind = rspigot_data::registries::static_index("minecraft:particle_type", name)
+        .and_then(|id| i32::try_from(id).ok())?;
+    let mut data = Vec::new();
+    if let Some(item) = item {
+        let slot = Some(rspigot_domain::item::ItemStack::new(
+            item,
+            std::num::NonZeroU8::MIN,
+        ));
+        stack(&slot).encode(&mut data);
+    }
+    Some(cb::ParticleOptions { kind, data })
 }
 
 fn game_event(event: CoreGameEvent) -> cb::GameEvent {
@@ -973,6 +1003,10 @@ impl Encoder {
                                 MetadataValue::BlockPos(pos) => {
                                     EntityDataValue::BlockPos(position(*pos))
                                 }
+                                MetadataValue::Variant(kind, id) => EntityDataValue::Variant {
+                                    kind: registry_variant(*kind),
+                                    id: *id as i32,
+                                },
                             },
                         })
                         .collect(),
@@ -1102,6 +1136,7 @@ impl Encoder {
                         EntityStatus::Death => cb::EntityEvent::DEATH,
                         EntityStatus::Poof => cb::EntityEvent::POOF,
                         EntityStatus::EquipmentBreak(slot) => equipment_break_event(*slot),
+                        EntityStatus::Event(event) => *event,
                     },
                 },
             ),
@@ -1189,6 +1224,89 @@ impl Encoder {
                 ),
                 None => Ok(()),
             },
+            ClientEvent::Explode {
+                center,
+                radius,
+                block_count,
+                knockback,
+                large,
+                play_sound,
+            } => {
+                let particle = if *large {
+                    "minecraft:explosion_emitter"
+                } else {
+                    "minecraft:explosion"
+                };
+                let (Some(particle), Some(sound)) = (
+                    particle_options(particle, None),
+                    rspigot_data::registries::static_index(
+                        "minecraft:sound_event",
+                        "minecraft:entity.generic.explode",
+                    )
+                    .and_then(|id| i32::try_from(id).ok()),
+                ) else {
+                    return Ok(());
+                };
+                let block_particles = [("minecraft:poof", 0.5), ("minecraft:smoke", 1.0)]
+                    .into_iter()
+                    .filter_map(|(name, scaling)| {
+                        Some(cb::ExplosionParticle {
+                            particle: particle_options(name, None)?,
+                            scaling,
+                            speed: 1.0,
+                            weight: 1,
+                        })
+                    })
+                    .collect();
+                Self::queue(
+                    writer,
+                    &cb::Explode {
+                        x: center.x,
+                        y: center.y,
+                        z: center.z,
+                        radius: *radius,
+                        block_count: *block_count,
+                        knockback: knockback.map(|v| (v.x, v.y, v.z)),
+                        particle,
+                        sound: Holder::Reference(sound),
+                        block_particles,
+                        play_sound: *play_sound,
+                    },
+                )
+            }
+            ClientEvent::LevelEvent { event, pos, data } => Self::queue(
+                writer,
+                &cb::LevelEvent {
+                    kind: *event,
+                    pos: position(*pos),
+                    data: *data,
+                    global: false,
+                },
+            ),
+            ClientEvent::Particle(particle) => {
+                let Some(options) = particle_options(particle.kind, particle.item) else {
+                    return Ok(());
+                };
+                Self::queue(
+                    writer,
+                    &cb::LevelParticles {
+                        particle: options,
+                        override_limiter: false,
+                        always_show: false,
+                        x: particle.position.x,
+                        y: particle.position.y,
+                        z: particle.position.z,
+                        x_dist: particle.spread.x as f32,
+                        y_dist: particle.spread.y as f32,
+                        z_dist: particle.spread.z as f32,
+                        x_max_speed: particle.speed as f32,
+                        y_max_speed: particle.speed as f32,
+                        z_max_speed: particle.speed as f32,
+                        count: particle.count,
+                        randomization: cb::ParticleRandomization::Default,
+                    },
+                )
+            }
             ClientEvent::Disconnect(_) => Ok(()),
         }
     }
@@ -1668,5 +1786,175 @@ mod tests {
             encode(value),
             vec![(id::SET_ENTITY_DATA, vec![5, 8, 1, 17, 0xFF])]
         );
+    }
+
+    #[test]
+    fn farm_variant_wool_and_baby_metadata_golden_bytes() {
+        let event = ClientEvent::EntityMetadata {
+            entity: EntityId(9),
+            entries: vec![
+                MetadataEntry {
+                    index: 16,
+                    value: MetadataValue::Boolean(true),
+                },
+                MetadataEntry {
+                    index: 18,
+                    value: MetadataValue::Variant(VariantKind::Mob(Farm::Cow), 2),
+                },
+                MetadataEntry {
+                    index: 19,
+                    value: MetadataValue::Variant(VariantKind::Sound(Farm::Cow), 1),
+                },
+                MetadataEntry {
+                    index: 20,
+                    value: MetadataValue::Variant(VariantKind::Sound(Farm::Pig), 2),
+                },
+                MetadataEntry {
+                    index: 19,
+                    value: MetadataValue::Variant(VariantKind::Mob(Farm::Chicken), 0),
+                },
+                MetadataEntry {
+                    index: 18,
+                    value: MetadataValue::Byte(0x1E),
+                },
+            ],
+        };
+        assert_eq!(
+            encode(event),
+            vec![(
+                id::SET_ENTITY_DATA,
+                vec![
+                    9, 16, 8, 1, 18, 23, 2, 19, 24, 1, 20, 29, 2, 19, 30, 0, 18, 0, 0x1E, 0xFF
+                ]
+            )]
+        );
+    }
+
+    #[test]
+    fn love_and_eat_grass_events_golden_bytes() {
+        let love = ClientEvent::EntityStatus {
+            entity: EntityId(7),
+            status: EntityStatus::Event(18),
+        };
+        assert_eq!(encode(love), vec![(id::ENTITY_EVENT, vec![0, 0, 0, 7, 18])]);
+        let grass = ClientEvent::EntityStatus {
+            entity: EntityId(7),
+            status: EntityStatus::Event(10),
+        };
+        assert_eq!(
+            encode(grass),
+            vec![(id::ENTITY_EVENT, vec![0, 0, 0, 7, 10])]
+        );
+    }
+
+    #[test]
+    fn level_event_golden_bytes() {
+        let event = ClientEvent::LevelEvent {
+            event: 2001,
+            pos: BlockPos::new(1, 64, -1),
+            data: 9,
+        };
+        let packed: i64 = (1i64 << 38) | (0x3FF_FFFF << 12) | 64;
+        let mut expected = 2001i32.to_be_bytes().to_vec();
+        expected.extend_from_slice(&packed.to_be_bytes());
+        expected.extend_from_slice(&9i32.to_be_bytes());
+        expected.push(0);
+        assert_eq!(encode(event), vec![(id::LEVEL_EVENT, expected)]);
+    }
+
+    fn registry_id(registry: &str, name: &str) -> u8 {
+        u8::try_from(rspigot_data::registries::static_index(registry, name).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn item_particle_golden_bytes() {
+        let wheat = named("minecraft:wheat");
+        let event = ClientEvent::Particle(rspigot_domain::particle::Particle {
+            kind: "minecraft:item",
+            item: Some(wheat),
+            position: Vec3::new(0.5, 65.0, -0.5),
+            count: 0,
+            spread: Vec3::new(0.25, 0.0, 0.0),
+            speed: 0.1,
+        });
+        let mut expected = vec![registry_id("minecraft:particle_type", "minecraft:item")];
+        expected.push(1);
+        let mut item = Vec::new();
+        write_var(i32::from(wheat.0), &mut item);
+        expected.extend_from_slice(&item);
+        expected.extend_from_slice(&[0, 0]);
+        expected.extend_from_slice(&[0, 0]);
+        expected.extend_from_slice(&0.5f64.to_be_bytes());
+        expected.extend_from_slice(&65.0f64.to_be_bytes());
+        expected.extend_from_slice(&(-0.5f64).to_be_bytes());
+        expected.extend_from_slice(&0.25f32.to_be_bytes());
+        expected.extend_from_slice(&0.0f32.to_be_bytes());
+        expected.extend_from_slice(&0.0f32.to_be_bytes());
+        expected.extend_from_slice(&0.1f32.to_be_bytes());
+        expected.extend_from_slice(&0.1f32.to_be_bytes());
+        expected.extend_from_slice(&0.1f32.to_be_bytes());
+        expected.extend_from_slice(&[0, 0]);
+        assert_eq!(encode(event), vec![(id::LEVEL_PARTICLES, expected)]);
+    }
+
+    #[test]
+    fn creeper_explosion_golden_bytes() {
+        let event = ClientEvent::Explode {
+            center: Vec3::new(0.5, 64.0, 2.5),
+            radius: 3.0,
+            block_count: 12,
+            knockback: None,
+            large: false,
+            play_sound: true,
+        };
+        let particle = |name: &str| registry_id("minecraft:particle_type", name);
+        let sound = rspigot_data::registries::static_index(
+            "minecraft:sound_event",
+            "minecraft:entity.generic.explode",
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&0.5f64.to_be_bytes());
+        expected.extend_from_slice(&64.0f64.to_be_bytes());
+        expected.extend_from_slice(&2.5f64.to_be_bytes());
+        expected.extend_from_slice(&3.0f32.to_be_bytes());
+        expected.extend_from_slice(&12i32.to_be_bytes());
+        expected.push(0);
+        expected.push(particle("minecraft:explosion"));
+        write_var(i32::try_from(sound).unwrap() + 1, &mut expected);
+        expected.push(2);
+        expected.push(particle("minecraft:poof"));
+        expected.extend_from_slice(&0.5f32.to_be_bytes());
+        expected.extend_from_slice(&1.0f32.to_be_bytes());
+        expected.push(1);
+        expected.push(particle("minecraft:smoke"));
+        expected.extend_from_slice(&1.0f32.to_be_bytes());
+        expected.extend_from_slice(&1.0f32.to_be_bytes());
+        expected.push(1);
+        expected.push(1);
+        assert_eq!(encode(event), vec![(id::EXPLODE, expected)]);
+    }
+
+    #[test]
+    fn arrow_spawn_carries_the_owner_id_golden_bytes() {
+        let event = ClientEvent::SpawnEntity {
+            entity: EntityId(12),
+            uuid: uuid::Uuid::from_u128(2),
+            kind: EntityKind::Other(registry_id("minecraft:entity_type", "minecraft:arrow").into()),
+            position: Vec3::new(0.5, 65.5, 0.5),
+            rotation: Rotation::new(0.0, 0.0),
+            head_yaw: 0.0,
+            data: 0x0102,
+            velocity: Vec3::ZERO,
+        };
+        let mut expected = vec![12];
+        expected.extend_from_slice(&0u64.to_be_bytes());
+        expected.extend_from_slice(&2u64.to_be_bytes());
+        expected.push(registry_id("minecraft:entity_type", "minecraft:arrow"));
+        expected.extend_from_slice(&0.5f64.to_be_bytes());
+        expected.extend_from_slice(&65.5f64.to_be_bytes());
+        expected.extend_from_slice(&0.5f64.to_be_bytes());
+        expected.extend_from_slice(&[0, 0, 0, 0, 0x82, 0x02]);
+        assert_eq!(encode(event), vec![(id::ADD_ENTITY, expected)]);
     }
 }

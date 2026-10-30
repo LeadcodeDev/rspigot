@@ -67,6 +67,7 @@ pub(crate) fn metadata(values: &[(u8, SyncedValue)]) -> Vec<MetadataEntry> {
                 SyncedValue::Pose(p) => MetadataValue::Pose(*p),
                 SyncedValue::Item(stack) => MetadataValue::Item(stack.clone()),
                 SyncedValue::BlockPos(pos) => MetadataValue::BlockPos(*pos),
+                SyncedValue::Variant(kind, id) => MetadataValue::Variant(*kind, *id),
             },
         })
         .collect()
@@ -85,7 +86,7 @@ pub(crate) fn wire_slot(slot: ItemSlot) -> EquipmentSlot {
     }
 }
 
-fn pairing_events(entity: &Entity, tracker: &EntityTracker) -> Vec<ClientEvent> {
+fn pairing_events(entity: &Entity, tracker: &EntityTracker, data: i32) -> Vec<ClientEvent> {
     let pairing = tracker.pairing();
     let id = entity.base.id;
     let mut events = vec![
@@ -97,7 +98,7 @@ fn pairing_events(entity: &Entity, tracker: &EntityTracker) -> Vec<ClientEvent> 
             position: pairing.position,
             rotation: Rotation::new(pairing.yaw, pairing.pitch),
             head_yaw: pairing.head_yaw,
-            data: entity.add_entity_data(),
+            data,
             velocity: pairing.movement,
         },
     ];
@@ -237,7 +238,8 @@ impl<L: ClientLink> Server<L> {
         let visible = self.sees(player, entity, tracked.range);
         let tracking = player.tracked.contains(&id);
         if visible && !tracking {
-            let events = pairing_events(entity, &tracked.tracker);
+            let data = self.arrow_owner_id(entity);
+            let events = pairing_events(entity, &tracked.tracker, data);
             if let Some(player) = self.players.get_mut(&player_id) {
                 player.tracked.insert(id);
                 for event in events {
@@ -333,6 +335,7 @@ impl<L: ClientLink> Server<L> {
                     self.tick_living_entity(id);
                 }
                 EntityState::Orb(_) => self.tick_orb(id),
+                EntityState::Arrow(_) => self.tick_arrow(id),
                 EntityState::Inert(_) => {}
             }
             self.entities.store.reindex(id);
@@ -341,13 +344,18 @@ impl<L: ClientLink> Server<L> {
 
     fn tick_living_entity(&mut self, id: EntityId) {
         if !self.mob_active(id) {
+            self.inactive_tick(id);
             return;
         }
         if let Some(entity) = self.entities.store.get_mut(id) {
             let base = &mut entity.base;
             base.old_position = base.position;
             base.tick_count = base.tick_count.wrapping_add(1);
+            base.was_in_powder_snow = base.in_powder_snow;
             fluid::update(base, &self.world.chunks);
+        }
+        if !self.species_pre_tick(id) {
+            return;
         }
         self.void_check(id);
         let Some(Entity {
@@ -359,6 +367,9 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let outcome = living::base_tick(base, state);
+        if outcome.burn {
+            self.burn_damage(id);
+        }
         if outcome.removed {
             self.push(
                 Audience::Trackers(id),
@@ -370,6 +381,7 @@ impl<L: ClientLink> Server<L> {
             self.remove_entity(id, RemovalReason::Killed);
             return;
         }
+        self.mob_ambient_tick(id);
         self.forget_dead_attackers(id);
         if let Some(Entity {
             base,
@@ -377,6 +389,8 @@ impl<L: ClientLink> Server<L> {
             ..
         }) = self.entities.store.get_mut(id)
         {
+            living::tick_using_item(base, state);
+            living::tick_arrows(base, state);
             living::begin_ai_step(base, state);
         }
         self.mob_server_ai_step(id);
@@ -394,7 +408,36 @@ impl<L: ClientLink> Server<L> {
         if let Some(landing) = landing {
             self.mob_landed(id, landing);
         }
+        self.apply_fire_inside(id);
+        if self.entities.store.get(id).is_none() {
+            return;
+        }
+        self.mob_ai_step_after(id);
         self.mob_after_tick(id);
+    }
+
+    fn inactive_tick(&mut self, id: EntityId) {
+        if let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+            && let Some(ageable) = state.mob.as_mut().and_then(|mob| mob.ageable.as_mut())
+        {
+            rspigot_domain::entity::ageable::inactive_tick(base, ageable);
+        }
+    }
+
+    pub(crate) fn add_mob_entity(
+        &mut self,
+        entity: Entity,
+        random: rspigot_domain::random::LegacyRandom,
+    ) -> Result<EntityId, Box<Entity>> {
+        let id = entity.base.id;
+        self.entities.mobs.spawn_randoms.insert(id, random);
+        let added = self.add_entity(entity);
+        self.entities.mobs.spawn_randoms.remove(&id);
+        added
     }
 
     pub(crate) fn handle_chunk_events(&mut self) {
@@ -520,6 +563,10 @@ impl<L: ClientLink> Server<L> {
 
     pub fn entity_count(&self) -> usize {
         self.entities.store.len()
+    }
+
+    pub fn saved_entity(&self, id: EntityId) -> Option<Compound> {
+        save::save_entity(self.entities.store.get(id)?, None)
     }
 
     pub fn entities_of(&self, kind: Kind) -> Vec<EntitySnapshot> {

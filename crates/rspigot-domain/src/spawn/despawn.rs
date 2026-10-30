@@ -85,6 +85,18 @@ mod tests {
         fn next_int(&mut self, _: i32) -> i32 {
             self.0
         }
+
+        fn next_double(&mut self) -> f64 {
+            0.0
+        }
+
+        fn next_boolean(&mut self) -> bool {
+            false
+        }
+
+        fn next_gaussian(&mut self) -> f64 {
+            0.0
+        }
     }
 
     fn facts(kind: EntityKind) -> DespawnFacts {

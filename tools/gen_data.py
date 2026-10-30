@@ -410,7 +410,46 @@ TABLE_TYPES = {
     "entities": "minecraft:entity",
 }
 
-REFERENCED_TABLE_TYPES = {"minecraft:block", "minecraft:entity", "minecraft:fishing"}
+EXTRA_TABLES = [
+    ("minecraft:charged_creeper/root", "minecraft:entity"),
+    ("minecraft:gameplay/chicken_lay", "minecraft:gift"),
+    ("minecraft:shearing/sheep", "minecraft:shearing"),
+]
+
+REFERENCED_TABLE_TYPES = {"minecraft:block", "minecraft:entity", "minecraft:fishing", "minecraft:shearing"}
+
+MOB_VARIANTS = [
+    ("COW_VARIANTS", "cow_variant"),
+    ("PIG_VARIANTS", "pig_variant"),
+    ("CHICKEN_VARIANTS", "chicken_variant"),
+]
+
+SOUND_VARIANTS = [
+    ("COW_SOUND_VARIANTS", "cow_sound_variant"),
+    ("PIG_SOUND_VARIANTS", "pig_sound_variant"),
+    ("CHICKEN_SOUND_VARIANTS", "chicken_sound_variant"),
+]
+
+SOUND_SET_KEYS = ["ambient_sound", "death_sound", "eat_sound", "hurt_sound", "step_sound"]
+
+DYE_COLORS = [
+    "white",
+    "orange",
+    "magenta",
+    "light_blue",
+    "yellow",
+    "lime",
+    "pink",
+    "gray",
+    "light_gray",
+    "cyan",
+    "purple",
+    "blue",
+    "brown",
+    "green",
+    "red",
+    "black",
+]
 
 ENTITY_FLAGS = {
     "is_on_fire": "on_fire",
@@ -420,6 +459,7 @@ ENTITY_FLAGS = {
 COMPONENT_PREDICATES = {
     "minecraft:sheep/color": "dye",
     "minecraft:frog/variant": "minecraft:frog_variant",
+    "minecraft:chicken/variant": "minecraft:chicken_variant",
 }
 
 LOOT_TYPES = [
@@ -1190,6 +1230,8 @@ def build_loot(datapack, block_reports, static_registries, synced, tag_table):
             assert NAME_RE.match(path), path
             name = "minecraft:%s/%s" % (directory, path)
             add_table(name, os.path.join(datapack, "loot_table", directory, path + ".json"), {TABLE_TYPES[directory]})
+    for name, kind in EXTRA_TABLES:
+        add_table(name, os.path.join(datapack, "loot_table", name.split(":", 1)[1] + ".json"), {kind})
     while True:
         emitted = {name for name, _ in tables}
         missing_tables = sorted(pending - emitted)
@@ -1444,6 +1486,169 @@ def emit_spawns(biome_spawns, dimension_spawns):
     return "use crate::spawns::{%s};\n\n" % ", ".join(used_imports(text, names)) + text
 
 
+def text_str(value):
+    return '"%s"' % value
+
+
+def biome_holder_set(value, synced_names, tag_table, where):
+    if isinstance(value, str) and value.startswith("#"):
+        tag = normalize_id(value[1:])
+        if tag not in tag_table["minecraft:worldgen/biome"]:
+            fail("unknown biome tag %s in %s" % (tag, where))
+        return "HolderSet::Tag(%s)" % text_str(tag)
+    names = value if isinstance(value, list) else [value]
+    biomes = synced_names["minecraft:worldgen/biome"]
+    ids = []
+    for name in names:
+        name = normalize_id(name)
+        if name not in biomes:
+            fail("unknown biome %s in %s" % (name, where))
+        ids.append(biomes.index(name))
+    return "HolderSet::Direct(&[%s])" % ", ".join(str(i) for i in sorted(ids))
+
+
+def build_variants(datapack, synced, tag_table):
+    synced_names = {registry_id: entries for _, registry_id, entries in synced}
+    mobs = []
+    for constant, path in MOB_VARIANTS:
+        entries = []
+        for name in synced_names["minecraft:" + path]:
+            where = "%s %s" % (path, name)
+            value = load_json(os.path.join(datapack, path, name.split(":", 1)[1] + ".json"))
+            expect_keys(value, {"asset_id", "baby_asset_id", "model", "spawn_conditions"}, where)
+            conditions = []
+            for entry in value.get("spawn_conditions", []):
+                expect_keys(entry, {"condition", "priority"}, where)
+                condition = entry.get("condition")
+                if condition is None:
+                    biomes = "None"
+                else:
+                    expect_keys(condition, {"type", "biomes"}, where)
+                    if condition["type"] != "minecraft:biome":
+                        fail("unsupported spawn condition %s in %s" % (condition["type"], where))
+                    biomes = "Some(%s)" % biome_holder_set(condition["biomes"], synced_names, tag_table, where)
+                conditions.append((biomes, entry["priority"]))
+            entries.append((name, conditions))
+        mobs.append((constant, entries))
+    sounds = []
+    for constant, path in SOUND_VARIANTS:
+        entries = []
+        for name in synced_names["minecraft:" + path]:
+            where = "%s %s" % (path, name)
+            value = load_json(os.path.join(datapack, path, name.split(":", 1)[1] + ".json"))
+            if "adult_sounds" in value:
+                expect_keys(value, {"adult_sounds", "baby_sounds"}, where)
+                adult, baby = value["adult_sounds"], value["baby_sounds"]
+            else:
+                adult, baby = value, value
+            sets = []
+            for sound_set in (adult, baby):
+                expect_keys(sound_set, set(SOUND_SET_KEYS), where)
+                fields = []
+                for key in SOUND_SET_KEYS:
+                    sound = sound_set.get(key)
+                    fields.append("%s: %s" % (key.replace("_sound", ""), "None" if sound is None else "Some(%s)" % text_str(normalize_id(sound))))
+                sets.append("SoundSet { %s }" % ", ".join(fields))
+            entries.append((name, sets))
+        sounds.append((constant, entries))
+    return mobs, sounds
+
+
+def build_dye_mixes(datapack):
+    root = os.path.join(datapack, "recipe")
+    dyes = {"minecraft:%s_dye" % color: index for index, color in enumerate(DYE_COLORS)}
+    mixes = {}
+    for path in json_names(root):
+        recipe = load_json(os.path.join(root, path + ".json"))
+        if recipe.get("type") != "minecraft:crafting_shapeless":
+            continue
+        ingredients = recipe.get("ingredients", [])
+        result = normalize_id(recipe.get("result", {}).get("id", ""))
+        if len(ingredients) != 2 or result not in dyes:
+            continue
+        if not all(isinstance(i, str) and normalize_id(i) in dyes for i in ingredients):
+            continue
+        first, second = (dyes[normalize_id(i)] for i in ingredients)
+        for pair in ((first, second), (second, first)):
+            previous = mixes.get(pair)
+            if previous is not None and previous != dyes[result]:
+                fail("dyes %r mix into two colours in recipe %s" % (pair, path))
+            mixes[pair] = dyes[result]
+    return sorted((a, b, c) for (a, b), c in mixes.items())
+
+
+def emit_variants(mobs, sounds, mixes):
+    out = []
+    for constant, entries in mobs:
+        out.append("pub(crate) static %s: [MobVariant; %d] = [" % (constant, len(entries)))
+        for name, conditions in entries:
+            out.append("    MobVariant {")
+            out.append("        name: %s," % text_str(name))
+            out.append("        spawn_conditions: &[")
+            for biomes, priority in conditions:
+                out.append("            SpawnCondition {")
+                out.append("                biomes: %s," % biomes)
+                out.append("                priority: %d," % priority)
+                out.append("            },")
+            out.append("        ],")
+            out.append("    },")
+        out.append("];")
+        out.append("")
+    for constant, entries in sounds:
+        out.append("pub(crate) static %s: [SoundVariant; %d] = [" % (constant, len(entries)))
+        for name, (adult, baby) in entries:
+            out.append("    SoundVariant {")
+            out.append("        name: %s," % text_str(name))
+            out.append("        adult: %s," % adult)
+            out.append("        baby: %s," % baby)
+            out.append("    },")
+        out.append("];")
+        out.append("")
+    out.append("pub(crate) static DYE_MIXES: [(u8, u8, u8); %d] = [" % len(mixes))
+    out.extend(wrapped(["(%d, %d, %d)" % mix for mix in mixes], "    "))
+    out.append("];")
+    text = "\n".join(out) + "\n"
+    lines = []
+    for line in text.split("\n"):
+        if len(line) > LINE_WIDTH and line.strip().startswith(("adult:", "baby:")):
+            head, _, body = line.partition("SoundSet { ")
+            indent = head[: len(head) - len(head.lstrip())]
+            lines.append(head + "SoundSet {")
+            for field in body[: -len(" },")].split(", "):
+                lines.append(indent + "    " + field + ",")
+            lines.append(indent + "},")
+        else:
+            lines.append(line)
+    text = "\n".join(lines)
+    head = "use crate::tags::HolderSet;\nuse crate::variants::{MobVariant, SoundSet, SoundVariant, SpawnCondition};\n\n"
+    return head + text
+
+
+def build_climate(datapack, synced):
+    names = {registry_id: entries for _, registry_id, entries in synced}["minecraft:worldgen/biome"]
+    climate = []
+    for name in names:
+        value = load_json(os.path.join(datapack, "worldgen", "biome", name.split(":", 1)[1] + ".json"))
+        modifier = value.get("temperature_modifier", "none")
+        if modifier not in ("none", "frozen"):
+            fail("unknown temperature modifier %s in biome %s" % (modifier, name))
+        climate.append((bool(value["has_precipitation"]), float(value["temperature"]), modifier == "frozen"))
+    return climate
+
+
+def emit_climate(climate):
+    out = ["use crate::climate::Climate;", ""]
+    out.append("pub(crate) static CLIMATE: [Climate; %d] = [" % len(climate))
+    for precipitation, temperature, frozen in climate:
+        out.append("    Climate {")
+        out.append("        has_precipitation: %s," % ("true" if precipitation else "false"))
+        out.append("        temperature: %s," % flat(rs_f32(temperature)))
+        out.append("        frozen: %s," % ("true" if frozen else "false"))
+        out.append("    },")
+    out.append("];")
+    return "\n".join(out) + "\n"
+
+
 def used_imports(text, names):
     return [name for name in names if re.search(r"\b" + name + r"\b", text)]
 
@@ -1480,11 +1685,13 @@ def emit_loot(tables, block_tables, entity_tables, predicates, smelting):
 def emit_mod():
     return "\n".join(
         [
+            "pub mod climate;",
             "pub mod loot;",
             "pub mod spawns;",
             "pub mod static_registries;",
             "pub mod synced;",
             "pub mod tags;",
+            "pub mod variants;",
             "",
         ]
     )
@@ -1526,6 +1733,9 @@ def main():
     dimension_spawns = build_dimension_spawns(args.datapack)
     if not args.no_javap:
         verify_spawn_defaults_against_java(args.javap, args.classes)
+    mob_variants, sound_variants = build_variants(args.datapack, synced, tag_table)
+    dye_mixes = build_dye_mixes(args.datapack)
+    climate = build_climate(args.datapack, synced)
 
     files = {
         "mod.rs": emit_mod(),
@@ -1534,6 +1744,8 @@ def main():
         "tags.rs": emit_tags(tag_table),
         "loot.rs": emit_loot(tables, block_tables, entity_tables, predicates, smelting),
         "spawns.rs": emit_spawns(biome_spawns, dimension_spawns),
+        "variants.rs": emit_variants(mob_variants, sound_variants, dye_mixes),
+        "climate.rs": emit_climate(climate),
     }
     write_files(args.out, files)
 
@@ -1559,6 +1771,9 @@ def main():
     print("wall variants using floor table %d" % len(wall_mapped))
     print("named predicates %d" % len(predicates))
     print("biome spawn settings %d, dimension spawn settings %d" % (len(biome_spawns), len(dimension_spawns)))
+    for constant, entries in mob_variants + sound_variants:
+        print("variants %-24s %3d" % (constant, len(entries)))
+    print("dye mixes %d" % len(dye_mixes))
     for construct in sorted(ignored):
         owners = sorted(ignored[construct])
         print("ignored %s in %d tables: %s" % (construct, len(owners), ", ".join(owners)))

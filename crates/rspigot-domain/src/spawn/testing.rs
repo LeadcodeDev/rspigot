@@ -163,6 +163,27 @@ impl RandomSource for Level {
             None => self.fallback.next_int(bound),
         }
     }
+
+    fn next_double(&mut self) -> f64 {
+        match self.scripted() {
+            Some(value) => value,
+            None => self.fallback.next_double(),
+        }
+    }
+
+    fn next_boolean(&mut self) -> bool {
+        match self.scripted() {
+            Some(value) => value != 0.0,
+            None => self.fallback.next_boolean(),
+        }
+    }
+
+    fn next_gaussian(&mut self) -> f64 {
+        match self.scripted() {
+            Some(value) => value,
+            None => self.fallback.next_gaussian(),
+        }
+    }
 }
 
 impl NaturalSpawnHost for Level {

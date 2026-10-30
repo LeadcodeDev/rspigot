@@ -10,6 +10,8 @@ use rspigot_data::spawns::{BiomeSpawns, DimensionSpawns, SpawnCount, Spawner};
 use rspigot_entities::{EntityKind, MobCategory, SpawnHeightmap};
 
 use crate::chunk::ChunkColumn;
+use crate::effect::EffectId;
+use crate::entity::ageable::DEFAULT_BABY_CHANCE;
 use crate::entity::physics::has_tag;
 use crate::entity::{Aabb, BlockView};
 use crate::random::{RandomSource, random_between_inclusive};
@@ -55,8 +57,31 @@ impl SpawnReason {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum SpawnGroupData {}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpawnGroupData {
+    Ageable {
+        group_size: i32,
+        should_spawn_baby: bool,
+        baby_chance: f32,
+    },
+    Zombie {
+        baby: bool,
+        can_spawn_jockey: bool,
+    },
+    SpiderEffects {
+        effect: Option<EffectId>,
+    },
+}
+
+impl SpawnGroupData {
+    pub const fn ageable(should_spawn_baby: bool) -> Self {
+        Self::Ageable {
+            group_size: 0,
+            should_spawn_baby,
+            baby_chance: DEFAULT_BABY_CHANCE,
+        }
+    }
+}
 
 pub fn within_border(x: f64, z: f64) -> bool {
     (-WORLD_BORDER..WORLD_BORDER).contains(&x) && (-WORLD_BORDER..WORLD_BORDER).contains(&z)

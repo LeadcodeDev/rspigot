@@ -1,0 +1,284 @@
+use rand::Rng;
+use rspigot_domain::damage::DamageType;
+use rspigot_domain::entity::EntityBase;
+use rspigot_domain::entity::fire::{self, InsideEffect};
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::{EntityId, Vec3};
+use rspigot_entities::EntityKind as Kind;
+
+use crate::health::DamageSource;
+use crate::ports::ClientLink;
+use crate::server::Server;
+
+const EXTINGUISH_SOUND: &str = "minecraft:entity.generic.extinguish_fire";
+const BURN_SOUND: &str = "minecraft:entity.generic.burn";
+const PLAYER_FIRE_TICKS: (i32, i32) = (1, 3);
+
+impl<L: ClientLink> Server<L> {
+    pub(crate) fn apply_fire_inside(&mut self, id: EntityId) {
+        let chunks = &self.world.chunks;
+        let Some(entity) = self.entities.store.get_mut(id) else {
+            return;
+        };
+        let was_on_fire = fire::is_on_fire(&entity.base);
+        let before = entity.base.remaining_fire_ticks;
+        let effects = fire::inside_effects(&mut entity.base, chunks);
+        for effect in effects {
+            let alive = self.entities.store.get(id).is_some_and(|e| {
+                !e.base.is_removed()
+                    && e.living().is_none_or(|l| {
+                        !rspigot_domain::entity::living::is_dead_or_dying(&e.base, l)
+                    })
+            });
+            if !alive {
+                break;
+            }
+            self.apply_inside_effect(id, effect);
+        }
+        let in_rain = self
+            .entities
+            .store
+            .get(id)
+            .is_some_and(|e| self.is_in_rain(&e.base));
+        let Some(entity) = self.entities.store.get_mut(id) else {
+            return;
+        };
+        if in_rain {
+            fire::clear_fire(&mut entity.base);
+        }
+        let on_fire = fire::is_on_fire(&entity.base);
+        let increased = entity.base.remaining_fire_ticks > before;
+        if !on_fire && !increased {
+            entity.base.remaining_fire_ticks = 0;
+        }
+        if was_on_fire && !on_fire {
+            self.extinguish_sound(id);
+        }
+    }
+
+    fn extinguish_sound(&mut self, id: EntityId) {
+        let pitch = 1.6 + (self.rng.random::<f32>() - self.rng.random::<f32>()) * 0.4;
+        let Some(position) = self.entities.store.get(id).map(|e| e.base.position) else {
+            return;
+        };
+        let source = self.entity_source(id);
+        self.play_sound(None, position, EXTINGUISH_SOUND, source, 0.7, pitch);
+    }
+
+    fn apply_inside_effect(&mut self, id: EntityId, effect: InsideEffect) {
+        match effect {
+            InsideEffect::Freeze => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.in_powder_snow = true;
+                }
+            }
+            InsideEffect::ClearFreeze => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.set_ticks_frozen(0);
+                }
+            }
+            InsideEffect::FireIgnite => {
+                let ignite = self
+                    .entities
+                    .store
+                    .get_mut(id)
+                    .is_some_and(|e| fire::fire_ignite(&mut e.base, false, || 0));
+                if ignite {
+                    self.ignite_entity(id, fire::FIRE_SECONDS);
+                }
+            }
+            InsideEffect::InFire(damage) => {
+                self.hurt_entity(id, &DamageSource::new(DamageType::InFire), damage);
+            }
+            InsideEffect::LavaIgnite => {
+                let immune = self
+                    .entities
+                    .store
+                    .get(id)
+                    .is_none_or(|e| e.base.kind.fire_immune());
+                if !immune {
+                    self.ignite_entity(id, fire::LAVA_SECONDS);
+                }
+            }
+            InsideEffect::LavaHurt => self.lava_hurt(id),
+            InsideEffect::MeltPowderSnow(pos) => {
+                let melt = self
+                    .entities
+                    .store
+                    .get(id)
+                    .is_some_and(|e| fire::is_on_fire(&e.base))
+                    && self.config.rules.mob_griefing;
+                if melt {
+                    self.destroy_block_silently(pos);
+                }
+            }
+            InsideEffect::Extinguish => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    fire::clear_fire(&mut entity.base);
+                }
+            }
+        }
+    }
+
+    fn lava_hurt(&mut self, id: EntityId) {
+        let Some(entity) = self.entities.store.get(id) else {
+            return;
+        };
+        if entity.base.kind.fire_immune() {
+            return;
+        }
+        let silent = entity.base.is_silent();
+        let position = entity.base.position;
+        let hurt = self.hurt_entity(id, &DamageSource::new(DamageType::Lava), fire::LAVA_DAMAGE);
+        if hurt && !silent {
+            let pitch = 2.0 + self.rng.random::<f32>() * 0.4;
+            let source = self.entity_source(id);
+            self.play_sound(None, position, BURN_SOUND, source, 0.4, pitch);
+        }
+    }
+
+    pub(crate) fn ignite_player(&mut self, id: PlayerId, seconds: f32) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        let ticks = fire::seconds_to_ticks(seconds);
+        if player.vitals.fire_ticks < ticks {
+            player.vitals.fire_ticks = ticks;
+            if player.abilities().invulnerable {
+                player.vitals.fire_ticks = player.vitals.fire_ticks.min(1);
+            }
+        }
+        self.broadcast_metadata(id);
+    }
+
+    pub(crate) fn tick_player_fire(&mut self, id: PlayerId) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if player.vitals.is_dead() || player.game_mode == GameMode::Spectator {
+            return;
+        }
+        let was_burning = player.vitals.fire_ticks > 0;
+        let mut base = EntityBase::new(player.entity_id, player.profile.id.0, Kind::Player);
+        base.position = player.position;
+        base.remaining_fire_ticks = player.vitals.fire_ticks;
+        base.dimensions.height = player.height() as f32;
+        rspigot_domain::entity::fluid::update(&mut base, &self.world.chunks);
+        let burn = fire::base_tick(&mut base).burn;
+        let before = base.remaining_fire_ticks;
+        let effects = fire::inside_effects(&mut base, &self.world.chunks);
+        if let Some(player) = self.players.get_mut(&id) {
+            player.vitals.fire_ticks = base.remaining_fire_ticks;
+        }
+        if burn {
+            self.hurt(
+                id,
+                &DamageSource::new(DamageType::OnFire),
+                fire::ON_FIRE_DAMAGE,
+            );
+        }
+        for effect in effects {
+            if self.players.get(&id).is_none_or(|p| p.vitals.is_dead()) {
+                break;
+            }
+            self.apply_player_effect(id, effect);
+        }
+        let in_rain = self.is_in_rain(&base);
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        if in_rain || base.fluid.in_water {
+            player.vitals.fire_ticks = player.vitals.fire_ticks.min(0);
+        }
+        let on_fire = player.vitals.fire_ticks > 0;
+        if !on_fire && player.vitals.fire_ticks <= before {
+            player.vitals.fire_ticks = -fire::PLAYER_FIRE_IMMUNE_TICKS;
+        }
+        if was_burning != on_fire {
+            if was_burning {
+                let position = player.position;
+                let pitch = 1.6 + (self.rng.random::<f32>() - self.rng.random::<f32>()) * 0.4;
+                self.play_sound(
+                    None,
+                    position,
+                    EXTINGUISH_SOUND,
+                    rspigot_entities::SoundSource::Players,
+                    0.7,
+                    pitch,
+                );
+            }
+            self.broadcast_metadata(id);
+        }
+    }
+
+    fn apply_player_effect(&mut self, id: PlayerId, effect: InsideEffect) {
+        match effect {
+            InsideEffect::FireIgnite => {
+                let extra = self
+                    .rng
+                    .random_range(PLAYER_FIRE_TICKS.0..PLAYER_FIRE_TICKS.1);
+                let Some(player) = self.players.get_mut(&id) else {
+                    return;
+                };
+                if player.vitals.fire_ticks < 0 {
+                    player.vitals.fire_ticks += 1;
+                } else {
+                    player.vitals.fire_ticks += extra;
+                }
+                if player.vitals.fire_ticks >= 0 {
+                    self.ignite_player(id, fire::FIRE_SECONDS);
+                }
+            }
+            InsideEffect::InFire(damage) => {
+                self.hurt(id, &DamageSource::new(DamageType::InFire), damage);
+            }
+            InsideEffect::LavaIgnite => self.ignite_player(id, fire::LAVA_SECONDS),
+            InsideEffect::LavaHurt => {
+                let position = self.players.get(&id).map(|p| p.position);
+                if self.hurt(id, &DamageSource::new(DamageType::Lava), fire::LAVA_DAMAGE)
+                    && let Some(position) = position
+                {
+                    let pitch = 2.0 + self.rng.random::<f32>() * 0.4;
+                    self.play_sound(
+                        None,
+                        position,
+                        BURN_SOUND,
+                        rspigot_entities::SoundSource::Players,
+                        0.4,
+                        pitch,
+                    );
+                }
+            }
+            InsideEffect::MeltPowderSnow(pos) => {
+                if self
+                    .players
+                    .get(&id)
+                    .is_some_and(|p| p.vitals.fire_ticks > 0)
+                {
+                    self.destroy_block_silently(pos);
+                }
+            }
+            InsideEffect::Extinguish => {
+                if let Some(player) = self.players.get_mut(&id) {
+                    player.vitals.fire_ticks = player.vitals.fire_ticks.min(0);
+                }
+            }
+            InsideEffect::Freeze | InsideEffect::ClearFreeze => {}
+        }
+    }
+
+    pub fn entity_fire_ticks(&self, id: EntityId) -> Option<i32> {
+        self.entities
+            .store
+            .get(id)
+            .map(|e| e.base.remaining_fire_ticks)
+    }
+
+    pub fn player_fire_ticks(&self, id: PlayerId) -> Option<i32> {
+        self.players.get(&id).map(|p| p.vitals.fire_ticks)
+    }
+
+    pub(crate) fn entity_position(&self, id: EntityId) -> Option<Vec3> {
+        self.entities.store.get(id).map(|e| e.base.position)
+    }
+}

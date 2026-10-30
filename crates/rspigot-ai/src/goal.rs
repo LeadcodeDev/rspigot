@@ -170,6 +170,35 @@ impl<G> GoalSelector<G> {
         &self.goals
     }
 
+    pub fn goals_mut(&mut self) -> impl Iterator<Item = &mut G> {
+        self.goals.iter_mut().map(|wrapped| &mut wrapped.goal)
+    }
+
+    pub fn remove_goals<C>(&mut self, context: &mut C, remove: impl Fn(&G) -> bool)
+    where
+        G: Goal<C>,
+    {
+        for wrapped in &mut self.goals {
+            if remove(&wrapped.goal) {
+                wrapped.stop(context);
+            }
+        }
+        let mut mapping = Vec::with_capacity(self.goals.len());
+        let mut kept = 0;
+        for wrapped in &self.goals {
+            if remove(&wrapped.goal) {
+                mapping.push(None);
+            } else {
+                mapping.push(Some(kept));
+                kept += 1;
+            }
+        }
+        for slot in &mut self.locked {
+            *slot = slot.and_then(|index| mapping[index]);
+        }
+        self.goals.retain(|wrapped| !remove(&wrapped.goal));
+    }
+
     pub fn locked(&self, flag: Flag) -> Option<&WrappedGoal<G>> {
         self.locked[flag.index()].map(|index| &self.goals[index])
     }
