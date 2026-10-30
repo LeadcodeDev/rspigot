@@ -1,0 +1,27 @@
+[package]
+name = "rspigot-network"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-core = { workspace = true }
+rspigot-data = { workspace = true }
+rspigot-domain = { workspace = true }
+rspigot-nbt = { workspace = true }
+rspigot-protocol = { workspace = true }
+bytes = "1"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+quick_cache = "0.7"
+rand = "0.9"
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["net", "io-util", "rt", "rt-multi-thread", "sync", "time", "macros"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+rustc-hash = "2"
+
+[lints]
+workspace = true
