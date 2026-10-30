@@ -11,7 +11,7 @@ use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
-use crate::loot::{self, LootContext};
+use crate::loot::{self, LootContext, LootEntity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -78,6 +78,11 @@ impl<L: ClientLink> Server<L> {
             }
             PlayerInput::CreativeSlot { slot, stack } => self.handle_creative_slot(id, slot, stack),
             PlayerInput::Swing(hand) => {
+                if let Some(player) = self.players.get_mut(&id)
+                    && !player.vitals.is_dead()
+                {
+                    player.vitals.attack_ticker = 0;
+                }
                 if let Some(entity) = self.players.get(&id).map(|p| p.entity_id) {
                     let animation = match hand {
                         Hand::Main => Animation::SwingMainArm,
@@ -152,6 +157,14 @@ impl<L: ClientLink> Server<L> {
                     player.menu = InventoryMenu::synced(&player.inventory);
                 }
             }
+            PlayerInput::ClientTickEnd => {
+                if let Some(player) = self.players.get_mut(&id) {
+                    if !player.moved_this_tick {
+                        player.known_movement = Vec3::ZERO;
+                    }
+                    player.moved_this_tick = false;
+                }
+            }
             PlayerInput::Attack(target) => self.handle_attack(id, target),
             PlayerInput::Interact { .. } => {}
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
@@ -201,6 +214,8 @@ impl<L: ClientLink> Server<L> {
                 });
                 return;
             }
+            player.known_movement = target - from;
+            player.moved_this_tick = true;
             player.position = target;
         }
         if let Some(rotation) = rotation {
@@ -356,10 +371,8 @@ impl<L: ClientLink> Server<L> {
         if !loot::tool_is_correct(tool.as_ref(), state) {
             return;
         }
-        let context = LootContext {
-            state,
-            tool: tool.as_ref(),
-        };
+        let breaker = LootEntity::of(rspigot_entities::EntityKind::Player);
+        let context = LootContext::block(state, tool.as_ref(), Some(&breaker));
         for stack in loot::block_drops(&context, &mut self.rng) {
             self.spawn_item(pos, stack);
         }

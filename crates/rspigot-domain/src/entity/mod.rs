@@ -5,9 +5,11 @@ pub mod falling;
 pub mod fluid;
 pub mod item;
 pub mod living;
+pub mod orb;
 pub mod physics;
 #[cfg(test)]
 mod physics_tests;
+pub mod reward;
 pub mod save;
 mod store;
 pub mod tracker;
@@ -25,6 +27,7 @@ pub use data::{Pose, SyncedData, SyncedValue};
 pub use falling::FallingState;
 pub use item::ItemState;
 pub use living::{LivingState, MobState};
+pub use orb::OrbState;
 pub use physics::BlockView;
 pub use store::{DuplicateUuid, Entities};
 pub use tracker::EntityTracker;
@@ -35,6 +38,7 @@ pub enum EntityState {
     Item(ItemState),
     Falling(FallingState),
     Living(Box<LivingState>),
+    Orb(OrbState),
     Inert(Compound),
 }
 
@@ -69,6 +73,18 @@ impl Entity {
         match &mut self.state {
             EntityState::Living(living) => Some(living),
             _ => None,
+        }
+    }
+
+    pub fn is_baby(&self) -> bool {
+        let kind = self.base.kind;
+        if !kind.sounds().is_some_and(|sounds| sounds.can_be_baby) {
+            return false;
+        }
+        if kind.extends("AgeableMob") {
+            self.extra.get_i32("Age").unwrap_or(0) < 0
+        } else {
+            self.extra.get_bool("IsBaby").unwrap_or(false)
         }
     }
 

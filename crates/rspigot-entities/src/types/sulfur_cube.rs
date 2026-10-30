@@ -1,4 +1,7 @@
-use crate::{EntityType, EntityTypeId, MobCategory};
+use crate::{
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    VoicePitch,
+};
 
 pub struct SulfurCube;
 
@@ -59,5 +62,41 @@ impl EntityType for SulfurCube {
         ("minecraft:water_movement_efficiency", 0.0),
         ("minecraft:waypoint_transmit_range", 0.0),
     ];
+    const SOUNDS: Option<CreatureSounds> = Some(CreatureSounds {
+        hurt: CreatureSound::Varied(&[
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+            Some("minecraft:entity.small_sulfur_cube.hurt"),
+        ]),
+        death: CreatureSound::Varied(&[
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+            Some("minecraft:entity.small_sulfur_cube.death"),
+        ]),
+        small_fall: "minecraft:entity.generic.small_fall",
+        big_fall: "minecraft:entity.generic.big_fall",
+        volume: SoundVolume::PerSize(0.4),
+        pitch: VoicePitch::Standard,
+        source: SoundSource::Neutral,
+        can_be_baby: true,
+    });
     type Behavior = crate::family::Plain;
 }

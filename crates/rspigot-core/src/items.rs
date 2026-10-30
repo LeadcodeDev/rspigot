@@ -168,6 +168,14 @@ impl<L: ClientLink> Server<L> {
         self.remove_entity(id, RemovalReason::Discarded);
     }
 
+    pub fn ground_items(&self) -> Vec<(EntityId, ItemStack)> {
+        self.entities
+            .store
+            .iter()
+            .filter_map(|e| item::stack(&e.base).map(|stack| (e.base.id, stack.clone())))
+            .collect()
+    }
+
     pub fn items_on_ground(&self) -> usize {
         self.entities
             .store

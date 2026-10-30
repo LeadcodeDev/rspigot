@@ -11,11 +11,15 @@ use super::physics::{
     has_tag, move_entity, movement_affecting_pos,
 };
 use crate::attribute;
+use crate::combat::{CombatEntry, CombatTracker};
+use crate::damage::{self, DamageTag, DamageType, java_clamp};
 use crate::effect::{
     ActiveEffects, AttributeModifier, AttributeOperation, AttributeState, EffectId, EffectInstance,
 };
 use crate::item::ItemStack;
-use crate::{BlockPos, Vec3, mth};
+use crate::player::PlayerId;
+use crate::text::Component;
+use crate::{BlockPos, EntityId, Vec3, mth};
 
 pub const DATA_LIVING_FLAGS: u8 = 8;
 pub const DATA_HEALTH: u8 = 9;
@@ -29,6 +33,21 @@ pub const DATA_SPIDER_FLAGS: u8 = 16;
 pub const SPIDER_FLAG_CLIMBING: u8 = 1;
 pub const DEATH_DURATION: i32 = 20;
 pub const HURT_DURATION: i32 = 10;
+pub const DAMAGE_COOLDOWN: i32 = 20;
+pub const PLAYER_HURT_MEMORY: i32 = 100;
+pub const MOB_HURT_MEMORY: i32 = 100;
+pub const ARMOR: &str = "minecraft:armor";
+pub const ARMOR_TOUGHNESS: &str = "minecraft:armor_toughness";
+pub const MAX_ABSORPTION: &str = "minecraft:max_absorption";
+pub const KNOCKBACK_RESISTANCE: &str = "minecraft:knockback_resistance";
+pub const ATTACK_DAMAGE: &str = "minecraft:attack_damage";
+pub const ATTACK_KNOCKBACK: &str = "minecraft:attack_knockback";
+pub const SAFE_FALL_DISTANCE: &str = "minecraft:safe_fall_distance";
+pub const FALL_DAMAGE_MULTIPLIER: &str = "minecraft:fall_damage_multiplier";
+const COOLDOWN_THRESHOLD: f32 = 10.0;
+const HELMET_FACTOR: f32 = 0.75;
+const FALL_DAMAGE_IMMUNE: &str = "minecraft:fall_damage_immune";
+const ENTITY_TYPES: &str = "minecraft:entity_type";
 pub const DEFAULT_DROP_CHANCE: f32 = 0.085;
 pub const RANDOM_SPAWN_BONUS: &str = "minecraft:random_spawn_bonus";
 pub const MAX_HEALTH: &str = "minecraft:max_health";
@@ -271,6 +290,20 @@ impl Default for MobState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DamageMemory {
+    pub cooldown: i32,
+    pub hurt_duration: i32,
+    pub last_hurt_by_mob: Option<EntityId>,
+    pub last_hurt_by_mob_at: i32,
+    pub last_hurt_by_player: Option<PlayerId>,
+    pub player_memory: i32,
+    pub last_hurt_mob: Option<EntityId>,
+    pub last_hurt_mob_at: i32,
+    pub last_source: Option<(DamageType, i64)>,
+    pub combat: CombatTracker,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LivingState {
     pub absorption: f32,
@@ -291,14 +324,36 @@ pub struct LivingState {
     pub no_jump_delay: i32,
     pub no_action_time: i32,
     pub last_hurt: f32,
+    pub damage: DamageMemory,
     pub mob: Option<MobState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HurtOutcome {
     Ignored,
-    Hurt,
-    Died,
+    Partial,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HurtSource<'a> {
+    pub kind: DamageType,
+    pub causing: Option<&'a Component>,
+    pub direct: Option<&'a Component>,
+    pub living_cause: bool,
+    pub creative_attacker: bool,
+}
+
+impl HurtSource<'_> {
+    pub const fn plain(kind: DamageType) -> Self {
+        Self {
+            kind,
+            causing: None,
+            direct: None,
+            living_cause: false,
+            creative_attacker: false,
+        }
+    }
 }
 
 pub fn slot_index(slot: EquipmentSlot) -> usize {
@@ -351,6 +406,7 @@ impl LivingState {
             no_jump_delay: 0,
             no_action_time: 0,
             last_hurt: 0.0,
+            damage: DamageMemory::default(),
             mob: is_mob.then(MobState::default),
         };
         let max = state.max_health() as f32;
@@ -469,33 +525,142 @@ pub fn finalize_spawn(
     set_left_handed(base, next_float() < LEFT_HANDED_CHANCE);
 }
 
+pub fn is_dead_or_dying(base: &EntityBase, living: &LivingState) -> bool {
+    living.dead || health(base) <= 0.0
+}
+
+pub fn fall_damage_immune(kind: rspigot_entities::EntityKind) -> bool {
+    rspigot_data::tags::tag(ENTITY_TYPES, FALL_DAMAGE_IMMUNE)
+        .is_some_and(|ids| ids.binary_search(&u32::from(kind.id().0)).is_ok())
+}
+
+pub fn is_invulnerable(base: &EntityBase) -> bool {
+    base.invulnerable || base.invulnerable_time > 0
+}
+
+pub fn is_invulnerable_to(base: &EntityBase, source: &HurtSource<'_>) -> bool {
+    let kind = source.kind;
+    base.is_removed()
+        || (is_invulnerable(base)
+            && !kind.is(DamageTag::BypassesInvulnerability)
+            && !source.creative_attacker)
+        || (kind.is(DamageTag::IsFire) && base.kind.fire_immune())
+        || (kind.is(DamageTag::IsFall) && fall_damage_immune(base.kind))
+}
+
+fn after_magic(living: &LivingState, kind: DamageType, amount: f32) -> f32 {
+    if kind.is(DamageTag::BypassesEffects) {
+        return amount;
+    }
+    let mut amount = amount;
+    if let Some(resistance) = living.effect("minecraft:resistance")
+        && !kind.is(DamageTag::BypassesResistance)
+    {
+        amount = damage::after_resistance(amount, resistance.amplifier);
+    }
+    if amount <= 0.0 { 0.0 } else { amount }
+}
+
+pub fn actually_hurt(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    source: &HurtSource<'_>,
+    amount: f32,
+    now: u64,
+) -> f32 {
+    if is_invulnerable_to(base, source) {
+        return 0.0;
+    }
+    let kind = source.kind;
+    let mut amount = amount;
+    if !kind.is(DamageTag::BypassesArmor) {
+        let armor = living.attribute(ARMOR).floor() as f32;
+        let toughness = living.attribute(ARMOR_TOUGHNESS) as f32;
+        amount = damage::after_armor(amount, armor, toughness);
+    }
+    amount = after_magic(living, kind, amount);
+    let max_absorption = living.attribute(MAX_ABSORPTION) as f32;
+    let before = amount;
+    amount = (amount - living.absorption).max(0.0);
+    living.absorption = java_clamp(living.absorption - (before - amount), 0.0, max_absorption);
+    if amount == 0.0 {
+        return 0.0;
+    }
+    let alive = health(base) > 0.0;
+    living.damage.combat.record(
+        CombatEntry {
+            kind,
+            causing: source.causing.cloned(),
+            direct: source.direct.cloned(),
+            living_cause: source.living_cause,
+            damage: amount,
+            fall_distance: base.fall_distance as f32,
+            location: None,
+        },
+        now,
+        alive,
+    );
+    let current = health(base);
+    set_health(base, living, current - amount);
+    living.absorption = java_clamp(living.absorption - amount, 0.0, max_absorption);
+    amount
+}
+
 pub fn hurt(
     base: &mut EntityBase,
     living: &mut LivingState,
+    source: &HurtSource<'_>,
     amount: f32,
-    bypasses_invulnerability: bool,
+    now: u64,
 ) -> HurtOutcome {
-    if base.is_removed() || living.dead || health(base) <= 0.0 {
+    if base.is_removed() || is_dead_or_dying(base, living) || is_invulnerable_to(base, source) {
         return HurtOutcome::Ignored;
     }
-    if base.invulnerable && !bypasses_invulnerability {
+    let kind = source.kind;
+    if kind.is(DamageTag::IsFire) && living.has_effect("minecraft:fire_resistance") {
         return HurtOutcome::Ignored;
     }
     living.no_action_time = 0;
-    let amount = if amount.is_finite() {
-        amount.max(0.0)
+    let mut amount = if amount < 0.0 { 0.0 } else { amount };
+    if kind.is(DamageTag::DamagesHelmet) && living.equipment(EquipmentSlot::Head).is_some() {
+        amount *= HELMET_FACTOR;
+    }
+    if !amount.is_finite() {
+        amount = f32::MAX;
+    }
+    if living.damage.cooldown as f32 > COOLDOWN_THRESHOLD && !kind.is(DamageTag::BypassesCooldown) {
+        if amount <= living.last_hurt {
+            return HurtOutcome::Ignored;
+        }
+        actually_hurt(base, living, source, amount - living.last_hurt, now);
+        living.last_hurt = amount;
+        HurtOutcome::Partial
     } else {
-        f32::MAX
-    };
-    living.last_hurt = amount;
-    living.hurt_time = HURT_DURATION;
-    let current = health(base);
-    set_health(base, living, current - amount);
-    if health(base) <= 0.0 {
-        die(base, living);
-        HurtOutcome::Died
-    } else {
-        HurtOutcome::Hurt
+        living.last_hurt = amount;
+        living.damage.cooldown = DAMAGE_COOLDOWN;
+        actually_hurt(base, living, source, amount, now);
+        living.damage.hurt_duration = HURT_DURATION;
+        living.hurt_time = HURT_DURATION;
+        HurtOutcome::Full
+    }
+}
+
+pub fn remember_attacker(
+    living: &mut LivingState,
+    kind: DamageType,
+    mob: Option<EntityId>,
+    player: Option<PlayerId>,
+    tick_count: i32,
+) {
+    if let Some(mob) = mob
+        && !kind.is(DamageTag::NoAnger)
+    {
+        living.damage.last_hurt_by_mob = Some(mob);
+        living.damage.last_hurt_by_mob_at = tick_count;
+    }
+    if let Some(player) = player {
+        living.damage.last_hurt_by_player = Some(player);
+        living.damage.player_memory = PLAYER_HURT_MEMORY;
     }
 }
 
@@ -505,6 +670,23 @@ pub fn die(base: &mut EntityBase, living: &mut LivingState) {
     }
     living.dead = true;
     base.set_pose(Pose::Dying);
+}
+
+pub fn fall_damage(
+    base: &EntityBase,
+    living: &mut LivingState,
+    distance: f64,
+    multiplier: f32,
+) -> i32 {
+    if fall_damage_immune(base.kind) {
+        return 0;
+    }
+    damage::fall_damage(
+        distance,
+        multiplier,
+        living.attribute(SAFE_FALL_DISTANCE),
+        living.attribute(FALL_DAMAGE_MULTIPLIER),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -536,11 +718,25 @@ pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick 
     if base.invulnerable_time > 0 {
         base.invulnerable_time -= 1;
     }
-    if health(base) <= 0.0 {
+    if living.damage.cooldown > 0 {
+        living.damage.cooldown -= 1;
+    }
+    if is_dead_or_dying(base, living) {
         living.death_time += 1;
         if living.death_time >= DEATH_DURATION && !base.is_removed() {
             outcome.removed = true;
         }
+    }
+    let memory = &mut living.damage;
+    if memory.player_memory > 0 {
+        memory.player_memory -= 1;
+    } else {
+        memory.last_hurt_by_player = None;
+    }
+    if memory.last_hurt_by_mob.is_some()
+        && base.tick_count - memory.last_hurt_by_mob_at > MOB_HURT_MEMORY
+    {
+        memory.last_hurt_by_mob = None;
     }
     let expired = living.effects.tick();
     for effect in &expired {

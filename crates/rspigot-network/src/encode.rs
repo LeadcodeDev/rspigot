@@ -7,7 +7,7 @@ use rspigot_core::commands::{
 use rspigot_core::events::{
     Abilities, Animation, ClientEvent, EntityKind, EntityStatus, EquipmentSlot as CoreSlot,
     GameEvent as CoreGameEvent, MetadataValue, MoveDelta, Movement, PlayerListEntry,
-    Pose as CorePose, PositionPath as CorePath, SpawnInfo,
+    Pose as CorePose, PositionPath as CorePath, SoundSource as CoreSoundSource, SpawnInfo,
 };
 use rspigot_domain::chunk::{
     ChunkColumn, HeightmapKind as DomainHeightmap, LightArray as DomainLight,
@@ -38,12 +38,13 @@ use rspigot_protocol::play::entity::{
 };
 use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue};
 use rspigot_protocol::play::player::{CommonPlayerSpawnInfo, PlayerInfoActions, PlayerInfoEntry};
-use rspigot_protocol::play::slot::ItemStack as WireStack;
+use rspigot_protocol::play::slot::{ComponentValue, ItemStack as WireStack};
 use rspigot_protocol::play::types::{
     ByteBitSet, ChunkPos as WireChunkPos, Difficulty as WireDifficulty, GameMode as WireGameMode,
     GlobalPos, Hand as WireHand, Holder, LpVec3, Pose as WirePose, PositionMoveRotation, Relatives,
-    Vec3 as WireVec3,
+    SoundSource as WireSoundSource, Vec3 as WireVec3,
 };
+use rspigot_protocol::play::wire::write_var;
 use rspigot_protocol::play::world::{ClockState, ClockUpdate, GameEventKind};
 use rspigot_protocol::types::{ProfileProperty, Text};
 use rspigot_protocol::{Encode, Packet, write_packet};
@@ -109,10 +110,57 @@ fn difficulty(d: DomainDifficulty) -> WireDifficulty {
     }
 }
 
+fn component_type(name: &str) -> Option<i32> {
+    rspigot_data::registries::static_index("minecraft:data_component_type", name)
+        .and_then(|id| i32::try_from(id).ok())
+}
+
+fn optional_absent(out: &mut Vec<u8>) {
+    false.encode(out);
+}
+
+fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValue> {
+    let mut data = Vec::new();
+    match name {
+        "minecraft:damage" | "minecraft:ominous_bottle_amplifier" => {
+            let value = i32::try_from(value.as_i64()?).ok()?;
+            write_var(value, &mut data);
+        }
+        "minecraft:potion_contents" => {
+            let potion = value.as_compound()?.get_str("potion");
+            match potion.and_then(|p| rspigot_data::registries::static_index("minecraft:potion", p))
+            {
+                Some(id) => {
+                    true.encode(&mut data);
+                    write_var(i32::try_from(id).ok()?, &mut data);
+                }
+                None => optional_absent(&mut data),
+            }
+            optional_absent(&mut data);
+            write_var(0, &mut data);
+            optional_absent(&mut data);
+        }
+        _ => return None,
+    }
+    Some(ComponentValue {
+        type_id: component_type(name)?,
+        data,
+    })
+}
+
 pub fn stack(slot: &Slot) -> WireStack {
     match slot {
-        Some(ItemStack { item, count, .. }) => {
-            WireStack::new(i32::from(item.0), i32::from(count.get()))
+        Some(ItemStack {
+            item,
+            count,
+            components,
+        }) => {
+            let mut wire = WireStack::new(i32::from(item.0), i32::from(count.get()));
+            wire.components.added = components
+                .iter()
+                .filter_map(|(name, value)| component_value(name, value))
+                .collect();
+            wire
         }
         None => WireStack::EMPTY,
     }
@@ -185,6 +233,35 @@ fn entity_type(kind: EntityKind) -> i32 {
         EntityKind::Other(id) => return i32::from(id),
     };
     rspigot_data::registries::static_index("minecraft:entity_type", name).map_or(0, |id| id as i32)
+}
+
+fn sound_source(source: CoreSoundSource) -> WireSoundSource {
+    match source {
+        CoreSoundSource::Master => WireSoundSource::Master,
+        CoreSoundSource::Music => WireSoundSource::Music,
+        CoreSoundSource::Records => WireSoundSource::Records,
+        CoreSoundSource::Weather => WireSoundSource::Weather,
+        CoreSoundSource::Blocks => WireSoundSource::Blocks,
+        CoreSoundSource::Hostile => WireSoundSource::Hostile,
+        CoreSoundSource::Neutral => WireSoundSource::Neutral,
+        CoreSoundSource::Players => WireSoundSource::Players,
+        CoreSoundSource::Ambient => WireSoundSource::Ambient,
+        CoreSoundSource::Voice => WireSoundSource::Voice,
+        CoreSoundSource::Ui => WireSoundSource::Ui,
+    }
+}
+
+fn equipment_break_event(slot: CoreSlot) -> i8 {
+    match slot {
+        CoreSlot::MainHand => 47,
+        CoreSlot::OffHand => 48,
+        CoreSlot::Head => 49,
+        CoreSlot::Chest => 50,
+        CoreSlot::Legs => 51,
+        CoreSlot::Feet => 52,
+        CoreSlot::Body => 65,
+        CoreSlot::Saddle => 68,
+    }
 }
 
 fn pose(p: CorePose) -> WirePose {
@@ -1024,6 +1101,7 @@ impl Encoder {
                     event: match status {
                         EntityStatus::Death => cb::EntityEvent::DEATH,
                         EntityStatus::Poof => cb::EntityEvent::POOF,
+                        EntityStatus::EquipmentBreak(slot) => equipment_break_event(*slot),
                     },
                 },
             ),
@@ -1088,6 +1166,29 @@ impl Encoder {
                     attributes: attributes.iter().filter_map(attribute_snapshot).collect(),
                 },
             ),
+            ClientEvent::Sound {
+                sound,
+                source,
+                position: at,
+                volume,
+                pitch,
+                seed,
+            } => match rspigot_data::registries::static_index("minecraft:sound_event", sound)
+                .and_then(|id| i32::try_from(id).ok())
+            {
+                Some(id) => Self::queue(
+                    writer,
+                    &cb::Sound::at(
+                        Holder::Reference(id),
+                        sound_source(*source),
+                        (at.x, at.y, at.z),
+                        *volume,
+                        *pitch,
+                        *seed,
+                    ),
+                ),
+                None => Ok(()),
+            },
             ClientEvent::Disconnect(_) => Ok(()),
         }
     }
@@ -1406,6 +1507,166 @@ mod tests {
                 stack: None,
             }),
             vec![(id::CONTAINER_SET_SLOT, vec![0, 8, 0, 0, 0])]
+        );
+    }
+
+    #[test]
+    fn positional_sound_golden_bytes() {
+        let event = ClientEvent::Sound {
+            sound: "minecraft:entity.cow.hurt",
+            source: CoreSoundSource::Neutral,
+            position: Vec3::new(0.5, 64.0, -2.56),
+            volume: 0.4,
+            pitch: 1.0,
+            seed: 0x0102_0304_0506_0708,
+        };
+        let mut expected = vec![0xC4, 0x03, 6];
+        expected.extend_from_slice(&4i32.to_be_bytes());
+        expected.extend_from_slice(&512i32.to_be_bytes());
+        expected.extend_from_slice(&(-20i32).to_be_bytes());
+        expected.extend_from_slice(&0.4f32.to_be_bytes());
+        expected.extend_from_slice(&1.0f32.to_be_bytes());
+        expected.extend_from_slice(&0x0102_0304_0506_0708i64.to_be_bytes());
+        assert_eq!(encode(event), vec![(id::SOUND, expected)]);
+        let unknown = ClientEvent::Sound {
+            sound: "minecraft:nope",
+            source: CoreSoundSource::Neutral,
+            position: Vec3::ZERO,
+            volume: 1.0,
+            pitch: 1.0,
+            seed: 0,
+        };
+        assert!(encode(unknown).is_empty());
+    }
+
+    #[test]
+    fn entity_events_golden_bytes() {
+        let death = ClientEvent::EntityStatus {
+            entity: EntityId(0x0102),
+            status: EntityStatus::Death,
+        };
+        assert_eq!(encode(death), vec![(id::ENTITY_EVENT, vec![0, 0, 1, 2, 3])]);
+        let poof = ClientEvent::EntityStatus {
+            entity: EntityId(7),
+            status: EntityStatus::Poof,
+        };
+        assert_eq!(encode(poof), vec![(id::ENTITY_EVENT, vec![0, 0, 0, 7, 60])]);
+        let broke = ClientEvent::EntityStatus {
+            entity: EntityId(7),
+            status: EntityStatus::EquipmentBreak(CoreSlot::MainHand),
+        };
+        assert_eq!(
+            encode(broke),
+            vec![(id::ENTITY_EVENT, vec![0, 0, 0, 7, 47])]
+        );
+        let body = ClientEvent::EntityStatus {
+            entity: EntityId(7),
+            status: EntityStatus::EquipmentBreak(CoreSlot::Body),
+        };
+        assert_eq!(encode(body), vec![(id::ENTITY_EVENT, vec![0, 0, 0, 7, 65])]);
+    }
+
+    fn named(name: &str) -> rspigot_domain::ItemId {
+        let id = rspigot_data::registries::static_index("minecraft:item", name).unwrap();
+        rspigot_domain::ItemId(u16::try_from(id).unwrap())
+    }
+
+    #[test]
+    fn damaged_sword_slot_carries_the_damage_component() {
+        let mut sword = ItemStack::new(named("minecraft:diamond_sword"), std::num::NonZeroU8::MIN);
+        sword.components.insert("minecraft:damage", 12);
+        let event = ClientEvent::InventorySlot {
+            state_id: 3,
+            slot: 36,
+            stack: Some(sword),
+        };
+        assert_eq!(
+            encode(event),
+            vec![(
+                id::CONTAINER_SET_SLOT,
+                vec![0, 3, 0, 36, 1, 0x9A, 0x08, 1, 0, 3, 12]
+            )]
+        );
+    }
+
+    #[test]
+    fn potion_and_ominous_components_golden_bytes() {
+        let mut arrow = ItemStack::new(named("minecraft:tipped_arrow"), std::num::NonZeroU8::MIN);
+        arrow.components.insert(
+            "minecraft:potion_contents",
+            rspigot_nbt::Compound::new().with("potion", "minecraft:poison"),
+        );
+        let wire = stack(&Some(arrow));
+        let mut body = Vec::new();
+        wire.encode(&mut body);
+        assert_eq!(body, vec![1, 0xA4, 0x0B, 1, 0, 53, 1, 28, 0, 0, 0]);
+        let mut bottle =
+            ItemStack::new(named("minecraft:ominous_bottle"), std::num::NonZeroU8::MIN);
+        bottle
+            .components
+            .insert("minecraft:ominous_bottle_amplifier", 4);
+        let mut body = Vec::new();
+        stack(&Some(bottle)).encode(&mut body);
+        assert_eq!(body, vec![1, 0xF9, 0x0C, 1, 0, 65, 4]);
+        let mut unknown = ItemStack::new(named("minecraft:stick"), std::num::NonZeroU8::MIN);
+        unknown.components.insert("minecraft:custom_data", 1);
+        let mut body = Vec::new();
+        stack(&Some(unknown)).encode(&mut body);
+        assert_eq!(body[body.len() - 2..], [0, 0]);
+    }
+
+    #[test]
+    fn experience_and_pickup_golden_bytes() {
+        let xp = ClientEvent::Experience {
+            progress: 0.5,
+            level: 3,
+            total: 300,
+        };
+        let mut expected = 0.5f32.to_be_bytes().to_vec();
+        expected.extend_from_slice(&[3, 0xAC, 0x02]);
+        assert_eq!(encode(xp), vec![(id::SET_EXPERIENCE, expected)]);
+        let pickup = ClientEvent::ItemPickup {
+            collected: EntityId(300),
+            collector: EntityId(2),
+            amount: 1,
+        };
+        assert_eq!(
+            encode(pickup),
+            vec![(id::TAKE_ITEM_ENTITY, vec![0xAC, 0x02, 2, 1])]
+        );
+    }
+
+    #[test]
+    fn orb_spawn_golden_bytes() {
+        let event = ClientEvent::SpawnEntity {
+            entity: EntityId(5),
+            uuid: uuid::Uuid::from_u128(1),
+            kind: EntityKind::Other(50),
+            position: Vec3::new(1.0, 2.0, 3.0),
+            rotation: Rotation::new(0.0, 0.0),
+            head_yaw: 0.0,
+            data: 0,
+            velocity: Vec3::ZERO,
+        };
+        let mut expected = vec![5];
+        expected.extend_from_slice(&0u64.to_be_bytes());
+        expected.extend_from_slice(&1u64.to_be_bytes());
+        expected.push(50);
+        expected.extend_from_slice(&1.0f64.to_be_bytes());
+        expected.extend_from_slice(&2.0f64.to_be_bytes());
+        expected.extend_from_slice(&3.0f64.to_be_bytes());
+        expected.extend_from_slice(&[0, 0, 0, 0, 0]);
+        assert_eq!(encode(event), vec![(id::ADD_ENTITY, expected)]);
+        let value = ClientEvent::EntityMetadata {
+            entity: EntityId(5),
+            entries: vec![MetadataEntry {
+                index: 8,
+                value: MetadataValue::VarInt(17),
+            }],
+        };
+        assert_eq!(
+            encode(value),
+            vec![(id::SET_ENTITY_DATA, vec![5, 8, 1, 17, 0xFF])]
         );
     }
 }

@@ -1,6 +1,28 @@
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.Instruction;
+import java.lang.classfile.Label;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.BranchInstruction;
+import java.lang.classfile.instruction.ConstantInstruction;
+import java.lang.classfile.instruction.ConvertInstruction;
+import java.lang.classfile.instruction.FieldInstruction;
+import java.lang.classfile.instruction.InvokeInstruction;
+import java.lang.classfile.instruction.LabelTarget;
+import java.lang.classfile.instruction.LoadInstruction;
+import java.lang.classfile.instruction.NewObjectInstruction;
+import java.lang.classfile.instruction.OperatorInstruction;
+import java.lang.classfile.instruction.ReturnInstruction;
+import java.lang.classfile.instruction.StackInstruction;
+import java.lang.classfile.instruction.TypeCheckInstruction;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -8,7 +30,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +46,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
@@ -46,7 +75,8 @@ public final class EntityDump {
         }
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        bindComponents();
+        HolderLookup.Provider lookup = bindComponents();
+        Sounds sounds = new Sounds(lookup);
         Map<EntityType<?>, Class<?>> classes = entityClasses();
         Map<EntityType<?>, Integer> eggs = spawnEggs();
         Path out = Path.of(args[0]).toAbsolutePath();
@@ -62,19 +92,20 @@ public final class EntityDump {
             json.name("attributes");
             writeAttributes(json);
             json.name("entity_types");
-            writeEntityTypes(json, classes, eggs);
+            writeEntityTypes(json, classes, eggs, sounds);
             json.endObject();
         }
         Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         System.err.println("wrote " + out);
     }
 
-    private static void bindComponents() {
+    private static HolderLookup.Provider bindComponents() {
         HolderLookup.Provider lookup = VanillaRegistries.createWorldLookup();
         BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(lookup).forEach(DataComponentInitializers.PendingComponents::apply);
         if (!BuiltInRegistries.ITEM.wrapAsHolder(BuiltInRegistries.ITEM.byId(1)).areComponentsBound()) {
             throw new IllegalStateException("item components not bound");
         }
+        return lookup;
     }
 
     private static Map<EntityType<?>, Class<?>> entityClasses() throws IllegalAccessException {
@@ -181,7 +212,7 @@ public final class EntityDump {
     }
 
     @SuppressWarnings("unchecked")
-    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs) throws IOException, IllegalAccessException {
+    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs, Sounds sounds) throws IOException, IllegalAccessException {
         json.beginArray();
         for (int id = 0; id < BuiltInRegistries.ENTITY_TYPE.size(); id++) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.byId(id);
@@ -248,8 +279,364 @@ public final class EntityDump {
                 }
             }
             json.endArray();
+            if (living) {
+                json.name("sounds");
+                sounds.write(json, entityClass);
+            }
             json.endObject();
         }
         json.endArray();
+    }
+
+    static final class Sounds {
+        private static final String SOUND_EVENT = "Lnet/minecraft/sounds/SoundEvent;";
+        private static final String DAMAGE_SOURCE = "Lnet/minecraft/world/damagesource/DamageSource;";
+        private static final Object THIS = new Object();
+        private static final Object SOURCE = new Object();
+        private static final Object SOURCE_TYPE = new Object();
+        private static final Map<String, String> SOUND_VARIANT_REGISTRIES = Map.of(
+            "Cow", "cow_sound_variant",
+            "Pig", "pig_sound_variant",
+            "Chicken", "chicken_sound_variant",
+            "Cat", "cat_sound_variant",
+            "Wolf", "wolf_sound_variant");
+        private static final Map<String, Boolean> UNMODELED_FLAGS = Map.of(
+            "isScared", false,
+            "isClosed", true,
+            "isScreamingGoat", false,
+            "isHeartBound", false,
+            "canArmorAbsorb", false);
+        private static final Map<String, String> UNMODELED_ENUMS = Map.of(
+            "getWeatherState", "UNAFFECTED",
+            "getVariant", "DEFAULT",
+            "effects", "HURT");
+        private static final Map<String, String> PITCH_RULES = Map.of(
+            "LivingEntity", "standard",
+            "Player", "fixed",
+            "HappyGhast", "fixed",
+            "Bat", "bat",
+            "ZombieVillager", "zombie_villager",
+            "Parrot", "parrot");
+        private static final String[] WATER_STATES = {"dry", "water", "submerged"};
+
+        private final HolderLookup.Provider lookup;
+        private final Map<Class<?>, ClassModel> models = new HashMap<>();
+
+        Sounds(HolderLookup.Provider lookup) {
+            this.lookup = lookup;
+        }
+
+        void write(JsonWriter json, Class<?> entityClass) throws IOException {
+            json.beginObject();
+            json.name("hurt");
+            writeSounds(json, entityClass, "getHurtSound", "(" + DAMAGE_SOURCE + ")" + SOUND_EVENT);
+            json.name("death");
+            writeSounds(json, entityClass, "getDeathSound", "()" + SOUND_EVENT);
+            Object fall = evaluate(entityClass, "getFallSounds", "()Lnet/minecraft/world/entity/LivingEntity$Fallsounds;", state(false, 2, "dry"));
+            json.name("small_fall").value(soundName((SoundEvent) reflect(fall, "net/minecraft/world/entity/LivingEntity$Fallsounds", "small", new Object[0])));
+            json.name("big_fall").value(soundName((SoundEvent) reflect(fall, "net/minecraft/world/entity/LivingEntity$Fallsounds", "big", new Object[0])));
+            json.name("volume").beginObject();
+            for (boolean baby : new boolean[] {false, true}) {
+                for (int size = 1; size <= 2; size++) {
+                    Object value = evaluate(entityClass, "getSoundVolume", "()F", state(baby, size, "dry"));
+                    json.name((baby ? "baby" : "adult") + "_" + size).value(((Float) value).doubleValue());
+                }
+            }
+            json.endObject();
+            Object source = evaluate(entityClass, "getSoundSource", "()Lnet/minecraft/sounds/SoundSource;", state(false, 2, "dry"));
+            json.name("source").value(((SoundSource) source).getName());
+            Class<?> pitchOwner = declaring(entityClass, "getVoicePitch", "()F");
+            String pitch = PITCH_RULES.get(pitchOwner.getSimpleName());
+            if (pitch == null) {
+                throw new IllegalStateException("no pitch rule for " + pitchOwner.getName());
+            }
+            if (pitch.equals("fixed")) {
+                Object value = evaluate(entityClass, "getVoicePitch", "()F", state(false, 2, "dry"));
+                if (!Float.valueOf(1.0F).equals(value)) {
+                    throw new IllegalStateException("fixed pitch " + value + " for " + entityClass.getName());
+                }
+            }
+            json.name("pitch").value(pitch);
+            json.name("can_be_baby").value(canBeBaby(entityClass));
+            json.endObject();
+        }
+
+        private boolean canBeBaby(Class<?> entityClass) {
+            if (!net.minecraft.world.entity.AgeableMob.class.isAssignableFrom(entityClass)) {
+                return declaring(entityClass, "isBaby", "()Z") != LivingEntity.class;
+            }
+            Object value = evaluate(entityClass, "canBeABaby", "()Z", state(false, 2, "dry"));
+            return ((Integer) value) != 0;
+        }
+
+        private void writeSounds(JsonWriter json, Class<?> entityClass, String name, String descriptor) throws IOException {
+            json.beginObject();
+            for (boolean baby : new boolean[] {false, true}) {
+                for (boolean tiny : new boolean[] {false, true}) {
+                    for (String water : WATER_STATES) {
+                        Object value = evaluate(entityClass, name, descriptor, state(baby, tiny ? 1 : 2, water));
+                        String key = (baby ? "baby" : "adult") + "_" + (tiny ? "tiny" : "large") + "_" + water;
+                        if (value == null) {
+                            json.name(key).nullValue();
+                        } else {
+                            json.name(key).value(soundName((SoundEvent) value));
+                        }
+                    }
+                }
+            }
+            json.endObject();
+        }
+
+        private static String soundName(SoundEvent event) {
+            Identifier key = BuiltInRegistries.SOUND_EVENT.getKey(event);
+            if (key == null) {
+                throw new IllegalStateException("unregistered sound " + event.location());
+            }
+            return key.toString();
+        }
+
+        private static Map<String, Object> state(boolean baby, int size, String water) {
+            Map<String, Object> state = new HashMap<>();
+            state.put("isBaby", baby ? 1 : 0);
+            state.put("isTiny", size <= 1 ? 1 : 0);
+            state.put("getSize", size);
+            state.put("isInWater", water.equals("dry") ? 0 : 1);
+            state.put("isUnderWater", water.equals("submerged") ? 1 : 0);
+            return state;
+        }
+
+        private ClassModel model(Class<?> owner) {
+            return models.computeIfAbsent(owner, c -> {
+                String resource = c.getName().replace('.', '/') + ".class";
+                try (InputStream in = c.getClassLoader().getResourceAsStream(resource)) {
+                    if (in == null) {
+                        throw new IllegalStateException("no class bytes for " + c.getName());
+                    }
+                    return ClassFile.of().parse(in.readAllBytes());
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+        }
+
+        private MethodModel method(Class<?> owner, String name, String descriptor) {
+            for (MethodModel method : model(owner).methods()) {
+                if (method.methodName().equalsString(name) && method.methodType().equalsString(descriptor)) {
+                    return method;
+                }
+            }
+            return null;
+        }
+
+        private Class<?> declaring(Class<?> start, String name, String descriptor) {
+            for (Class<?> c = start; c != null && c != Object.class; c = c.getSuperclass()) {
+                MethodModel method = method(c, name, descriptor);
+                if (method != null && method.code().isPresent()) {
+                    return c;
+                }
+            }
+            throw new IllegalStateException("no implementation of " + name + descriptor + " for " + start.getName());
+        }
+
+        private Object evaluate(Class<?> concrete, String name, String descriptor, Map<String, Object> state) {
+            return invokeThis(concrete, concrete, name, descriptor, state);
+        }
+
+        private Object invokeThis(Class<?> concrete, Class<?> start, String name, String descriptor, Map<String, Object> state) {
+            if (state.containsKey(name) && descriptor.startsWith("()")) {
+                return state.get(name);
+            }
+            if (UNMODELED_FLAGS.containsKey(name) && descriptor.endsWith(")Z")) {
+                return UNMODELED_FLAGS.get(name) ? 1 : 0;
+            }
+            if (UNMODELED_ENUMS.containsKey(name)) {
+                return enumConstant(descriptor, UNMODELED_ENUMS.get(name));
+            }
+            if (name.equals("getSoundVariant") && descriptor.equals("()Lnet/minecraft/core/Holder;")) {
+                return defaultSoundVariant(concrete);
+            }
+            Class<?> owner = declaring(start, name, descriptor);
+            return run(concrete, owner, method(owner, name, descriptor), state);
+        }
+
+        private Object defaultSoundVariant(Class<?> concrete) {
+            for (Class<?> c = concrete; c != null; c = c.getSuperclass()) {
+                String registry = SOUND_VARIANT_REGISTRIES.get(c.getSimpleName());
+                if (registry != null) {
+                    ResourceKey<net.minecraft.core.Registry<Object>> key = ResourceKey.createRegistryKey(Identifier.withDefaultNamespace(registry));
+                    return lookup.lookupOrThrow(key).getOrThrow(ResourceKey.create(key, Identifier.withDefaultNamespace("classic")));
+                }
+            }
+            throw new IllegalStateException("no sound variant registry for " + concrete.getName());
+        }
+
+        private static Object enumConstant(String descriptor, String constant) {
+            String type = descriptor.substring(descriptor.indexOf(')') + 2, descriptor.length() - 1).replace('/', '.');
+            try {
+                Class<?> owner = Class.forName(type, true, Sounds.class.getClassLoader());
+                return owner.getField(constant).get(null);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("no constant " + constant + " in " + type, e);
+            }
+        }
+
+        private Object run(Class<?> concrete, Class<?> owner, MethodModel method, Map<String, Object> state) {
+            List<CodeElement> code = method.code().orElseThrow().elementList();
+            Map<Label, Integer> labels = new HashMap<>();
+            for (int i = 0; i < code.size(); i++) {
+                if (code.get(i) instanceof LabelTarget target) {
+                    labels.put(target.label(), i);
+                }
+            }
+            Deque<Object> stack = new ArrayDeque<>();
+            int pc = 0;
+            while (pc < code.size()) {
+                CodeElement element = code.get(pc++);
+                if (!(element instanceof Instruction instruction)) {
+                    continue;
+                }
+                switch (instruction) {
+                    case LoadInstruction load -> stack.push(load.slot() == 0 ? THIS : SOURCE);
+                    case NewObjectInstruction created -> stack.push(new Pending(created.className().asInternalName()));
+                    case StackInstruction duplicate when duplicate.opcode() == Opcode.DUP -> stack.push(stack.peek());
+                    case ConstantInstruction constant -> stack.push(constant.constantValue());
+                    case TypeCheckInstruction check -> {
+                    }
+                    case ConvertInstruction convert when convert.opcode() == Opcode.I2F -> stack.push((float) (Integer) stack.pop());
+                    case OperatorInstruction operator when operator.opcode() == Opcode.FMUL -> {
+                        float right = (Float) stack.pop();
+                        float left = (Float) stack.pop();
+                        stack.push(left * right);
+                    }
+                    case FieldInstruction field when field.opcode() == Opcode.GETSTATIC -> stack.push(staticField(field));
+                    case InvokeInstruction invoke -> stack.push(invoke(concrete, invoke, stack, state));
+                    case BranchInstruction branch -> {
+                        if (jumps(branch, stack)) {
+                            pc = labels.get(branch.target());
+                        }
+                    }
+                    case ReturnInstruction ret -> {
+                        return stack.pop();
+                    }
+                    default -> throw new IllegalStateException("unsupported " + instruction + " in " + owner.getName() + "." + method.methodName());
+                }
+            }
+            throw new IllegalStateException("fell off " + owner.getName() + "." + method.methodName());
+        }
+
+        private static boolean jumps(BranchInstruction branch, Deque<Object> stack) {
+            Opcode opcode = branch.opcode();
+            switch (opcode) {
+                case GOTO, GOTO_W:
+                    return true;
+                case IFEQ:
+                    return ((Integer) stack.pop()) == 0;
+                case IFNE:
+                    return ((Integer) stack.pop()) != 0;
+                case IF_ACMPEQ:
+                case IF_ACMPNE: {
+                    Object right = stack.pop();
+                    Object left = stack.pop();
+                    return (left == right) == (opcode == Opcode.IF_ACMPEQ);
+                }
+                default:
+                    throw new IllegalStateException("unsupported branch " + opcode);
+            }
+        }
+
+        private static Object staticField(FieldInstruction field) {
+            String owner = field.owner().asInternalName().replace('/', '.');
+            try {
+                Field target = Class.forName(owner, true, Sounds.class.getClassLoader()).getDeclaredField(field.name().stringValue());
+                target.setAccessible(true);
+                return target.get(null);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("cannot read " + owner + "." + field.name(), e);
+            }
+        }
+
+        private Object invoke(Class<?> concrete, InvokeInstruction invoke, Deque<Object> stack, Map<String, Object> state) {
+            String name = invoke.name().stringValue();
+            String descriptor = invoke.type().stringValue();
+            int count = invoke.typeSymbol().parameterCount();
+            Object[] args = new Object[count];
+            for (int i = count - 1; i >= 0; i--) {
+                args[i] = stack.pop();
+            }
+            if (invoke.opcode() == Opcode.INVOKESTATIC) {
+                return reflect(null, invoke.owner().asInternalName(), name, args);
+            }
+            Object receiver = stack.pop();
+            if (receiver instanceof Pending pending && name.equals("<init>")) {
+                Object built = construct(pending.owner(), args);
+                stack.pop();
+                return built;
+            }
+            if (receiver == THIS) {
+                if (invoke.opcode() == Opcode.INVOKESPECIAL) {
+                    try {
+                        Class<?> owner = Class.forName(invoke.owner().asInternalName().replace('/', '.'), true, Sounds.class.getClassLoader());
+                        return invokeThis(concrete, owner, name, descriptor, state);
+                    } catch (ClassNotFoundException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+                return invokeThis(concrete, concrete, name, descriptor, state);
+            }
+            if (receiver == SOURCE) {
+                if (name.equals("type")) {
+                    return SOURCE_TYPE;
+                }
+                throw new IllegalStateException("unsupported damage source call " + name);
+            }
+            if (receiver == SOURCE_TYPE) {
+                if (UNMODELED_ENUMS.containsKey(name)) {
+                    return enumConstant(descriptor, UNMODELED_ENUMS.get(name));
+                }
+                throw new IllegalStateException("unsupported damage type call " + name);
+            }
+            return reflect(receiver, invoke.owner().asInternalName(), name, args);
+        }
+
+        private record Pending(String owner) {
+        }
+
+        private static Object construct(String owner, Object[] args) {
+            try {
+                Class<?> type = Class.forName(owner.replace('/', '.'), true, Sounds.class.getClassLoader());
+                for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+                    if (constructor.getParameterCount() == args.length) {
+                        constructor.setAccessible(true);
+                        return constructor.newInstance(args);
+                    }
+                }
+                throw new IllegalStateException("no constructor for " + owner);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("cannot build " + owner, e);
+            }
+        }
+
+        private static Object reflect(Object receiver, String owner, String name, Object[] args) {
+            try {
+                Class<?> type = receiver != null ? receiver.getClass() : Class.forName(owner.replace('/', '.'), true, Sounds.class.getClassLoader());
+                for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+                    for (Method method : c.getDeclaredMethods()) {
+                        if (method.getName().equals(name) && method.getParameterCount() == args.length) {
+                            method.setAccessible(true);
+                            return method.invoke(receiver, args);
+                        }
+                    }
+                }
+                Class<?> declared = Class.forName(owner.replace('/', '.'), true, Sounds.class.getClassLoader());
+                for (Method method : declared.getMethods()) {
+                    if (method.getName().equals(name) && method.getParameterCount() == args.length) {
+                        return method.invoke(receiver, args);
+                    }
+                }
+                throw new IllegalStateException("no method " + owner + "." + name);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("cannot call " + owner + "." + name, e);
+            }
+        }
     }
 }

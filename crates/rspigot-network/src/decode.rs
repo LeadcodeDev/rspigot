@@ -215,6 +215,7 @@ pub fn decode(packet: ServerboundPlay) -> Decoded {
             sprint: p.sprint,
         })),
         ServerboundPlay::PlayerLoaded(_) => input(PlayerInput::Loaded),
+        ServerboundPlay::ClientTickEnd(_) => input(PlayerInput::ClientTickEnd),
         ServerboundPlay::PlayerAbilities(p) => input(PlayerInput::Abilities { flying: p.flying }),
         ServerboundPlay::ChangeGameMode(p) => input(PlayerInput::ChangeGameMode(game_mode(p.mode))),
         ServerboundPlay::PickItemFromBlock(p) => input(PlayerInput::PickBlock {

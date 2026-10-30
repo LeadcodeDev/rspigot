@@ -15,6 +15,7 @@ const BED_REDUCTION: f64 = 0.5;
 const STALAGMITE_BONUS: f64 = 2.5;
 const STALAGMITE_MULTIPLIER: f32 = 2.0;
 const BEDS_TAG: &str = "minecraft:beds";
+const BIG_FALL: i32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FallImpact {
@@ -140,6 +141,15 @@ impl<L: ClientLink> Server<L> {
             stats.get(FALL_DAMAGE_MULTIPLIER),
         );
         if amount > 0 {
+            if let Some(sounds) = rspigot_entities::EntityKind::Player.sounds() {
+                let sound = if amount > BIG_FALL {
+                    sounds.big_fall
+                } else {
+                    sounds.small_fall
+                };
+                let position = player.position;
+                self.play_sound(Some(id), position, sound, sounds.source, 1.0, 1.0);
+            }
             self.hurt(id, &DamageSource::new(impact.kind), amount as f32);
         }
     }

@@ -366,7 +366,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn destroy_block(&mut self, pos: BlockPos, state: BlockStateId) {
-        let context = LootContext { state, tool: None };
+        let context = LootContext::block(state, None, None);
         for stack in loot::block_drops(&context, &mut self.rng) {
             self.spawn_item(pos, stack);
         }
@@ -490,6 +490,8 @@ impl<L: ClientLink> Server<L> {
             SourceEntity {
                 entity: id,
                 player: None,
+                kind: rspigot_entities::EntityKind::FallingBlock,
+                creative: false,
                 name: Component::translatable("entity.minecraft.falling_block", Vec::new()),
                 position,
             },
@@ -506,6 +508,18 @@ impl<L: ClientLink> Server<L> {
             .collect();
         for victim in victims {
             self.hurt(victim, &source, damage);
+        }
+        let falling_box = self.entities.store.get(id).map(|e| e.base.bounding_box());
+        let mobs: Vec<EntityId> = self
+            .entities
+            .store
+            .iter()
+            .filter(|e| e.living().is_some() && e.base.id != id)
+            .filter(|e| falling_box.is_some_and(|b| b.intersects(&e.base.bounding_box())))
+            .map(|e| e.base.id)
+            .collect();
+        for mob in mobs {
+            self.hurt_mob(mob, &source, damage);
         }
         if gravity(block) != Gravity::Anvil {
             return;
