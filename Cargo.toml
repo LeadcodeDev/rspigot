@@ -19,6 +19,7 @@ rspigot-items = { path = "crates/rspigot-items" }
 rspigot-core = { path = "crates/rspigot-core" }
 rspigot-protocol = { path = "crates/rspigot-protocol" }
 rspigot-network = { path = "crates/rspigot-network" }
+rspigot-ai = { path = "crates/rspigot-ai" }
 rspigot-anvil = { path = "crates/rspigot-anvil" }
 rspigot-worldgen = { path = "crates/rspigot-worldgen" }
 rspigot-auth = { path = "crates/rspigot-auth" }
