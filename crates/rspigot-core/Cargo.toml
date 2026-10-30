@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rspigot-blocks = { workspace = true }
 rspigot-data = { workspace = true }
 rspigot-domain = { workspace = true }
 rspigot-nbt = { workspace = true }

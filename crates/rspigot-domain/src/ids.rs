@@ -1,13 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub struct BlockStateId(pub u16);
-
-impl BlockStateId {
-    pub const AIR: Self = Self(0);
-
-    pub fn is_air(self) -> bool {
-        rspigot_data::blocks::is_air(self.0)
-    }
-}
+pub use rspigot_blocks::StateId as BlockStateId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct BiomeId(pub u16);

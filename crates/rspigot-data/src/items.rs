@@ -1,4 +1,4 @@
-use crate::generated::items::{BLOCK_STATE, MAX_STACK, NO_STATE};
+use crate::generated::items::MAX_STACK;
 use crate::generated::static_registries::{ITEM, STATIC};
 
 const DEFAULT_STACK_SIZE: u8 = 64;
@@ -20,11 +20,4 @@ pub fn max_stack_size(id: u16) -> u8 {
         .get(usize::from(id))
         .copied()
         .unwrap_or(DEFAULT_STACK_SIZE)
-}
-
-pub fn block_state_for(id: u16) -> Option<u16> {
-    BLOCK_STATE
-        .get(usize::from(id))
-        .copied()
-        .filter(|&state| state != NO_STATE)
 }

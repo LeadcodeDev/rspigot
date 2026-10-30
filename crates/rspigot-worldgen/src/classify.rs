@@ -1,4 +1,4 @@
-use rspigot_data::{blocks, registries, tags};
+use rspigot_data::{registries, tags};
 use rspigot_domain::chunk::{Heightmap, HeightmapKind, Heightmaps};
 use rspigot_domain::{BlockStateId, world::WorldHeight};
 
@@ -62,12 +62,12 @@ impl Classifier {
                 _ => per_block[id],
             };
         }
-        let flags = (0..blocks::STATE_COUNT)
+        let flags = (0..rspigot_blocks::STATE_COUNT)
             .map(|state| {
                 u16::try_from(state)
                     .ok()
-                    .and_then(blocks::block_id)
-                    .and_then(|id| per_block.get(usize::from(id)))
+                    .and_then(|state| BlockStateId(state).kind())
+                    .and_then(|kind| per_block.get(usize::from(kind.id().0)))
                     .copied()
                     .unwrap_or(0)
             })
@@ -215,9 +215,10 @@ fn assemble(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rspigot_blocks::BlockKind;
 
     fn state(name: &str) -> BlockStateId {
-        BlockStateId(blocks::default_state(name).unwrap())
+        BlockKind::from_name(name).unwrap().default_state()
     }
 
     #[test]

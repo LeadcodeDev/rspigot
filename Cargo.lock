@@ -1203,6 +1203,7 @@ dependencies = [
  "flate2",
  "lz4_flex",
  "parking_lot",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",
@@ -1224,12 +1225,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspigot-blocks"
+version = "0.1.0"
+
+[[package]]
 name = "rspigot-core"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "proptest",
+ "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",
  "rspigot-nbt",
@@ -1250,6 +1256,7 @@ version = "0.1.0"
 dependencies = [
  "md-5",
  "proptest",
+ "rspigot-blocks",
  "rspigot-data",
  "rspigot-nbt",
  "thiserror",
@@ -1274,6 +1281,7 @@ dependencies = [
  "parking_lot",
  "quick_cache",
  "rand 0.9.5",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",
@@ -1318,6 +1326,7 @@ name = "rspigot-worldgen"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "rspigot-blocks",
  "rspigot-core",
  "rspigot-data",
  "rspigot-domain",

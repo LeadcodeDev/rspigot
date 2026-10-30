@@ -1,202 +1,16 @@
 use std::collections::VecDeque;
-use std::sync::OnceLock;
 
 use rspigot_domain::BlockStateId;
 use rspigot_domain::chunk::{ChunkColumn, LightArray};
 
 const MAX_LIGHT: u8 = 15;
 
-struct LightProperties {
-    opacity: Box<[u8]>,
-    emission: Box<[u8]>,
-}
-
-fn properties() -> &'static LightProperties {
-    static TABLE: OnceLock<LightProperties> = OnceLock::new();
-    TABLE.get_or_init(build_properties)
-}
-
-fn build_properties() -> LightProperties {
-    let count = rspigot_data::blocks::STATE_COUNT;
-    let mut opacity = vec![MAX_LIGHT; count];
-    let mut emission = vec![0u8; count];
-    for state in 0..count {
-        let id = state as u16;
-        let name = rspigot_data::blocks::block_name(id).unwrap_or("");
-        let path = name.strip_prefix("minecraft:").unwrap_or(name);
-        opacity[state] = opacity_of(id, path);
-        emission[state] = emission_of(id, path);
-    }
-    LightProperties {
-        opacity: opacity.into_boxed_slice(),
-        emission: emission.into_boxed_slice(),
-    }
-}
-
-fn opacity_of(state: u16, path: &str) -> u8 {
-    if rspigot_data::blocks::is_air(state) {
-        return 0;
-    }
-    const FILTERING: [&str; 5] = ["water", "leaves", "ice", "cobweb", "slime_block"];
-    const TRANSPARENT: [&str; 40] = [
-        "glass",
-        "pane",
-        "torch",
-        "flower",
-        "sapling",
-        "grass",
-        "fern",
-        "bush",
-        "door",
-        "trapdoor",
-        "fence",
-        "wall",
-        "rail",
-        "button",
-        "pressure_plate",
-        "lever",
-        "sign",
-        "banner",
-        "carpet",
-        "snow",
-        "ladder",
-        "vine",
-        "lichen",
-        "roots",
-        "mushroom",
-        "sugar_cane",
-        "kelp",
-        "seagrass",
-        "coral",
-        "wire",
-        "repeater",
-        "comparator",
-        "candle",
-        "lantern",
-        "chain",
-        "bars",
-        "slab",
-        "stairs",
-        "head",
-        "skull",
-    ];
-    const CROPS: [&str; 10] = [
-        "wheat",
-        "carrots",
-        "potatoes",
-        "beetroots",
-        "dandelion",
-        "poppy",
-        "tulip",
-        "orchid",
-        "allium",
-        "azure_bluet",
-    ];
-    if path == "water" || path == "bubble_column" {
-        return 1;
-    }
-    if FILTERING.iter().any(|f| path.ends_with(f)) {
-        return 1;
-    }
-    let full_block = path.ends_with("_block")
-        || path.ends_with("_ore")
-        || path.ends_with("_planks")
-        || path == "tinted_glass";
-    if !full_block
-        && TRANSPARENT
-            .iter()
-            .chain(CROPS.iter())
-            .any(|t| path.contains(t))
-    {
-        return 0;
-    }
-    MAX_LIGHT
-}
-
-fn emission_of(state: u16, path: &str) -> u8 {
-    let lit = rspigot_data::blocks::property(state, "lit");
-    match path {
-        "glowstone"
-        | "sea_lantern"
-        | "jack_o_lantern"
-        | "beacon"
-        | "conduit"
-        | "lava"
-        | "fire"
-        | "shroomlight"
-        | "end_gateway"
-        | "end_portal"
-        | "ochre_froglight"
-        | "verdant_froglight"
-        | "pearlescent_froglight"
-        | "lantern"
-        | "respawn_anchor" => 15,
-        "campfire" | "redstone_lamp" | "furnace" | "smoker" | "blast_furnace" => {
-            if lit == Some("true") {
-                if path == "furnace" || path == "smoker" || path == "blast_furnace" {
-                    13
-                } else {
-                    15
-                }
-            } else {
-                0
-            }
-        }
-        "torch" | "wall_torch" | "end_rod" | "copper_torch" | "copper_wall_torch" => 14,
-        "soul_campfire" => {
-            if lit == Some("true") {
-                10
-            } else {
-                0
-            }
-        }
-        "soul_torch" | "soul_wall_torch" | "soul_lantern" | "soul_fire" | "crying_obsidian" => 10,
-        "nether_portal" => 11,
-        "redstone_torch" | "redstone_wall_torch" => {
-            if lit == Some("false") {
-                0
-            } else {
-                7
-            }
-        }
-        "glow_lichen"
-        | "cave_vines"
-        | "cave_vines_plant"
-        | "redstone_ore"
-        | "deepslate_redstone_ore" => {
-            if path.contains("redstone") && lit != Some("true") {
-                0
-            } else {
-                7
-            }
-        }
-        "magma_block" => 3,
-        "brewing_stand" | "brown_mushroom" | "dragon_egg" | "end_portal_frame" | "sculk_sensor" => {
-            1
-        }
-        "amethyst_cluster" => 5,
-        "large_amethyst_bud" => 4,
-        "medium_amethyst_bud" => 2,
-        "small_amethyst_bud" => 1,
-        "enchanting_table" | "ender_chest" => 7,
-        _ => 0,
-    }
-}
-
 pub fn opacity(state: BlockStateId) -> u8 {
-    properties()
-        .opacity
-        .get(usize::from(state.0))
-        .copied()
-        .unwrap_or(MAX_LIGHT)
+    state.light_dampening()
 }
 
 pub fn emission(state: BlockStateId) -> u8 {
-    properties()
-        .emission
-        .get(usize::from(state.0))
-        .copied()
-        .unwrap_or(0)
+    state.light_emission()
 }
 
 pub fn has_light(chunk: &ChunkColumn) -> bool {
@@ -418,6 +232,7 @@ pub fn compute(chunk: &mut ChunkColumn, has_skylight: bool) {
 
 #[cfg(test)]
 mod tests {
+    use rspigot_blocks::Block;
     use rspigot_domain::chunk::ChunkColumn;
     use rspigot_domain::world::WorldHeight;
     use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos};
@@ -448,8 +263,7 @@ mod tests {
     #[test]
     fn torch_lights_neighbourhood() {
         let mut chunk = ChunkColumn::empty(ChunkPos::new(0, 0), WorldHeight::OVERWORLD, BiomeId(0));
-        let torch =
-            BlockStateId(rspigot_data::blocks::default_state("minecraft:torch").unwrap_or(0));
+        let torch = rspigot_blocks::Torch::DEFAULT_STATE;
         chunk.set_block(BlockPos::new(8, 0, 8), torch);
         compute(&mut chunk, false);
         let section = chunk.light.block[1 + 4]

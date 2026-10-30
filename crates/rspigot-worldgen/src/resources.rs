@@ -1,6 +1,6 @@
 use std::ops::Index;
 
-use rspigot_data::{blocks, registries};
+use rspigot_data::registries;
 use rspigot_domain::{BiomeId, BlockStateId};
 
 use crate::classify::Classifier;
@@ -213,7 +213,9 @@ impl Index<BlockKind> for Palette {
 }
 
 fn state(name: &str, properties: &[(&str, &str)]) -> BlockStateId {
-    BlockStateId(blocks::state_with(name, properties).unwrap_or(0))
+    rspigot_blocks::BlockKind::from_name(name)
+        .and_then(|kind| kind.state_with(properties))
+        .unwrap_or(BlockStateId::AIR)
 }
 
 #[derive(Debug, Clone)]
@@ -303,23 +305,28 @@ mod tests {
     fn blocks_have_expected_names() {
         let palette = Palette::resolve();
         assert_eq!(
-            blocks::block_name(palette[BlockKind::Stone].0),
+            palette[BlockKind::Stone]
+                .kind()
+                .map(rspigot_blocks::BlockKind::name),
             Some("minecraft:stone")
         );
         assert_eq!(
-            blocks::property(palette[BlockKind::SnowyGrassBlock].0, "snowy"),
+            palette[BlockKind::SnowyGrassBlock].property("snowy"),
             Some("true")
         );
         assert_eq!(
-            blocks::property(palette.leaves(Tree::Spruce, 4).0, "distance"),
+            palette.leaves(Tree::Spruce, 4).property("distance"),
             Some("4")
         );
         assert_eq!(
-            blocks::property(palette.leaves(Tree::Spruce, 4).0, "persistent"),
+            palette.leaves(Tree::Spruce, 4).property("persistent"),
             Some("false")
         );
         assert_eq!(
-            blocks::block_name(palette.log(Tree::Birch).0),
+            palette
+                .log(Tree::Birch)
+                .kind()
+                .map(rspigot_blocks::BlockKind::name),
             Some("minecraft:birch_log")
         );
     }

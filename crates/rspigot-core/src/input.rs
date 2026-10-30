@@ -5,10 +5,11 @@ use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
 
+use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
+
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
-use crate::placement::{is_replaceable, placed_state};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -359,15 +360,12 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         };
-        if !sneaking && self.toggle_openable(pos, clicked) {
+        if !sneaking && self.use_block(pos, clicked, sneaking) {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
-        let placeable = stack
-            .as_ref()
-            .and_then(|s| rspigot_data::items::block_state_for(s.item.0))
-            .map(BlockStateId);
-        let (Some(stack), Some(default)) = (stack, placeable) else {
+        let kind = stack.as_ref().and_then(|s| BlockKind::from_item(s.item.0));
+        let (Some(stack), Some(kind)) = (stack, kind) else {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         };
@@ -391,15 +389,23 @@ impl<L: ClientLink> Server<L> {
             self.refuse_block(id, target, sequence);
             return;
         }
-        let state = placed_state(default, face, rotation.yaw, rotation.pitch, cursor);
-        self.set_block(target, state);
-        if let Some(name) = rspigot_data::blocks::block_name(state.0)
-            && name.ends_with("_door")
-            && let Some(upper) = rspigot_data::blocks::with_property(state.0, "half", "upper")
-        {
-            let above = target.offset(0, 1, 0);
-            if self.world.chunks.block(above).is_some_and(is_replaceable) {
-                self.set_block(above, BlockStateId(upper));
+        let context = PlaceContext {
+            default_state: kind.default_state(),
+            wall_variant: kind.wall_variant().map(BlockKind::default_state),
+            face: block_face(face),
+            yaw: rotation.yaw,
+            pitch: rotation.pitch,
+            cursor_y: cursor.y as f32,
+        };
+        let Some(placement) = kind.place(&context) else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
+        self.set_block(target, placement.state);
+        if let Some(linked) = placement.linked {
+            let other = target.offset(0, i32::from(linked.dy), 0);
+            if self.world.chunks.block(other).is_some_and(is_replaceable) {
+                self.set_block(other, linked.state);
             }
         }
         self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
@@ -408,32 +414,21 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn toggle_openable(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
-        let Some(name) = rspigot_data::blocks::block_name(state.0) else {
+    fn use_block(&mut self, pos: BlockPos, state: BlockStateId, sneaking: bool) -> bool {
+        let Some(kind) = state.kind() else {
             return false;
         };
-        if name.starts_with("minecraft:iron_") {
-            return false;
-        }
-        let Some(open) = rspigot_data::blocks::property(state.0, "open") else {
+        let Some(result) = kind.use_block(&UseContext { state, sneaking }) else {
             return false;
         };
-        let next = if open == "true" { "false" } else { "true" };
-        let Some(toggled) = rspigot_data::blocks::with_property(state.0, "open", next) else {
-            return false;
-        };
-        self.set_block(pos, BlockStateId(toggled));
-        if name.ends_with("_door") {
-            let other = match rspigot_data::blocks::property(state.0, "half") {
-                Some("lower") => pos.offset(0, 1, 0),
-                _ => pos.offset(0, -1, 0),
-            };
+        self.set_block(pos, result.state);
+        if let Some(linked) = result.linked {
+            let other = pos.offset(0, i32::from(linked.dy), 0);
             if let Some(other_state) = self.world.chunks.block(other)
-                && rspigot_data::blocks::block_name(other_state.0) == Some(name)
-                && let Some(other_toggled) =
-                    rspigot_data::blocks::with_property(other_state.0, "open", next)
+                && other_state.kind() == Some(kind)
+                && let Some(changed) = other_state.with_property(linked.property, linked.value)
             {
-                self.set_block(other, BlockStateId(other_toggled));
+                self.set_block(other, changed);
             }
         }
         true
@@ -486,10 +481,7 @@ impl<L: ClientLink> Server<L> {
         let Some(state) = self.world.chunks.block(pos) else {
             return;
         };
-        let Some(name) = rspigot_data::blocks::block_name(state.0) else {
-            return;
-        };
-        let Some(item) = rspigot_data::items::id(name) else {
+        let Some(item) = state.kind().and_then(BlockKind::item) else {
             return;
         };
         let Some(player) = self.players.get_mut(&id) else {
@@ -624,4 +616,19 @@ impl<L: ClientLink> Server<L> {
 
 fn to_pitch(rotation: Option<Rotation>) -> f32 {
     rotation.map_or(0.0, |r| r.pitch.clamp(-90.0, 90.0))
+}
+
+fn is_replaceable(state: BlockStateId) -> bool {
+    state.flags().contains(StateFlags::REPLACEABLE)
+}
+
+const fn block_face(face: Direction) -> Face {
+    match face {
+        Direction::Down => Face::Down,
+        Direction::Up => Face::Up,
+        Direction::North => Face::North,
+        Direction::South => Face::South,
+        Direction::West => Face::West,
+        Direction::East => Face::East,
+    }
 }

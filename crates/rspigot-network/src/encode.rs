@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
 use bytes::Bytes;
 use rspigot_core::commands::{
@@ -311,35 +310,12 @@ fn game_event(event: CoreGameEvent) -> cb::GameEvent {
     cb::GameEvent { event: kind, param }
 }
 
-fn fluid_table() -> &'static [bool] {
-    static TABLE: OnceLock<Box<[bool]>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        (0..rspigot_data::blocks::STATE_COUNT)
-            .map(|state| {
-                let state = state as u16;
-                let name = rspigot_data::blocks::block_name(state).unwrap_or("");
-                matches!(
-                    name,
-                    "minecraft:water"
-                        | "minecraft:lava"
-                        | "minecraft:bubble_column"
-                        | "minecraft:kelp"
-                        | "minecraft:kelp_plant"
-                        | "minecraft:seagrass"
-                        | "minecraft:tall_seagrass"
-                ) || rspigot_data::blocks::property(state, "waterlogged") == Some("true")
-            })
-            .collect()
-    })
-}
-
 fn fluid_count(section: &rspigot_domain::chunk::ChunkSection) -> i16 {
-    let table = fluid_table();
     let blocks = section.blocks();
     let fluid_slots: Vec<bool> = blocks
         .palette()
         .iter()
-        .map(|s| table.get(usize::from(s.0)).copied().unwrap_or(false))
+        .map(|state| state.flags().has_fluid())
         .collect();
     if !fluid_slots.iter().any(|f| *f) {
         return 0;
@@ -407,7 +383,7 @@ fn heightmap_kind(kind: DomainHeightmap) -> WireHeightmap2 {
 }
 
 pub fn chunk_packet(chunk: &ChunkColumn, out: &mut Vec<u8>) {
-    let blocks = PaletteStrategy::blocks(rspigot_data::blocks::STATE_COUNT as u32);
+    let blocks = PaletteStrategy::blocks(rspigot_blocks::STATE_COUNT as u32);
     let biome_count = rspigot_data::registries::synced_entries("minecraft:worldgen/biome")
         .map_or(1, <[&str]>::len) as u32;
     let biomes = PaletteStrategy::biomes(biome_count);

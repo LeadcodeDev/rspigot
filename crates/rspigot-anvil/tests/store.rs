@@ -267,7 +267,7 @@ fn concurrent_saves_in_shared_and_separate_regions() {
 fn oversized_chunks_use_an_external_file() {
     let dir = TempDir::new("oversized");
     let store = AnvilStore::open(&dir.world(), DimensionLayout::Spigot).unwrap();
-    let pool: Vec<BlockStateId> = (0..rspigot_data::blocks::STATE_COUNT as u16)
+    let pool: Vec<BlockStateId> = (0..rspigot_blocks::STATE_COUNT as u16)
         .map(BlockStateId)
         .collect();
     let pos = ChunkPos::new(-33, 5);

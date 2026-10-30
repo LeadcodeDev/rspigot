@@ -493,3 +493,72 @@ fn non_operator_cannot_give_effects() {
     command(&mut server, alice, "effect give @s speed");
     assert!(effect_events(&link.take()).0.is_empty());
 }
+
+#[test]
+fn door_item_places_both_halves_and_use_opens_both() {
+    use rspigot_blocks::{Block, BlockKind, OakDoor};
+    use rspigot_core::events::{Hand, PlayerInput};
+    use rspigot_domain::item::ItemStack;
+    use std::num::NonZeroU8;
+
+    let mut server = server(vec!["alice".to_owned()]);
+    let (alice, alice_link) = join(&mut server, "Alice");
+    let mut log = vec![Vec::new()];
+    confirm_teleport(&mut server, alice, &alice_link.take());
+    run_ticks(&mut server, 30, &[(alice, &alice_link)], &mut log);
+    command(&mut server, alice, "gamemode creative");
+    let door_item = OakDoor::ITEM.unwrap_or_default();
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::CreativeSlot {
+            slot: 36,
+            stack: Some(ItemStack::new(
+                rspigot_domain::ItemId(door_item),
+                NonZeroU8::MIN,
+            )),
+        },
+    });
+    let ground = BlockPos::new(2, 63, 0);
+    let use_on = |pos: BlockPos, sequence: i32| Inbound::Input {
+        player: alice,
+        input: PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos,
+            face: Direction::Up,
+            cursor: Vec3::new(0.5, 1.0, 0.5),
+            inside_block: false,
+            sequence,
+        },
+    };
+    alice_link.take();
+    server.handle(use_on(ground, 1));
+    server.deliver();
+    let placed: Vec<(BlockPos, BlockStateId)> = alice_link
+        .take()
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::BlockUpdate { pos, state } => Some((*pos, *state)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(placed.len(), 2);
+    assert!(
+        placed
+            .iter()
+            .all(|(_, s)| s.kind() == BlockKind::from_name("oak_door"))
+    );
+    assert_eq!(placed[0].1.property("half"), Some("lower"));
+    assert_eq!(placed[1].0, BlockPos::new(2, 65, 0));
+    assert_eq!(placed[1].1.property("half"), Some("upper"));
+    server.handle(use_on(BlockPos::new(2, 64, 0), 2));
+    server.deliver();
+    let opened: Vec<Option<&str>> = alice_link
+        .take()
+        .iter()
+        .filter_map(|e| match e {
+            ClientEvent::BlockUpdate { state, .. } => Some(state.property("open")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(opened, vec![Some("true"), Some("true")]);
+}

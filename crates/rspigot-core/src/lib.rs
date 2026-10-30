@@ -8,7 +8,6 @@ mod effects;
 pub mod events;
 mod input;
 pub mod lighting;
-pub mod placement;
 pub mod player;
 pub mod ports;
 pub mod server;

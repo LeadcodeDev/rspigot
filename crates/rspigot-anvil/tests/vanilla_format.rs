@@ -6,7 +6,6 @@ use common::*;
 use flate2::write::{GzEncoder, ZlibEncoder};
 use rspigot_anvil::{AnvilStore, DimensionLayout};
 use rspigot_core::ports::{ChunkStore, StoreError};
-use rspigot_data::blocks::state_with;
 use rspigot_domain::chunk::ChunkStatus;
 use rspigot_domain::{BlockPos, ChunkPos};
 use rspigot_nbt::{Compound, Tag, write_named};
@@ -240,7 +239,6 @@ fn rspigot_rewrites_loaded_chunks_without_losing_unknown_fields() {
         Some(&Tag::LongArray(vec![1, 2, 3]))
     );
     assert!(again.extra.contains_key("blending_data"));
-    let _ = state_with("minecraft:stone", &[]);
 }
 
 #[test]
