@@ -13,10 +13,14 @@ use crate::admin::AdminLists;
 use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
 use crate::events::{
     ClientEvent, EntityKind, EquipmentSlot, GameEvent, Inbound, JoinInfo, MetadataEntry,
     MetadataValue, PlayerListEntry, Pose, SpawnInfo,
 };
+use crate::items::ItemEntity;
 use crate::player::Player;
 use crate::ports::{ChunkGenerator, ChunkStore, ClientLink};
 use crate::status::{PlayerSample, StatusBoard};
@@ -26,6 +30,7 @@ pub(crate) enum Audience {
     One(PlayerId),
     All,
     Trackers(EntityId),
+    TrackersExcept(EntityId, PlayerId),
     ChunkViewers(ChunkPos),
 }
 
@@ -79,6 +84,8 @@ pub struct Server<L> {
     pub(crate) admin: AdminLists,
     pub(crate) admin_sink: Option<Sender<AdminLists>>,
     pub(crate) running: bool,
+    pub(crate) items: FxHashMap<EntityId, ItemEntity>,
+    pub(crate) rng: StdRng,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -129,6 +136,8 @@ impl<L: ClientLink> Server<L> {
             admin,
             admin_sink: None,
             running: true,
+            items: FxHashMap::default(),
+            rng: StdRng::from_os_rng(),
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -219,6 +228,12 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn allocate_entity_id(&mut self) -> EntityId {
+        let id = EntityId(self.next_entity_id);
+        self.next_entity_id += 1;
+        id
+    }
+
     pub(crate) fn push(&mut self, audience: Audience, event: ClientEvent) {
         self.outbox.push((audience, event));
     }
@@ -241,6 +256,15 @@ impl<L: ClientLink> Server<L> {
                         .players
                         .values()
                         .filter(|p| p.tracked.contains(&entity))
+                    {
+                        player.link.send(event.clone());
+                    }
+                }
+                Audience::TrackersExcept(entity, excluded) => {
+                    for player in self
+                        .players
+                        .values()
+                        .filter(|p| p.id != excluded && p.tracked.contains(&entity))
                     {
                         player.link.send(event.clone());
                     }
@@ -313,8 +337,7 @@ impl<L: ClientLink> Server<L> {
             ));
             return;
         }
-        let entity_id = EntityId(self.next_entity_id);
-        self.next_entity_id += 1;
+        let entity_id = self.allocate_entity_id();
         let position = self.world.spawn;
         let view_distance = self.config.view_distance.min(settings.view_distance.max(2));
         let mut player = Player {
@@ -509,7 +532,9 @@ impl<L: ClientLink> Server<L> {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
         self.tick_effects();
+        self.tick_items();
         self.update_tracking();
+        self.update_item_tracking();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
             self.push(Audience::All, time);

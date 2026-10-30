@@ -1,9 +1,7 @@
-use std::num::NonZeroU8;
-
 use std::hash::{BuildHasher, Hasher};
 
 use rspigot_domain::effect::{EffectId, EffectInstance};
-use rspigot_domain::item::{HOTBAR_START, ItemStack, PLAYER_INVENTORY_SIZE};
+use rspigot_domain::item::PLAYER_INVENTORY_SIZE;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
@@ -124,39 +122,10 @@ impl<L: ClientLink> CommandContext for Server<L> {
         let Some(p) = self.players.get_mut(&player) else {
             return false;
         };
-        let max = u32::from(rspigot_data::items::max_stack_size(item.0).max(1));
-        let mut remaining = count;
-        let order = (HOTBAR_START..HOTBAR_START + 9).chain(9..HOTBAR_START);
-        let slots: Vec<usize> = order.collect();
-        for &slot in &slots {
-            if remaining == 0 {
-                break;
-            }
-            if let Some(existing) = p.inventory.get(slot).cloned()
-                && existing.item == item
-                && existing.components.is_empty()
-            {
-                let space = max.saturating_sub(u32::from(existing.count.get()));
-                let added = space.min(remaining);
-                if added > 0 {
-                    let total = u32::from(existing.count.get()) + added;
-                    let count = NonZeroU8::new(total as u8).unwrap_or(NonZeroU8::MIN);
-                    p.inventory.set(slot, Some(ItemStack { count, ..existing }));
-                    remaining -= added;
-                }
-            }
-        }
-        for &slot in &slots {
-            if remaining == 0 {
-                break;
-            }
-            if p.inventory.get(slot).is_none() {
-                let added = max.min(remaining);
-                let count = NonZeroU8::new(added as u8).unwrap_or(NonZeroU8::MIN);
-                p.inventory.set(slot, Some(ItemStack::new(item, count)));
-                remaining -= added;
-            }
-        }
+        let outcome = p
+            .inventory
+            .insert(item, count, rspigot_data::items::max_stack_size(item.0));
+        let remaining = outcome.remaining;
         self.send_inventory(player);
         self.broadcast_held_item(player);
         remaining < count
