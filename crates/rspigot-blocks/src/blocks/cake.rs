@@ -28,7 +28,7 @@ impl Block for Cake {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(46));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2094));
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CAKE);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_CAKE);
     type Behavior = crate::family::Plain;

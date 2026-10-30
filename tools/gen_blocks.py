@@ -28,6 +28,7 @@ FLAG_SOURCES = {
     "LAVA": "lava",
     "RANDOMLY_TICKS": "is_randomly_ticking",
     "FULL_COLLISION_CUBE": "is_collision_shape_full_block",
+    "LEGACY_SOLID": "is_solid",
 }
 
 RESERVED_STRUCTS = {

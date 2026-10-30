@@ -39,13 +39,13 @@ impl Block for SpruceSign {
         0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128),
-        StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128),
-        StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128),
-        StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
-        StateFlags(128), StateFlags(32),
+        StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176),
+        StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080),
+        StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176),
+        StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080),
+        StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176),
+        StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080),
+        StateFlags(2176), StateFlags(2080),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

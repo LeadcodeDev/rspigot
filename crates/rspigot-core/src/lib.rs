@@ -17,6 +17,7 @@ mod items;
 pub mod lighting;
 pub mod loot;
 mod menu;
+mod mobs;
 pub mod player;
 pub mod ports;
 pub mod server;

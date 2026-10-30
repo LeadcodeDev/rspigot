@@ -57,6 +57,7 @@ impl StateFlags {
     pub const LAVA: Self = Self(1 << 8);
     pub const RANDOMLY_TICKS: Self = Self(1 << 9);
     pub const FULL_COLLISION_CUBE: Self = Self(1 << 10);
+    pub const LEGACY_SOLID: Self = Self(1 << 11);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

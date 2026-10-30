@@ -37,19 +37,19 @@ impl Block for WeatheredCopperTrapdoor {
         1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
-        StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
-        StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694),
+        StateFlags(2598), StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
+        StateFlags(2694), StateFlags(2598), StateFlags(2694), StateFlags(2598),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_TRAPDOOR);
     const FACE_SUPPORT: PerState<FaceSupport> =

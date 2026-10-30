@@ -31,9 +31,9 @@ impl Block for Bamboo {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(550), StateFlags(38), StateFlags(550), StateFlags(38), StateFlags(550),
-        StateFlags(38), StateFlags(550), StateFlags(38), StateFlags(550), StateFlags(38),
-        StateFlags(550), StateFlags(38),
+        StateFlags(2598), StateFlags(2086), StateFlags(2598), StateFlags(2086), StateFlags(2598),
+        StateFlags(2086), StateFlags(2598), StateFlags(2086), StateFlags(2598), StateFlags(2086),
+        StateFlags(2598), StateFlags(2086),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(274));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

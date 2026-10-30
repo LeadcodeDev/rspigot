@@ -32,9 +32,9 @@ impl Block for StickyPiston {
         0, 0, 0, 0, 0, 0, 15, 15, 15, 15, 15, 15,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(46), StateFlags(46), StateFlags(46), StateFlags(46), StateFlags(46),
-        StateFlags(46), StateFlags(1054), StateFlags(1054), StateFlags(1054), StateFlags(1054),
-        StateFlags(1054), StateFlags(1054),
+        StateFlags(2094), StateFlags(2094), StateFlags(2094), StateFlags(2094), StateFlags(2094),
+        StateFlags(2094), StateFlags(3102), StateFlags(3102), StateFlags(3102), StateFlags(3102),
+        StateFlags(3102), StateFlags(3102),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_STICKY_PISTON);
     const FACE_SUPPORT: PerState<FaceSupport> =

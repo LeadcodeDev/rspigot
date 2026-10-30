@@ -36,19 +36,19 @@ impl Block for BirchShelf {
         1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142),
-        StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
+        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_ACACIA_SHELF);
     const FACE_SUPPORT: PerState<FaceSupport> =

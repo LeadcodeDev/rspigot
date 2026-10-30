@@ -26,14 +26,14 @@ impl Default for TrackingRanges {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActivationType {
+pub enum ActivationType {
     Monster,
     Raider,
     Animal,
     Misc,
 }
 
-fn activation_type(kind: EntityKind) -> ActivationType {
+pub fn activation_type(kind: EntityKind) -> ActivationType {
     if kind.extends("Raider") {
         ActivationType::Raider
     } else if kind.extends("Monster") || kind.extends("Slime") {

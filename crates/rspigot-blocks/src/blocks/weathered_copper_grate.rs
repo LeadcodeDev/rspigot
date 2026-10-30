@@ -29,7 +29,7 @@ impl Block for WeatheredCopperGrate {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(1702), StateFlags(1574),
+        StateFlags(3750), StateFlags(3622),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));

@@ -186,3 +186,35 @@ fn items_bounce_and_rest_on_the_ground() {
     assert!(base.on_ground);
     assert_eq!(state.pickup_delay, -30);
 }
+
+#[test]
+fn spider_pushing_into_a_wall_climbs_it() {
+    let mut world = World::floor(BlockKind::Stone);
+    for y in 64..68 {
+        world.set(2, y, 0, BlockKind::Stone.default_state());
+    }
+    let mut base = EntityBase::new(EntityId(1), Uuid::from_u128(1), EntityKind::Spider);
+    base.position = Vec3::new(1.2, 64.0, 0.5);
+    base.on_ground = true;
+    let mut living = LivingState::new(&mut base, 0.0);
+    base.set_yaw(-90.0);
+    let mut highest = base.position.y;
+    for _ in 0..30 {
+        living.speed = 0.3;
+        living.zza = 0.3;
+        living::ai_step(&mut base, &mut living, &world);
+        let climbing = base.horizontal_collision;
+        living::set_climbing(&mut base, climbing);
+        highest = highest.max(base.position.y);
+    }
+    assert!(highest > 66.0, "spider stayed at {highest}");
+    let (mut cow, mut cow_state) = cow_at(Vec3::new(1.2, 64.0, 0.5));
+    cow.on_ground = true;
+    cow.set_yaw(-90.0);
+    for _ in 0..30 {
+        cow_state.speed = 0.3;
+        cow_state.zza = 0.3;
+        living::ai_step(&mut cow, &mut cow_state, &world);
+    }
+    assert!(cow.position.y < 64.7, "cow climbed to {}", cow.position.y);
+}

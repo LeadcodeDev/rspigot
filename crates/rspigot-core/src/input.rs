@@ -368,6 +368,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
+                self.mob_paths_block_changed(pos, old, state);
                 self.notify_neighbours(pos);
                 self.push(
                     Audience::ChunkViewers(pos.chunk()),

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rspigot_core::admin::AdminLists;
 use rspigot_core::chunks::ChunkManagerConfig;
-use rspigot_core::config::GameConfig;
+use rspigot_core::config::{ActivationRanges, GameConfig};
 use rspigot_core::streaming::StreamConfig;
 use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
@@ -62,6 +62,7 @@ impl ServerFiles {
                 128.0,
             ),
             tracking: self.tracking_ranges(),
+            activation: self.activation_ranges(),
             stream: StreamConfig::default(),
             chunks: ChunkManagerConfig {
                 autosave_interval_ticks: self.bukkit.int("ticks-per.autosave", 6000).max(0) as u64,
@@ -98,6 +99,28 @@ impl ServerFiles {
                 "entity-activation-range.monsters",
                 defaults.monster_activation,
             ),
+        }
+    }
+
+    fn activation_ranges(&self) -> ActivationRanges {
+        let defaults = ActivationRanges::default();
+        let range = |key: &str, fallback: i32| {
+            self.spigot
+                .int(
+                    &format!("world-settings.default.entity-activation-range.{key}"),
+                    i64::from(fallback),
+                )
+                .clamp(0, i64::from(i32::MAX)) as i32
+        };
+        ActivationRanges {
+            animals: range("animals", defaults.animals),
+            monsters: range("monsters", defaults.monsters),
+            raiders: range("raiders", defaults.raiders),
+            misc: range("misc", defaults.misc),
+            ignore_spectators: self.spigot.string(
+                "world-settings.default.entity-activation-range.ignore-spectators",
+                &defaults.ignore_spectators.to_string(),
+            ) == "true",
         }
     }
 

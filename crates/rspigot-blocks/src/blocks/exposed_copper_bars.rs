@@ -36,13 +36,13 @@ impl Block for ExposedCopperBars {
         0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(646), StateFlags(646), StateFlags(550), StateFlags(550), StateFlags(646),
-        StateFlags(646), StateFlags(550), StateFlags(550), StateFlags(646), StateFlags(646),
-        StateFlags(550), StateFlags(550), StateFlags(646), StateFlags(646), StateFlags(550),
-        StateFlags(550), StateFlags(646), StateFlags(646), StateFlags(550), StateFlags(550),
-        StateFlags(646), StateFlags(646), StateFlags(550), StateFlags(550), StateFlags(646),
-        StateFlags(646), StateFlags(550), StateFlags(550), StateFlags(646), StateFlags(646),
-        StateFlags(550), StateFlags(550),
+        StateFlags(2694), StateFlags(2694), StateFlags(2598), StateFlags(2598), StateFlags(2694),
+        StateFlags(2694), StateFlags(2598), StateFlags(2598), StateFlags(2694), StateFlags(2694),
+        StateFlags(2598), StateFlags(2598), StateFlags(2694), StateFlags(2694), StateFlags(2598),
+        StateFlags(2598), StateFlags(2694), StateFlags(2694), StateFlags(2598), StateFlags(2598),
+        StateFlags(2694), StateFlags(2694), StateFlags(2598), StateFlags(2598), StateFlags(2694),
+        StateFlags(2694), StateFlags(2598), StateFlags(2598), StateFlags(2694), StateFlags(2694),
+        StateFlags(2598), StateFlags(2598),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_IRON_BARS);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_OAK_FENCE);

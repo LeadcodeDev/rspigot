@@ -26,7 +26,7 @@ impl Block for HoneyBlock {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(6));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2054));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(75));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;

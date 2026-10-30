@@ -57,7 +57,7 @@ const ENTITY_KEYS: [&str; 29] = [
     "Tags",
     "data",
 ];
-const LIVING_KEYS: [&str; 16] = [
+const LIVING_KEYS: [&str; 18] = [
     "Health",
     "HurtTime",
     "DeathTime",
@@ -74,6 +74,8 @@ const LIVING_KEYS: [&str; 16] = [
     "DeathLootTable",
     "DeathLootTableSeed",
     "NoAI",
+    "home_pos",
+    "home_radius",
 ];
 const ITEM_KEYS: [&str; 6] = ["Health", "Age", "PickupDelay", "Thrower", "Owner", "Item"];
 const FALLING_KEYS: [&str; 8] = [
@@ -470,6 +472,15 @@ fn read_living(nbt: &Compound, base: &mut EntityBase, living: &mut LivingState) 
         mob.death_loot_table = nbt.get_str("DeathLootTable").map(str::to_owned);
         mob.death_loot_table_seed = nbt.get_i64("DeathLootTableSeed").unwrap_or(0);
         mob.aware = nbt.get_bool("Bukkit.Aware").unwrap_or(true);
+        mob.home_radius = nbt.get_i32("home_radius").unwrap_or(-1);
+        if mob.home_radius >= 0 {
+            mob.home_pos = nbt
+                .get_int_array("home_pos")
+                .filter(|pos| pos.len() == 3)
+                .map_or(BlockPos::new(0, 0, 0), |pos| {
+                    BlockPos::new(pos[0], pos[1], pos[2])
+                });
+        }
         set_left_handed(base, nbt.get_bool("LeftHanded").unwrap_or(false));
         set_no_ai(base, nbt.get_bool("NoAI").unwrap_or(false));
     }
@@ -710,6 +721,11 @@ fn write_mob(base: &EntityBase, mob: &MobState, out: &mut Compound) {
     if !chances.is_empty() {
         out.insert("drop_chances", chances);
     }
+    if mob.home_radius != -1 {
+        out.insert("home_radius", mob.home_radius);
+        let pos = mob.home_pos;
+        out.insert("home_pos", Tag::IntArray(vec![pos.x, pos.y, pos.z]));
+    }
     out.insert("LeftHanded", bool_tag(is_left_handed(base)));
     if let Some(table) = &mob.death_loot_table {
         out.insert("DeathLootTable", table.as_str());
@@ -813,6 +829,27 @@ mod tests {
         assert_eq!(saved.get_f64("Health"), Some(7.5));
         let again = load_entity(&saved, EntityId(2), Uuid::from_u128(2)).unwrap();
         assert_eq!(save_entity(&again, None), Some(saved));
+    }
+
+    #[test]
+    fn mob_home_restriction_survives_a_round_trip() {
+        let nbt = cow_nbt()
+            .with("home_radius", 6)
+            .with("home_pos", Tag::IntArray(vec![3, 64, -2]));
+        let entity = load_entity(&nbt, EntityId(1), Uuid::from_u128(1)).unwrap();
+        let mob = entity.living().and_then(|l| l.mob.as_ref()).unwrap();
+        assert_eq!(
+            (mob.home_pos, mob.home_radius),
+            (BlockPos::new(3, 64, -2), 6)
+        );
+        assert!(!entity.extra.contains_key("home_pos"));
+        let saved = save_entity(&entity, None).unwrap();
+        assert_eq!(saved.get_i32("home_radius"), Some(6));
+        assert_eq!(saved.get_int_array("home_pos"), Some(&[3, 64, -2][..]));
+        let free = load_entity(&cow_nbt(), EntityId(2), Uuid::from_u128(2)).unwrap();
+        let saved = save_entity(&free, None).unwrap();
+        assert!(!saved.contains_key("home_radius"));
+        assert!(!saved.contains_key("home_pos"));
     }
 
     #[test]

@@ -33,10 +33,10 @@ impl Block for DecoratedPot {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134),
-        StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38),
-        StateFlags(134), StateFlags(38), StateFlags(134), StateFlags(38), StateFlags(134),
-        StateFlags(38),
+        StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182),
+        StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086),
+        StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182),
+        StateFlags(2086),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(156));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 3, 0));

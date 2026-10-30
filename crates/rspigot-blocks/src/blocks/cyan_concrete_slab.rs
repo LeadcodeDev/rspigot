@@ -32,8 +32,8 @@ impl Block for CyanConcreteSlab {
         1, 0, 1, 0, 15, 15,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(142), StateFlags(46), StateFlags(142), StateFlags(46), StateFlags(1182),
-        StateFlags(1054),
+        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(3230),
+        StateFlags(3102),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_WHITE_WOOL_SLAB);
     const FACE_SUPPORT: PerState<FaceSupport> =

@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use super::aabb::Aabb;
 use super::data::{Pose, SyncedData, SyncedValue};
+use super::fluid::FluidContact;
 use crate::text::Component;
 use crate::{ChunkPos, EntityId, Vec3};
 
@@ -73,6 +74,7 @@ pub struct EntityBase {
     pub needs_sync: bool,
     pub sync_position: bool,
     pub sync_velocity: bool,
+    pub fluid: FluidContact,
     pub data: SyncedData,
 }
 
@@ -124,6 +126,7 @@ impl EntityBase {
             needs_sync: false,
             sync_position: false,
             sync_velocity: false,
+            fluid: FluidContact::default(),
             data,
         }
     }

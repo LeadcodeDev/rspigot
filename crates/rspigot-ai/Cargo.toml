@@ -7,10 +7,14 @@ rust-version.workspace = true
 
 [dependencies]
 rspigot-blocks = { workspace = true }
+rspigot-data = { workspace = true }
 rspigot-domain = { workspace = true }
+rspigot-entities = { workspace = true }
+rspigot-items = { workspace = true }
 
 [dev-dependencies]
 proptest = "1"
+uuid = "1"
 
 [lints]
 workspace = true

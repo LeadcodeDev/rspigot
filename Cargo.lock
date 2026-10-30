@@ -1202,7 +1202,11 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "rspigot-blocks",
+ "rspigot-data",
  "rspigot-domain",
+ "rspigot-entities",
+ "rspigot-items",
+ "uuid",
 ]
 
 [[package]]
@@ -1246,6 +1250,7 @@ dependencies = [
  "parking_lot",
  "proptest",
  "rand 0.9.5",
+ "rspigot-ai",
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",

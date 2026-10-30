@@ -37,7 +37,7 @@ impl Block for TrialSpawner {
         0, 4, 8, 8, 8, 0, 0, 4, 8, 8, 8, 0,
     ]);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(1030));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(3078));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
     type Behavior = crate::family::Plain;

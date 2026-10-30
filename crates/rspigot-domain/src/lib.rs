@@ -9,6 +9,7 @@ pub mod ident;
 pub mod ids;
 pub mod item;
 pub mod menu;
+pub mod mth;
 pub mod player;
 pub mod pos;
 pub mod text;
