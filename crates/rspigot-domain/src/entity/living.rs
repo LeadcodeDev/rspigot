@@ -18,6 +18,7 @@ use crate::effect::{
 };
 use crate::item::ItemStack;
 use crate::player::PlayerId;
+use crate::spawn::{SpawnGroupData, SpawnReason};
 use crate::text::Component;
 use crate::{BlockPos, EntityId, Vec3, mth};
 
@@ -502,11 +503,13 @@ pub fn set_left_handed(base: &mut EntityBase, left: bool) {
 pub fn finalize_spawn(
     base: &mut EntityBase,
     living: &mut LivingState,
+    _reason: SpawnReason,
+    group: Option<SpawnGroupData>,
     next_double: &mut impl FnMut() -> f64,
     next_float: &mut impl FnMut() -> f32,
-) {
+) -> Option<SpawnGroupData> {
     if living.mob.is_none() {
-        return;
+        return group;
     }
     if !living
         .attributes
@@ -523,6 +526,7 @@ pub fn finalize_spawn(
         );
     }
     set_left_handed(base, next_float() < LEFT_HANDED_CHANCE);
+    group
 }
 
 pub fn is_dead_or_dying(base: &EntityBase, living: &LivingState) -> bool {

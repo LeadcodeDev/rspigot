@@ -563,6 +563,14 @@ def rs_f32(value):
     return Atom(text)
 
 
+def rs_f64(value):
+    assert isinstance(value, (int, float)) and not isinstance(value, bool), value
+    assert math.isfinite(float(value)), value
+    text = repr(float(value))
+    assert re.fullmatch(r"-?[0-9]+\.[0-9]+", text), value
+    return Atom(text)
+
+
 def expect_keys(value, allowed, where):
     assert isinstance(value, dict), (where, value)
     extra = set(value) - set(allowed)
@@ -1288,6 +1296,154 @@ def build_smelting(datapack, static_registries, tag_table):
     return sorted(results.items())
 
 
+SPAWN_CATEGORIES = [
+    "monster",
+    "creature",
+    "ambient",
+    "axolotls",
+    "underground_water_creature",
+    "water_creature",
+    "water_ambient",
+    "misc",
+]
+NATURAL_MOB_SPAWNS = "minecraft:gameplay/natural_mob_spawns"
+CREATURE_PROBABILITY = "minecraft:gameplay/creature_world_gen_spawn_probability"
+DEFAULT_CREATURE_PROBABILITY = 0.1
+
+
+def verify_spawn_defaults_against_java(javap, classes):
+    if not os.path.exists(javap):
+        return False
+    lines = java_lines(javap, classes, "net.minecraft.world.attribute.EnvironmentAttributes")
+    for index, line in enumerate(lines):
+        if line.endswith("// String " + CREATURE_PROBABILITY.split(":", 1)[1]):
+            for later in lines[index + 1 : index + 6]:
+                match = re.search(r"// float ([0-9.eE+-]+)f$", later)
+                if match:
+                    assert to_f32(float(match.group(1))) == to_f32(DEFAULT_CREATURE_PROBABILITY), later
+                    return True
+            fail("creature spawn probability default not found after its name")
+    fail(CREATURE_PROBABILITY + " not registered in EnvironmentAttributes")
+
+
+def int_provider(value, where):
+    if isinstance(value, int) and not isinstance(value, bool):
+        return rs_call("SpawnCount::Constant", [rs_int(value)])
+    expect_keys(value, ["type", "min_inclusive", "max_inclusive"], where)
+    if value.get("type") != "minecraft:uniform":
+        fail("unsupported int provider %s in %s" % (json.dumps(value), where))
+    low, high = value["min_inclusive"], value["max_inclusive"]
+    assert low <= high, (where, value)
+    return rs_struct("SpawnCount::Uniform", [("min", rs_int(low)), ("max", rs_int(high))])
+
+
+def build_biome_spawns(datapack, static_registries, synced):
+    entity_ids = {}
+    for registry_id, by_id, _ in static_registries:
+        if registry_id == "minecraft:entity_type":
+            entity_ids = {name: index for index, name in enumerate(by_id)}
+    biomes = next(entries for constant, _, entries in synced if constant == "BIOME")
+    table = []
+    for biome in biomes:
+        where = biome
+        path = os.path.join(datapack, "worldgen", "biome", biome.split(":", 1)[1] + ".json")
+        attributes = load_json(path).get("attributes", {})
+        probability = attributes.get(CREATURE_PROBABILITY, DEFAULT_CREATURE_PROBABILITY)
+        if isinstance(probability, dict):
+            fail("modified creature spawn probability in " + where)
+        categories = {category: [] for category in SPAWN_CATEGORIES}
+        costs = []
+        spawns = attributes.get(NATURAL_MOB_SPAWNS)
+        if spawns is not None:
+            expect_keys(spawns, ["argument", "modifier"], where)
+            if spawns["modifier"] != "overlay":
+                fail("unsupported natural mob spawns modifier %s in %s" % (spawns["modifier"], where))
+            argument = spawns["argument"]
+            expect_keys(argument, ["spawns_by_category", "spawn_costs"], where)
+            for category, entries in argument.get("spawns_by_category", {}).items():
+                if category not in categories:
+                    fail("unknown mob category %s in %s" % (category, where))
+                for entry in entries:
+                    expect_keys(entry, ["type", "count", "weight"], where)
+                    entity = normalize_id(entry["type"])
+                    if entity not in entity_ids:
+                        fail("unknown entity %s in %s" % (entity, where))
+                    weight = entry["weight"]
+                    assert isinstance(weight, int) and weight > 0, (where, entry)
+                    categories[category].append(
+                        rs_struct(
+                            "Spawner",
+                            [
+                                ("entity", rs_int(entity_ids[entity])),
+                                ("weight", rs_int(weight)),
+                                ("count", int_provider(entry["count"], where)),
+                            ],
+                        )
+                    )
+            for entity, cost in sorted(argument.get("spawn_costs", {}).items()):
+                expect_keys(cost, ["charge", "energy_budget"], where)
+                entity = normalize_id(entity)
+                if entity not in entity_ids:
+                    fail("unknown entity %s in %s spawn costs" % (entity, where))
+                costs.append(
+                    rs_struct(
+                        "SpawnCost",
+                        [
+                            ("entity", rs_int(entity_ids[entity])),
+                            ("energy_budget", rs_f64(cost["energy_budget"])),
+                            ("charge", rs_f64(cost["charge"])),
+                        ],
+                    )
+                )
+        fields = [("creature_probability", rs_f32(probability))]
+        fields.extend((category, rs_slice(categories[category])) for category in SPAWN_CATEGORIES)
+        fields.append(("costs", rs_slice(costs)))
+        table.append(rs_struct("BiomeSpawns", fields))
+    return table
+
+
+def build_dimension_spawns(datapack):
+    rows = []
+    directory = os.path.join(datapack, "dimension_type")
+    for name in json_names(directory):
+        data = load_json(os.path.join(directory, name + ".json"))
+        where = "minecraft:" + name
+        limit = data["monster_spawn_block_light_limit"]
+        assert isinstance(limit, int) and 0 <= limit <= 15, (where, limit)
+        rows.append(
+            rs_tuple(
+                [
+                    rs_str(where),
+                    rs_struct(
+                        "DimensionSpawns",
+                        [
+                            ("monster_spawn_light", int_provider(data["monster_spawn_light_level"], where)),
+                            ("monster_spawn_block_light_limit", rs_int(limit)),
+                            ("ambient_light", rs_f32(data["ambient_light"])),
+                            ("has_ceiling", rs_bool(data["has_ceiling"])),
+                        ],
+                    ),
+                ]
+            )
+        )
+    return rows
+
+
+def emit_spawns(biome_spawns, dimension_spawns):
+    body = ["pub(crate) static BIOME_SPAWNS: [BiomeSpawns; %d] = [" % len(biome_spawns)]
+    for node in biome_spawns:
+        body.extend(render(node, "    ", "", ","))
+    body.append("];")
+    body.append("")
+    body.append("pub(crate) static DIMENSION_SPAWNS: [(&str, DimensionSpawns); %d] = [" % len(dimension_spawns))
+    for node in dimension_spawns:
+        body.extend(render(node, "    ", "", ","))
+    body.append("];")
+    text = "\n".join(body) + "\n"
+    names = ["BiomeSpawns", "DimensionSpawns", "SpawnCost", "SpawnCount", "Spawner"]
+    return "use crate::spawns::{%s};\n\n" % ", ".join(used_imports(text, names)) + text
+
+
 def used_imports(text, names):
     return [name for name in names if re.search(r"\b" + name + r"\b", text)]
 
@@ -1325,6 +1481,7 @@ def emit_mod():
     return "\n".join(
         [
             "pub mod loot;",
+            "pub mod spawns;",
             "pub mod static_registries;",
             "pub mod synced;",
             "pub mod tags;",
@@ -1365,6 +1522,10 @@ def main():
         args.datapack, block_reports, static_registries, synced, tag_table
     )
     smelting = build_smelting(args.datapack, static_registries, tag_table)
+    biome_spawns = build_biome_spawns(args.datapack, static_registries, synced)
+    dimension_spawns = build_dimension_spawns(args.datapack)
+    if not args.no_javap:
+        verify_spawn_defaults_against_java(args.javap, args.classes)
 
     files = {
         "mod.rs": emit_mod(),
@@ -1372,6 +1533,7 @@ def main():
         "synced.rs": emit_synced(synced),
         "tags.rs": emit_tags(tag_table),
         "loot.rs": emit_loot(tables, block_tables, entity_tables, predicates, smelting),
+        "spawns.rs": emit_spawns(biome_spawns, dimension_spawns),
     }
     write_files(args.out, files)
 
@@ -1396,6 +1558,7 @@ def main():
     print("smelting inputs %d" % len(smelting))
     print("wall variants using floor table %d" % len(wall_mapped))
     print("named predicates %d" % len(predicates))
+    print("biome spawn settings %d, dimension spawn settings %d" % (len(biome_spawns), len(dimension_spawns)))
     for construct in sorted(ignored):
         owners = sorted(ignored[construct])
         print("ignored %s in %d tables: %s" % (construct, len(owners), ", ".join(owners)))

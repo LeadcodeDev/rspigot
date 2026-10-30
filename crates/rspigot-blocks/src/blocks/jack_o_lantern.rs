@@ -1,5 +1,6 @@
 use crate::{
-    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, SpawnSurface,
+    StateFlags, StateId,
 };
 
 pub struct JackOLantern;
@@ -28,8 +29,9 @@ impl Block for JackOLantern {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(15);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(3102));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(7198));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
+    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::Always;
     type Behavior = crate::family::HorizontalAway;
 }

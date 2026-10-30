@@ -1,6 +1,7 @@
 use rspigot_domain::BlockPos;
 use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
+use rspigot_domain::spawn::state::SpawnSettings;
 use rspigot_domain::world::Difficulty;
 use sha2::{Digest, Sha256};
 
@@ -52,6 +53,21 @@ impl Default for ActivationRanges {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpawningConfig {
+    pub categories: SpawnSettings,
+    pub mob_spawn_range: i32,
+}
+
+impl Default for SpawningConfig {
+    fn default() -> Self {
+        Self {
+            categories: SpawnSettings::default(),
+            mob_spawn_range: 6,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
     pub max_players: u32,
@@ -76,6 +92,7 @@ pub struct GameConfig {
     pub is_flat: bool,
     pub spawn_chunk_radius: i32,
     pub rules: GameRules,
+    pub spawning: SpawningConfig,
 }
 
 impl Default for GameConfig {
@@ -104,6 +121,7 @@ impl Default for GameConfig {
             is_flat: false,
             spawn_chunk_radius: 2,
             rules: GameRules::default(),
+            spawning: SpawningConfig::default(),
         }
     }
 }
@@ -119,6 +137,8 @@ pub struct LevelData {
     pub daylight_cycle: bool,
     pub raining: bool,
     pub thundering: bool,
+    pub spawn_mobs: bool,
+    pub spawn_monsters: bool,
     pub uuid: Option<uuid::Uuid>,
 }
 
@@ -134,6 +154,8 @@ impl Default for LevelData {
             daylight_cycle: true,
             raining: false,
             thundering: false,
+            spawn_mobs: true,
+            spawn_monsters: true,
             uuid: None,
         }
     }

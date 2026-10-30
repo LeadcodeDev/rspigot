@@ -1,5 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
     VoicePitch,
 };
 
@@ -96,6 +97,23 @@ impl EntityType for Guardian {
         pitch: VoicePitch::Standard,
         source: SoundSource::Hostile,
         can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::InWater,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::Guardian,
+        }),
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::Guardian),
+        check_spawn_obstruction: MobClass::Guardian,
+        max_spawn_cluster_size: Some(4),
+        max_spawn_cluster_size_owner: MobClass::Mob,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::Mob,
+        requires_custom_persistence: MobClass::Mob,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
     });
     type Behavior = crate::family::Plain;
 }

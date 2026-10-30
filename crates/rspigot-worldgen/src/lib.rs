@@ -70,4 +70,11 @@ impl ChunkGenerator for WorldGenerator {
             Self::Noise(generator) => generator.spawn_point(dimension),
         }
     }
+
+    fn spawns_original_mobs(&self, dimension: &Dimension) -> bool {
+        match self {
+            Self::Noise(generator) => generator.spawns_original_mobs(dimension),
+            Self::Flat(_) | Self::Void(_) => false,
+        }
+    }
 }

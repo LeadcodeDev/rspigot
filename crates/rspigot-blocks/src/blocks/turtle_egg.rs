@@ -29,7 +29,7 @@ impl Block for TurtleEgg {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2598));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(18982));
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_TURTLE_EGG);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;

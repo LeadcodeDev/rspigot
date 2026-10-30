@@ -18,6 +18,7 @@ pub enum ChunkJob {
     Load {
         dimension: Arc<Dimension>,
         pos: ChunkPos,
+        mobs: Option<super::MobGeneration>,
     },
     Save {
         dimension: Arc<Dimension>,
@@ -140,7 +141,11 @@ fn execute<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     generator: &G,
 ) -> ChunkResult {
     match job {
-        ChunkJob::Load { dimension, pos } => load(dimension, pos, store, generator),
+        ChunkJob::Load {
+            dimension,
+            pos,
+            mobs,
+        } => load(dimension, pos, mobs, store, generator),
         ChunkJob::Save { dimension, chunk } => match store.save(&dimension.key, &chunk) {
             Ok(()) => ChunkResult::Saved { pos: chunk.pos() },
             Err(error) => ChunkResult::Failed {
@@ -173,6 +178,7 @@ fn execute<S: ChunkStore + EntityStore, G: ChunkGenerator>(
 fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     dimension: Arc<Dimension>,
     pos: ChunkPos,
+    mobs: Option<super::MobGeneration>,
     store: &S,
     generator: &G,
 ) -> ChunkResult {
@@ -185,7 +191,7 @@ fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
             (generator.generate(&dimension, pos), ChunkSource::Generated)
         }
     };
-    let entities = match store.load_entities(&dimension.key, pos) {
+    let mut entities = match store.load_entities(&dimension.key, pos) {
         Ok(entities) => entities,
         Err(error) => {
             tracing::error!(?pos, %error, "Failed to load entities");
@@ -194,6 +200,13 @@ fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
     };
     if !lighting::has_light(&chunk) {
         lighting::compute(&mut chunk, dimension.has_skylight);
+    }
+    if source == ChunkSource::Generated
+        && entities.is_none()
+        && generator.spawns_original_mobs(&dimension)
+        && let Some(mobs) = mobs
+    {
+        entities = Some(crate::spawning::original_mobs(&chunk, &dimension, mobs));
     }
     ChunkResult::Loaded {
         dimension,

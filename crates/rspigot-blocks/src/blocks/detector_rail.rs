@@ -39,11 +39,12 @@ impl Block for DetectorRail {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128),
-        StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128),
-        StateFlags(32), StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
-        StateFlags(128), StateFlags(32), StateFlags(128), StateFlags(32),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
+        StateFlags(24704), StateFlags(24608), StateFlags(24704), StateFlags(24608),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

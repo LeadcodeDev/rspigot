@@ -35,12 +35,13 @@ impl Block for Kelp {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640),
-        StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640),
-        StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640),
-        StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640),
-        StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640), StateFlags(640),
-        StateFlags(128),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(17024), StateFlags(17024), StateFlags(17024),
+        StateFlags(17024), StateFlags(16512),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

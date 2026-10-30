@@ -32,8 +32,8 @@ impl Block for OakWallSign {
         1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2176), StateFlags(2080), StateFlags(2176), StateFlags(2080), StateFlags(2176),
-        StateFlags(2080), StateFlags(2176), StateFlags(2080),
+        StateFlags(18560), StateFlags(18464), StateFlags(18560), StateFlags(18464),
+        StateFlags(18560), StateFlags(18464), StateFlags(18560), StateFlags(18464),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

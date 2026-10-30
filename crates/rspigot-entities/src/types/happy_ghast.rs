@@ -1,5 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
     VoicePitch,
 };
 
@@ -98,6 +99,23 @@ impl EntityType for HappyGhast {
         pitch: VoicePitch::Fixed,
         source: SoundSource::Neutral,
         can_be_baby: true,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::OnGround,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::Animal,
+        }),
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::HappyGhast),
+        check_spawn_obstruction: MobClass::Mob,
+        max_spawn_cluster_size: Some(1),
+        max_spawn_cluster_size_owner: MobClass::HappyGhast,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::Animal,
+        requires_custom_persistence: MobClass::Mob,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
     });
     type Behavior = crate::family::Plain;
 }

@@ -31,7 +31,7 @@ impl Block for Snow {
         0, 0, 0, 0, 0, 0, 0, 15,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(616), StateFlags(620), StateFlags(620), StateFlags(620), StateFlags(620),
+        StateFlags(17000), StateFlags(17004), StateFlags(17004), StateFlags(17004), StateFlags(620),
         StateFlags(620), StateFlags(620), StateFlags(604),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_SNOW);

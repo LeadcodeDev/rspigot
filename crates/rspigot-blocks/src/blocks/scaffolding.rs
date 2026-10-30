@@ -1,5 +1,6 @@
 use crate::{
-    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, SpawnSurface,
+    StateFlags, StateId,
 };
 
 pub struct Scaffolding;
@@ -34,15 +35,17 @@ impl Block for Scaffolding {
         0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
-        StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36),
-        StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
-        StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36),
-        StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132),
-        StateFlags(36), StateFlags(132), StateFlags(36), StateFlags(132), StateFlags(36),
-        StateFlags(132), StateFlags(36),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
+        StateFlags(16516), StateFlags(16420), StateFlags(16516), StateFlags(16420),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(275));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(2, 2, 2));
+    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::Never;
     type Behavior = crate::family::Scaffolding;
 }

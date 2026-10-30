@@ -10,7 +10,7 @@ use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::admin::AdminLists;
-use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, Priority};
+use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, MobGeneration, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
 use rand::SeedableRng;
@@ -24,6 +24,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore};
+use crate::spawning::Spawning;
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
@@ -93,6 +94,7 @@ pub struct Server<L> {
     pub(crate) entities: EntityWorld,
     pub(crate) falls: ScheduledFalls,
     pub(crate) rng: StdRng,
+    pub(crate) spawning: Spawning,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -117,6 +119,11 @@ impl<L: ClientLink> Server<L> {
         level.spawn = Some(spawn.block());
         let workers = ChunkWorkers::spawn(config.chunk_workers, store, generator);
         let mut chunks = ChunkManager::new(Arc::clone(&dimension), config.chunks);
+        chunks.set_mob_generation(level.spawn_mobs.then_some(MobGeneration {
+            seed: level.seed,
+            zoom_seed: hashed_seed(level.seed),
+            difficulty: config.difficulty,
+        }));
         let center = spawn.chunk();
         for dx in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
             for dz in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
@@ -129,6 +136,7 @@ impl<L: ClientLink> Server<L> {
         }
         let admin = config.admin.clone();
         status.update(|s| s.max_players = config.max_players);
+        let spawning = Spawning::new(level.seed, &dimension);
         Self {
             world: World {
                 dimension,
@@ -146,6 +154,7 @@ impl<L: ClientLink> Server<L> {
             entities: EntityWorld::default(),
             falls: ScheduledFalls::default(),
             rng: StdRng::from_os_rng(),
+            spawning,
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -564,8 +573,10 @@ impl<L: ClientLink> Server<L> {
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
+        self.world.chunks.relight();
         self.send_entity_changes();
         self.tick_health();
+        self.tick_spawning();
         self.tick_entities();
         self.collect_items();
         self.collect_orbs();
