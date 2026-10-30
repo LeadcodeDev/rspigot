@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::config::{GameConfig, LevelData};
 use rspigot_core::events::{ClientEvent, DigAction, Direction, Inbound, PlayerInput};
-use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, StoreError};
+use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, StoreError};
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
 use rspigot_domain::chunk::ChunkColumn;
@@ -57,6 +57,25 @@ impl ChunkStore for NoStore {
     }
 
     fn flush(&self) -> Result<(), StoreError> {
+        Ok(())
+    }
+}
+
+impl EntityStore for NoStore {
+    fn load_entities(
+        &self,
+        _: &Identifier,
+        _: ChunkPos,
+    ) -> Result<Option<Vec<rspigot_nbt::Compound>>, StoreError> {
+        Ok(None)
+    }
+
+    fn save_entities(
+        &self,
+        _: &Identifier,
+        _: ChunkPos,
+        _: &[rspigot_nbt::Compound],
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 }

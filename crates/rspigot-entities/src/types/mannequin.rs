@@ -12,11 +12,15 @@ impl EntityType for Mannequin {
     const EYE_HEIGHT: f32 = 1.62;
     const FIRE_IMMUNE: bool = false;
     const SUMMONABLE: bool = true;
+    const CAN_SERIALIZE: bool = true;
+    const ALLOWED_IN_PEACEFUL: bool = true;
     const CAN_SPAWN_FAR_FROM_PLAYER: bool = true;
     const CLIENT_TRACKING_RANGE: u8 = 32;
     const UPDATE_INTERVAL: Option<u8> = Some(2);
+    const TRACK_DELTAS: bool = true;
     const SPAWN_EGG: Option<u16> = None;
     const LIVING: bool = true;
+    const ANCESTORS: &'static [&'static str] = &["Mannequin", "Avatar", "LivingEntity", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[
         ("minecraft:air_drag_modifier", 1.0),
         ("minecraft:armor", 0.0),

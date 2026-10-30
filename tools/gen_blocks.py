@@ -420,6 +420,8 @@ def block_file(block, first_state, item, wall, behavior, bits):
     lines.append("        friction: %s," % f32_literal(block["friction"]))
     lines.append("        speed_factor: %s," % f32_literal(block["speed_factor"]))
     lines.append("        jump_factor: %s," % f32_literal(block["jump_factor"]))
+    lines.append("        bounce_restitution: %s," % f32_literal(block["bounce_restitution"]))
+    lines.append("        fall_distance_reduction: %s," % f32_literal(block["fall_distance_reduction"]))
     lines.append("        requires_correct_tool: %s," % str(bool(block["requires_correct_tool_for_drops"])).lower())
     lines.append("        ignited_by_lava: %s," % str(bool(block["ignited_by_lava"])).lower())
     lines.append("    };")

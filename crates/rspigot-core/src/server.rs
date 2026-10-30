@@ -16,14 +16,14 @@ use crate::config::{GameConfig, LevelData, hashed_seed};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
+use crate::entities::EntityWorld;
 use crate::events::{
     ClientEvent, EntityKind, EquipmentSlot, GameEvent, Inbound, JoinInfo, MetadataEntry,
     MetadataValue, PlayerListEntry, Pose, SpawnInfo,
 };
-use crate::falling::{FallingBlock, ScheduledFalls};
-use crate::items::ItemEntity;
+use crate::falling::ScheduledFalls;
 use crate::player::Player;
-use crate::ports::{ChunkGenerator, ChunkStore, ClientLink};
+use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore};
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
@@ -85,8 +85,7 @@ pub struct Server<L> {
     pub(crate) admin: AdminLists,
     pub(crate) admin_sink: Option<Sender<AdminLists>>,
     pub(crate) running: bool,
-    pub(crate) items: FxHashMap<EntityId, ItemEntity>,
-    pub(crate) falling: FxHashMap<EntityId, FallingBlock>,
+    pub(crate) entities: EntityWorld,
     pub(crate) falls: ScheduledFalls,
     pub(crate) rng: StdRng,
     next_entity_id: i32,
@@ -98,7 +97,7 @@ pub struct Server<L> {
 }
 
 impl<L: ClientLink> Server<L> {
-    pub fn new<S: ChunkStore, G: ChunkGenerator>(
+    pub fn new<S: ChunkStore + EntityStore, G: ChunkGenerator>(
         config: GameConfig,
         mut level: LevelData,
         store: Arc<S>,
@@ -139,8 +138,7 @@ impl<L: ClientLink> Server<L> {
             admin,
             admin_sink: None,
             running: true,
-            items: FxHashMap::default(),
-            falling: FxHashMap::default(),
+            entities: EntityWorld::default(),
             falls: ScheduledFalls::default(),
             rng: StdRng::from_os_rng(),
             next_entity_id: 1,
@@ -402,6 +400,7 @@ impl<L: ClientLink> Server<L> {
         let name = player.profile.name.clone();
         let id = player.id;
         self.players.insert(id, player);
+        self.update_player_view(id);
         let joined =
             Component::translatable("multiplayer.player.joined", vec![Component::text(name)])
                 .color(NamedColor::Yellow);
@@ -539,14 +538,16 @@ impl<L: ClientLink> Server<L> {
             self.world.level.day_time += 1;
         }
         self.world.chunks.tick(&self.workers);
+        self.handle_chunk_events();
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
+        self.send_entity_changes();
         self.tick_health();
-        self.tick_items();
+        self.tick_entities();
+        self.collect_items();
         self.tick_falling_blocks();
         self.update_tracking();
-        self.update_item_tracking();
         self.sync_vitals();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
@@ -686,6 +687,8 @@ impl<L: ClientLink> Server<L> {
             self.world.level.name,
             self.world.dimension.key
         );
+        self.handle_chunk_events();
+        self.save_all_entities();
         let saved = self.world.chunks.save_dirty(&self.workers);
         self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
         self.workers.shutdown();

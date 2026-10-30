@@ -7,29 +7,26 @@ use rspigot_blocks::{
     speleothem_thickness,
 };
 use rspigot_domain::damage::DamageType;
+use rspigot_domain::entity::falling::{self, FallingState};
+use rspigot_domain::entity::{Entity, EntityState, RemovalReason};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
-use rspigot_domain::{BlockPos, BlockStateId, EntityId, ItemId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, ItemId, Vec3};
+use rspigot_entities::EntityKind as Kind;
 use rustc_hash::FxHashSet;
-use uuid::Uuid;
 
-use crate::events::{ClientEvent, EntityKind};
 use crate::health::{DamageSource, SourceEntity};
 use crate::loot::{self, LootContext};
 use crate::ports::ClientLink;
-use crate::server::{Audience, Server};
+use crate::server::Server;
 
 const FALLING_DELAY: u64 = 2;
 const STALACTITE_DELAY: u64 = 2;
 const STALAGMITE_DELAY: u64 = 1;
 const SCAFFOLDING_DELAY: u64 = 1;
-const ACCELERATION: f64 = 0.04;
-const DRAG: f64 = 0.98;
-const MAX_FALL_TICKS: u32 = 600;
-const OUT_OF_WORLD_TICKS: u32 = 100;
-const TRACKING_RANGE: f64 = 160.0;
-const POSITION_SYNC_TICKS: u32 = 20;
+const MAX_FALL_TICKS: i32 = 600;
+const OUT_OF_WORLD_TICKS: i32 = 100;
 const BLOCK_HALF_WIDTH: f64 = 0.49;
 const BLOCK_HEIGHT: f64 = 0.98;
 const PLAYER_HALF_WIDTH: f64 = 0.3;
@@ -88,35 +85,6 @@ fn overlaps(block: Vec3, player: Vec3, height: f64) -> bool {
         && (block.z - player.z).abs() < reach
         && block.y < player.y + height
         && block.y + BLOCK_HEIGHT > player.y
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FallingBlock {
-    pub id: EntityId,
-    pub uuid: Uuid,
-    pub state: BlockStateId,
-    pub position: Vec3,
-    pub velocity: Vec3,
-    pub time: u32,
-    pub fall_distance: f64,
-    pub hurt: Option<FallHurt>,
-    pub cancel_drop: bool,
-    synced_position: Vec3,
-}
-
-impl FallingBlock {
-    fn spawn_event(&self) -> ClientEvent {
-        ClientEvent::SpawnEntity {
-            entity: self.id,
-            uuid: self.uuid,
-            kind: EntityKind::FallingBlock,
-            position: self.position,
-            rotation: Rotation::default(),
-            head_yaw: 0.0,
-            data: i32::from(self.state.0),
-            velocity: self.velocity,
-        }
-    }
 }
 
 fn is_free(state: BlockStateId) -> bool {
@@ -345,8 +313,6 @@ impl<L: ClientLink> Server<L> {
                 self.block_tick(pos, state, kind);
             }
         }
-        self.move_falling_blocks();
-        self.update_falling_tracking();
     }
 
     fn block_tick(&mut self, pos: BlockPos, state: BlockStateId, kind: BlockKind) {
@@ -408,40 +374,22 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn fall(&mut self, pos: BlockPos, state: BlockStateId, hurt: Option<FallHurt>) {
-        let id = self.allocate_entity_id();
-        let uuid = uuid::Builder::from_random_bytes(self.rng.random()).into_uuid();
+        let mut base = self.new_entity_base(Kind::FallingBlock);
         let position = Vec3::new(
             f64::from(pos.x) + 0.5,
             f64::from(pos.y),
             f64::from(pos.z) + 0.5,
         );
+        base.position = position;
+        base.old_position = position;
         self.set_block(pos, left_behind(state));
-        self.falling.insert(
-            id,
-            FallingBlock {
-                id,
-                uuid,
-                state: waterlogged(state, false),
-                position,
-                velocity: Vec3::ZERO,
-                time: 0,
-                fall_distance: 0.0,
-                hurt,
-                cancel_drop: false,
-                synced_position: position,
-            },
-        );
-    }
-
-    fn floor_below(&self, x: f64, z: f64, from: f64, to: f64) -> Option<i32> {
-        let (bx, bz) = (x.floor() as i32, z.floor() as i32);
-        let top = from.floor() as i32 - 1;
-        let bottom = to.floor() as i32;
-        (bottom..=top).rev().find(|&y| {
-            self.block_or_air(BlockPos::new(bx, y, bz))
-                .flags()
-                .contains(StateFlags::HAS_COLLISION)
-        })
+        let mut falling = FallingState::new(&mut base, waterlogged(state, false), position.block());
+        if let Some(hurt) = hurt {
+            falling.hurt_entities = true;
+            falling.fall_hurt_amount = hurt.per_distance;
+            falling.fall_hurt_max = hurt.max;
+        }
+        let _ = self.add_entity(Entity::new(base, EntityState::Falling(falling)));
     }
 
     fn water_on_path(&self, from: BlockPos, to: BlockPos) -> Option<BlockPos> {
@@ -455,93 +403,84 @@ impl<L: ClientLink> Server<L> {
             .filter(|&pos| has_water(self.block_or_air(pos)))
     }
 
-    fn move_falling_blocks(&mut self) {
-        let ids: Vec<EntityId> = self.falling.keys().copied().collect();
-        for id in ids {
-            let Some(mut entity) = self.falling.remove(&id) else {
-                continue;
-            };
-            let original = entity.state;
-            entity.time += 1;
-            entity.velocity.y -= ACCELERATION;
-            let from = entity.position;
-            let target = from + entity.velocity;
-            let floor = if entity.velocity.y < 0.0 {
-                self.floor_below(target.x, target.z, from.y, target.y)
-            } else {
-                None
-            };
-            let landed_y = floor.map_or(target.y, |y| f64::from(y + 1));
-            let moved = landed_y - from.y;
-            if moved < 0.0 {
-                entity.fall_distance -= f64::from(moved as f32);
+    pub(crate) fn tick_falling_entity(&mut self, id: EntityId) {
+        let chunks = &self.world.chunks;
+        let Some(Entity {
+            base,
+            state: EntityState::Falling(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
+        };
+        if state.state.is_air() {
+            self.remove_entity(id, RemovalReason::Discarded);
+            return;
+        }
+        let original = state.state;
+        base.old_position = base.position;
+        base.tick_count = base.tick_count.wrapping_add(1);
+        let from = base.position;
+        let landing = falling::fall_step(base, state, chunks);
+        let time = state.time;
+        let on_ground = base.on_ground;
+        let speed = base.velocity.length_sqr();
+        let mut pos = base.position.block();
+        if let Some(landing) = landing
+            && let Some(impact) = crate::fall::fall_impact(landing.state, landing.distance, false)
+        {
+            self.cause_fall_damage(id, impact.distance);
+        }
+        let concrete = gravity(original) == Gravity::ConcretePowder;
+        let mut in_water = concrete && has_water(self.block_or_air(pos));
+        if concrete
+            && speed > 1.0
+            && let Some(hit) = self.water_on_path(from.block(), pos)
+        {
+            pos = hit;
+            in_water = true;
+        }
+        if on_ground || in_water {
+            if let Some(entity) = self.entities.store.get_mut(id) {
+                falling::absorb_landing(&mut entity.base);
             }
-            entity.position = Vec3::new(target.x, landed_y, target.z);
-            let mut pos = entity.position.block();
-            if let Some(y) = floor {
-                let below = self.block_or_air(BlockPos::new(pos.x, y, pos.z));
-                if entity.fall_distance > 0.0
-                    && let Some(impact) =
-                        crate::fall::fall_impact(below, entity.fall_distance, false)
-                {
-                    self.cause_fall_damage(&mut entity, impact.distance);
-                }
-                entity.fall_distance = 0.0;
-            }
-            let concrete = gravity(original) == Gravity::ConcretePowder;
-            let mut in_water = concrete && has_water(self.block_or_air(pos));
-            let speed = entity.velocity.x * entity.velocity.x
-                + entity.velocity.y * entity.velocity.y
-                + entity.velocity.z * entity.velocity.z;
-            if concrete
-                && floor.is_none()
-                && speed > 1.0
-                && let Some(hit) = self.water_on_path(from.block(), pos)
-            {
-                pos = hit;
-                in_water = true;
-            }
-            if floor.is_some() || in_water {
-                self.land(entity, original, pos, in_water);
-                continue;
-            }
-            let height = self.world.dimension.height;
-            let outside = pos.y <= height.min_y || pos.y > height.max_y();
-            if entity.time > MAX_FALL_TICKS || (entity.time > OUT_OF_WORLD_TICKS && outside) {
-                self.drop_falling(entity.id, original, pos);
-                continue;
-            }
-            entity.velocity = Vec3::new(
-                entity.velocity.x * DRAG,
-                entity.velocity.y * DRAG,
-                entity.velocity.z * DRAG,
-            );
-            if entity.time.is_multiple_of(POSITION_SYNC_TICKS) {
-                self.push(
-                    Audience::Trackers(id),
-                    ClientEvent::EntityMoved {
-                        entity: id,
-                        from: entity.synced_position,
-                        to: entity.position,
-                        rotation: None,
-                        on_ground: false,
-                    },
-                );
-                entity.synced_position = entity.position;
-            }
-            self.falling.insert(id, entity);
+            self.land(id, original, pos, in_water);
+            return;
+        }
+        let height = self.world.dimension.height;
+        let outside = pos.y <= height.min_y || pos.y > height.max_y();
+        if time > MAX_FALL_TICKS || (time > OUT_OF_WORLD_TICKS && outside) {
+            self.drop_falling(id, original, pos);
+            return;
+        }
+        if let Some(entity) = self.entities.store.get_mut(id) {
+            falling::apply_drag(&mut entity.base);
         }
     }
 
-    fn cause_fall_damage(&mut self, entity: &mut FallingBlock, distance: f64) {
-        let Some(hurt) = entity.hurt else {
+    fn cause_fall_damage(&mut self, id: EntityId, distance: f64) {
+        let Some(Entity {
+            base,
+            state: EntityState::Falling(state),
+            ..
+        }) = self.entities.store.get(id)
+        else {
             return;
         };
+        if !state.hurt_entities {
+            return;
+        }
+        let hurt = FallHurt {
+            per_distance: state.fall_hurt_amount,
+            max: state.fall_hurt_max,
+        };
+        let block = state.state;
+        let position = base.position;
         if fall_blocks(distance) < 0 {
             return;
         }
         let damage = hurt.damage(distance);
-        let kind = match gravity(entity.state) {
+        let kind = match gravity(block) {
             Gravity::Anvil => DamageType::FallingAnvil,
             Gravity::Speleothem => DamageType::FallingStalactite,
             _ => DamageType::FallingBlock,
@@ -549,10 +488,10 @@ impl<L: ClientLink> Server<L> {
         let source = DamageSource::by(
             kind,
             SourceEntity {
-                entity: entity.id,
+                entity: id,
                 player: None,
                 name: Component::translatable("entity.minecraft.falling_block", Vec::new()),
-                position: entity.position,
+                position,
             },
         );
         let victims: Vec<PlayerId> = self
@@ -561,34 +500,44 @@ impl<L: ClientLink> Server<L> {
             .filter(|p| {
                 !matches!(p.game_mode, GameMode::Creative | GameMode::Spectator)
                     && !p.vitals.is_dead()
-                    && overlaps(entity.position, p.position, p.height())
+                    && overlaps(position, p.position, p.height())
             })
             .map(|p| p.id)
             .collect();
         for victim in victims {
             self.hurt(victim, &source, damage);
         }
-        if gravity(entity.state) != Gravity::Anvil {
+        if gravity(block) != Gravity::Anvil {
             return;
         }
         let chance = anvil_degrade_chance(distance);
-        if chance > 0.0 && self.rng.random::<f32>() < chance {
-            match entity.state.damaged_anvil() {
-                Some(damaged) => entity.state = damaged,
-                None => entity.cancel_drop = true,
+        if chance > 0.0
+            && self.rng.random::<f32>() < chance
+            && let Some(Entity {
+                state: EntityState::Falling(state),
+                ..
+            }) = self.entities.store.get_mut(id)
+        {
+            match state.state.damaged_anvil() {
+                Some(damaged) => state.state = damaged,
+                None => state.cancel_drop = true,
             }
         }
     }
 
-    fn land(
-        &mut self,
-        entity: FallingBlock,
-        original: BlockStateId,
-        pos: BlockPos,
-        in_water: bool,
-    ) {
-        if entity.cancel_drop {
-            self.remove_falling(entity.id);
+    fn land(&mut self, id: EntityId, original: BlockStateId, pos: BlockPos, in_water: bool) {
+        let Some(Entity {
+            state: EntityState::Falling(falling),
+            ..
+        }) = self.entities.store.get(id)
+        else {
+            return;
+        };
+        let cancel_drop = falling.cancel_drop;
+        let drop_item = falling.drop_item;
+        let block = falling.state;
+        if cancel_drop {
+            self.remove_falling(id);
             return;
         }
         let replaced = self.block_or_air(pos);
@@ -600,22 +549,24 @@ impl<L: ClientLink> Server<L> {
             .block(step(pos, Face::Down))
             .is_some_and(is_free)
             && !(concrete && in_water);
-        if replaceable && !free_below && self.survives(pos, entity.state) {
-            let state = if entity.state.property("waterlogged").is_some() && water_source(replaced)
-            {
-                waterlogged(entity.state, true)
+        if replaceable && !free_below && self.survives(pos, block) {
+            let state = if block.property("waterlogged").is_some() && water_source(replaced) {
+                waterlogged(block, true)
             } else {
-                entity.state
+                block
             };
-            self.remove_falling(entity.id);
+            self.remove_falling(id);
             if self.set_block(pos, state) {
                 self.on_land(pos, original, replaced);
-            } else {
+            } else if drop_item {
                 self.drop_item(original, pos);
             }
             return;
         }
-        self.drop_falling(entity.id, original, pos);
+        self.remove_falling(id);
+        if drop_item {
+            self.drop_item(original, pos);
+        }
     }
 
     fn on_land(&mut self, pos: BlockPos, original: BlockStateId, replaced: BlockStateId) {
@@ -627,8 +578,14 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn drop_falling(&mut self, id: EntityId, original: BlockStateId, pos: BlockPos) {
+        let drop_item = matches!(
+            self.entities.store.get(id).map(|e| &e.state),
+            Some(EntityState::Falling(state)) if state.drop_item
+        );
         self.remove_falling(id);
-        self.drop_item(original, pos);
+        if drop_item {
+            self.drop_item(original, pos);
+        }
     }
 
     fn drop_item(&mut self, original: BlockStateId, pos: BlockPos) {
@@ -638,36 +595,13 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn remove_falling(&mut self, id: EntityId) {
-        self.falling.remove(&id);
-        for player in self.players.values_mut() {
-            if player.tracked.remove(&id) {
-                player.link.send(ClientEvent::RemoveEntities(vec![id]));
-            }
-        }
-    }
-
-    fn update_falling_tracking(&mut self) {
-        let range = TRACKING_RANGE * TRACKING_RANGE;
-        for viewer in self.players.values_mut() {
-            for entity in self.falling.values() {
-                let visible = viewer.position.distance_squared(entity.position) <= range
-                    && viewer.streamer.has_sent(entity.position.chunk());
-                let tracking = viewer.tracked.contains(&entity.id);
-                if visible && !tracking {
-                    viewer.tracked.insert(entity.id);
-                    viewer.link.send(entity.spawn_event());
-                } else if !visible && tracking {
-                    viewer.tracked.remove(&entity.id);
-                    viewer
-                        .link
-                        .send(ClientEvent::RemoveEntities(vec![entity.id]));
-                }
-            }
-        }
+        self.remove_entity(id, RemovalReason::Discarded);
     }
 
     pub fn falling_blocks(&self) -> usize {
-        self.falling.len()
+        self.entities
+            .store
+            .count_where(|e| matches!(e.state, EntityState::Falling(_)))
     }
 }
 

@@ -1219,6 +1219,7 @@ dependencies = [
  "rspigot-nbt",
  "thiserror",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1248,6 +1249,7 @@ dependencies = [
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",
+ "rspigot-entities",
  "rspigot-items",
  "rspigot-nbt",
  "rustc-hash",
@@ -1270,8 +1272,10 @@ dependencies = [
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-effects",
+ "rspigot-entities",
  "rspigot-items",
  "rspigot-nbt",
+ "rustc-hash",
  "thiserror",
  "uuid",
 ]

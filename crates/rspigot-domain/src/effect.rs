@@ -184,7 +184,7 @@ pub const PLAYER_ATTRIBUTE_BASES: [(&str, f64); 9] = [
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttributeModifier {
-    pub id: &'static str,
+    pub id: std::borrow::Cow<'static, str>,
     pub amount: f64,
     pub operation: AttributeOperation,
 }
@@ -205,7 +205,7 @@ pub fn effect_attributes(effects: &ActiveEffects) -> Vec<AttributeState> {
             Vec::<AttributeState>::new(),
             |mut states, (amplifier, template)| {
                 let modifier = AttributeModifier {
-                    id: template.modifier,
+                    id: std::borrow::Cow::Borrowed(template.modifier),
                     amount: template.amount_for(amplifier),
                     operation: template.operation,
                 };

@@ -314,6 +314,25 @@ mod tests {
         }
     }
 
+    impl crate::ports::EntityStore for NoStore {
+        fn load_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+        ) -> Result<Option<Vec<rspigot_nbt::Compound>>, StoreError> {
+            Ok(None)
+        }
+
+        fn save_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+            _: &[rspigot_nbt::Compound],
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
     struct EmptyGenerator;
 
     impl ChunkGenerator for EmptyGenerator {

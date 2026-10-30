@@ -8,7 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.SharedConstants;
@@ -16,6 +18,8 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentInitializers;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.entity.Entity;
@@ -146,13 +150,38 @@ public final class EntityDump {
             json.name("name").value(BuiltInRegistries.ATTRIBUTE.getKey(attribute).toString());
             json.name("id").value(id);
             json.name("default_value").value(attribute.getDefaultValue());
+            json.name("syncable").value(attribute.isClientSyncable());
             json.endObject();
         }
         json.endArray();
     }
 
+    private static void writeDataAccessors(JsonWriter json, Class<?> entityClass) throws IOException, IllegalAccessException {
+        List<Class<?>> chain = new ArrayList<>();
+        for (Class<?> ancestor = entityClass; ancestor != null && Entity.class.isAssignableFrom(ancestor); ancestor = ancestor.getSuperclass()) {
+            chain.add(0, ancestor);
+        }
+        json.beginArray();
+        for (Class<?> owner : chain) {
+            for (Field field : owner.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers()) || field.getType() != EntityDataAccessor.class) {
+                    continue;
+                }
+                field.setAccessible(true);
+                EntityDataAccessor<?> accessor = (EntityDataAccessor<?>) field.get(null);
+                json.beginObject();
+                json.name("id").value(accessor.id());
+                json.name("serializer").value(EntityDataSerializers.getSerializedId(accessor.serializer()));
+                json.name("owner").value(owner.getSimpleName());
+                json.name("field").value(field.getName());
+                json.endObject();
+            }
+        }
+        json.endArray();
+    }
+
     @SuppressWarnings("unchecked")
-    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs) throws IOException {
+    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs) throws IOException, IllegalAccessException {
         json.beginArray();
         for (int id = 0; id < BuiltInRegistries.ENTITY_TYPE.size(); id++) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.byId(id);
@@ -185,6 +214,8 @@ public final class EntityDump {
             json.name("client_tracking_range").value(type.clientTrackingRange());
             json.name("update_interval").value(type.updateInterval());
             json.name("has_update_interval").value(type.hasUpdateInterval());
+            json.name("track_deltas").value(type.trackDeltas());
+            json.name("allowed_in_peaceful").value(type.isAllowedInPeaceful());
             json.name("spawn_egg");
             Integer egg = eggs.get(type);
             if (egg == null) {
@@ -193,6 +224,13 @@ public final class EntityDump {
                 json.value(egg.intValue());
             }
             json.name("living").value(living);
+            json.name("ancestors").beginArray();
+            for (Class<?> ancestor = entityClass; ancestor != null && Entity.class.isAssignableFrom(ancestor); ancestor = ancestor.getSuperclass()) {
+                json.value(ancestor.getSimpleName());
+            }
+            json.endArray();
+            json.name("data_accessors");
+            writeDataAccessors(json, entityClass);
             json.name("default_attributes").beginArray();
             if (living) {
                 AttributeSupplier supplier = DefaultAttributes.getSupplier((EntityType<? extends LivingEntity>) type);

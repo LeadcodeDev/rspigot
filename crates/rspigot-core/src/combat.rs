@@ -150,8 +150,13 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         if target == attacker.entity_id
-            || self.items.contains_key(&target)
-            || self.falling.contains_key(&target)
+            || self.entities.store.get(target).is_some_and(|e| {
+                matches!(
+                    e.state,
+                    rspigot_domain::entity::EntityState::Item(_)
+                        | rspigot_domain::entity::EntityState::Falling(_)
+                )
+            })
         {
             tracing::warn!(
                 "Player {} tried to attack an invalid entity",

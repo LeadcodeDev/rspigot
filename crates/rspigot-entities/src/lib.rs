@@ -33,11 +33,15 @@ pub trait EntityType: 'static {
     const EYE_HEIGHT: f32;
     const FIRE_IMMUNE: bool;
     const SUMMONABLE: bool;
+    const CAN_SERIALIZE: bool;
+    const ALLOWED_IN_PEACEFUL: bool;
     const CAN_SPAWN_FAR_FROM_PLAYER: bool;
     const CLIENT_TRACKING_RANGE: u8;
     const UPDATE_INTERVAL: Option<u8>;
+    const TRACK_DELTAS: bool;
     const SPAWN_EGG: Option<u16>;
     const LIVING: bool;
+    const ANCESTORS: &'static [&'static str];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)];
     type Behavior: EntityBehavior;
 }

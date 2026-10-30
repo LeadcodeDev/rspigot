@@ -9,6 +9,7 @@ rust-version.workspace = true
 rspigot-blocks = { workspace = true }
 rspigot-data = { workspace = true }
 rspigot-domain = { workspace = true }
+rspigot-entities = { workspace = true }
 rspigot-items = { workspace = true }
 rspigot-nbt = { workspace = true }
 crossbeam-channel = "0.5"

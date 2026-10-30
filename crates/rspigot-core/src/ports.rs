@@ -5,6 +5,7 @@ use rspigot_domain::player::GameProfile;
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{ChunkPos, Identifier, Vec3};
+use rspigot_nbt::Compound;
 
 use crate::events::ClientEvent;
 
@@ -24,6 +25,20 @@ pub trait ChunkStore: Send + Sync + 'static {
     ) -> Result<Option<ChunkColumn>, StoreError>;
     fn save(&self, dimension: &Identifier, chunk: &ChunkColumn) -> Result<(), StoreError>;
     fn flush(&self) -> Result<(), StoreError>;
+}
+
+pub trait EntityStore: Send + Sync + 'static {
+    fn load_entities(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<Option<Vec<Compound>>, StoreError>;
+    fn save_entities(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+        entities: &[Compound],
+    ) -> Result<(), StoreError>;
 }
 
 pub trait ChunkGenerator: Send + Sync + 'static {

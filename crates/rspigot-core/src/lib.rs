@@ -6,6 +6,7 @@ pub mod config;
 pub mod console;
 mod context;
 mod effects;
+pub mod entities;
 pub mod events;
 mod fall;
 mod falling;

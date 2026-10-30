@@ -1,75 +1,33 @@
 use rand::Rng;
-use rspigot_blocks::StateFlags;
+use rspigot_domain::entity::{Entity, EntityState, FLAG_ON_FIRE, ItemState, RemovalReason, item};
 use rspigot_domain::item::ItemStack;
-use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
-use uuid::Uuid;
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::{BlockPos, EntityId, Vec3};
+use rspigot_entities::EntityKind as Kind;
 
-use crate::events::{ClientEvent, EntityKind, MetadataEntry, MetadataValue};
+use crate::events::ClientEvent;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
-const GRAVITY: f64 = 0.04;
-const DRAG: f64 = 0.98;
-const BOUNCE: f64 = -0.5;
 const PICKUP_DELAY: u16 = 10;
 const ITEM_HALF_WIDTH: f64 = 0.125;
 const ITEM_HEIGHT: f64 = 0.25;
 const PLAYER_HALF_WIDTH: f64 = 0.3;
 const PLAYER_HEIGHT: f64 = 1.8;
-const ITEM_DATA_INDEX: u8 = 8;
-const POSITION_SYNC_TICKS: u32 = 20;
+const BELOW_WORLD: i32 = 64;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ItemEntity {
-    pub id: EntityId,
-    pub uuid: Uuid,
-    pub stack: ItemStack,
-    pub position: Vec3,
-    pub velocity: Vec3,
-    pub on_ground: bool,
-    pub pickup_delay: u16,
-    pub age: u32,
-    synced_position: Vec3,
-}
-
-impl ItemEntity {
-    pub fn spawn_event(&self) -> ClientEvent {
-        ClientEvent::SpawnEntity {
-            entity: self.id,
-            uuid: self.uuid,
-            kind: EntityKind::Item,
-            position: self.position,
-            rotation: Rotation::default(),
-            head_yaw: 0.0,
-            data: 0,
-            velocity: self.velocity,
-        }
-    }
-
-    pub fn metadata_event(&self) -> ClientEvent {
-        ClientEvent::EntityMetadata {
-            entity: self.id,
-            entries: vec![MetadataEntry {
-                index: ITEM_DATA_INDEX,
-                value: MetadataValue::Item(Some(self.stack.clone())),
-            }],
-        }
-    }
-
-    fn touches_player(&self, player: Vec3) -> bool {
-        let reach_x = PLAYER_HALF_WIDTH + 1.0 + ITEM_HALF_WIDTH;
-        let below = player.y - 0.5 - ITEM_HEIGHT;
-        let above = player.y + PLAYER_HEIGHT + 0.5;
-        (self.position.x - player.x).abs() <= reach_x
-            && (self.position.z - player.z).abs() <= reach_x
-            && self.position.y >= below
-            && self.position.y <= above
-    }
+fn touches_player(position: Vec3, player: Vec3) -> bool {
+    let reach_x = PLAYER_HALF_WIDTH + 1.0 + ITEM_HALF_WIDTH;
+    let below = player.y - 0.5 - ITEM_HEIGHT;
+    let above = player.y + PLAYER_HEIGHT + 0.5;
+    (position.x - player.x).abs() <= reach_x
+        && (position.z - player.z).abs() <= reach_x
+        && position.y >= below
+        && position.y <= above
 }
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn spawn_item(&mut self, pos: BlockPos, stack: ItemStack) {
-        let id = self.allocate_entity_id();
         let offset = |rng: &mut rand::rngs::StdRng| rng.random_range(-0.25..0.25);
         let position = Vec3::new(
             f64::from(pos.x) + 0.5 + offset(&mut self.rng),
@@ -81,21 +39,7 @@ impl<L: ClientLink> Server<L> {
             0.2,
             self.rng.random::<f64>() * 0.2 - 0.1,
         );
-        let uuid = uuid::Builder::from_random_bytes(self.rng.random()).into_uuid();
-        self.items.insert(
-            id,
-            ItemEntity {
-                id,
-                uuid,
-                stack,
-                position,
-                velocity,
-                on_ground: false,
-                pickup_delay: PICKUP_DELAY,
-                age: 0,
-                synced_position: position,
-            },
-        );
+        self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack);
     }
 
     pub(crate) fn spawn_item_entity(
@@ -105,129 +49,60 @@ impl<L: ClientLink> Server<L> {
         pickup_delay: u16,
         stack: ItemStack,
     ) {
-        let id = self.allocate_entity_id();
-        let uuid = uuid::Builder::from_random_bytes(self.rng.random()).into_uuid();
-        self.items.insert(
-            id,
-            ItemEntity {
-                id,
-                uuid,
-                stack,
-                position,
-                velocity,
-                on_ground: false,
-                pickup_delay,
-                age: 0,
-                synced_position: position,
-            },
-        );
+        let mut base = self.new_entity_base(Kind::Item);
+        base.position = position;
+        base.old_position = position;
+        let yaw = self.rng.random::<f32>() * 360.0;
+        base.set_yaw(yaw);
+        base.velocity = velocity;
+        let state = ItemState::new(&mut base, stack, i32::from(pickup_delay));
+        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
     }
 
-    fn collides(&self, x: f64, y: f64, z: f64) -> bool {
-        let pos = Vec3::new(x, y, z).block();
-        self.world
-            .chunks
-            .block(pos)
-            .is_some_and(|state| state.flags().contains(StateFlags::HAS_COLLISION))
-    }
-
-    fn friction_below(&self, position: Vec3) -> f64 {
-        let below = Vec3::new(position.x, position.y - 0.5, position.z).block();
-        self.world
-            .chunks
-            .block(below)
-            .and_then(|state| state.kind())
-            .map_or(0.6, |kind| f64::from(kind.settings().friction))
-    }
-
-    pub(crate) fn tick_items(&mut self) {
-        let despawn_after = self.config.item_despawn_ticks;
-        let ids: Vec<EntityId> = self.items.keys().copied().collect();
-        let mut removed = Vec::new();
-        for id in ids {
-            let Some(mut item) = self.items.remove(&id) else {
-                continue;
-            };
-            item.age += 1;
-            item.pickup_delay = item.pickup_delay.saturating_sub(1);
-            if item.age >= despawn_after || !self.world.chunks.is_loaded(item.position.chunk()) {
-                removed.push(id);
-                continue;
-            }
-            self.step_item(&mut item);
-            let moved = item.position.distance_squared(item.synced_position) > 1.0e-6;
-            if moved && (item.age.is_multiple_of(POSITION_SYNC_TICKS) || item.on_ground) {
-                self.push(
-                    Audience::Trackers(id),
-                    ClientEvent::EntityMoved {
-                        entity: id,
-                        from: item.synced_position,
-                        to: item.position,
-                        rotation: None,
-                        on_ground: item.on_ground,
-                    },
-                );
-                item.synced_position = item.position;
-            }
-            self.items.insert(id, item);
-        }
-        for id in removed {
-            self.remove_item(id);
-        }
-        self.collect_items();
-    }
-
-    fn step_item(&self, item: &mut ItemEntity) {
-        if item.on_ground && item.velocity.x.abs() < 1.0e-3 && item.velocity.z.abs() < 1.0e-3 {
-            item.velocity = Vec3::ZERO;
-            if self.collides(item.position.x, item.position.y - 0.01, item.position.z) {
-                return;
-            }
-            item.on_ground = false;
-        }
-        item.velocity.y -= GRAVITY;
-        let mut next = item.position + item.velocity;
-        if self.collides(next.x, item.position.y + 0.01, item.position.z) {
-            next.x = item.position.x;
-            item.velocity.x = 0.0;
-        }
-        if self.collides(next.x, item.position.y + 0.01, next.z) {
-            next.z = item.position.z;
-            item.velocity.z = 0.0;
-        }
-        item.on_ground = false;
-        if item.velocity.y < 0.0 && self.collides(next.x, next.y, next.z) {
-            next.y = next.y.floor() + 1.0;
-            item.on_ground = true;
-        } else if item.velocity.y > 0.0 && self.collides(next.x, next.y + ITEM_HEIGHT, next.z) {
-            next.y = item.position.y;
-            item.velocity.y = 0.0;
-        }
-        item.position = next;
-        let horizontal = if item.on_ground {
-            self.friction_below(item.position) * DRAG
-        } else {
-            DRAG
+    pub(crate) fn tick_item_entity(&mut self, id: EntityId) {
+        let despawn_after = i64::from(self.config.item_despawn_ticks);
+        let floor = f64::from(self.world.dimension.height.min_y - BELOW_WORLD);
+        let chunks = &self.world.chunks;
+        let rng = &mut self.rng;
+        let Some(Entity {
+            base,
+            state: EntityState::Item(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
         };
-        item.velocity = Vec3::new(
-            item.velocity.x * horizontal,
-            item.velocity.y * DRAG,
-            item.velocity.z * horizontal,
-        );
-        if item.on_ground && item.velocity.y < 0.0 {
-            item.velocity.y *= BOUNCE;
-            if item.velocity.y < GRAVITY {
-                item.velocity.y = 0.0;
+        let mut discard = item::stack(base).is_none();
+        if !discard {
+            base.old_position = base.position;
+            base.tick_count = base.tick_count.wrapping_add(1);
+            if base.remaining_fire_ticks > 0 {
+                base.remaining_fire_ticks = if base.kind.fire_immune() {
+                    0
+                } else {
+                    base.remaining_fire_ticks - 1
+                };
             }
+            base.set_shared_flag(FLAG_ON_FIRE, base.remaining_fire_ticks > 0);
+            if base.position.y < floor {
+                discard = true;
+            } else {
+                let mut next_float = || rng.random::<f32>();
+                item::tick_item(base, state, chunks, &mut next_float);
+                discard = i64::from(state.age) >= despawn_after;
+            }
+        }
+        if discard {
+            self.remove_entity(id, RemovalReason::Discarded);
         }
     }
 
-    fn collect_items(&mut self) {
-        let collectors: Vec<(rspigot_domain::player::PlayerId, EntityId, Vec3)> = self
+    pub(crate) fn collect_items(&mut self) {
+        let collectors: Vec<(PlayerId, EntityId, Vec3)> = self
             .players
             .values()
             .filter(|p| {
-                p.game_mode != rspigot_domain::player::GameMode::Spectator
+                p.game_mode != GameMode::Spectator
                     && p.pending_teleport.is_none()
                     && !p.vitals.is_dead()
             })
@@ -235,10 +110,16 @@ impl<L: ClientLink> Server<L> {
             .collect();
         for (player_id, collector, position) in collectors {
             let touching: Vec<EntityId> = self
-                .items
-                .values()
-                .filter(|item| item.pickup_delay == 0 && item.touches_player(position))
-                .map(|item| item.id)
+                .entities
+                .store
+                .iter()
+                .filter(|entity| match &entity.state {
+                    EntityState::Item(state) => {
+                        state.pickup_delay < 1 && touches_player(entity.base.position, position)
+                    }
+                    _ => false,
+                })
+                .map(|entity| entity.base.id)
                 .collect();
             for id in touching {
                 self.pick_up(player_id, collector, id);
@@ -246,16 +127,10 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn pick_up(
-        &mut self,
-        player_id: rspigot_domain::player::PlayerId,
-        collector: EntityId,
-        id: EntityId,
-    ) {
-        let Some(item) = self.items.get(&id) else {
+    fn pick_up(&mut self, player_id: PlayerId, collector: EntityId, id: EntityId) {
+        let Some(stack) = self.item_stack_of(id) else {
             return;
         };
-        let stack = item.stack.clone();
         let Some(player) = self.players.get_mut(&player_id) else {
             return;
         };
@@ -286,10 +161,10 @@ impl<L: ClientLink> Server<L> {
         self.broadcast_held_item(player_id);
         match std::num::NonZeroU8::new(outcome.remaining as u8) {
             Some(count) => {
-                if let Some(item) = self.items.get_mut(&id) {
-                    item.stack.count = count;
-                    let metadata = item.metadata_event();
-                    self.push(Audience::Trackers(id), metadata);
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    let mut stack = stack;
+                    stack.count = count;
+                    item::set_stack(&mut entity.base, Some(stack));
                 }
             }
             None => self.remove_item(id),
@@ -297,38 +172,12 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn remove_item(&mut self, id: EntityId) {
-        self.items.remove(&id);
-        for player in self.players.values_mut() {
-            if player.tracked.remove(&id) {
-                player.link.send(ClientEvent::RemoveEntities(vec![id]));
-            }
-        }
-    }
-
-    pub(crate) fn update_item_tracking(&mut self) {
-        let range = self.config.item_tracking_range * self.config.item_tracking_range;
-        for viewer in self.players.values_mut() {
-            for item in self.items.values() {
-                let visible = viewer.position.distance_squared(item.position) <= range
-                    && viewer.streamer.has_sent(item.position.chunk());
-                let tracking = viewer.tracked.contains(&item.id);
-                if visible && !tracking {
-                    viewer.tracked.insert(item.id);
-                    viewer.link.send(item.spawn_event());
-                    viewer.link.send(item.metadata_event());
-                    viewer.link.send(ClientEvent::EntityVelocity {
-                        entity: item.id,
-                        velocity: item.velocity,
-                    });
-                } else if !visible && tracking {
-                    viewer.tracked.remove(&item.id);
-                    viewer.link.send(ClientEvent::RemoveEntities(vec![item.id]));
-                }
-            }
-        }
+        self.remove_entity(id, RemovalReason::Discarded);
     }
 
     pub fn items_on_ground(&self) -> usize {
-        self.items.len()
+        self.entities
+            .store
+            .count_where(|e| matches!(e.state, EntityState::Item(_)))
     }
 }

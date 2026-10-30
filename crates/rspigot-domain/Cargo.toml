@@ -9,8 +9,10 @@ rust-version.workspace = true
 rspigot-blocks = { workspace = true }
 rspigot-data = { workspace = true }
 rspigot-effects = { workspace = true }
+rspigot-entities = { workspace = true }
 rspigot-items = { workspace = true }
 rspigot-nbt = { workspace = true }
+rustc-hash = "2"
 thiserror = "2"
 uuid = "1"
 md-5 = "0.10"

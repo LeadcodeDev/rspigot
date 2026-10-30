@@ -2,8 +2,17 @@ use rspigot_domain::effect::{EffectDuration, EffectId, EffectInstance};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::{Component, NamedColor};
 use rspigot_domain::world::Difficulty;
-use rspigot_domain::{BlockPos, ItemId, Vec3};
+use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
 use rspigot_items::ItemKind;
+use rspigot_nbt::Compound;
+
+use super::selector::split_argument;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Target {
+    Player(PlayerId),
+    Entity(EntityId),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSender {
@@ -65,9 +74,84 @@ pub trait CommandContext {
     fn save_all(&mut self) -> usize;
     fn tps(&self) -> [f64; 3];
     fn stop(&mut self);
+
+    fn sender_rotation(&self, _sender: CommandSender) -> Rotation {
+        Rotation::default()
+    }
+
+    fn sender_origin(&self, sender: CommandSender) -> Vec3 {
+        match sender {
+            CommandSender::Player(id) => self.player_position(id).unwrap_or(Vec3::ZERO),
+            CommandSender::Console => Vec3::ZERO,
+        }
+    }
+
+    fn select_entities(
+        &self,
+        sender: CommandSender,
+        selector: &str,
+    ) -> Result<Vec<Target>, Component> {
+        self.select_players(sender, selector)
+            .map(|players| players.into_iter().map(Target::Player).collect())
+    }
+
+    fn target_name(&self, target: Target) -> Component {
+        match target {
+            Target::Player(id) => Component::text(self.player_name(id).unwrap_or_default()),
+            Target::Entity(_) => Component::text(""),
+        }
+    }
+
+    fn target_position(&self, target: Target) -> Option<Vec3> {
+        match target {
+            Target::Player(id) => self.player_position(id),
+            Target::Entity(_) => None,
+        }
+    }
+
+    fn teleport_target(&mut self, target: Target, position: Vec3) {
+        if let Target::Player(id) = target {
+            self.teleport(id, position);
+        }
+    }
+
+    fn kill_target(&mut self, target: Target) -> bool {
+        match target {
+            Target::Player(id) => self.kill(id),
+            Target::Entity(_) => false,
+        }
+    }
+
+    fn give_effect_to(&mut self, target: Target, effect: EffectInstance) -> bool {
+        match target {
+            Target::Player(id) => self.give_effect(id, effect),
+            Target::Entity(_) => false,
+        }
+    }
+
+    fn clear_effect_of(&mut self, target: Target, effect: Option<EffectId>) -> bool {
+        match target {
+            Target::Player(id) => self.clear_effect(id, effect),
+            Target::Entity(_) => false,
+        }
+    }
+
+    fn summon(
+        &mut self,
+        _sender: CommandSender,
+        _entity: rspigot_entities::EntityKind,
+        _position: Vec3,
+        _nbt: Option<Compound>,
+    ) -> Result<Component, Component> {
+        Err(Component::translatable(
+            "commands.summon.failed",
+            Vec::new(),
+        ))
+    }
 }
 
-const ADMIN_COMMANDS: [&str; 19] = [
+const ADMIN_COMMANDS: [&str; 20] = [
+    "summon",
     "effect",
     "kill",
     "whitelist",
@@ -170,15 +254,16 @@ pub fn execute<C: CommandContext>(
         }
         "msg" | "tell" | "w" => private_message(ctx, sender, &args),
         "gamemode" => gamemode(ctx, sender, &args),
-        "tp" | "teleport" => teleport(ctx, sender, &args),
+        "tp" | "teleport" => teleport(ctx, sender, rest).unwrap_or_else(|outcome| outcome),
+        "summon" => summon(ctx, sender, rest).unwrap_or_else(|outcome| outcome),
         "time" => time(ctx, sender, &args),
         "give" => give(ctx, sender, &args),
         "clear" => clear(ctx, sender, &args),
         "kick" => kick(ctx, sender, &args),
         "op" | "deop" => operator(ctx, sender, &args, label == "op"),
         "whitelist" => whitelist(ctx, sender, &args),
-        "effect" => effect(ctx, sender, &args),
-        "kill" => kill(ctx, sender, &args).unwrap_or_else(|outcome| outcome),
+        "effect" => effect(ctx, sender, rest),
+        "kill" => kill(ctx, sender, rest).unwrap_or_else(|outcome| outcome),
         "difficulty" => difficulty(ctx, sender, &args),
         "weather" => weather(ctx, sender, &args),
         "setworldspawn" => set_world_spawn(ctx, sender, &args),
@@ -243,6 +328,7 @@ fn help<C: CommandContext>(ctx: &mut C, sender: CommandSender) -> CommandOutcome
             "/give <player> <item> [count]",
             "/clear [player]",
             "/kill [targets]",
+            "/summon <entity> [pos] [nbt]",
             "/kick <player> [reason]",
             "/op <player>",
             "/deop <player>",
@@ -370,89 +456,310 @@ fn gamemode<C: CommandContext>(
     CommandOutcome::Success
 }
 
-fn parse_coordinate(raw: &str, base: f64) -> Option<f64> {
-    match raw.strip_prefix('~') {
-        Some("") => Some(base),
-        Some(offset) => offset.parse::<f64>().ok().map(|o| base + o),
-        None => raw.parse::<f64>().ok(),
-    }
+const SIN_SCALE: f32 = 10430.378;
+
+fn mth_sin(value: f32) -> f32 {
+    let index = ((value * SIN_SCALE) as i64 & 65535) as f64;
+    (index * std::f64::consts::PI * 2.0 / 65536.0).sin() as f32
 }
 
-fn parse_position(args: &[&str], base: Vec3) -> Option<Vec3> {
-    if args.len() != 3 {
-        return None;
-    }
-    let x = parse_coordinate(args[0], base.x)?;
-    let y = parse_coordinate(args[1], base.y)?;
-    let z = parse_coordinate(args[2], base.z)?;
-    let center = |v: f64, raw: &str| {
-        if !raw.contains('.') && !raw.starts_with('~') {
-            v + 0.5
-        } else {
-            v
-        }
+fn mth_cos(value: f32) -> f32 {
+    let index = ((value * SIN_SCALE + 16384.0) as i64 & 65535) as f64;
+    (index * std::f64::consts::PI * 2.0 / 65536.0).sin() as f32
+}
+
+fn coordinate_value(raw: &str, center: bool) -> Result<(bool, f64), Component> {
+    let (relative, number) = match raw.strip_prefix('~') {
+        Some(rest) => (true, rest),
+        None => (false, raw),
     };
-    Some(Vec3::new(center(x, args[0]), y, center(z, args[2])))
+    if relative && number.is_empty() {
+        return Ok((true, 0.0));
+    }
+    let value: f64 = number.parse().map_err(|_| {
+        Component::translatable("parsing.double.invalid", vec![Component::text(number)])
+    })?;
+    let value = if !relative && center && !number.contains('.') {
+        value + 0.5
+    } else {
+        value
+    };
+    Ok((relative, value))
+}
+
+pub(crate) fn parse_vec3<C: CommandContext>(
+    ctx: &C,
+    sender: CommandSender,
+    raw: [&str; 3],
+) -> Result<Vec3, Component> {
+    let local = raw.iter().filter(|r| r.starts_with('^')).count();
+    if local != 0 && local != 3 {
+        return Err(Component::translatable("argument.pos.mixed", Vec::new()));
+    }
+    let origin = ctx.sender_origin(sender);
+    if local == 3 {
+        let mut values = [0.0f64; 3];
+        for (slot, text) in values.iter_mut().zip(raw) {
+            let number = &text[1..];
+            if !number.is_empty() {
+                *slot = number.parse().map_err(|_| {
+                    Component::translatable("parsing.double.invalid", vec![Component::text(number)])
+                })?;
+            }
+        }
+        let rotation = ctx.sender_rotation(sender);
+        let radians = 0.017_453_292f32;
+        let f = mth_cos((rotation.yaw + 90.0) * radians);
+        let g = mth_sin((rotation.yaw + 90.0) * radians);
+        let h = mth_cos(-rotation.pitch * radians);
+        let i = mth_sin(-rotation.pitch * radians);
+        let j = mth_cos((-rotation.pitch + 90.0) * radians);
+        let k = mth_sin((-rotation.pitch + 90.0) * radians);
+        let forward = Vec3::new(f64::from(f * h), f64::from(i), f64::from(g * h));
+        let up = Vec3::new(f64::from(f * j), f64::from(k), f64::from(g * j));
+        let left = Vec3::new(
+            -(forward.y * up.z - forward.z * up.y),
+            -(forward.z * up.x - forward.x * up.z),
+            -(forward.x * up.y - forward.y * up.x),
+        );
+        let [l, u, w] = values;
+        return Ok(Vec3::new(
+            origin.x + forward.x * w + up.x * u + left.x * l,
+            origin.y + forward.y * w + up.y * u + left.y * l,
+            origin.z + forward.z * w + up.z * u + left.z * l,
+        ));
+    }
+    let (rx, x) = coordinate_value(raw[0], true)?;
+    let (ry, y) = coordinate_value(raw[1], false)?;
+    let (rz, z) = coordinate_value(raw[2], true)?;
+    Ok(Vec3::new(
+        if rx { origin.x + x } else { x },
+        if ry { origin.y + y } else { y },
+        if rz { origin.z + z } else { z },
+    ))
+}
+
+fn next_argument(input: &str) -> Option<(&str, &str)> {
+    let (token, rest) = split_argument(input);
+    (!token.is_empty()).then_some((token, rest))
+}
+
+fn looks_like_coordinate(token: &str) -> bool {
+    token.starts_with('~') || token.starts_with('^') || token.parse::<f64>().is_ok()
+}
+
+fn take_vec3<'a, C: CommandContext>(
+    ctx: &C,
+    sender: CommandSender,
+    input: &'a str,
+) -> Result<Option<(Vec3, &'a str)>, Component> {
+    let Some((a, rest)) = next_argument(input) else {
+        return Ok(None);
+    };
+    if !looks_like_coordinate(a) {
+        return Ok(None);
+    }
+    let (Some((b, rest)), true) = (next_argument(rest), true) else {
+        return Err(Component::translatable(
+            "argument.pos3d.incomplete",
+            Vec::new(),
+        ));
+    };
+    let Some((c, rest)) = next_argument(rest) else {
+        return Err(Component::translatable(
+            "argument.pos3d.incomplete",
+            Vec::new(),
+        ));
+    };
+    Ok(Some((parse_vec3(ctx, sender, [a, b, c])?, rest)))
+}
+
+fn format_coordinate(value: f64) -> Component {
+    Component::text(format!("{value:.6}"))
+}
+
+fn select_one<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    selector: &str,
+) -> Result<Target, CommandOutcome> {
+    let targets = select(ctx, sender, Some(selector))?;
+    match targets.as_slice() {
+        [single] => Ok(*single),
+        _ => Err(fail(ctx, sender, "argument.entity.toomany", Vec::new())),
+    }
 }
 
 fn teleport<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
-    args: &[&str],
-) -> CommandOutcome {
-    let base = match sender {
-        CommandSender::Player(id) => ctx.player_position(id).unwrap_or(Vec3::ZERO),
-        CommandSender::Console => Vec3::ZERO,
+    rest: &str,
+) -> Result<CommandOutcome, CommandOutcome> {
+    let usage_text = "/tp <x> <y> <z> | <player> [target]";
+    let Some((first, after_first)) = next_argument(rest) else {
+        return Err(usage(ctx, sender, usage_text));
     };
-    let (target, destination) = match args.len() {
-        1 => {
-            let Some(dest) = ctx.find_player(args[0]) else {
-                return not_found(ctx, sender);
-            };
-            (target_or_self(ctx, sender, None), ctx.player_position(dest))
-        }
-        2 => {
-            let (Some(who), Some(dest)) = (ctx.find_player(args[0]), ctx.find_player(args[1]))
-            else {
-                return not_found(ctx, sender);
-            };
-            (Some(who), ctx.player_position(dest))
-        }
-        3 => (
-            target_or_self(ctx, sender, None),
-            parse_position(args, base),
-        ),
-        4 => {
-            let who = ctx.find_player(args[0]);
-            let base = who.and_then(|w| ctx.player_position(w)).unwrap_or(base);
-            (who, parse_position(&args[1..], base))
-        }
-        _ => return usage(ctx, sender, "/tp <x> <y> <z> | <player> [target]"),
+    let self_target = || match sender {
+        CommandSender::Player(id) => Some(Target::Player(id)),
+        CommandSender::Console => None,
     };
-    let (Some(target), Some(destination)) = (target, destination) else {
-        return usage(ctx, sender, "/tp <x> <y> <z> | <player> [target]");
+    let (targets, destination, destination_name) = if looks_like_coordinate(first) {
+        let position = match take_vec3(ctx, sender, rest) {
+            Ok(Some((position, _))) => position,
+            Ok(None) => return Err(usage(ctx, sender, usage_text)),
+            Err(message) => {
+                ctx.reply(sender, message.color(NamedColor::Red));
+                return Err(CommandOutcome::Failure);
+            }
+        };
+        let Some(target) = self_target() else {
+            return Err(fail(ctx, sender, "permissions.requires.entity", Vec::new()));
+        };
+        (vec![target], position, None)
+    } else {
+        match next_argument(after_first) {
+            None => {
+                let destination = select_one(ctx, sender, first)?;
+                let Some(target) = self_target() else {
+                    return Err(fail(ctx, sender, "permissions.requires.entity", Vec::new()));
+                };
+                let position = ctx.target_position(destination).unwrap_or(Vec3::ZERO);
+                (vec![target], position, Some(ctx.target_name(destination)))
+            }
+            Some((second, _)) => {
+                let targets = select(ctx, sender, Some(first))?;
+                if looks_like_coordinate(second) {
+                    let position = match take_vec3(ctx, sender, after_first) {
+                        Ok(Some((position, _))) => position,
+                        Ok(None) => return Err(usage(ctx, sender, usage_text)),
+                        Err(message) => {
+                            ctx.reply(sender, message.color(NamedColor::Red));
+                            return Err(CommandOutcome::Failure);
+                        }
+                    };
+                    (targets, position, None)
+                } else {
+                    let destination = select_one(ctx, sender, second)?;
+                    let position = ctx.target_position(destination).unwrap_or(Vec3::ZERO);
+                    (targets, position, Some(ctx.target_name(destination)))
+                }
+            }
+        }
     };
     if !destination.is_finite()
         || destination.x.abs() > 30_000_000.0
         || destination.z.abs() > 30_000_000.0
+        || destination.y.abs() >= 20_000_000.0
     {
-        return usage(ctx, sender, "/tp <x> <y> <z> | <player> [target]");
+        return Err(fail(
+            ctx,
+            sender,
+            "commands.teleport.invalidPosition",
+            Vec::new(),
+        ));
     }
-    ctx.teleport(target, destination);
-    let name = ctx.player_name(target).unwrap_or_default();
-    ctx.reply(
-        sender,
-        Component::translatable(
+    for target in &targets {
+        ctx.teleport_target(*target, destination);
+    }
+    let message = match (targets.as_slice(), destination_name) {
+        ([single], None) => Component::translatable(
             "commands.teleport.success.location.single",
             vec![
-                Component::text(name),
-                Component::text(format!("{:.2}", destination.x)),
-                Component::text(format!("{:.2}", destination.y)),
-                Component::text(format!("{:.2}", destination.z)),
+                ctx.target_name(*single),
+                format_coordinate(destination.x),
+                format_coordinate(destination.y),
+                format_coordinate(destination.z),
             ],
         ),
-    );
-    CommandOutcome::Success
+        (many, None) => Component::translatable(
+            "commands.teleport.success.location.multiple",
+            vec![
+                Component::text(many.len().to_string()),
+                format_coordinate(destination.x),
+                format_coordinate(destination.y),
+                format_coordinate(destination.z),
+            ],
+        ),
+        ([single], Some(name)) => Component::translatable(
+            "commands.teleport.success.entity.single",
+            vec![ctx.target_name(*single), name],
+        ),
+        (many, Some(name)) => Component::translatable(
+            "commands.teleport.success.entity.multiple",
+            vec![Component::text(many.len().to_string()), name],
+        ),
+    };
+    ctx.reply(sender, message);
+    Ok(CommandOutcome::Success)
+}
+
+fn summon<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    rest: &str,
+) -> Result<CommandOutcome, CommandOutcome> {
+    let Some((raw_kind, after_kind)) = next_argument(rest) else {
+        return Err(usage(ctx, sender, "/summon <entity> [pos] [nbt]"));
+    };
+    let id = if raw_kind.contains(':') {
+        raw_kind.to_owned()
+    } else {
+        format!("minecraft:{raw_kind}")
+    };
+    let Some(kind) = rspigot_entities::EntityKind::from_name(&id) else {
+        return Err(fail(
+            ctx,
+            sender,
+            "argument.resource.not_found",
+            vec![
+                Component::text(id),
+                Component::text("minecraft:entity_type"),
+            ],
+        ));
+    };
+    if !kind.summonable() {
+        return Err(fail(
+            ctx,
+            sender,
+            "entity.not_summonable",
+            vec![Component::text(kind.name())],
+        ));
+    }
+    let (position, after_pos) = match take_vec3(ctx, sender, after_kind) {
+        Ok(Some((position, rest))) => (position, rest),
+        Ok(None) => (ctx.sender_origin(sender), after_kind),
+        Err(message) => {
+            ctx.reply(sender, message.color(NamedColor::Red));
+            return Err(CommandOutcome::Failure);
+        }
+    };
+    let nbt_text = after_pos.trim();
+    let nbt = if nbt_text.is_empty() {
+        None
+    } else {
+        match rspigot_nbt::parse_compound(nbt_text) {
+            Ok((compound, consumed)) if nbt_text[consumed..].trim().is_empty() => Some(compound),
+            Ok(_) => {
+                return Err(fail(ctx, sender, "command.unknown.argument", Vec::new()));
+            }
+            Err(error) => {
+                return Err(fail(ctx, sender, error.key, Vec::new()));
+            }
+        }
+    };
+    match ctx.summon(sender, kind, position, nbt) {
+        Ok(name) => {
+            ctx.reply(
+                sender,
+                Component::translatable("commands.summon.success", vec![name]),
+            );
+            Ok(CommandOutcome::Success)
+        }
+        Err(message) => {
+            ctx.reply(sender, message.color(NamedColor::Red));
+            Err(CommandOutcome::Failure)
+        }
+    }
 }
 
 fn parse_time(raw: &str) -> Option<i64> {
@@ -724,9 +1031,9 @@ fn select<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
     selector: Option<&str>,
-) -> Result<Vec<PlayerId>, CommandOutcome> {
+) -> Result<Vec<Target>, CommandOutcome> {
     let selector = selector.unwrap_or("@s");
-    match ctx.select_players(sender, selector) {
+    match ctx.select_entities(sender, selector) {
         Ok(targets) if targets.is_empty() => Err(fail(
             ctx,
             sender,
@@ -745,7 +1052,19 @@ fn effect_name(effect: EffectId) -> Component {
     Component::translatable(effect.translation_key().unwrap_or_default(), Vec::new())
 }
 
-fn effect<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+fn arguments(rest: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut input = rest;
+    while let Some((token, after)) = next_argument(input) {
+        out.push(token);
+        input = after;
+    }
+    out
+}
+
+fn effect<C: CommandContext>(ctx: &mut C, sender: CommandSender, rest: &str) -> CommandOutcome {
+    let args = arguments(rest);
+    let args = args.as_slice();
     match args.first().copied() {
         Some("give") => effect_give(ctx, sender, &args[1..]).unwrap_or_else(|outcome| outcome),
         Some("clear") => effect_clear(ctx, sender, &args[1..]).unwrap_or_else(|outcome| outcome),
@@ -808,7 +1127,7 @@ fn effect_give<C: CommandContext>(
     let instance = EffectInstance::new(effect, duration, amplifier, !hide_particles);
     let applied = targets
         .iter()
-        .filter(|target| ctx.give_effect(**target, instance))
+        .filter(|target| ctx.give_effect_to(**target, instance))
         .count();
     if applied == 0 {
         return Ok(fail(ctx, sender, "commands.effect.give.failed", Vec::new()));
@@ -816,10 +1135,7 @@ fn effect_give<C: CommandContext>(
     let message = match targets.as_slice() {
         [single] => Component::translatable(
             "commands.effect.give.success.single",
-            vec![
-                effect_name(effect),
-                Component::text(ctx.player_name(*single).unwrap_or_default()),
-            ],
+            vec![effect_name(effect), ctx.target_name(*single)],
         ),
         many => Component::translatable(
             "commands.effect.give.success.multiple",
@@ -845,7 +1161,7 @@ fn effect_clear<C: CommandContext>(
     };
     let cleared = targets
         .iter()
-        .filter(|target| ctx.clear_effect(**target, effect))
+        .filter(|target| ctx.clear_effect_of(**target, effect))
         .count();
     let failed = match effect {
         None => "commands.effect.clear.everything.failed",
@@ -857,9 +1173,7 @@ fn effect_clear<C: CommandContext>(
     let message = match (effect, targets.as_slice()) {
         (None, [single]) => Component::translatable(
             "commands.effect.clear.everything.success.single",
-            vec![Component::text(
-                ctx.player_name(*single).unwrap_or_default(),
-            )],
+            vec![ctx.target_name(*single)],
         ),
         (None, many) => Component::translatable(
             "commands.effect.clear.everything.success.multiple",
@@ -867,10 +1181,7 @@ fn effect_clear<C: CommandContext>(
         ),
         (Some(effect), [single]) => Component::translatable(
             "commands.effect.clear.specific.success.single",
-            vec![
-                effect_name(effect),
-                Component::text(ctx.player_name(*single).unwrap_or_default()),
-            ],
+            vec![effect_name(effect), ctx.target_name(*single)],
         ),
         (Some(effect), many) => Component::translatable(
             "commands.effect.clear.specific.success.multiple",
@@ -884,8 +1195,9 @@ fn effect_clear<C: CommandContext>(
 fn kill<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
-    args: &[&str],
+    rest: &str,
 ) -> Result<CommandOutcome, CommandOutcome> {
+    let args = arguments(rest);
     if args.len() > 1 {
         return Err(usage(ctx, sender, "/kill [targets]"));
     }
@@ -893,19 +1205,15 @@ fn kill<C: CommandContext>(
         (None, CommandSender::Console) => {
             return Err(fail(ctx, sender, "permissions.requires.entity", Vec::new()));
         }
-        (None, CommandSender::Player(id)) => vec![id],
+        (None, CommandSender::Player(id)) => vec![Target::Player(id)],
         (Some(selector), _) => select(ctx, sender, Some(selector))?,
     };
+    let names: Vec<Component> = targets.iter().map(|t| ctx.target_name(*t)).collect();
     for target in &targets {
-        ctx.kill(*target);
+        ctx.kill_target(*target);
     }
-    let message = match targets.as_slice() {
-        [single] => Component::translatable(
-            "commands.kill.success.single",
-            vec![Component::text(
-                ctx.player_name(*single).unwrap_or_default(),
-            )],
-        ),
+    let message = match names.as_slice() {
+        [single] => Component::translatable("commands.kill.success.single", vec![single.clone()]),
         many => Component::translatable(
             "commands.kill.success.multiple",
             vec![Component::text(many.len().to_string())],
@@ -1043,10 +1351,10 @@ fn set_world_spawn<C: CommandContext>(
         CommandSender::Player(id) => ctx.player_position(id).unwrap_or(Vec3::ZERO),
         CommandSender::Console => Vec3::ZERO,
     };
-    let position = if args.is_empty() {
-        Some(base)
-    } else {
-        parse_position(args, base)
+    let position = match args {
+        [] => Some(base),
+        [x, y, z] => parse_vec3(ctx, sender, [x, y, z]).ok(),
+        _ => None,
     };
     let Some(position) = position else {
         return usage(ctx, sender, "/setworldspawn [x y z]");

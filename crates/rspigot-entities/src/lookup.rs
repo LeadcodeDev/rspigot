@@ -56,6 +56,24 @@ macro_rules! entity_kinds {
                 }
             }
 
+            pub const fn can_serialize(self) -> bool {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::CAN_SERIALIZE,)*
+                }
+            }
+
+            pub const fn allowed_in_peaceful(self) -> bool {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::ALLOWED_IN_PEACEFUL,)*
+                }
+            }
+
+            pub const fn ancestors(self) -> &'static [&'static str] {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::ANCESTORS,)*
+                }
+            }
+
             pub const fn can_spawn_far_from_player(self) -> bool {
                 match self {
                     $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::CAN_SPAWN_FAR_FROM_PLAYER,)*
@@ -71,6 +89,12 @@ macro_rules! entity_kinds {
             pub const fn update_interval(self) -> Option<u8> {
                 match self {
                     $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::UPDATE_INTERVAL,)*
+                }
+            }
+
+            pub const fn track_deltas(self) -> bool {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::TRACK_DELTAS,)*
                 }
             }
 
@@ -137,6 +161,10 @@ impl EntityKind {
             .binary_search_by_key(&item, |&(egg, _)| egg)
             .ok()
             .map(|index| SPAWN_EGGS[index].1)
+    }
+
+    pub fn extends(self, class: &str) -> bool {
+        self.ancestors().contains(&class)
     }
 
     pub fn default_attribute(self, name: &str) -> Option<f64> {

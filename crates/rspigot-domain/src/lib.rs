@@ -3,6 +3,7 @@ pub mod chunk;
 pub mod combat;
 pub mod damage;
 pub mod effect;
+pub mod entity;
 pub mod food;
 pub mod ident;
 pub mod ids;

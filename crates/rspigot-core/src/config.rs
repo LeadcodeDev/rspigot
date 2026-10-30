@@ -1,4 +1,5 @@
 use rspigot_domain::BlockPos;
+use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
 use rspigot_domain::world::Difficulty;
 use sha2::{Digest, Sha256};
@@ -41,7 +42,7 @@ pub struct GameConfig {
     pub allow_flight: bool,
     pub spawn_protection: u32,
     pub player_tracking_range: f64,
-    pub item_tracking_range: f64,
+    pub tracking: TrackingRanges,
     pub item_despawn_ticks: u32,
     pub chunk_workers: usize,
     pub stream: StreamConfig,
@@ -67,7 +68,7 @@ impl Default for GameConfig {
             allow_flight: false,
             spawn_protection: 16,
             player_tracking_range: 128.0,
-            item_tracking_range: 96.0,
+            tracking: TrackingRanges::default(),
             item_despawn_ticks: 6000,
             chunk_workers: std::thread::available_parallelism()
                 .map_or(4, |n| n.get().saturating_sub(2).max(2)),
@@ -93,6 +94,7 @@ pub struct LevelData {
     pub daylight_cycle: bool,
     pub raining: bool,
     pub thundering: bool,
+    pub uuid: Option<uuid::Uuid>,
 }
 
 impl Default for LevelData {
@@ -107,6 +109,7 @@ impl Default for LevelData {
             daylight_cycle: true,
             raining: false,
             thundering: false,
+            uuid: None,
         }
     }
 }

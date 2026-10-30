@@ -23,6 +23,8 @@ impl Block for BrownBed {
         friction: 0.6,
         speed_factor: 1.0,
         jump_factor: 1.0,
+        bounce_restitution: 0.75,
+        fall_distance_reduction: 0.5,
         requires_correct_tool: false,
         ignited_by_lava: true,
     };

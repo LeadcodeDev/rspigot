@@ -91,7 +91,7 @@ pub fn equipment_modifiers(
             (
                 m.attribute,
                 AttributeModifier {
-                    id: m.id,
+                    id: std::borrow::Cow::Borrowed(m.id),
                     amount: m.amount,
                     operation: operation(m.operation),
                 },
@@ -211,17 +211,17 @@ mod tests {
             base: 2.0,
             modifiers: vec![
                 AttributeModifier {
-                    id: "a",
+                    id: "a".into(),
                     amount: 1.0,
                     operation: AttributeOperation::AddValue,
                 },
                 AttributeModifier {
-                    id: "b",
+                    id: "b".into(),
                     amount: 0.5,
                     operation: AttributeOperation::AddMultipliedBase,
                 },
                 AttributeModifier {
-                    id: "c",
+                    id: "c".into(),
                     amount: 1.0,
                     operation: AttributeOperation::AddMultipliedTotal,
                 },

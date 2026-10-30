@@ -30,6 +30,26 @@ pub fn write_level_data(world_root: &Path, data: &LevelData) -> Result<(), Store
     write_level(world_root, data).map_err(AnvilError::into_store_io)
 }
 
+const UID_FILE: &str = "uid.dat";
+
+pub fn read_or_create_world_uuid(world_root: &Path) -> Result<uuid::Uuid, StoreError> {
+    let path = world_root.join(UID_FILE);
+    match std::fs::read(&path) {
+        Ok(bytes) if bytes.len() >= 16 => {
+            let mut raw = [0u8; 16];
+            raw.copy_from_slice(&bytes[..16]);
+            return Ok(uuid::Uuid::from_bytes(raw));
+        }
+        Ok(_) => tracing::warn!("{} is truncated, writing a new world uuid", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(StoreError::Io(error)),
+    }
+    let uuid = uuid::Uuid::new_v4();
+    std::fs::create_dir_all(world_root)?;
+    std::fs::write(&path, uuid.as_bytes())?;
+    Ok(uuid)
+}
+
 pub(crate) fn saved_data_path(world_root: &Path, name: &str) -> PathBuf {
     world_root
         .join("data")
@@ -430,6 +450,7 @@ mod tests {
             daylight_cycle: false,
             raining: true,
             thundering: true,
+            uuid: None,
         }
     }
 
