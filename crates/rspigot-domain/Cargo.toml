@@ -1,0 +1,19 @@
+[package]
+name = "rspigot-domain"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rspigot-data = { workspace = true }
+rspigot-nbt = { workspace = true }
+thiserror = "2"
+uuid = "1"
+md-5 = "0.10"
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true
