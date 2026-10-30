@@ -943,6 +943,16 @@ impl Encoder {
                     item: stack(item),
                 },
             ),
+            ClientEvent::CursorItem(item) => {
+                Self::queue(writer, &cb::SetCursorItem { item: stack(item) })
+            }
+            ClientEvent::PlayerInventorySlot { slot, stack: item } => Self::queue(
+                writer,
+                &cb::SetPlayerInventory {
+                    slot: *slot,
+                    item: stack(item),
+                },
+            ),
             ClientEvent::Health {
                 health,
                 food,
@@ -1344,5 +1354,58 @@ mod tests {
         expected.extend_from_slice(&packed.to_be_bytes());
         expected.push(0xFF);
         assert_eq!(encode(event), vec![(id::SET_ENTITY_DATA, expected)]);
+    }
+
+    fn stone(count: u8) -> rspigot_domain::item::Slot {
+        Some(ItemStack::new(
+            rspigot_domain::ItemId(1),
+            std::num::NonZeroU8::new(count).unwrap(),
+        ))
+    }
+
+    #[test]
+    fn cursor_item_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::CursorItem(stone(3))),
+            vec![(id::SET_CURSOR_ITEM, vec![3, 1, 0, 0])]
+        );
+        assert_eq!(
+            encode(ClientEvent::CursorItem(None)),
+            vec![(id::SET_CURSOR_ITEM, vec![0])]
+        );
+    }
+
+    #[test]
+    fn player_inventory_slot_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::PlayerInventorySlot {
+                slot: 40,
+                stack: stone(2),
+            }),
+            vec![(id::SET_PLAYER_INVENTORY, vec![40, 2, 1, 0, 0])]
+        );
+    }
+
+    #[test]
+    fn inventory_content_carries_the_cursor_golden_bytes() {
+        assert_eq!(
+            encode(ClientEvent::InventoryContent {
+                state_id: 7,
+                slots: vec![None, stone(64)],
+                carried: stone(5),
+            }),
+            vec![(
+                id::CONTAINER_SET_CONTENT,
+                vec![0, 7, 2, 0, 64, 1, 0, 0, 5, 1, 0, 0]
+            )]
+        );
+        assert_eq!(
+            encode(ClientEvent::InventorySlot {
+                state_id: 8,
+                slot: 0,
+                stack: None,
+            }),
+            vec![(id::CONTAINER_SET_SLOT, vec![0, 8, 0, 0, 0])]
+        );
     }
 }

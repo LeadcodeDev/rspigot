@@ -1,6 +1,7 @@
 use std::num::NonZeroU8;
 
 use rspigot_domain::item::{HOTBAR_START, ItemStack};
+use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
@@ -144,9 +145,17 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn => self.respawn(id),
+            PlayerInput::Respawn => {
+                let dead = self.players.get(&id).is_some_and(|p| p.vitals.is_dead());
+                self.respawn(id);
+                if dead && let Some(player) = self.players.get_mut(&id) {
+                    player.menu = InventoryMenu::synced(&player.inventory);
+                }
+            }
             PlayerInput::Attack(target) => self.handle_attack(id, target),
             PlayerInput::Interact { .. } => {}
+            PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
+            PlayerInput::ContainerClose(_) => self.handle_container_close(id),
         }
     }
 
@@ -333,10 +342,9 @@ impl<L: ClientLink> Server<L> {
                     self.broadcast_held_item(id);
                 }
             }
-            DigAction::DropItem
-            | DigAction::DropStack
-            | DigAction::ReleaseUseItem
-            | DigAction::Stab => self.send_inventory(id),
+            DigAction::DropItem => self.handle_drop_action(id, false),
+            DigAction::DropStack => self.handle_drop_action(id, true),
+            DigAction::ReleaseUseItem | DigAction::Stab => self.send_inventory(id),
         }
     }
 
@@ -489,31 +497,29 @@ impl<L: ClientLink> Server<L> {
         };
         let remaining = stack.count.get() - 1;
         let new = NonZeroU8::new(remaining).map(|count| ItemStack { count, ..stack });
-        player.inventory.set(slot, new.clone());
-        let state_id = player.next_inventory_state();
-        player.link.send(ClientEvent::InventorySlot {
-            state_id,
-            slot: slot as i16,
-            stack: new,
-        });
+        player.inventory.set(slot, new);
+        self.sync_inventory(id);
         self.broadcast_held_item(id);
     }
 
     fn handle_creative_slot(&mut self, id: PlayerId, slot: i16, stack: Option<ItemStack>) {
-        let Some(player) = self.players.get_mut(&id) else {
-            return;
-        };
-        if player.game_mode != GameMode::Creative {
-            self.send_inventory(id);
+        if self
+            .players
+            .get(&id)
+            .is_none_or(|p| p.game_mode != GameMode::Creative)
+        {
             return;
         }
-        let Ok(index) = usize::try_from(slot) else {
+        let valid_data = stack
+            .as_ref()
+            .is_none_or(|s| s.count.get() <= s.item.max_stack_size());
+        if !valid_data {
             return;
-        };
-        if player.inventory.set(index, stack)
-            && index == HOTBAR_START + usize::from(player.inventory.selected_hotbar)
-        {
-            self.broadcast_held_item(id);
+        }
+        match usize::try_from(slot) {
+            Ok(index @ 1..=45) => self.set_slot_by_player(id, index, stack),
+            Err(_) => self.drop_creative(id, stack),
+            Ok(_) => {}
         }
     }
 
@@ -534,12 +540,7 @@ impl<L: ClientLink> Server<L> {
         player
             .inventory
             .set(slot, Some(ItemStack::new(ItemId(item), NonZeroU8::MIN)));
-        let state_id = player.next_inventory_state();
-        player.link.send(ClientEvent::InventorySlot {
-            state_id,
-            slot: slot as i16,
-            stack: player.inventory.get(slot).cloned(),
-        });
+        self.sync_inventory(id);
         self.broadcast_held_item(id);
     }
 
@@ -588,11 +589,12 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn send_inventory(&mut self, id: PlayerId) {
         if let Some(player) = self.players.get_mut(&id) {
+            let (slots, carried) = player.menu.sync_all(&player.inventory);
             let state_id = player.next_inventory_state();
             player.link.send(ClientEvent::InventoryContent {
                 state_id,
-                slots: player.inventory.slots().to_vec(),
-                carried: None,
+                slots,
+                carried,
             });
         }
     }

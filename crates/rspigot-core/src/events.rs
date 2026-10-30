@@ -147,6 +147,19 @@ pub enum PlayerInput {
         id: i32,
         text: String,
     },
+    ContainerClick(ContainerClick),
+    ContainerClose(i32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContainerClick {
+    pub container: i32,
+    pub state_id: i32,
+    pub slot: i16,
+    pub button: i8,
+    pub input: ClickInput,
+    pub changed: Vec<(i16, HashedSlot)>,
+    pub carried: HashedSlot,
 }
 
 pub enum Inbound<L> {
@@ -239,6 +252,7 @@ pub enum Animation {
 
 pub use rspigot_domain::entity::Pose;
 pub use rspigot_domain::entity::tracker::{DeltaStep, MoveDelta, Movement, PositionPath};
+pub use rspigot_domain::menu::{ClickInput, HashedItem, HashedSlot};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataValue {
@@ -408,6 +422,11 @@ pub enum ClientEvent {
     InventorySlot {
         state_id: i32,
         slot: i16,
+        stack: Slot,
+    },
+    CursorItem(Slot),
+    PlayerInventorySlot {
+        slot: i32,
         stack: Slot,
     },
     Health {

@@ -8,6 +8,7 @@ pub mod food;
 pub mod ident;
 pub mod ids;
 pub mod item;
+pub mod menu;
 pub mod player;
 pub mod pos;
 pub mod text;
