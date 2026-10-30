@@ -182,6 +182,7 @@ impl ChunkManager {
                 source,
                 elapsed,
                 entities,
+                relit,
                 ..
             } => {
                 let pending = self.pending.remove(&pos)?;
@@ -199,7 +200,7 @@ impl ChunkManager {
                         chunk: Arc::new(*chunk),
                         tickets: pending.tickets,
                         unload_at: None,
-                        dirty: source == ChunkSource::Generated,
+                        dirty: source == ChunkSource::Generated || relit,
                     },
                 );
                 Some(pos)
@@ -349,6 +350,7 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Instant;
 
+    use rspigot_blocks::Block;
     use rspigot_domain::chunk::ChunkColumn;
     use rspigot_domain::{BiomeId, Identifier, Vec3};
 
@@ -432,6 +434,95 @@ mod tests {
             },
         );
         (manager, workers, store)
+    }
+
+    struct StaleLightStore {
+        daisy: BlockPos,
+    }
+
+    impl StaleLightStore {
+        fn chunk(&self) -> ChunkColumn {
+            let pos = self.daisy.chunk();
+            let mut chunk = ChunkColumn::empty(pos, Dimension::overworld().height, BiomeId(0));
+            for x in 0..16 {
+                for z in 0..16 {
+                    chunk.set_block(
+                        BlockPos::new(pos.min_block_x() + x, 63, pos.min_block_z() + z),
+                        BlockStateId(1),
+                    );
+                }
+            }
+            chunk.set_block(self.daisy, rspigot_blocks::OxeyeDaisy::DEFAULT_STATE);
+            crate::lighting::compute(&mut chunk, true);
+            let index = ((self.daisy.y >> 4) - chunk.height().min_section() + 1) as usize;
+            if let Some(layer) = chunk.light.sky[index].as_mut() {
+                layer.set(
+                    (self.daisy.x & 15) as usize,
+                    (self.daisy.y & 15) as usize,
+                    (self.daisy.z & 15) as usize,
+                    0,
+                );
+            }
+            chunk
+        }
+    }
+
+    impl ChunkStore for StaleLightStore {
+        fn load(&self, _: &Identifier, pos: ChunkPos) -> Result<Option<ChunkColumn>, StoreError> {
+            Ok((pos == self.daisy.chunk()).then(|| self.chunk()))
+        }
+
+        fn save(&self, _: &Identifier, _: &ChunkColumn) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        fn flush(&self) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl crate::ports::EntityStore for StaleLightStore {
+        fn load_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+        ) -> Result<Option<Vec<Compound>>, StoreError> {
+            Ok(None)
+        }
+
+        fn save_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+            _: &[Compound],
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_stored_chunk_with_a_dark_flower_is_relit_and_saved_again() {
+        let daisy = BlockPos::new(4, 64, 4);
+        let workers = ChunkWorkers::spawn(
+            1,
+            Arc::new(StaleLightStore { daisy }),
+            Arc::new(EmptyGenerator),
+        );
+        let mut manager = ChunkManager::new(
+            Arc::new(Dimension::overworld()),
+            ChunkManagerConfig {
+                unload_delay_ticks: 3,
+                autosave_interval_ticks: 0,
+            },
+        );
+        manager.add_ticket(daisy.chunk(), Priority(1), &workers);
+        assert_eq!(drain(&mut manager, &workers, 1), vec![daisy.chunk()]);
+
+        let chunk = manager.get(daisy.chunk()).expect("loaded");
+        assert_eq!(crate::lighting::light_level(chunk, daisy, true), 15);
+        assert_eq!(manager.stats().loaded_from_disk, 1);
+        assert_eq!(manager.save_dirty(&workers), 1);
+        workers.shutdown();
     }
 
     #[test]
