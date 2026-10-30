@@ -223,6 +223,7 @@ pub struct PlayerListEntry {
 pub enum EntityKind {
     Player,
     Item,
+    FallingBlock,
     Other(u16),
 }
 

@@ -176,6 +176,7 @@ fn entity_type(kind: EntityKind) -> i32 {
     let name = match kind {
         EntityKind::Player => "minecraft:player",
         EntityKind::Item => "minecraft:item",
+        EntityKind::FallingBlock => "minecraft:falling_block",
         EntityKind::Other(id) => return i32::from(id),
     };
     rspigot_data::registries::static_index("minecraft:entity_type", name).map_or(0, |id| id as i32)

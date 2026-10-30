@@ -65,3 +65,12 @@ LightningRodBlock FaceAttached
 WeatheringLightningRodBlock FaceAttached
 LadderBlock FaceAttached
 TripWireHookBlock FaceAttached
+SandBlock Falling
+ColoredFallingBlock Falling
+ConcretePowderBlock ConcretePowder
+DragonEggBlock Falling
+BrushableBlock Falling
+AnvilBlock Anvil
+PointedDripstoneBlock Speleothem
+SulfurSpikeBlock Speleothem
+ScaffoldingBlock Scaffolding

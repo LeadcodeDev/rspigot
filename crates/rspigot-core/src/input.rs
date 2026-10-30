@@ -355,6 +355,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
+                self.notify_neighbours(pos);
                 self.push(
                     Audience::ChunkViewers(pos.chunk()),
                     ClientEvent::BlockUpdate { pos, state },
@@ -430,7 +431,12 @@ impl<L: ClientLink> Server<L> {
             self.refuse_block(id, target, sequence);
             return;
         };
-        self.set_block(target, placement.state);
+        let Some(state) = self.placement_state(target, placement.state, rotation.pitch, sneaking)
+        else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
+        self.set_block(target, state);
         if let Some(linked) = placement.linked {
             let other = target.offset(0, i32::from(linked.dy), 0);
             if self.world.chunks.block(other).is_some_and(is_replaceable) {

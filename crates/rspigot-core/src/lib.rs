@@ -6,6 +6,7 @@ pub mod console;
 mod context;
 mod effects;
 pub mod events;
+mod falling;
 mod input;
 mod items;
 pub mod lighting;

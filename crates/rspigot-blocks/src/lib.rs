@@ -7,7 +7,8 @@ mod state;
 
 pub use blocks::*;
 pub use family::{
-    BlockBehavior, Face, Linked, LinkedProperty, PlaceContext, Placement, UseContext, UseResult,
+    BlockBehavior, Face, Gravity, Linked, LinkedProperty, PlaceContext, Placement,
+    SCAFFOLDING_MAX_DISTANCE, UseContext, UseResult, scaffolding_settle, speleothem_thickness,
 };
 pub use kind::{BlockKind, STATE_COUNT};
 

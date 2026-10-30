@@ -93,6 +93,16 @@ macro_rules! block_kinds {
                 }
             }
 
+            pub const fn gravity(self) -> $crate::Gravity {
+                match self {
+                    $(Self::$kind => <<$crate::blocks::$kind as $crate::Block>::Behavior as $crate::BlockBehavior>::GRAVITY,)*
+                }
+            }
+
+            pub const fn falls(self) -> bool {
+                self.gravity().falls()
+            }
+
             pub fn use_block(self, context: &$crate::UseContext) -> Option<$crate::UseResult> {
                 match self {
                     $(Self::$kind => <<$crate::blocks::$kind as $crate::Block>::Behavior as $crate::BlockBehavior>::use_block(context),)*

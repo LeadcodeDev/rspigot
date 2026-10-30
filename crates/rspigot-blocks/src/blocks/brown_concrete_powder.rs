@@ -23,5 +23,5 @@ impl Block for BrownConcretePowder {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(1054));
-    type Behavior = crate::family::Plain;
+    type Behavior = crate::family::ConcretePowder;
 }

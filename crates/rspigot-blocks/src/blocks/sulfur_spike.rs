@@ -34,5 +34,5 @@ impl Block for SulfurSpike {
         StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646),
         StateFlags(550), StateFlags(646), StateFlags(550), StateFlags(646), StateFlags(550),
     ]);
-    type Behavior = crate::family::Plain;
+    type Behavior = crate::family::Speleothem;
 }

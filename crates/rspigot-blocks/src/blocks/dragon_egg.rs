@@ -23,5 +23,5 @@ impl Block for DragonEgg {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(1);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(38));
-    type Behavior = crate::family::Plain;
+    type Behavior = crate::family::Falling;
 }

@@ -25,5 +25,5 @@ impl Block for DamagedAnvil {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(46));
-    type Behavior = crate::family::Plain;
+    type Behavior = crate::family::Anvil;
 }
