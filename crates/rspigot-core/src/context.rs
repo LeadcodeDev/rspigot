@@ -1,0 +1,280 @@
+use std::num::NonZeroU8;
+
+use rspigot_domain::item::{HOTBAR_START, ItemStack, PLAYER_INVENTORY_SIZE};
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::text::Component;
+use rspigot_domain::world::Difficulty;
+use rspigot_domain::{BlockPos, ItemId, Vec3};
+
+use crate::chunks::{ChunkJob, Priority};
+use crate::commands::Weather;
+use crate::commands::{CommandContext, CommandSender};
+use crate::events::{ClientEvent, GameEvent};
+use crate::ports::ClientLink;
+use crate::server::{Audience, Server};
+
+impl<L: ClientLink> CommandContext for Server<L> {
+    fn reply(&mut self, sender: CommandSender, message: Component) {
+        match sender {
+            CommandSender::Console => tracing::info!("{}", message.plain_text()),
+            CommandSender::Player(id) => self.push(Audience::One(id), ClientEvent::system(message)),
+        }
+    }
+
+    fn broadcast(&mut self, message: Component) {
+        tracing::info!("{}", message.plain_text());
+        self.push(Audience::All, ClientEvent::system(message));
+    }
+
+    fn is_operator(&self, sender: CommandSender) -> bool {
+        match sender {
+            CommandSender::Console => true,
+            CommandSender::Player(id) => self.players.get(&id).is_some_and(|p| p.operator),
+        }
+    }
+
+    fn sender_name(&self, sender: CommandSender) -> String {
+        match sender {
+            CommandSender::Console => "Server".to_owned(),
+            CommandSender::Player(id) => self.player_name(id).unwrap_or_default(),
+        }
+    }
+
+    fn find_player(&self, name: &str) -> Option<PlayerId> {
+        self.players
+            .values()
+            .find(|p| p.profile.name.eq_ignore_ascii_case(name))
+            .map(|p| p.id)
+    }
+
+    fn player_name(&self, player: PlayerId) -> Option<String> {
+        self.players.get(&player).map(|p| p.profile.name.clone())
+    }
+
+    fn player_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .players
+            .values()
+            .map(|p| p.profile.name.clone())
+            .collect();
+        names.sort_by_key(|n| n.to_ascii_lowercase());
+        names
+    }
+
+    fn max_players(&self) -> u32 {
+        self.config.max_players
+    }
+
+    fn player_position(&self, player: PlayerId) -> Option<Vec3> {
+        self.players.get(&player).map(|p| p.position)
+    }
+
+    fn set_game_mode(&mut self, player: PlayerId, mode: GameMode) {
+        self.apply_game_mode(player, mode);
+    }
+
+    fn teleport(&mut self, player: PlayerId, position: Vec3) {
+        let Some(p) = self.players.get_mut(&player) else {
+            return;
+        };
+        let from = p.position;
+        p.position = position;
+        let id = p.next_teleport_id();
+        p.link.send(ClientEvent::Teleport {
+            id,
+            position,
+            rotation: p.rotation,
+        });
+        let chunk = position.chunk();
+        p.streamer
+            .move_to(chunk, &mut self.world.chunks, &self.workers, &p.link);
+        let entity = p.entity_id;
+        let on_ground = p.on_ground;
+        self.push(
+            Audience::Trackers(entity),
+            ClientEvent::EntityMoved {
+                entity,
+                from,
+                to: position,
+                rotation: None,
+                on_ground,
+            },
+        );
+    }
+
+    fn day_time(&self) -> i64 {
+        self.world.level.day_time
+    }
+
+    fn game_time(&self) -> i64 {
+        self.world.level.game_time
+    }
+
+    fn set_day_time(&mut self, time: i64) {
+        self.world.level.day_time = time;
+        let event = self.time_event();
+        self.push(Audience::All, event);
+    }
+
+    fn give(&mut self, player: PlayerId, item: ItemId, count: u32) -> bool {
+        let Some(p) = self.players.get_mut(&player) else {
+            return false;
+        };
+        let max = u32::from(rspigot_data::items::max_stack_size(item.0).max(1));
+        let mut remaining = count;
+        let order = (HOTBAR_START..HOTBAR_START + 9).chain(9..HOTBAR_START);
+        let slots: Vec<usize> = order.collect();
+        for &slot in &slots {
+            if remaining == 0 {
+                break;
+            }
+            if let Some(existing) = p.inventory.get(slot).cloned()
+                && existing.item == item
+                && existing.components.is_empty()
+            {
+                let space = max.saturating_sub(u32::from(existing.count.get()));
+                let added = space.min(remaining);
+                if added > 0 {
+                    let total = u32::from(existing.count.get()) + added;
+                    let count = NonZeroU8::new(total as u8).unwrap_or(NonZeroU8::MIN);
+                    p.inventory.set(slot, Some(ItemStack { count, ..existing }));
+                    remaining -= added;
+                }
+            }
+        }
+        for &slot in &slots {
+            if remaining == 0 {
+                break;
+            }
+            if p.inventory.get(slot).is_none() {
+                let added = max.min(remaining);
+                let count = NonZeroU8::new(added as u8).unwrap_or(NonZeroU8::MIN);
+                p.inventory.set(slot, Some(ItemStack::new(item, count)));
+                remaining -= added;
+            }
+        }
+        self.send_inventory(player);
+        self.broadcast_held_item(player);
+        remaining < count
+    }
+
+    fn clear_inventory(&mut self, player: PlayerId) -> u32 {
+        let Some(p) = self.players.get_mut(&player) else {
+            return 0;
+        };
+        let mut removed = 0u32;
+        for slot in 0..PLAYER_INVENTORY_SIZE {
+            if let Some(stack) = p.inventory.get(slot) {
+                removed += u32::from(stack.count.get());
+                p.inventory.set(slot, None);
+            }
+        }
+        self.send_inventory(player);
+        self.broadcast_held_item(player);
+        removed
+    }
+
+    fn kick(&mut self, player: PlayerId, reason: Component) {
+        if let Some(p) = self.players.get(&player) {
+            tracing::info!("Kicked {}: {}", p.profile.name, reason.plain_text());
+            p.link.disconnect(reason);
+        }
+        self.remove_player(player, true);
+    }
+
+    fn set_operator(&mut self, name: &str, operator: bool) -> bool {
+        let key = name.to_ascii_lowercase();
+        let changed = if operator {
+            self.operators.insert(key)
+        } else {
+            self.operators.remove(&key)
+        };
+        if let Some(id) = self.find_player(name) {
+            let tree = self.command_tree(operator);
+            if let Some(p) = self.players.get_mut(&id) {
+                p.operator = operator;
+                p.link.send(ClientEvent::OperatorLevel {
+                    entity: p.entity_id,
+                    level: if operator { 4 } else { 0 },
+                });
+                p.link.send(ClientEvent::Commands(tree));
+            }
+        }
+        changed
+    }
+
+    fn seed(&self) -> i64 {
+        self.world.level.seed
+    }
+
+    fn difficulty(&self) -> Difficulty {
+        self.world.difficulty
+    }
+
+    fn set_difficulty(&mut self, difficulty: Difficulty) {
+        self.world.difficulty = difficulty;
+        self.push(
+            Audience::All,
+            ClientEvent::Difficulty {
+                difficulty,
+                locked: false,
+            },
+        );
+    }
+
+    fn set_weather(&mut self, weather: Weather) {
+        let was_raining = self.world.level.raining;
+        self.world.level.raining = weather != Weather::Clear;
+        self.world.level.thundering = weather == Weather::Thunder;
+        if was_raining != self.world.level.raining {
+            let event = if self.world.level.raining {
+                GameEvent::StartRaining
+            } else {
+                GameEvent::StopRaining
+            };
+            self.push(Audience::All, ClientEvent::GameEvent(event));
+        }
+        let rain = if self.world.level.raining { 1.0 } else { 0.0 };
+        let thunder = if self.world.level.thundering {
+            1.0
+        } else {
+            0.0
+        };
+        self.push(
+            Audience::All,
+            ClientEvent::GameEvent(GameEvent::RainLevelChange(rain)),
+        );
+        self.push(
+            Audience::All,
+            ClientEvent::GameEvent(GameEvent::ThunderLevelChange(thunder)),
+        );
+    }
+
+    fn set_world_spawn(&mut self, pos: BlockPos) {
+        self.world.level.spawn = Some(pos);
+        self.world.spawn = pos.center();
+        self.push(
+            Audience::All,
+            ClientEvent::SpawnPosition {
+                dimension: self.world.dimension.key.clone(),
+                pos,
+                yaw: self.world.level.spawn_angle,
+                pitch: 0.0,
+            },
+        );
+    }
+
+    fn save_all(&mut self) -> usize {
+        let count = self.world.chunks.save_dirty(&self.workers);
+        self.workers.submit(Priority::BACKGROUND, ChunkJob::Flush);
+        count
+    }
+
+    fn tps(&self) -> [f64; 3] {
+        Server::tps(self)
+    }
+
+    fn stop(&mut self) {
+        self.running = false;
+    }
+}

@@ -1,0 +1,57 @@
+use std::net::IpAddr;
+
+use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::player::GameProfile;
+use rspigot_domain::text::Component;
+use rspigot_domain::world::Dimension;
+use rspigot_domain::{ChunkPos, Identifier, Vec3};
+
+use crate::events::ClientEvent;
+
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("i/o error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("corrupt chunk at {pos:?}: {reason}")]
+    Corrupt { pos: ChunkPos, reason: String },
+}
+
+pub trait ChunkStore: Send + Sync + 'static {
+    fn load(
+        &self,
+        dimension: &Identifier,
+        pos: ChunkPos,
+    ) -> Result<Option<ChunkColumn>, StoreError>;
+    fn save(&self, dimension: &Identifier, chunk: &ChunkColumn) -> Result<(), StoreError>;
+    fn flush(&self) -> Result<(), StoreError>;
+}
+
+pub trait ChunkGenerator: Send + Sync + 'static {
+    fn generate(&self, dimension: &Dimension, pos: ChunkPos) -> ChunkColumn;
+    fn spawn_point(&self, dimension: &Dimension) -> Vec3;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AuthError {
+    #[error("session server rejected {0}")]
+    NotAuthenticated(String),
+    #[error("session server unreachable: {0}")]
+    Unreachable(String),
+    #[error("invalid session server response: {0}")]
+    InvalidResponse(String),
+}
+
+pub trait SessionVerifier: Send + Sync + 'static {
+    fn verify(
+        &self,
+        username: &str,
+        server_hash: &str,
+        client_ip: Option<IpAddr>,
+    ) -> Result<GameProfile, AuthError>;
+}
+
+pub trait ClientLink: Send + 'static {
+    fn send(&self, event: ClientEvent);
+    fn disconnect(&self, reason: Component);
+    fn is_connected(&self) -> bool;
+}
