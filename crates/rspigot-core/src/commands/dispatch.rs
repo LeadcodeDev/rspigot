@@ -702,6 +702,7 @@ fn set_world_spawn<C: CommandContext>(
                 Component::text(pos.x.to_string()),
                 Component::text(pos.y.to_string()),
                 Component::text(pos.z.to_string()),
+                Component::text("0.0"),
             ],
         ),
     );

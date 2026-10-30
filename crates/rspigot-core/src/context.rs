@@ -16,13 +16,13 @@ use crate::server::{Audience, Server};
 impl<L: ClientLink> CommandContext for Server<L> {
     fn reply(&mut self, sender: CommandSender, message: Component) {
         match sender {
-            CommandSender::Console => tracing::info!("{}", message.plain_text()),
+            CommandSender::Console => tracing::info!("{}", crate::console::console_text(&message)),
             CommandSender::Player(id) => self.push(Audience::One(id), ClientEvent::system(message)),
         }
     }
 
     fn broadcast(&mut self, message: Component) {
-        tracing::info!("{}", message.plain_text());
+        tracing::info!("{}", crate::console::console_text(&message));
         self.push(Audience::All, ClientEvent::system(message));
     }
 
@@ -176,7 +176,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
 
     fn kick(&mut self, player: PlayerId, reason: Component) {
         if let Some(p) = self.players.get(&player) {
-            tracing::info!("Kicked {}: {}", p.profile.name, reason.plain_text());
+            tracing::info!(
+                "Kicked {}: {}",
+                p.profile.name,
+                crate::console::console_text(&reason)
+            );
             p.link.disconnect(reason);
         }
         self.remove_player(player, true);
