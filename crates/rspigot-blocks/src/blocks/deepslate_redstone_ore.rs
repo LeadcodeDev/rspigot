@@ -1,0 +1,33 @@
+use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+
+pub struct DeepslateRedstoneOre;
+
+impl Block for DeepslateRedstoneOre {
+    const NAME: &'static str = "minecraft:deepslate_redstone_ore";
+    const ID: BlockId = BlockId(321);
+    const FIRST_STATE: StateId = StateId(8553);
+    const STATE_COUNT: u16 = 2;
+    const DEFAULT_STATE: StateId = StateId(8554);
+    const PROPERTIES: &'static [Property] = &[
+        Property { name: "lit", values: &["true", "false"] },
+    ];
+    const ITEM: Option<u16> = Some(102);
+    const WALL_VARIANT: Option<BlockId> = None;
+    const SETTINGS: BlockSettings = BlockSettings {
+        hardness: 4.5,
+        resistance: 3.0,
+        friction: 0.6,
+        speed_factor: 1.0,
+        jump_factor: 1.0,
+        requires_correct_tool: true,
+        ignited_by_lava: false,
+    };
+    const LIGHT_EMISSION: PerState<u8> = PerState::Varies(&[
+        9, 0,
+    ]);
+    const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
+    const FLAGS: PerState<StateFlags> = PerState::Varies(&[
+        StateFlags(1566), StateFlags(1054),
+    ]);
+    type Behavior = crate::family::Plain;
+}

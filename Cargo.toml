@@ -10,6 +10,7 @@ rust-version = "1.90"
 
 [workspace.dependencies]
 rspigot-nbt = { path = "crates/rspigot-nbt" }
+rspigot-blocks = { path = "crates/rspigot-blocks" }
 rspigot-data = { path = "crates/rspigot-data" }
 rspigot-domain = { path = "crates/rspigot-domain" }
 rspigot-core = { path = "crates/rspigot-core" }

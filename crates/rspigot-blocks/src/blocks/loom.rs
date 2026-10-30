@@ -1,0 +1,29 @@
+use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+
+pub struct Loom;
+
+impl Block for Loom {
+    const NAME: &'static str = "minecraft:loom";
+    const ID: BlockId = BlockId(928);
+    const FIRST_STATE: StateId = StateId(24095);
+    const STATE_COUNT: u16 = 4;
+    const DEFAULT_STATE: StateId = StateId(24095);
+    const PROPERTIES: &'static [Property] = &[
+        Property { name: "facing", values: &["north", "south", "west", "east"] },
+    ];
+    const ITEM: Option<u16> = Some(1493);
+    const WALL_VARIANT: Option<BlockId> = None;
+    const SETTINGS: BlockSettings = BlockSettings {
+        hardness: 2.5,
+        resistance: 2.5,
+        friction: 0.6,
+        speed_factor: 1.0,
+        jump_factor: 1.0,
+        requires_correct_tool: false,
+        ignited_by_lava: true,
+    };
+    const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
+    const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(1054));
+    type Behavior = crate::family::HorizontalAway;
+}

@@ -1,0 +1,29 @@
+use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+
+pub struct Jukebox;
+
+impl Block for Jukebox {
+    const NAME: &'static str = "minecraft:jukebox";
+    const ID: BlockId = BlockId(332);
+    const FIRST_STATE: StateId = StateId(8633);
+    const STATE_COUNT: u16 = 2;
+    const DEFAULT_STATE: StateId = StateId(8634);
+    const PROPERTIES: &'static [Property] = &[
+        Property { name: "has_record", values: &["true", "false"] },
+    ];
+    const ITEM: Option<u16> = Some(416);
+    const WALL_VARIANT: Option<BlockId> = None;
+    const SETTINGS: BlockSettings = BlockSettings {
+        hardness: 2.0,
+        resistance: 6.0,
+        friction: 0.6,
+        speed_factor: 1.0,
+        jump_factor: 1.0,
+        requires_correct_tool: false,
+        ignited_by_lava: true,
+    };
+    const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
+    const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(15);
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(1054));
+    type Behavior = crate::family::Plain;
+}

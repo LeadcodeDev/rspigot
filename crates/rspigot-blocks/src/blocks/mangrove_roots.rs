@@ -1,0 +1,31 @@
+use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+
+pub struct MangroveRoots;
+
+impl Block for MangroveRoots {
+    const NAME: &'static str = "minecraft:mangrove_roots";
+    const ID: BlockId = BlockId(61);
+    const FIRST_STATE: StateId = StateId(169);
+    const STATE_COUNT: u16 = 2;
+    const DEFAULT_STATE: StateId = StateId(170);
+    const PROPERTIES: &'static [Property] = &[
+        Property { name: "waterlogged", values: &["true", "false"] },
+    ];
+    const ITEM: Option<u16> = Some(173);
+    const WALL_VARIANT: Option<BlockId> = None;
+    const SETTINGS: BlockSettings = BlockSettings {
+        hardness: 0.7,
+        resistance: 0.7,
+        friction: 0.6,
+        speed_factor: 1.0,
+        jump_factor: 1.0,
+        requires_correct_tool: false,
+        ignited_by_lava: true,
+    };
+    const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
+    const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
+    const FLAGS: PerState<StateFlags> = PerState::Varies(&[
+        StateFlags(1158), StateFlags(1030),
+    ]);
+    type Behavior = crate::family::Plain;
+}

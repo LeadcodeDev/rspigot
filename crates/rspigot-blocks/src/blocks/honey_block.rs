@@ -1,0 +1,27 @@
+use crate::{Block, BlockId, BlockSettings, PerState, Property, StateFlags, StateId};
+
+pub struct HoneyBlock;
+
+impl Block for HoneyBlock {
+    const NAME: &'static str = "minecraft:honey_block";
+    const ID: BlockId = BlockId(1003);
+    const FIRST_STATE: StateId = StateId(25173);
+    const STATE_COUNT: u16 = 1;
+    const DEFAULT_STATE: StateId = StateId(25173);
+    const PROPERTIES: &'static [Property] = &[];
+    const ITEM: Option<u16> = Some(832);
+    const WALL_VARIANT: Option<BlockId> = None;
+    const SETTINGS: BlockSettings = BlockSettings {
+        hardness: 0.0,
+        resistance: 0.0,
+        friction: 0.6,
+        speed_factor: 0.4,
+        jump_factor: 0.5,
+        requires_correct_tool: false,
+        ignited_by_lava: false,
+    };
+    const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
+    const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(6));
+    type Behavior = crate::family::Plain;
+}
