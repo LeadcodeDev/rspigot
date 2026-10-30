@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use rspigot_domain::BlockStateId;
 use rspigot_domain::chunk::{ChunkColumn, LightArray};
+use rspigot_domain::{BlockPos, BlockStateId};
 
 const MAX_LIGHT: u8 = 15;
 
@@ -11,6 +11,30 @@ pub fn opacity(state: BlockStateId) -> u8 {
 
 pub fn emission(state: BlockStateId) -> u8 {
     state.light_emission()
+}
+
+pub fn light_level(chunk: &ChunkColumn, pos: BlockPos, sky: bool) -> i32 {
+    let layers = if sky {
+        &chunk.light.sky
+    } else {
+        &chunk.light.block
+    };
+    let sections = layers.len().max(1) as i32;
+    let index = ((pos.y >> 4) - chunk.height().min_section() + 1).clamp(0, sections - 1) as usize;
+    layers
+        .get(index)
+        .and_then(Option::as_ref)
+        .map_or(0, |layer| {
+            i32::from(layer.get(
+                (pos.x & 15) as usize,
+                (pos.y & 15) as usize,
+                (pos.z & 15) as usize,
+            ))
+        })
+}
+
+pub fn affects_light(old: BlockStateId, new: BlockStateId) -> bool {
+    opacity(old) != opacity(new) || emission(old) != emission(new)
 }
 
 pub fn has_light(chunk: &ChunkColumn) -> bool {
@@ -258,6 +282,27 @@ mod tests {
         assert_eq!(above, Some(15));
         assert!(chunk.light.sky[1].is_none());
         assert_eq!(chunk.light.sky.len(), 26);
+    }
+
+    #[test]
+    fn light_level_reads_the_section_of_the_position() {
+        let mut chunk = ChunkColumn::empty(ChunkPos::new(0, 0), WorldHeight::OVERWORLD, BiomeId(0));
+        for x in 0..16 {
+            for z in 0..16 {
+                chunk.set_block(BlockPos::new(x, 63, z), stone());
+            }
+        }
+        chunk.set_block(
+            BlockPos::new(4, 64, 4),
+            rspigot_blocks::Torch::DEFAULT_STATE,
+        );
+        compute(&mut chunk, true);
+        assert_eq!(light_level(&chunk, BlockPos::new(2, 64, 2), true), 15);
+        assert_eq!(light_level(&chunk, BlockPos::new(2, 40, 2), true), 0);
+        assert_eq!(light_level(&chunk, BlockPos::new(5, 64, 4), false), 13);
+        assert_eq!(light_level(&chunk, BlockPos::new(2, 400, 2), true), 15);
+        assert!(affects_light(BlockStateId::AIR, stone()));
+        assert!(!affects_light(BlockStateId::AIR, BlockStateId::AIR));
     }
 
     #[test]

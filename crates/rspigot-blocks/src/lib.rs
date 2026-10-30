@@ -58,6 +58,9 @@ impl StateFlags {
     pub const RANDOMLY_TICKS: Self = Self(1 << 9);
     pub const FULL_COLLISION_CUBE: Self = Self(1 << 10);
     pub const LEGACY_SOLID: Self = Self(1 << 11);
+    pub const REDSTONE_CONDUCTOR: Self = Self(1 << 12);
+    pub const SIGNAL_SOURCE: Self = Self(1 << 13);
+    pub const PATHFINDABLE_LAND: Self = Self(1 << 14);
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -70,6 +73,17 @@ impl StateFlags {
     pub const fn has_fluid(self) -> bool {
         self.0 & (Self::WATER.0 | Self::LAVA.0) != 0
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SpawnSurface {
+    #[default]
+    Default,
+    Never,
+    Always,
+    OcelotOrParrot,
+    PolarBear,
+    FireImmune,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -169,5 +183,6 @@ pub trait Block: 'static {
     const FLAGS: PerState<StateFlags>;
     const COLLISION: PerState<ShapeId>;
     const FACE_SUPPORT: PerState<FaceSupport>;
+    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::Default;
     type Behavior: BlockBehavior;
 }

@@ -1,5 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
     VoicePitch,
 };
 
@@ -63,6 +64,23 @@ impl EntityType for Ghast {
         pitch: VoicePitch::Standard,
         source: SoundSource::Hostile,
         can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::OnGround,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::Ghast,
+        }),
+        check_spawn_rules: MobClass::Mob,
+        walk_target_value: None,
+        check_spawn_obstruction: MobClass::Mob,
+        max_spawn_cluster_size: Some(1),
+        max_spawn_cluster_size_owner: MobClass::Ghast,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::Mob,
+        requires_custom_persistence: MobClass::Mob,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
     });
     type Behavior = crate::family::Plain;
 }

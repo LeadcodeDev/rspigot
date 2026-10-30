@@ -3,6 +3,7 @@ pub mod entities;
 mod generated;
 pub mod loot;
 pub mod registries;
+pub mod spawns;
 pub mod tags;
 
 pub const PROTOCOL_VERSION: i32 = 777;

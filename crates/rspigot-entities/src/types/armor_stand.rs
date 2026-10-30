@@ -1,6 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
-    VoicePitch,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn, SoundSource,
+    SoundVolume, VoicePitch,
 };
 
 pub struct ArmorStand;
@@ -62,5 +62,6 @@ impl EntityType for ArmorStand {
         source: SoundSource::Neutral,
         can_be_baby: true,
     });
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

@@ -24,10 +24,11 @@ use rustc_hash::FxHashMap;
 
 use crate::chunks::ChunkManager;
 use crate::commands::Target;
-use crate::config::ActivationRanges;
+use crate::config::{ActivationRanges, LevelData};
 use crate::events::{ClientEvent, EntityStatus};
 use crate::fall::fall_impact;
 use crate::health::{DamageSource, SourceEntity};
+use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
 use crate::ports::ClientLink;
@@ -48,6 +49,9 @@ const SKY_LIGHT_KEYS: [(i64, f32); 4] = [
     (22_330, 0.266_666_68),
 ];
 const MAX_LIGHT: f32 = 15.0;
+const STORM_SKY_LIGHT: f32 = 4.0;
+const RAIN_SKY_ALPHA: f32 = 0.3125;
+const THUNDER_SKY_ALPHA: f32 = 0.527_343_75;
 const BRIGHT_LIMIT: f32 = 0.5;
 pub const DEFAULT_KNOCKBACK: f64 = 0.400_000_005_960_464_5;
 pub const MIN_KNOCKBACK_DIRECTION: f64 = 9.999_999_747_378_752e-6;
@@ -223,7 +227,37 @@ fn entity_target(entity: &Entity) -> Option<Living> {
     })
 }
 
-pub(crate) fn sky_darken(day_time: i64) -> i32 {
+fn lerp(delta: f32, start: f32, end: f32) -> f32 {
+    start + delta * (end - start)
+}
+
+pub(crate) fn sky_darken(level: &LevelData) -> i32 {
+    let mut light = MAX_LIGHT * sky_light_factor(level.day_time);
+    let rain = if level.raining { 1.0 } else { 0.0 };
+    let thunder = if level.raining && level.thundering {
+        1.0
+    } else {
+        0.0
+    };
+    let rain_only = rain - thunder;
+    if rain_only > 0.0 {
+        light = lerp(
+            rain_only,
+            light,
+            lerp(RAIN_SKY_ALPHA, light, STORM_SKY_LIGHT),
+        );
+    }
+    if thunder > 0.0 {
+        light = lerp(
+            thunder,
+            light,
+            lerp(THUNDER_SKY_ALPHA, light, STORM_SKY_LIGHT),
+        );
+    }
+    (MAX_LIGHT - light) as i32
+}
+
+fn sky_light_factor(day_time: i64) -> f32 {
     let time = day_time.rem_euclid(DAY_LENGTH);
     let count = SKY_LIGHT_KEYS.len();
     let mut factor = SKY_LIGHT_KEYS[0].1;
@@ -246,7 +280,7 @@ pub(crate) fn sky_darken(day_time: i64) -> i32 {
             break;
         }
     }
-    (MAX_LIGHT - MAX_LIGHT * factor) as i32
+    factor
 }
 
 pub(crate) struct ChunkView<'a> {
@@ -339,21 +373,7 @@ impl AiWorld for MobWorld<'_> {
         let Some(chunk) = self.view.chunks.get(pos.chunk()) else {
             return 0;
         };
-        let sections = chunk.light.sky.len().max(1);
-        let index = ((pos.y >> 4) - self.view.height.min_section() + 1)
-            .clamp(0, sections as i32 - 1) as usize;
-        let (x, y, z) = (
-            (pos.x & 15) as usize,
-            (pos.y & 15) as usize,
-            (pos.z & 15) as usize,
-        );
-        let level = |layers: &[Option<rspigot_domain::chunk::LightArray>]| {
-            layers
-                .get(index)
-                .and_then(Option::as_ref)
-                .map_or(0, |layer| i32::from(layer.get(x, y, z)))
-        };
-        (level(&chunk.light.sky) - self.sky_darken).max(level(&chunk.light.block))
+        (light_level(chunk, pos, true) - self.sky_darken).max(light_level(chunk, pos, false))
     }
 }
 
@@ -505,7 +525,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn mob_server_ai_step(&mut self, id: EntityId) {
-        let sky_darken = sky_darken(self.world.level.day_time);
+        let sky_darken = sky_darken(&self.world.level);
         let bright = self.entities.store.get(id).is_some_and(|entity| {
             entity.base.kind.extends("Monster") && self.bright_at_eyes(entity, sky_darken)
         });
@@ -575,7 +595,7 @@ impl<L: ClientLink> Server<L> {
             players: &self.entities.mobs.players,
             difficulty: i32::from(self.world.difficulty.id()),
             game_time: self.world.level.game_time,
-            sky_darken: sky_darken(self.world.level.day_time),
+            sky_darken: sky_darken(&self.world.level),
         };
         for (id, entry) in &mut self.entities.mobs.entries {
             let Some(entity) = world.store.get(*id) else {
@@ -1229,10 +1249,28 @@ mod tests {
 
     #[test]
     fn sky_darkens_at_night_following_the_day_timeline() {
-        assert_eq!(sky_darken(6000), 0);
-        assert_eq!(sky_darken(18_000), 11);
-        assert_eq!(sky_darken(0), sky_darken(24_000));
-        assert!(sky_darken(12_768) > 0 && sky_darken(12_768) < 11);
+        let at = |day_time| LevelData {
+            day_time,
+            ..LevelData::default()
+        };
+        assert_eq!(sky_darken(&at(6000)), 0);
+        assert_eq!(sky_darken(&at(18_000)), 11);
+        assert_eq!(sky_darken(&at(0)), sky_darken(&at(24_000)));
+        assert!(sky_darken(&at(12_768)) > 0 && sky_darken(&at(12_768)) < 11);
+    }
+
+    #[test]
+    fn rain_and_thunder_darken_the_day_sky() {
+        let weather = |raining, thundering, day_time| LevelData {
+            day_time,
+            raining,
+            thundering,
+            ..LevelData::default()
+        };
+        assert_eq!(sky_darken(&weather(true, false, 6000)), 3);
+        assert_eq!(sky_darken(&weather(true, true, 6000)), 5);
+        assert_eq!(sky_darken(&weather(false, true, 6000)), 0);
+        assert_eq!(sky_darken(&weather(true, true, 18_000)), 11);
     }
 
     #[test]

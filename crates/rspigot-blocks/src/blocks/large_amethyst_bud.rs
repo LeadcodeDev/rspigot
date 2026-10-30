@@ -32,9 +32,9 @@ impl Block for LargeAmethystBud {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182),
-        StateFlags(2086), StateFlags(2182), StateFlags(2086), StateFlags(2182), StateFlags(2086),
-        StateFlags(2182), StateFlags(2086),
+        StateFlags(18566), StateFlags(18470), StateFlags(18566), StateFlags(18470),
+        StateFlags(18566), StateFlags(18470), StateFlags(18566), StateFlags(18470),
+        StateFlags(18566), StateFlags(18470), StateFlags(18566), StateFlags(18470),
     ]);
     const COLLISION: PerState<ShapeId> =
         PerState::Varies(crate::shapes::COLLISION_LARGE_AMETHYST_BUD);

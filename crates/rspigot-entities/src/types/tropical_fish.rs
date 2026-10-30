@@ -1,5 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, SpawnHeightmap, SpawnPlacement, SpawnPlacementType, SpawnPredicate,
     VoicePitch,
 };
 
@@ -71,6 +72,23 @@ impl EntityType for TropicalFish {
         pitch: VoicePitch::Standard,
         source: SoundSource::Neutral,
         can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: Some(SpawnPlacement {
+            kind: SpawnPlacementType::InWater,
+            heightmap: SpawnHeightmap::MotionBlockingNoLeaves,
+            predicate: SpawnPredicate::TropicalFish,
+        }),
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::PathfinderMob),
+        check_spawn_obstruction: MobClass::WaterAnimal,
+        max_spawn_cluster_size: None,
+        max_spawn_cluster_size_owner: MobClass::AbstractSchoolingFish,
+        is_max_group_size_reached: MobClass::TropicalFish,
+        remove_when_far_away: MobClass::AbstractFish,
+        requires_custom_persistence: MobClass::AbstractFish,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
     });
     type Behavior = crate::family::Plain;
 }

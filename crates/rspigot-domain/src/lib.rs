@@ -14,6 +14,7 @@ pub mod mth;
 pub mod player;
 pub mod pos;
 pub mod random;
+pub mod spawn;
 pub mod text;
 pub mod world;
 

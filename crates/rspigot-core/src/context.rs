@@ -4,6 +4,7 @@ use rspigot_domain::effect::{EffectId, EffectInstance};
 use rspigot_domain::entity::{Aabb, EntityState, living, save};
 use rspigot_domain::item::PLAYER_INVENTORY_SIZE;
 use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::spawn::SpawnReason;
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
@@ -488,7 +489,14 @@ impl<L: ClientLink> CommandContext for Server<L> {
             let mut take_double = || doubles.remove(0);
             let float = rand::Rng::random::<f32>(&mut self.rng);
             let mut take_float = || float;
-            living::finalize_spawn(&mut entity.base, state, &mut take_double, &mut take_float);
+            living::finalize_spawn(
+                &mut entity.base,
+                state,
+                SpawnReason::Command,
+                None,
+                &mut take_double,
+                &mut take_float,
+            );
         }
         let name = match entity.base.custom_name() {
             Some(name) => name.clone(),

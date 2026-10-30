@@ -42,13 +42,14 @@ impl Block for Light {
         0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192),
-        StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96),
-        StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192),
-        StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96),
-        StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192),
-        StateFlags(96), StateFlags(192), StateFlags(96), StateFlags(192), StateFlags(96),
-        StateFlags(192), StateFlags(96),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
+        StateFlags(16576), StateFlags(16480), StateFlags(16576), StateFlags(16480),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

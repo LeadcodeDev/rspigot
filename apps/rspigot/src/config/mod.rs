@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use rspigot_core::admin::AdminLists;
 use rspigot_core::chunks::ChunkManagerConfig;
-use rspigot_core::config::{ActivationRanges, GameConfig};
+use rspigot_core::config::{ActivationRanges, GameConfig, SpawningConfig};
 use rspigot_core::streaming::StreamConfig;
 use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
+use rspigot_domain::spawn::state::{CategorySettings, SpawnSettings};
 use rspigot_domain::world::Difficulty;
 use rspigot_network::NetworkConfig;
 
@@ -74,7 +75,46 @@ impl ServerFiles {
                 "You are not whitelisted on this server!",
             ),
             is_flat: p.string("level-type").ends_with("flat"),
+            spawning: self.spawning(),
             ..GameConfig::default()
+        }
+    }
+
+    fn spawning(&self) -> SpawningConfig {
+        let defaults = SpawningConfig::default();
+        let category = |limit: &str, ticks: &str, fallback: CategorySettings| CategorySettings {
+            limit: self
+                .bukkit
+                .int(&format!("spawn-limits.{limit}"), i64::from(fallback.limit))
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
+            ticks_per: self
+                .bukkit
+                .int(&format!("ticks-per.{ticks}"), fallback.ticks_per)
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)),
+        };
+        let vanilla = defaults.categories;
+        SpawningConfig {
+            categories: SpawnSettings {
+                monster: category("monsters", "monster-spawns", vanilla.monster),
+                creature: category("animals", "animal-spawns", vanilla.creature),
+                ambient: category("ambient", "ambient-spawns", vanilla.ambient),
+                axolotls: category("axolotls", "axolotl-spawns", vanilla.axolotls),
+                underground_water_creature: category(
+                    "water-underground-creature",
+                    "water-underground-creature-spawns",
+                    vanilla.underground_water_creature,
+                ),
+                water_creature: category("water-animals", "water-spawns", vanilla.water_creature),
+                water_ambient: category(
+                    "water-ambient",
+                    "water-ambient-spawns",
+                    vanilla.water_ambient,
+                ),
+            },
+            mob_spawn_range: i32::from(self.spigot.int(
+                "world-settings.default.mob-spawn-range",
+                i64::from(defaults.mob_spawn_range),
+            ) as i32 as i8),
         }
     }
 
@@ -158,5 +198,59 @@ impl ServerFiles {
             ),
             ..NetworkConfig::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(spigot: &str, bukkit: &str) -> ServerFiles {
+        let merged = |text: &str, defaults: &str| {
+            let mut root: serde_yaml_ng::Value = serde_yaml_ng::from_str(defaults).unwrap();
+            let user: serde_yaml_ng::Value = serde_yaml_ng::from_str(text).unwrap();
+            if let (serde_yaml_ng::Value::Mapping(root), serde_yaml_ng::Value::Mapping(user)) =
+                (&mut root, user)
+            {
+                for (key, value) in user {
+                    root.insert(key, value);
+                }
+            }
+            YamlConfig::from_str(&serde_yaml_ng::to_string(&root).unwrap()).unwrap()
+        };
+        ServerFiles {
+            properties: Properties::parse(""),
+            spigot: merged(spigot, SPIGOT_DEFAULTS),
+            bukkit: merged(bukkit, BUKKIT_DEFAULTS),
+        }
+    }
+
+    #[test]
+    fn spawning_defaults_match_bukkit_and_spigot() {
+        let config = files("{}", "{}").game_config(AdminLists::default());
+        assert_eq!(config.spawning, SpawningConfig::default());
+        assert_eq!(config.spawning.mob_spawn_range, 6);
+        assert_eq!(config.spawning.categories.creature.ticks_per, 400);
+        assert_eq!(config.spawning.categories.water_ambient.limit, 20);
+    }
+
+    #[test]
+    fn spawn_limits_and_ticks_per_are_read_per_category() {
+        let bukkit = "spawn-limits:\n  monsters: 12\n  water-animals: 0\nticks-per:\n  animal-spawns: 1\n  ambient-spawns: 0\n";
+        let config = files("{}", bukkit).game_config(AdminLists::default());
+        let categories = config.spawning.categories;
+        assert_eq!(categories.monster.limit, 12);
+        assert_eq!(categories.water_creature.limit, 0);
+        assert_eq!(categories.creature.ticks_per, 1);
+        assert_eq!(categories.ambient.ticks_per, 0);
+        assert_eq!(categories.axolotls.limit, 5);
+        let spigot = "world-settings:\n  default:\n    mob-spawn-range: 300\n";
+        assert_eq!(
+            files(spigot, "{}")
+                .game_config(AdminLists::default())
+                .spawning
+                .mob_spawn_range,
+            44
+        );
     }
 }

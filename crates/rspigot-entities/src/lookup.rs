@@ -121,6 +121,12 @@ macro_rules! entity_kinds {
                     $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::SOUNDS,)*
                 }
             }
+
+            pub const fn mob_spawn(self) -> Option<$crate::MobSpawn> {
+                match self {
+                    $(Self::$kind => <$crate::types::$kind as $crate::EntityType>::MOB_SPAWN,)*
+                }
+            }
         }
     };
 }

@@ -1,5 +1,6 @@
 use crate::{
-    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, StateFlags, StateId,
+    Block, BlockId, BlockSettings, FaceSupport, PerState, Property, ShapeId, SpawnSurface,
+    StateFlags, StateId,
 };
 
 pub struct WaxedExposedCopperGrate;
@@ -33,5 +34,6 @@ impl Block for WaxedExposedCopperGrate {
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(1));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(63, 63, 63));
+    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::Never;
     type Behavior = crate::family::Plain;
 }
