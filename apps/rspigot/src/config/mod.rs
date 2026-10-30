@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rspigot_core::admin::AdminLists;
 use rspigot_core::chunks::ChunkManagerConfig;
-use rspigot_core::config::{ActivationRanges, GameConfig, SpawningConfig};
+use rspigot_core::config::{ActivationRanges, GameConfig, MobSettings, SpawningConfig};
 use rspigot_core::streaming::StreamConfig;
 use rspigot_domain::entity::TrackingRanges;
 use rspigot_domain::player::GameMode;
@@ -76,6 +76,7 @@ impl ServerFiles {
             ),
             is_flat: p.string("level-type").ends_with("flat"),
             spawning: self.spawning(),
+            mobs: self.mob_settings(),
             ..GameConfig::default()
         }
     }
@@ -139,6 +140,27 @@ impl ServerFiles {
                 "entity-activation-range.monsters",
                 defaults.monster_activation,
             ),
+        }
+    }
+
+    fn mob_settings(&self) -> MobSettings {
+        let defaults = MobSettings::default();
+        MobSettings {
+            zombie_aggressive_towards_villager: self
+                .spigot
+                .string(
+                    "world-settings.default.zombie-aggressive-towards-villager",
+                    "true",
+                )
+                .eq_ignore_ascii_case("true"),
+            arrow_despawn_rate: self
+                .spigot
+                .int(
+                    "world-settings.default.arrow-despawn-rate",
+                    i64::from(defaults.arrow_despawn_rate),
+                )
+                .clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                as i32,
         }
     }
 

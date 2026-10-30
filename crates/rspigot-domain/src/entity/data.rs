@@ -1,6 +1,14 @@
+use rspigot_data::variants::Farm;
+
 use crate::BlockPos;
 use crate::item::ItemStack;
 use crate::text::Component;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VariantKind {
+    Mob(Farm),
+    Sound(Farm),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pose {
@@ -24,6 +32,7 @@ pub enum SyncedValue {
     Pose(Pose),
     Item(Option<ItemStack>),
     BlockPos(BlockPos),
+    Variant(VariantKind, u32),
 }
 
 impl SyncedValue {
@@ -135,6 +144,13 @@ impl SyncedData {
         match self.get(index) {
             Some(SyncedValue::Float(v)) => *v,
             _ => 0.0,
+        }
+    }
+
+    pub fn variant(&self, index: u8) -> Option<u32> {
+        match self.get(index) {
+            Some(SyncedValue::Variant(_, id)) => Some(*id),
+            _ => None,
         }
     }
 

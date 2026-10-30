@@ -1,0 +1,386 @@
+use rand::Rng;
+use rspigot_domain::damage::DamageType;
+use rspigot_domain::entity::species::{self, Species};
+use rspigot_domain::entity::{Aabb, EntityState, RemovalReason, item};
+use rspigot_domain::explosion::{self, MIN_RADIUS, PACKET_RANGE_SQR};
+use rspigot_domain::item::{ItemStack, same_item_same_components};
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
+use rspigot_entities::EntityKind as Kind;
+
+use crate::events::ClientEvent;
+use crate::health::DamageSource;
+use crate::loot::{self, LootContext, LootEntity};
+use crate::mobs::ServerRandom;
+use crate::ports::ClientLink;
+use crate::server::{Audience, Server};
+
+const MAX_MERGED_STACK: u32 = 16;
+const EXPLOSION_KNOCKBACK_RESISTANCE: &str = "minecraft:explosion_knockback_resistance";
+const POP_SPREAD: f64 = 0.25;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockInteraction {
+    Keep,
+    Destroy,
+    DestroyWithDecay,
+}
+
+struct HitEntity {
+    id: EntityId,
+    player: Option<PlayerId>,
+    position: Vec3,
+    eye: Vec3,
+    bounds: Aabb,
+    living: bool,
+}
+
+impl<L: ClientLink> Server<L> {
+    pub(crate) fn explode_creeper(&mut self, id: EntityId) -> bool {
+        let Some(entity) = self.entities.store.get_mut(id) else {
+            return false;
+        };
+        let Some(Species::Creeper(creeper)) = entity
+            .living()
+            .and_then(|l| l.mob.as_ref())
+            .map(|mob| mob.species)
+        else {
+            return false;
+        };
+        let multiplier = if species::is_powered(&entity.base) {
+            2.0
+        } else {
+            1.0
+        };
+        let radius = creeper.explosion_radius as f32 * multiplier;
+        let center = entity.base.position;
+        if let Some(living) = entity.living_mut() {
+            living.dead = true;
+        }
+        let Some(source) = self.mob_source(id) else {
+            return false;
+        };
+        let damage = DamageSource::by(DamageType::PlayerExplosion, source);
+        let interaction = if self.config.rules.mob_griefing {
+            if self.config.rules.mob_explosion_drop_decay {
+                BlockInteraction::DestroyWithDecay
+            } else {
+                BlockInteraction::Destroy
+            }
+        } else {
+            BlockInteraction::Keep
+        };
+        self.explode(Some(id), &damage, center, radius, interaction);
+        self.remove_entity(id, RemovalReason::Discarded);
+        true
+    }
+
+    pub(crate) fn explode(
+        &mut self,
+        source: Option<EntityId>,
+        damage: &DamageSource,
+        center: Vec3,
+        radius: f32,
+        interaction: BlockInteraction,
+    ) -> i32 {
+        let radius = radius.max(0.0);
+        if radius < MIN_RADIUS {
+            return 0;
+        }
+        let height = self.world.dimension.height;
+        let positions = {
+            let mut random = ServerRandom(&mut self.rng);
+            explosion::exploded_positions(&self.world.chunks, height, center, radius, &mut random)
+        };
+        let knocked = self.hurt_by_explosion(source, damage, center, radius);
+        let mut shuffled = positions;
+        explosion::shuffle(&mut shuffled, &mut ServerRandom(&mut self.rng));
+        let blocks: Vec<BlockPos> = shuffled
+            .into_iter()
+            .rev()
+            .filter(|pos| {
+                self.world
+                    .chunks
+                    .block(*pos)
+                    .is_some_and(|state| !state.is_air())
+            })
+            .collect();
+        let silent = source
+            .and_then(|id| self.entities.store.get(id))
+            .is_some_and(|e| e.base.is_silent());
+        let large = radius >= explosion::LARGE_RADIUS && interaction != BlockInteraction::Keep;
+        let viewers: Vec<PlayerId> = self
+            .players
+            .values()
+            .filter(|p| p.position.distance_squared(center) < PACKET_RANGE_SQR)
+            .map(|p| p.id)
+            .collect();
+        for player in viewers {
+            let knockback = knocked
+                .iter()
+                .find(|(id, _)| *id == player)
+                .map(|(_, v)| *v);
+            self.push(
+                Audience::One(player),
+                ClientEvent::Explode {
+                    center,
+                    radius,
+                    block_count: blocks.len() as i32,
+                    knockback,
+                    large,
+                    play_sound: !silent,
+                },
+            );
+        }
+        if interaction != BlockInteraction::Keep {
+            let decay = (interaction == BlockInteraction::DestroyWithDecay).then_some(radius);
+            self.blow_up_blocks(&blocks, source, decay);
+        }
+        blocks.len() as i32
+    }
+
+    fn explosion_targets(&self, source: Option<EntityId>, area: &Aabb) -> Vec<HitEntity> {
+        let mut out: Vec<HitEntity> = self
+            .entities
+            .store
+            .iter()
+            .filter(|e| Some(e.base.id) != source && !e.base.is_removed())
+            .filter(|e| e.base.bounding_box().intersects(area))
+            .filter(|e| e.is_simulated())
+            .map(|e| HitEntity {
+                id: e.base.id,
+                player: None,
+                position: e.base.position,
+                eye: Vec3::new(e.base.position.x, e.base.eye_y(), e.base.position.z),
+                bounds: e.base.bounding_box(),
+                living: e.living().is_some(),
+            })
+            .collect();
+        out.extend(
+            self.players
+                .values()
+                .filter(|p| !p.vitals.is_dead())
+                .filter_map(|p| {
+                    let bounds = Aabb::of_size(p.position, 0.6, p.height() as f32);
+                    bounds.intersects(area).then(|| HitEntity {
+                        id: p.entity_id,
+                        player: Some(p.id),
+                        position: p.position,
+                        eye: p.eye_position(),
+                        bounds,
+                        living: true,
+                    })
+                }),
+        );
+        out
+    }
+
+    fn hurt_by_explosion(
+        &mut self,
+        source: Option<EntityId>,
+        damage: &DamageSource,
+        center: Vec3,
+        radius: f32,
+    ) -> Vec<(PlayerId, Vec3)> {
+        let mut knocked = Vec::new();
+        if radius < 1.0e-5 {
+            return knocked;
+        }
+        let area = explosion::hurt_area(center, radius);
+        for target in self.explosion_targets(source, &area) {
+            let distance =
+                target.position.distance_squared(center).sqrt() / f64::from(radius * 2.0);
+            if distance > 1.0 {
+                continue;
+            }
+            let exposure = explosion::seen_percent(&self.world.chunks, center, &target.bounds);
+            let amount = explosion::entity_damage(radius, center, target.position, exposure);
+            if let Some(player) = target.player {
+                self.hurt(player, damage, amount);
+            } else if target.living {
+                self.hurt_mob(target.id, damage, amount);
+            } else {
+                self.damage_inert(target.id, amount);
+            }
+            let resistance = self
+                .entities
+                .store
+                .get_mut(target.id)
+                .and_then(|e| e.living_mut())
+                .map_or(0.0, |living| {
+                    living.attribute(EXPLOSION_KNOCKBACK_RESISTANCE)
+                });
+            let Some(knockback) = explosion::knockback(
+                radius,
+                center,
+                target.position,
+                target.eye,
+                exposure,
+                resistance,
+            ) else {
+                continue;
+            };
+            match target.player {
+                Some(player) => {
+                    let Some(p) = self.players.get_mut(&player) else {
+                        continue;
+                    };
+                    p.vitals.velocity = p.vitals.velocity + knockback;
+                    let flying_creative = p.game_mode == GameMode::Creative && p.flying;
+                    if p.game_mode != GameMode::Spectator && !flying_creative {
+                        knocked.push((player, knockback));
+                    }
+                }
+                None => {
+                    if let Some(entity) = self.entities.store.get_mut(target.id) {
+                        entity.base.velocity = entity.base.velocity + knockback;
+                        entity.base.needs_sync = true;
+                    }
+                }
+            }
+        }
+        knocked
+    }
+
+    fn damage_inert(&mut self, id: EntityId, amount: f32) {
+        let griefing = self.config.rules.mob_griefing;
+        let Some(entity) = self.entities.store.get_mut(id) else {
+            return;
+        };
+        let destroyed = match &mut entity.state {
+            EntityState::Item(state) if griefing => {
+                state.health -= amount.ceil() as i32;
+                state.health <= 0
+            }
+            EntityState::Orb(state) => {
+                state.health -= amount.ceil() as i32;
+                state.health <= 0
+            }
+            _ => false,
+        };
+        if destroyed {
+            self.remove_entity(id, RemovalReason::Killed);
+        }
+    }
+
+    fn blow_up_blocks(
+        &mut self,
+        blocks: &[BlockPos],
+        source: Option<EntityId>,
+        decay: Option<f32>,
+    ) {
+        let this = source
+            .and_then(|id| self.entities.store.get(id))
+            .map(|e| LootEntity::of(e.base.kind));
+        let mut stacks: Vec<(BlockPos, ItemStack)> = Vec::new();
+        for pos in blocks {
+            let Some(state) = self.world.chunks.block(*pos) else {
+                continue;
+            };
+            if state.is_air() {
+                continue;
+            }
+            let context = LootContext {
+                explosion_radius: decay,
+                ..LootContext::block(state, None, this.as_ref())
+            };
+            let drops = loot::block_drops(&context, &mut self.rng);
+            for drop in drops {
+                merge_stack(&mut stacks, *pos, drop);
+            }
+            self.set_block(*pos, BlockStateId::AIR);
+        }
+        if !self.config.rules.block_drops {
+            return;
+        }
+        for (pos, stack) in stacks {
+            let x = f64::from(pos.x) + 0.5 + self.rng.random_range(-POP_SPREAD..=POP_SPREAD);
+            let y =
+                f64::from(pos.y) + 0.5 + self.rng.random_range(-POP_SPREAD..=POP_SPREAD) - 0.125;
+            let z = f64::from(pos.z) + 0.5 + self.rng.random_range(-POP_SPREAD..=POP_SPREAD);
+            let velocity = Vec3::new(
+                self.rng.random::<f64>() * 0.2 - 0.1,
+                0.2,
+                self.rng.random::<f64>() * 0.2 - 0.1,
+            );
+            self.spawn_item_entity(Vec3::new(x, y, z), velocity, 10, stack);
+        }
+    }
+
+    pub(crate) fn charged_creeper_drops(&mut self, killer: Option<EntityId>, victim: EntityId) {
+        let Some(killer) = killer else {
+            return;
+        };
+        let Some(entity) = self.entities.store.get(killer) else {
+            return;
+        };
+        let powered = entity.base.kind == Kind::Creeper && species::is_powered(&entity.base);
+        let dropped = matches!(
+            entity.living().and_then(|l| l.mob.as_ref()).map(|m| m.species),
+            Some(Species::Creeper(c)) if c.dropped_skulls
+        );
+        if !powered || dropped || !self.config.rules.mob_drops {
+            return;
+        }
+        let Some(table) = rspigot_data::loot::table("minecraft:charged_creeper/root") else {
+            return;
+        };
+        let Some(victim_entity) = self.entities.store.get(victim) else {
+            return;
+        };
+        let position = victim_entity.base.position;
+        let facts = crate::mobs::loot_facts_of(victim_entity);
+        let context = LootContext {
+            this: Some(&facts),
+            ..LootContext::default()
+        };
+        let drops = loot::table_drops(table, &context, &mut self.rng);
+        if drops.is_empty() {
+            return;
+        }
+        for stack in drops {
+            self.spawn_at_location(position, 0.0, stack);
+        }
+        if let Some(Species::Creeper(creeper)) = self
+            .entities
+            .store
+            .get_mut(killer)
+            .and_then(|e| e.living_mut())
+            .and_then(|l| l.mob.as_mut())
+            .map(|m| &mut m.species)
+        {
+            creeper.dropped_skulls = true;
+        }
+    }
+
+    pub fn ground_item_count(&self) -> usize {
+        self.entities
+            .store
+            .iter()
+            .filter(|e| item::stack(&e.base).is_some())
+            .count()
+    }
+}
+
+fn merge_stack(stacks: &mut Vec<(BlockPos, ItemStack)>, pos: BlockPos, stack: ItemStack) {
+    let mut remaining = u32::from(stack.count.get());
+    for (_, existing) in stacks.iter_mut() {
+        if remaining == 0 {
+            return;
+        }
+        if !same_item_same_components(existing, &stack) {
+            continue;
+        }
+        let room = MAX_MERGED_STACK.saturating_sub(u32::from(existing.count.get()));
+        let moved = room.min(remaining);
+        if moved > 0 {
+            existing.count =
+                std::num::NonZeroU8::new((u32::from(existing.count.get()) + moved) as u8)
+                    .unwrap_or(existing.count);
+            remaining -= moved;
+        }
+    }
+    if let Some(count) = std::num::NonZeroU8::new(remaining as u8) {
+        stacks.push((pos, ItemStack { count, ..stack }));
+    }
+}

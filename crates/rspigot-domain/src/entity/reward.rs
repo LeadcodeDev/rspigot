@@ -173,14 +173,10 @@ mod tests {
 
     use super::*;
     use crate::EntityId;
-    use crate::entity::{EntityBase, EntityState};
 
     fn mob(kind: EntityKind, extra: Compound) -> Entity {
-        let mut base = EntityBase::new(EntityId(1), Uuid::from_u128(1), kind);
-        let living = LivingState::new(&mut base, 0.0);
-        let mut entity = Entity::new(base, EntityState::Living(Box::new(living)));
-        entity.extra = extra;
-        entity
+        let nbt = extra.with("id", kind.name());
+        super::super::save::load_entity(&nbt, EntityId(1), Uuid::from_u128(1)).unwrap()
     }
 
     struct Scripted<F, I> {
@@ -195,6 +191,18 @@ mod tests {
 
         fn next_int(&mut self, bound: i32) -> i32 {
             (self.int)(bound)
+        }
+
+        fn next_double(&mut self) -> f64 {
+            f64::from((self.float)())
+        }
+
+        fn next_boolean(&mut self) -> bool {
+            (self.int)(2) != 0
+        }
+
+        fn next_gaussian(&mut self) -> f64 {
+            0.0
         }
     }
 

@@ -358,7 +358,12 @@ fn player_kills_a_cow_and_collects_its_loot_and_experience() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
     give_sword(&mut server, &mut alice);
-    let cow = summon(&mut server, &mut alice, "/summon cow 0.5 64 2.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 0.5 64 2.5 {}",
+        Kind::Cow,
+    );
     alice.drain();
     attack(&mut server, &alice, cow);
     assert_eq!(health(&server, cow), 3.0);
@@ -416,7 +421,12 @@ fn player_kills_a_cow_and_collects_its_loot_and_experience() {
 fn cow_killed_by_command_drops_loot_but_no_experience() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 6.5 64 6.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 6.5 64 6.5 {}",
+        Kind::Cow,
+    );
     alice.drain();
     command(&mut server, &alice, "/kill @e[type=cow]");
     assert!(server.mob_damage(cow).unwrap().dead);
@@ -437,7 +447,12 @@ fn cow_killed_by_command_drops_loot_but_no_experience() {
 fn a_hit_shortly_before_the_kill_command_still_rewards_experience() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 0.5 64 2.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 0.5 64 2.5 {}",
+        Kind::Cow,
+    );
     attack(&mut server, &alice, cow);
     pump(&mut server, &mut alice, 40);
     command(&mut server, &alice, "/kill @e[type=cow]");
@@ -523,7 +538,12 @@ fn zombie_gear_drops_at_the_vanilla_chance() {
 fn invulnerable_time_blocks_a_second_hit_and_a_stronger_one_deals_the_difference() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 0.5 64 2.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 0.5 64 2.5 {}",
+        Kind::Cow,
+    );
     alice.drain();
     attack(&mut server, &alice, cow);
     assert_eq!(health(&server, cow), 9.0);
@@ -540,6 +560,7 @@ fn invulnerable_time_blocks_a_second_hit_and_a_stronger_one_deals_the_difference
     assert!(after < 9.0 && after > 2.0, "{after}");
     assert!(damage_events(&alice.drain(), cow).is_empty());
     pump(&mut server, &mut alice, 20);
+    command(&mut server, &alice, "/tp @e[type=cow] 0.5 64 2.5");
     attack(&mut server, &alice, cow);
     assert_eq!(health(&server, cow), after - 7.0);
     assert_eq!(damage_events(&alice.drain(), cow).len(), 1);
@@ -549,7 +570,12 @@ fn invulnerable_time_blocks_a_second_hit_and_a_stronger_one_deals_the_difference
 fn knockback_velocity_matches_vanilla_numbers() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 0.5 64 2.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 0.5 64 2.5 {}",
+        Kind::Cow,
+    );
     pump(&mut server, &mut alice, 10);
     let before = server.entities_of(Kind::Cow)[0];
     assert!(before.on_ground);
@@ -570,6 +596,7 @@ fn knockback_velocity_matches_vanilla_numbers() {
         _ => None,
     });
     assert_eq!(sent, Some(after));
+    pump(&mut server, &mut alice, 120);
     command(&mut server, &alice, "/tp @e[type=cow] 0.5 64 2.5");
     pump(&mut server, &mut alice, 30);
     let resting = server.entities_of(Kind::Cow)[0];
@@ -605,7 +632,12 @@ fn pushed(current: Vec3, strength: f64, dx: f64, dz: f64) -> Vec3 {
 fn fall_damage_kills_a_mob() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 3.5 94 3.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 3.5 94 3.5 {}",
+        Kind::Cow,
+    );
     alice.drain();
     let mut landed = None;
     for tick in 0..120 {
@@ -631,7 +663,12 @@ fn fall_damage_kills_a_mob() {
 fn short_falls_only_hurt_and_safe_falls_do_nothing() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 3.5 70 3.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 3.5 70 3.5 {}",
+        Kind::Cow,
+    );
     pump(&mut server, &mut alice, 40);
     let state = server.mob_damage(cow).unwrap();
     assert!(!state.dead);
@@ -650,7 +687,12 @@ fn short_falls_only_hurt_and_safe_falls_do_nothing() {
 fn the_death_animation_removes_the_entity_after_twenty_ticks() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");
-    let cow = summon(&mut server, &mut alice, "/summon cow 4.5 64 4.5", Kind::Cow);
+    let cow = summon(
+        &mut server,
+        &mut alice,
+        "/summon cow 4.5 64 4.5 {}",
+        Kind::Cow,
+    );
     alice.drain();
     command(&mut server, &alice, "/kill @e[type=cow]");
     let mut seen = Vec::new();

@@ -23,6 +23,12 @@ pub enum DamageType {
     Starve,
     Magic,
     Wither,
+    OnFire,
+    InFire,
+    Lava,
+    Arrow,
+    Explosion,
+    PlayerExplosion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,6 +82,12 @@ impl DamageType {
             Self::Starve => "minecraft:starve",
             Self::Magic => "minecraft:magic",
             Self::Wither => "minecraft:wither",
+            Self::OnFire => "minecraft:on_fire",
+            Self::InFire => "minecraft:in_fire",
+            Self::Lava => "minecraft:lava",
+            Self::Arrow => "minecraft:arrow",
+            Self::Explosion => "minecraft:explosion",
+            Self::PlayerExplosion => "minecraft:player_explosion",
         }
     }
 
@@ -94,6 +106,12 @@ impl DamageType {
             Self::Starve => "starve",
             Self::Magic => "magic",
             Self::Wither => "wither",
+            Self::OnFire => "onFire",
+            Self::InFire => "inFire",
+            Self::Lava => "lava",
+            Self::Arrow => "arrow",
+            Self::Explosion => "explosion",
+            Self::PlayerExplosion => "explosion.player",
         }
     }
 
@@ -101,8 +119,15 @@ impl DamageType {
         match self {
             Self::FallingAnvil | Self::FallingBlock | Self::FallingStalactite => 0.1,
             Self::PlayerAttack | Self::MobAttack => 0.1,
+            Self::InFire | Self::Lava | Self::Arrow | Self::Explosion | Self::PlayerExplosion => {
+                0.1
+            }
             _ => 0.0,
         }
+    }
+
+    pub const fn scales_always(self) -> bool {
+        matches!(self, Self::Explosion | Self::PlayerExplosion)
     }
 
     pub const fn fall_variants(self) -> bool {

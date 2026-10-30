@@ -166,7 +166,11 @@ impl<L: ClientLink> Server<L> {
                 }
             }
             PlayerInput::Attack(target) => self.handle_attack(id, target),
-            PlayerInput::Interact { .. } => {}
+            PlayerInput::Interact {
+                target,
+                hand,
+                sneaking,
+            } => self.handle_interact(id, target, hand, sneaking),
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
             PlayerInput::ContainerClose(_) => self.handle_container_close(id),
         }
@@ -287,7 +291,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn is_protected(&self, id: PlayerId, pos: BlockPos) -> bool {
+    pub(crate) fn is_protected(&self, id: PlayerId, pos: BlockPos) -> bool {
         let radius = self.config.spawn_protection as i32;
         if radius == 0
             || self.players.get(&id).is_some_and(|p| p.operator)

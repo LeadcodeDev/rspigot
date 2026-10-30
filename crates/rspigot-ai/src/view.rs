@@ -15,6 +15,10 @@ pub trait BlockView {
     fn chunk_loaded(&self, _chunk: ChunkPos) -> bool {
         true
     }
+
+    fn can_see_sky(&self, _pos: BlockPos) -> bool {
+        false
+    }
 }
 
 static FULL: [Aabb; 1] = [Aabb::new(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)];

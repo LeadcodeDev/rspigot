@@ -1,10 +1,12 @@
 use std::sync::OnceLock;
 
 use rand::Rng;
-use rspigot_ai::MobAi;
+use rspigot_ai::{GoalSettings, MobAi};
 use rspigot_data::spawns::DimensionSpawns;
 use rspigot_domain::chunk::ChunkColumn;
-use rspigot_domain::entity::living::{self, LivingState};
+use rspigot_domain::difficulty::{DifficultyInstance, moon_brightness};
+use rspigot_domain::entity::spawn::{SpawnEnvironment, finalize_spawn};
+use rspigot_domain::entity::species::Species;
 use rspigot_domain::entity::{
     Aabb, BlockView, Entity, EntityBase, EntityState, RemovalReason, save,
 };
@@ -30,13 +32,14 @@ use rustc_hash::FxHashSet;
 
 use crate::chunks::{ChunkManager, MobGeneration};
 use crate::config::hashed_seed;
+use crate::environment::{is_halloween, today};
 use crate::lighting::light_level;
+use crate::mob_actions::new_mob;
 use crate::mobs::{ServerRandom, sky_darken};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
 const LEASH: &str = "leash";
-const CHICKEN_JOCKEY: &str = "IsChickenJockey";
 const PERSISTENCE_REQUIRED: &str = "PersistenceRequired";
 const OVERWORLD: &str = "minecraft:overworld";
 const PLAYER_WIDTH: f32 = 0.6;
@@ -89,7 +92,7 @@ pub(crate) fn naturally_spawns(kind: EntityKind) -> bool {
 }
 
 fn has_goals(kind: EntityKind) -> bool {
-    let ai = MobAi::new(kind, 0);
+    let ai = MobAi::new(kind, 0, GoalSettings::default());
     !ai.goals().goals().is_empty() || !ai.targets().goals().is_empty()
 }
 
@@ -222,15 +225,23 @@ impl<L: ClientLink> SpawnLevel for Server<L> {
 
 impl<L: ClientLink> RandomSource for Server<L> {
     fn next_float(&mut self) -> f32 {
-        self.rng.random::<f32>()
+        ServerRandom(&mut self.rng).next_float()
     }
 
     fn next_int(&mut self, bound: i32) -> i32 {
-        if bound <= 0 {
-            0
-        } else {
-            self.rng.random_range(0..bound)
-        }
+        ServerRandom(&mut self.rng).next_int(bound)
+    }
+
+    fn next_double(&mut self) -> f64 {
+        ServerRandom(&mut self.rng).next_double()
+    }
+
+    fn next_boolean(&mut self) -> bool {
+        ServerRandom(&mut self.rng).next_boolean()
+    }
+
+    fn next_gaussian(&mut self) -> f64 {
+        ServerRandom(&mut self.rng).next_gaussian()
     }
 }
 
@@ -259,27 +270,19 @@ impl<L: ClientLink> NaturalSpawnHost for Server<L> {
         reason: SpawnReason,
         group: Option<SpawnGroupData>,
     ) -> (bool, Option<SpawnGroupData>) {
-        let mut base = self.new_entity_base(kind);
-        let mut state = LivingState::new(&mut base, 0.0);
-        base.snap_to(position, yaw, 0.0);
-        let rng = &mut self.rng;
-        let mut next_double = || rng.random::<f64>();
-        let first = next_double();
-        let second = next_double();
-        let mut doubles = [first, second].into_iter();
-        let mut take_double = || doubles.next().unwrap_or(0.0);
-        let float = self.rng.random::<f32>();
-        let mut take_float = || float;
-        let group = living::finalize_spawn(
-            &mut base,
-            &mut state,
+        let mut entity = new_mob(self.new_entity_base(kind));
+        entity.base.snap_to(position, yaw, 0.0);
+        let environment = self.spawn_environment(position);
+        let mut own = LegacyRandom::new(self.rng.random());
+        let group = finalize_spawn(
+            &mut entity,
+            &environment,
             reason,
             group,
-            &mut take_double,
-            &mut take_float,
+            &mut ServerRandom(&mut self.rng),
+            &mut own,
         );
-        let entity = Entity::new(base, EntityState::Living(Box::new(state)));
-        (self.add_entity(entity).is_ok(), group)
+        (self.add_mob_entity(entity, own).is_ok(), group)
     }
 }
 
@@ -453,7 +456,10 @@ impl<L: ClientLink> Server<L> {
                 .is_some_and(|mob| mob.persistence_required),
             requires_custom_persistence: entity.extra.contains_key(LEASH),
             no_action_time: living.no_action_time,
-            chicken_jockey: entity.extra.get_bool(CHICKEN_JOCKEY).unwrap_or(false),
+            chicken_jockey: matches!(
+                living.mob.as_ref().map(|mob| &mob.species),
+                Some(Species::Chicken(chicken)) if chicken.jockey
+            ),
         };
         let distance = nearest_distance_sqr(&self.spawning.players, entity.base.position);
         let difficulty = self.world.difficulty;
@@ -462,7 +468,7 @@ impl<L: ClientLink> Server<L> {
                 &facts,
                 difficulty,
                 distance,
-                &mut MobRandomSource(&mut entry.ai.brain_mut().random),
+                &mut entry.ai.brain_mut().random,
             ),
             None => check_despawn(
                 &facts,
@@ -481,18 +487,6 @@ impl<L: ClientLink> Server<L> {
             living.no_action_time = 0;
         }
         false
-    }
-}
-
-struct MobRandomSource<'a>(&'a mut rspigot_ai::MobRandom);
-
-impl RandomSource for MobRandomSource<'_> {
-    fn next_float(&mut self) -> f32 {
-        self.0.next_float()
-    }
-
-    fn next_int(&mut self, bound: i32) -> i32 {
-        self.0.next_int(bound)
     }
 }
 
@@ -586,6 +580,18 @@ impl RandomSource for Generation<'_> {
     fn next_int(&mut self, bound: i32) -> i32 {
         self.random.next_int(bound)
     }
+
+    fn next_double(&mut self) -> f64 {
+        self.random.next_double()
+    }
+
+    fn next_boolean(&mut self) -> bool {
+        self.random.next_boolean()
+    }
+
+    fn next_gaussian(&mut self) -> f64 {
+        self.random.next_gaussian()
+    }
 }
 
 impl GenerationHost for Generation<'_> {
@@ -601,25 +607,27 @@ impl GenerationHost for Generation<'_> {
         group: Option<SpawnGroupData>,
     ) -> Option<SpawnGroupData> {
         let uuid = uuid::Builder::from_random_bytes(rand::rng().random()).into_uuid();
-        let mut base = EntityBase::new(EntityId(0), uuid, kind);
-        let mut state = LivingState::new(&mut base, 0.0);
-        base.snap_to(position, yaw, 0.0);
-        let random = &mut self.random;
-        let first = random.next_double();
-        let second = random.next_double();
-        let mut doubles = [first, second].into_iter();
-        let mut take_double = || doubles.next().unwrap_or(0.0);
-        let float = random.next_float();
-        let mut take_float = || float;
-        let group = living::finalize_spawn(
-            &mut base,
-            &mut state,
+        let mut entity = new_mob(EntityBase::new(EntityId(0), uuid, kind));
+        entity.base.snap_to(position, yaw, 0.0);
+        let environment = SpawnEnvironment {
+            biome: self.biome(position.block()),
+            difficulty: DifficultyInstance::new(
+                self.difficulty,
+                0,
+                0,
+                moon_brightness(0, self.has_skylight),
+            ),
+            halloween: is_halloween(today()),
+        };
+        let mut own = LegacyRandom::new(rand::rng().random());
+        let group = finalize_spawn(
+            &mut entity,
+            &environment,
             SpawnReason::ChunkGeneration,
             group,
-            &mut take_double,
-            &mut take_float,
+            &mut self.random,
+            &mut own,
         );
-        let entity = Entity::new(base, EntityState::Living(Box::new(state)));
         if let Some(nbt) = save::save_entity(&entity, None) {
             self.spawned.push(nbt);
         }

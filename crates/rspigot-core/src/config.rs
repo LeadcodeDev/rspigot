@@ -17,6 +17,10 @@ pub struct GameRules {
     pub immediate_respawn: bool,
     pub fall_damage: bool,
     pub mob_drops: bool,
+    pub mob_griefing: bool,
+    pub mob_explosion_drop_decay: bool,
+    pub block_drops: bool,
+    pub universal_anger: bool,
 }
 
 impl Default for GameRules {
@@ -28,6 +32,10 @@ impl Default for GameRules {
             immediate_respawn: false,
             fall_damage: true,
             mob_drops: true,
+            mob_griefing: true,
+            mob_explosion_drop_decay: true,
+            block_drops: true,
+            universal_anger: false,
         }
     }
 }
@@ -68,6 +76,21 @@ impl Default for SpawningConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MobSettings {
+    pub zombie_aggressive_towards_villager: bool,
+    pub arrow_despawn_rate: i32,
+}
+
+impl Default for MobSettings {
+    fn default() -> Self {
+        Self {
+            zombie_aggressive_towards_villager: true,
+            arrow_despawn_rate: 1200,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
     pub max_players: u32,
@@ -93,6 +116,7 @@ pub struct GameConfig {
     pub spawn_chunk_radius: i32,
     pub rules: GameRules,
     pub spawning: SpawningConfig,
+    pub mobs: MobSettings,
 }
 
 impl Default for GameConfig {
@@ -122,6 +146,7 @@ impl Default for GameConfig {
             spawn_chunk_radius: 2,
             rules: GameRules::default(),
             spawning: SpawningConfig::default(),
+            mobs: MobSettings::default(),
         }
     }
 }

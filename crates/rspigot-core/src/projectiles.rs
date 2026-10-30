@@ -1,0 +1,644 @@
+use rand::Rng;
+use rspigot_domain::damage::DamageType;
+use rspigot_domain::entity::arrow::{self, ArrowState, Pickup};
+use rspigot_domain::entity::fire;
+use rspigot_domain::entity::living;
+use rspigot_domain::entity::raycast;
+use rspigot_domain::entity::{Aabb, Entity, EntityState, RemovalReason, fluid};
+use rspigot_domain::item::ItemStack;
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::random::RandomSource;
+use rspigot_domain::{EntityId, Vec3};
+use rspigot_entities::{EntityKind as Kind, SoundSource};
+use rspigot_items::{EquipmentSlot, ItemKind};
+
+use crate::events::{ClientEvent, GameEvent};
+use crate::health::{DamageSource, SourceEntity};
+use crate::ports::ClientLink;
+use crate::server::{Audience, Server};
+
+const EYE_OFFSET: f64 = 0.100_000_001_490_116_12;
+const TARGET_HEIGHT_FRACTION: f64 = 0.333_333_333_333_333_3;
+const ARC: f64 = 0.200_000_002_980_232_24;
+const MOB_ARROW_SPEED: f32 = 1.6;
+const SKELETON_SHOOT: &str = "minecraft:entity.skeleton.shoot";
+const ARROWS_TAG: &str = "minecraft:arrows";
+const PICKUP_INFLATE_X: f64 = 1.0;
+const PICKUP_INFLATE_Y: f64 = 0.5;
+const PLAYER_WIDTH: f64 = 0.6;
+const STOP_SQR: f64 = 1.0e-7;
+const DEFLECT_SCALE: f64 = 0.2;
+
+#[derive(Debug, Clone, Copy)]
+struct ArrowHit {
+    target: EntityId,
+    location: Vec3,
+    position: Vec3,
+}
+
+fn is_arrow_item(stack: Option<&ItemStack>) -> bool {
+    stack.is_some_and(|stack| {
+        rspigot_data::tags::tag("minecraft:item", ARROWS_TAG)
+            .is_some_and(|ids| ids.binary_search(&u32::from(stack.item.0)).is_ok())
+    })
+}
+
+impl<L: ClientLink> Server<L> {
+    pub(crate) fn perform_ranged_attack(
+        &mut self,
+        shooter: EntityId,
+        target: EntityId,
+        power: f32,
+    ) {
+        let Some(target) = self.entity_box(target) else {
+            return;
+        };
+        let Some(entity) = self.entities.store.get(shooter) else {
+            return;
+        };
+        let Some(living_state) = entity.living() else {
+            return;
+        };
+        let weapon_slot = if living_state
+            .equipment(EquipmentSlot::Mainhand)
+            .is_some_and(|s| s.item == ItemKind::Bow.id())
+        {
+            EquipmentSlot::Mainhand
+        } else {
+            EquipmentSlot::Offhand
+        };
+        let weapon = living_state.equipment(weapon_slot).cloned();
+        let held = [EquipmentSlot::Offhand, EquipmentSlot::Mainhand]
+            .into_iter()
+            .map(|slot| living_state.equipment(slot))
+            .find(|stack| is_arrow_item(*stack))
+            .flatten()
+            .cloned();
+        let projectile = held.unwrap_or_else(arrow::default_item);
+        let origin = entity.base.position;
+        let eye = entity.base.eye_y();
+        let owner_uuid = entity.base.uuid;
+        let mut base = self.new_entity_base(Kind::Arrow);
+        base.position = Vec3::new(origin.x, eye - EYE_OFFSET, origin.z);
+        base.old_position = base.position;
+        let seed = self.rng.random::<i64>();
+        let mut state = ArrowState::new(&mut base, seed);
+        state.set_owner(Some(owner_uuid), false);
+        state.item = ItemStack {
+            count: std::num::NonZeroU8::MIN,
+            ..projectile
+        };
+        state.weapon = weapon;
+        let difficulty = self.world.difficulty.id();
+        state.base_damage = arrow::mob_base_damage(power, difficulty, &mut state.random);
+        let dx = target.0.x - origin.x;
+        let dy = target.0.y + target.1 * TARGET_HEIGHT_FRACTION - base.position.y;
+        let dz = target.0.z - origin.z;
+        let distance = (dx * dx + dz * dz).sqrt();
+        let uncertainty = (14 - i32::from(difficulty) * 4) as f32;
+        arrow::shoot(
+            &mut base,
+            &mut state,
+            Vec3::new(dx, dy + distance * ARC, dz),
+            MOB_ARROW_SPEED,
+            uncertainty,
+        );
+        let _ = self.add_entity(Entity::new(base, EntityState::Arrow(Box::new(state))));
+        let mut random = self.mob_random(shooter);
+        let pitch = 1.0 / (random.next_float() * 0.4 + 0.8);
+        self.store_mob_random(shooter, random);
+        self.entity_sound(shooter, SKELETON_SHOOT, 1.0, pitch);
+    }
+
+    fn entity_box(&self, id: EntityId) -> Option<(Vec3, f64, Aabb)> {
+        if let Some(player) = self.players.values().find(|p| p.entity_id == id) {
+            let height = player.height();
+            return Some((
+                player.position,
+                height,
+                Aabb::of_size(player.position, PLAYER_WIDTH as f32, height as f32),
+            ));
+        }
+        let entity = self.entities.store.get(id)?;
+        Some((
+            entity.base.position,
+            f64::from(entity.base.dimensions.height),
+            entity.base.bounding_box(),
+        ))
+    }
+
+    fn owner_entity(&self, owner: Option<uuid::Uuid>) -> Option<EntityId> {
+        let owner = owner?;
+        if let Some(player) = self.players.values().find(|p| p.profile.id.0 == owner) {
+            return Some(player.entity_id);
+        }
+        self.entities.store.by_uuid(owner)
+    }
+
+    pub(crate) fn arrow_owner_id(&self, entity: &Entity) -> i32 {
+        match &entity.state {
+            EntityState::Arrow(state) => self.owner_entity(state.owner).map_or(0, |id| id.0),
+            _ => entity.add_entity_data(),
+        }
+    }
+
+    fn hit_candidates(
+        &self,
+        arrow_id: EntityId,
+        owner: Option<EntityId>,
+        left_owner: bool,
+        pierced: &[EntityId],
+        area: &Aabb,
+    ) -> Vec<(EntityId, Aabb, Vec3)> {
+        let mut out: Vec<(EntityId, Aabb, Vec3)> = self
+            .entities
+            .store
+            .iter()
+            .filter(|e| e.base.id != arrow_id && !e.base.is_removed())
+            .filter(|e| {
+                e.living()
+                    .is_some_and(|state| !living::is_dead_or_dying(&e.base, state))
+            })
+            .filter(|e| e.base.bounding_box().intersects(area))
+            .map(|e| (e.base.id, e.base.bounding_box(), e.base.position))
+            .collect();
+        out.extend(
+            self.players
+                .values()
+                .filter(|p| p.game_mode != GameMode::Spectator && !p.vitals.is_dead())
+                .map(|p| {
+                    (
+                        p.entity_id,
+                        Aabb::of_size(p.position, PLAYER_WIDTH as f32, p.height() as f32),
+                        p.position,
+                    )
+                })
+                .filter(|(_, bounds, _)| bounds.intersects(area)),
+        );
+        out.retain(|(id, _, _)| (left_owner || Some(*id) != owner) && !pierced.contains(id));
+        out
+    }
+
+    fn find_hits(&self, arrow_id: EntityId, from: Vec3, to: Vec3) -> Vec<ArrowHit> {
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get(arrow_id)
+        else {
+            return Vec::new();
+        };
+        let owner = self.owner_entity(state.owner);
+        let area = arrow::search_box(base);
+        let margin = f64::from(arrow::hit_margin(base.tick_count));
+        let mut hits = Vec::new();
+        for (target, bounds, position) in
+            self.hit_candidates(arrow_id, owner, state.left_owner, &state.pierced, &area)
+        {
+            if let Some(location) = raycast::clip_box(&bounds, from, to) {
+                hits.push(ArrowHit {
+                    target,
+                    location,
+                    position,
+                });
+                continue;
+            }
+            if margin <= 0.0 {
+                continue;
+            }
+            let Some(inflated) = raycast::clip_box(&bounds.inflate(margin), from, to) else {
+                continue;
+            };
+            let mut center = bounds.center();
+            if let Some(block) = raycast::clip_blocks(&self.world.chunks, inflated, center) {
+                center = block.location;
+            }
+            if raycast::clip_box(&bounds, inflated, center).is_some() {
+                hits.push(ArrowHit {
+                    target,
+                    location: inflated,
+                    position,
+                });
+            }
+        }
+        hits.sort_by(|a, b| {
+            from.distance_squared(a.position)
+                .total_cmp(&from.distance_squared(b.position))
+        });
+        hits
+    }
+
+    fn check_left_owner(&mut self, id: EntityId) {
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get(id)
+        else {
+            return;
+        };
+        if state.left_owner || state.left_owner_checked {
+            return;
+        }
+        let area = arrow::search_box(base);
+        let owner = self.owner_entity(state.owner);
+        let left = owner
+            .and_then(|owner| self.entity_box(owner))
+            .is_none_or(|(_, _, bounds)| !bounds.intersects(&area));
+        if let Some(EntityState::Arrow(state)) =
+            self.entities.store.get_mut(id).map(|e| &mut e.state)
+        {
+            state.left_owner = left;
+            state.left_owner_checked = true;
+        }
+    }
+
+    pub(crate) fn tick_arrow(&mut self, id: EntityId) {
+        let despawn = self.config.mobs.arrow_despawn_rate;
+        let in_rain = self
+            .entities
+            .store
+            .get(id)
+            .is_some_and(|e| self.is_in_rain(&e.base));
+        let chunks = &self.world.chunks;
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
+        };
+        base.old_position = base.position;
+        base.tick_count = base.tick_count.wrapping_add(1);
+        fluid::update(base, chunks);
+        let movement = base.velocity;
+        let ground = arrow::ground_tick(base, state, chunks, despawn);
+        if base.fluid.in_water || in_rain {
+            fire::clear_fire(base);
+        }
+        if ground.grounded {
+            if ground.despawn {
+                self.remove_entity(id, RemovalReason::Discarded);
+                return;
+            }
+            self.apply_fire_inside(id);
+            if let Some(entity) = self.entities.store.get_mut(id) {
+                let on_fire = entity.base.remaining_fire_ticks > 0;
+                fire::set_on_fire_flag(&mut entity.base, on_fire);
+            }
+            return;
+        }
+        let physics = !base.no_physics;
+        if base.fluid.in_water {
+            base.velocity = base.velocity.scale(f64::from(arrow::WATER_INERTIA));
+        }
+        arrow::flight_rotation(base, movement);
+        self.check_left_owner(id);
+        let Some(position) = self.entities.store.get(id).map(|e| e.base.position) else {
+            return;
+        };
+        let end = position + movement;
+        if physics {
+            let block = raycast::clip_blocks(&self.world.chunks, position, end);
+            self.step_move_and_hit(id, block, end);
+        } else if let Some(entity) = self.entities.store.get_mut(id) {
+            entity.base.position = end;
+        }
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
+        };
+        if !base.fluid.in_water {
+            base.velocity = base.velocity.scale(f64::from(arrow::AIR_DRAG));
+        }
+        if physics && !arrow::in_ground(base) && !base.is_no_gravity() {
+            base.velocity = base.velocity + Vec3::new(0.0, -arrow::GRAVITY, 0.0);
+        }
+        state.has_been_shot = true;
+        state.left_owner_checked = false;
+        fire::base_tick(base);
+        let on_fire = base.remaining_fire_ticks > 0;
+        fire::set_on_fire_flag(base, on_fire);
+        self.apply_fire_inside(id);
+    }
+
+    fn step_move_and_hit(&mut self, id: EntityId, block: Option<raycast::BlockHit>, miss: Vec3) {
+        loop {
+            let Some(position) = self.entities.store.get(id).map(|e| e.base.position) else {
+                return;
+            };
+            let target = block.map_or(miss, |hit| hit.location);
+            let hits = self.find_hits(id, position, target);
+            let location = hits.first().map_or(target, |hit| hit.location);
+            if let Some(entity) = self.entities.store.get_mut(id) {
+                entity.base.position = location;
+            }
+            if hits.is_empty() {
+                if let Some(hit) = block
+                    && self.entities.store.get(id).is_some()
+                {
+                    self.arrow_hit_block(id, hit);
+                    if let Some(entity) = self.entities.store.get_mut(id) {
+                        entity.base.needs_sync = true;
+                    }
+                }
+                return;
+            }
+            let mut pierce = false;
+            for hit in hits {
+                if self.entities.store.get(id).is_none() {
+                    return;
+                }
+                self.arrow_hit_entity(id, hit.target);
+            }
+            if let Some(entity) = self.entities.store.get_mut(id) {
+                entity.base.needs_sync = true;
+                pierce = arrow::pierce_level(&entity.base) > 0;
+            }
+            if !pierce {
+                return;
+            }
+        }
+    }
+
+    fn arrow_hit_block(&mut self, id: EntityId, hit: raycast::BlockHit) {
+        let state_at = self.world.chunks.block(hit.pos).unwrap_or_default();
+        if state_at.is_air() {
+            return;
+        }
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
+        };
+        let pitch = arrow::hit_block(base, state, state_at);
+        let sound = arrow::HIT_SOUND;
+        let position = base.position;
+        let silent = base.is_silent();
+        if !silent {
+            self.play_sound(None, position, sound, SoundSource::Neutral, 1.0, pitch);
+        }
+    }
+
+    fn arrow_hit_entity(&mut self, id: EntityId, target: EntityId) {
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return;
+        };
+        let damage = arrow::hit_damage(base, state);
+        let velocity = base.velocity;
+        let on_fire = fire::is_on_fire(base);
+        let owner = state.owner;
+        let sound_pitch = 1.2 / (state.random.next_float() * 0.2 + 0.9);
+        let owner_id = self.owner_entity(owner);
+        let arrow_source = self.mob_source(id);
+        let causing = match owner_id {
+            Some(owner) => self.source_for(owner),
+            None => arrow_source.clone(),
+        };
+        let Some(direct) = arrow_source else {
+            return;
+        };
+        if let Some(owner) = owner_id
+            && let Some(living) = self
+                .entities
+                .store
+                .get_mut(owner)
+                .and_then(|e| e.living_mut())
+        {
+            living.damage.last_hurt_mob = Some(target);
+        }
+        let saved_fire = self.fire_ticks_of(target);
+        if on_fire {
+            self.ignite_any(target, 5.0);
+        }
+        let source = DamageSource {
+            kind: DamageType::Arrow,
+            causing,
+            direct: Some(direct),
+            position: None,
+            knockback: Some((-velocity.x, -velocity.z)),
+        };
+        let hurt = self.hurt_entity(target, &source, damage as f32);
+        let target_player = self
+            .players
+            .values()
+            .find(|p| p.entity_id == target)
+            .map(|p| p.id);
+        if hurt {
+            if let Some(Entity {
+                base,
+                state: EntityState::Living(_),
+                ..
+            }) = self.entities.store.get_mut(target)
+            {
+                let count = living::arrow_count(base);
+                living::set_arrow_count(base, count + 1);
+            } else if let Some(player) = target_player {
+                self.add_player_arrow(player);
+            }
+            if let (Some(_), Some(owner)) = (target_player, owner_id)
+                && let Some(shooter) = self
+                    .players
+                    .values()
+                    .find(|p| p.entity_id == owner)
+                    .map(|p| p.id)
+                && Some(shooter) != target_player
+            {
+                self.push(
+                    Audience::One(shooter),
+                    ClientEvent::GameEvent(GameEvent::ArrowHitPlayer),
+                );
+            }
+            if let Some(position) = self.entities.store.get(id).map(|e| e.base.position) {
+                self.play_sound(
+                    None,
+                    position,
+                    arrow::HIT_SOUND,
+                    SoundSource::Neutral,
+                    1.0,
+                    sound_pitch,
+                );
+            }
+            self.remove_entity(id, RemovalReason::Killed);
+        } else {
+            self.restore_fire_ticks(target, saved_fire);
+            let Some(Entity {
+                base,
+                state: EntityState::Arrow(state),
+                ..
+            }) = self.entities.store.get_mut(id)
+            else {
+                return;
+            };
+            let rotation = 170.0 + state.random.next_float() * 20.0;
+            base.velocity = base.velocity.scale(-DEFLECT_SCALE * 0.5);
+            let yaw = base.yaw + rotation;
+            base.set_yaw(yaw);
+            base.needs_sync = true;
+            if base.velocity.length_sqr() < STOP_SQR {
+                let pickup = state.pickup == Pickup::Allowed;
+                let item = state.item.clone();
+                let position = base.position;
+                self.remove_entity(id, RemovalReason::Killed);
+                if pickup {
+                    self.spawn_at_location(position, 0.1, item);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn source_for(&self, id: EntityId) -> Option<SourceEntity> {
+        if let Some(player) = self.players.values().find(|p| p.entity_id == id) {
+            return self.source_of(player.id);
+        }
+        self.mob_source(id)
+    }
+
+    fn fire_ticks_of(&self, id: EntityId) -> i32 {
+        if let Some(player) = self.players.values().find(|p| p.entity_id == id) {
+            return player.vitals.fire_ticks;
+        }
+        self.entities
+            .store
+            .get(id)
+            .map_or(0, |e| e.base.remaining_fire_ticks)
+    }
+
+    fn restore_fire_ticks(&mut self, id: EntityId, ticks: i32) {
+        if let Some(player) = self.players.values_mut().find(|p| p.entity_id == id) {
+            player.vitals.fire_ticks = ticks;
+            return;
+        }
+        if let Some(entity) = self.entities.store.get_mut(id) {
+            entity.base.remaining_fire_ticks = ticks;
+        }
+    }
+
+    pub(crate) fn ignite_any(&mut self, id: EntityId, seconds: f32) {
+        if let Some(player) = self
+            .players
+            .values()
+            .find(|p| p.entity_id == id)
+            .map(|p| p.id)
+        {
+            self.ignite_player(player, seconds);
+            return;
+        }
+        self.ignite_entity(id, seconds);
+    }
+
+    fn add_player_arrow(&mut self, player: PlayerId) {
+        if let Some(player) = self.players.get_mut(&player) {
+            player.vitals.arrow_count += 1;
+        }
+        self.broadcast_metadata(player);
+    }
+
+    pub(crate) fn collect_arrows(&mut self) {
+        let collectors: Vec<(PlayerId, EntityId, Vec3, f64, bool)> = self
+            .players
+            .values()
+            .filter(|p| p.game_mode != GameMode::Spectator && !p.vitals.is_dead())
+            .map(|p| {
+                (
+                    p.id,
+                    p.entity_id,
+                    p.position,
+                    p.height(),
+                    p.abilities().instant_build,
+                )
+            })
+            .collect();
+        for (player, collector, position, height, creative) in collectors {
+            let reach = rspigot_ai::inflate(
+                &Aabb::of_size(position, PLAYER_WIDTH as f32, height as f32),
+                PICKUP_INFLATE_X,
+                PICKUP_INFLATE_Y,
+                PICKUP_INFLATE_X,
+            );
+            let touching: Vec<EntityId> = self
+                .entities
+                .store
+                .iter()
+                .filter(|e| match &e.state {
+                    EntityState::Arrow(state) => {
+                        (arrow::in_ground(&e.base) || e.base.no_physics)
+                            && state.shake_time <= 0
+                            && e.base.bounding_box().intersects(&reach)
+                    }
+                    _ => false,
+                })
+                .map(|e| e.base.id)
+                .collect();
+            for id in touching {
+                self.pick_up_arrow(player, collector, id, creative);
+            }
+        }
+    }
+
+    fn pick_up_arrow(
+        &mut self,
+        player_id: PlayerId,
+        collector: EntityId,
+        id: EntityId,
+        creative: bool,
+    ) {
+        let Some(EntityState::Arrow(state)) = self.entities.store.get(id).map(|e| &e.state) else {
+            return;
+        };
+        let pickup = state.pickup;
+        let item = state.item.clone();
+        let taken = match pickup {
+            Pickup::Allowed => {
+                let Some(player) = self.players.get_mut(&player_id) else {
+                    return;
+                };
+                let outcome = player
+                    .inventory
+                    .insert(item.item, 1, item.item.max_stack_size());
+                outcome.remaining == 0
+            }
+            Pickup::CreativeOnly => creative,
+            Pickup::Disallowed => false,
+        };
+        if !taken {
+            return;
+        }
+        let event = ClientEvent::ItemPickup {
+            collected: id,
+            collector,
+            amount: 1,
+        };
+        if let Some(player) = self.players.get(&player_id) {
+            player.link.send(event.clone());
+        }
+        self.push(Audience::TrackersExcept(id, player_id), event);
+        if pickup == Pickup::Allowed {
+            self.sync_inventory(player_id);
+            self.broadcast_held_item(player_id);
+        }
+        self.remove_entity(id, RemovalReason::Discarded);
+    }
+
+    pub fn arrows(&self) -> Vec<(EntityId, Vec3, bool)> {
+        self.entities
+            .store
+            .iter()
+            .filter(|e| matches!(e.state, EntityState::Arrow(_)))
+            .map(|e| (e.base.id, e.base.position, arrow::in_ground(&e.base)))
+            .collect()
+    }
+}

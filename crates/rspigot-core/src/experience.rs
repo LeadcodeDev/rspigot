@@ -81,7 +81,7 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    fn spawn_orb(&mut self, position: Vec3, value: i32) {
+    pub(crate) fn spawn_orb(&mut self, position: Vec3, value: i32) {
         let mut base = self.new_entity_base(Kind::ExperienceOrb);
         base.position = position;
         base.old_position = position;

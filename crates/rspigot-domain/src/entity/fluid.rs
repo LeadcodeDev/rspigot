@@ -6,6 +6,7 @@ use super::physics::{BlockView, mth_floor, water_height};
 use crate::BlockPos;
 
 const INTERACTION_INSET: f64 = 0.001;
+const EYE_FLUID_OFFSET: f64 = 0.111_111_111_938_953_4;
 const JUMP_THRESHOLD: f64 = 0.4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -88,10 +89,14 @@ pub fn update(base: &mut EntityBase, view: &impl BlockView) {
         lava_height: lava,
         in_water,
     };
+    let eye = base.eye_y() - EYE_FLUID_OFFSET;
+    let pos = crate::Vec3::new(base.position.x, eye, base.position.z).block();
+    base.eye_in_water =
+        water_height(view, pos).is_some_and(|height| f64::from(pos.y) + height > eye);
 }
 
 pub fn jump_threshold(base: &EntityBase) -> f64 {
-    if f64::from(base.kind.dimensions().eye_height) < JUMP_THRESHOLD {
+    if f64::from(base.eye_height()) < JUMP_THRESHOLD {
         0.0
     } else {
         JUMP_THRESHOLD
@@ -138,6 +143,10 @@ pub fn is_free(view: &impl BlockView, area: &Aabb) -> bool {
         }
     }
     true
+}
+
+pub fn is_free_of_collision(view: &impl BlockView, area: &Aabb) -> bool {
+    super::physics::block_colliders(view, area).is_empty()
 }
 
 #[cfg(test)]

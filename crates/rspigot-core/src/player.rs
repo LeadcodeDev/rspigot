@@ -69,6 +69,11 @@ impl<L> Player<L> {
 
     pub fn shared_flags(&self) -> i8 {
         let mut flags = 0i8;
+        if self.vitals.fire_ticks > 0
+            && self.game_mode != rspigot_domain::player::GameMode::Spectator
+        {
+            flags |= 0x01;
+        }
         if self.sneaking {
             flags |= 0x02;
         }

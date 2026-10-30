@@ -94,7 +94,7 @@ pub fn can_merge(id: i32, value: i32, group: i32, wanted_value: i32) -> bool {
 }
 
 fn eye_in_water(base: &EntityBase, view: &impl BlockView) -> bool {
-    let eye = base.position.y + f64::from(base.kind.dimensions().eye_height) - EYE_FLUID_OFFSET;
+    let eye = base.position.y + f64::from(base.eye_height()) - EYE_FLUID_OFFSET;
     let pos = crate::Vec3::new(base.position.x, eye, base.position.z).block();
     water_height(view, pos).is_some_and(|height| eye < f64::from(pos.y) + height)
 }

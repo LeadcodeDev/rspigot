@@ -56,7 +56,7 @@ impl LookControl {
     }
 
     fn x_rot_d(&self, base: &EntityBase) -> Option<f32> {
-        let eye_y = base.position.y + f64::from(base.kind.dimensions().eye_height);
+        let eye_y = base.position.y + f64::from(base.eye_height());
         let dx = self.wanted.x - base.position.x;
         let dy = self.wanted.y - eye_y;
         let dz = self.wanted.z - base.position.z;
@@ -241,7 +241,7 @@ impl MoveControl {
         let state = view.state(pos);
         let shape = state.map_or(&[][..], |state| state.collision_shape());
         let step = living.attribute(rspigot_domain::entity::living::STEP_HEIGHT) as f32;
-        let width = base.kind.dimensions().width;
+        let width = base.dimensions.width;
         let climb = dy > f64::from(step) && dx * dx + dz * dz < f64::from(1.0f32.max(width));
         let top = shape
             .iter()

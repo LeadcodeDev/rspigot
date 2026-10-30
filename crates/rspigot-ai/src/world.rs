@@ -3,6 +3,7 @@ use rspigot_domain::entity::living::{self, LivingState};
 use rspigot_domain::entity::{Aabb, EntityBase};
 use rspigot_domain::{BlockPos, EntityId, ItemId, Vec3};
 use rspigot_entities::EntityKind;
+use rspigot_items::EquipmentSlot;
 
 use crate::BlockView;
 
@@ -30,6 +31,11 @@ pub struct Living {
     pub pitch: f32,
     pub in_water: bool,
     pub baby: bool,
+    pub age: i32,
+    pub in_love: bool,
+    pub panicking: bool,
+    pub has_target: bool,
+    pub scared: bool,
 }
 
 impl Living {
@@ -64,6 +70,7 @@ pub enum TargetKind {
     AbstractVillager,
     IronGolem,
     Turtle,
+    Class(&'static str),
 }
 
 impl TargetKind {
@@ -73,6 +80,38 @@ impl TargetKind {
             Self::AbstractVillager => kind.extends("AbstractVillager"),
             Self::IronGolem => kind == EntityKind::IronGolem,
             Self::Turtle => kind == EntityKind::Turtle,
+            Self::Class(name) => kind.extends(name),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Hand {
+    Main,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MobBody {
+    pub velocity: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub aggressive: bool,
+    pub swell_dir: i32,
+    pub using_item: Option<Hand>,
+    pub fall_distance: f64,
+}
+
+impl MobBody {
+    pub fn of(mob: &MobView) -> Self {
+        Self {
+            velocity: mob.velocity,
+            yaw: mob.yaw,
+            pitch: mob.pitch,
+            aggressive: mob.aggressive,
+            swell_dir: mob.swell_dir,
+            using_item: mob.using_item,
+            fall_distance: mob.fall_distance,
         }
     }
 }
@@ -92,6 +131,18 @@ pub trait AiWorld: BlockView {
 
     fn ambient_light(&self) -> f32 {
         0.0
+    }
+
+    fn bright_outside(&self) -> bool {
+        false
+    }
+
+    fn mob_griefing(&self) -> bool {
+        true
+    }
+
+    fn universal_anger(&self) -> bool {
+        false
     }
 
     fn peaceful(&self) -> bool {
@@ -123,6 +174,26 @@ pub struct MobView {
     pub max_health: f32,
     pub home_pos: BlockPos,
     pub home_radius: i32,
+    pub pitch: f32,
+    pub velocity: Vec3,
+    pub fall_distance: f64,
+    pub horizontal_collision: bool,
+    pub age: i32,
+    pub baby: bool,
+    pub in_love: bool,
+    pub last_hurt_by_mob: Option<EntityId>,
+    pub last_hurt_by_mob_at: i32,
+    pub panic: bool,
+    pub on_fire: bool,
+    pub head_empty: bool,
+    pub main_hand: Option<ItemId>,
+    pub off_hand: Option<ItemId>,
+    pub using_item: Option<Hand>,
+    pub ticks_using_item: i32,
+    pub aggressive: bool,
+    pub swell_dir: i32,
+    pub light: f32,
+    pub swinging: bool,
 }
 
 pub fn attribute(kind: EntityKind, living: &LivingState, name: &str) -> f64 {
@@ -134,7 +205,7 @@ pub fn attribute(kind: EntityKind, living: &LivingState, name: &str) -> f64 {
 
 impl MobView {
     pub fn of(base: &EntityBase, living: &LivingState) -> Self {
-        let dimensions = base.kind.dimensions();
+        let dimensions = base.dimensions;
         let (home_pos, home_radius) = living
             .mob
             .as_ref()
@@ -164,7 +235,31 @@ impl MobView {
             max_health: attribute(base.kind, living, living::MAX_HEALTH) as f32,
             home_pos,
             home_radius,
+            pitch: base.pitch,
+            velocity: base.velocity,
+            fall_distance: base.fall_distance,
+            horizontal_collision: base.horizontal_collision,
+            age: 0,
+            baby: false,
+            in_love: false,
+            last_hurt_by_mob: living.damage.last_hurt_by_mob,
+            last_hurt_by_mob_at: living.damage.last_hurt_by_mob_at,
+            panic: false,
+            on_fire: false,
+            head_empty: living.equipment(EquipmentSlot::Head).is_none(),
+            main_hand: living.equipment(EquipmentSlot::Mainhand).map(|s| s.item),
+            off_hand: living.equipment(EquipmentSlot::Offhand).map(|s| s.item),
+            using_item: None,
+            ticks_using_item: 0,
+            aggressive: living::is_aggressive(base),
+            swell_dir: 0,
+            light: 0.0,
+            swinging: false,
         }
+    }
+
+    pub fn is_holding(&self, item: ItemId) -> bool {
+        self.main_hand == Some(item) || self.off_hand == Some(item)
     }
 
     pub fn eye_y(&self) -> f64 {

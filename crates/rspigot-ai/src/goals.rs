@@ -1,8 +1,15 @@
+use crate::random::RandomSource;
 use rspigot_domain::{EntityId, ItemId, Vec3};
 use rspigot_items::ItemKind;
 
+use crate::animal::{BreedGoal, EatBlockGoal, FollowParentGoal, PanicGoal};
+use crate::blocks::{BreakDoorGoal, MoveThroughVillageGoal, RemoveTurtleEggGoal};
 use crate::brain::AiContext;
+use crate::combat::{
+    HurtByTargetGoal, LeapAtTargetGoal, MeleeAttackGoal, RangedBowAttackGoal, SwellGoal,
+};
 use crate::control::{MAX_HEAD_X_ROT, MAX_HEAD_Y_ROT};
+use crate::evade::{AvoidEntityGoal, FleeSunGoal, RestrictSunGoal};
 use crate::goal::{Flag, Flags, Goal, adjusted_tick_delay, reduced_tick_delay};
 use crate::random_pos::{self, mob_light_magic_value};
 use crate::targeting::{self, TargetingConditions};
@@ -446,7 +453,7 @@ impl NearestAttackableTargetGoal {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MobGoal {
     Float(FloatGoal),
     Stroll(RandomStrollGoal),
@@ -454,16 +461,44 @@ pub enum MobGoal {
     RandomLookAround(RandomLookAroundGoal),
     Tempt(TemptGoal),
     NearestAttackableTarget(NearestAttackableTargetGoal),
+    Panic(PanicGoal),
+    Breed(BreedGoal),
+    FollowParent(FollowParentGoal),
+    EatBlock(EatBlockGoal),
+    MeleeAttack(MeleeAttackGoal),
+    RangedBowAttack(RangedBowAttackGoal),
+    Swell(SwellGoal),
+    LeapAtTarget(LeapAtTargetGoal),
+    HurtByTarget(HurtByTargetGoal),
+    AvoidEntity(AvoidEntityGoal),
+    FleeSun(FleeSunGoal),
+    RestrictSun(RestrictSunGoal),
+    RemoveTurtleEgg(RemoveTurtleEggGoal),
+    BreakDoor(BreakDoorGoal),
+    MoveThroughVillage(MoveThroughVillageGoal),
 }
 
 impl<W: AiWorld> Goal<AiContext<'_, W>> for MobGoal {
     fn flags(&self) -> Flags {
+        let movement = Flags::of(Flag::Move);
         match self {
             Self::Float(_) => Flags::of(Flag::Jump),
-            Self::Stroll(_) => Flags::of(Flag::Move),
+            Self::Stroll(_)
+            | Self::Panic(_)
+            | Self::Swell(_)
+            | Self::AvoidEntity(_)
+            | Self::FleeSun(_)
+            | Self::MoveThroughVillage(_) => movement,
             Self::LookAtPlayer(_) => Flags::of(Flag::Look),
-            Self::RandomLookAround(_) | Self::Tempt(_) => Flags::of(Flag::Move).with(Flag::Look),
-            Self::NearestAttackableTarget(_) => Flags::of(Flag::Target),
+            Self::RandomLookAround(_)
+            | Self::Tempt(_)
+            | Self::Breed(_)
+            | Self::MeleeAttack(_)
+            | Self::RangedBowAttack(_) => movement.with(Flag::Look),
+            Self::EatBlock(_) => movement.with(Flag::Look).with(Flag::Jump),
+            Self::LeapAtTarget(_) | Self::RemoveTurtleEgg(_) => movement.with(Flag::Jump),
+            Self::NearestAttackableTarget(_) | Self::HurtByTarget(_) => Flags::of(Flag::Target),
+            Self::FollowParent(_) | Self::RestrictSun(_) | Self::BreakDoor(_) => Flags::NONE,
         }
     }
 
@@ -475,6 +510,21 @@ impl<W: AiWorld> Goal<AiContext<'_, W>> for MobGoal {
             Self::RandomLookAround(goal) => goal.can_use(context),
             Self::Tempt(goal) => goal.can_use(context),
             Self::NearestAttackableTarget(goal) => goal.can_use(context),
+            Self::Panic(goal) => goal.can_use(context),
+            Self::Breed(goal) => goal.can_use(context),
+            Self::FollowParent(goal) => goal.can_use(context),
+            Self::EatBlock(goal) => goal.can_use(context),
+            Self::MeleeAttack(goal) => goal.can_use(context),
+            Self::RangedBowAttack(goal) => goal.can_use(context),
+            Self::Swell(goal) => goal.can_use(context),
+            Self::LeapAtTarget(goal) => goal.can_use(context),
+            Self::HurtByTarget(goal) => goal.can_use(context),
+            Self::AvoidEntity(goal) => goal.can_use(context),
+            Self::FleeSun(goal) => goal.can_use(context),
+            Self::RestrictSun(goal) => goal.can_use(context),
+            Self::RemoveTurtleEgg(goal) => goal.can_use(context),
+            Self::BreakDoor(goal) => goal.can_use(context),
+            Self::MoveThroughVillage(goal) => goal.can_use(context),
         }
     }
 
@@ -486,32 +536,85 @@ impl<W: AiWorld> Goal<AiContext<'_, W>> for MobGoal {
             Self::RandomLookAround(goal) => goal.look_time >= 0,
             Self::Tempt(goal) => goal.can_use(context),
             Self::NearestAttackableTarget(goal) => goal.can_continue_to_use(context),
+            Self::Panic(_)
+            | Self::AvoidEntity(_)
+            | Self::FleeSun(_)
+            | Self::MoveThroughVillage(_) => !context.brain.navigation.is_done(),
+            Self::Breed(goal) => goal.can_continue_to_use(context),
+            Self::FollowParent(goal) => goal.can_continue_to_use(context),
+            Self::EatBlock(goal) => goal.eat_animation_tick() > 0,
+            Self::MeleeAttack(goal) => goal.can_continue_to_use(context),
+            Self::RangedBowAttack(goal) => goal.can_continue_to_use(context),
+            Self::Swell(goal) => goal.can_use(context),
+            Self::LeapAtTarget(goal) => goal.can_continue_to_use(context),
+            Self::HurtByTarget(goal) => goal.memory().can_continue_to_use(context),
+            Self::RestrictSun(goal) => goal.can_use(context),
+            Self::RemoveTurtleEgg(goal) => goal.can_continue_to_use(context),
+            Self::BreakDoor(goal) => !goal.passed() && goal.can_continue_to_use(context),
         }
     }
 
     fn start(&mut self, context: &mut AiContext<'_, W>) {
         match self {
-            Self::Float(_) => {}
+            Self::Float(_) | Self::Breed(_) | Self::MoveThroughVillage(_) => {}
+            Self::HurtByTarget(goal) => goal.start(context),
             Self::Stroll(goal) => goal.start(context),
             Self::LookAtPlayer(goal) => goal.start(context),
             Self::RandomLookAround(goal) => goal.start(context),
             Self::Tempt(goal) => goal.start(),
             Self::NearestAttackableTarget(goal) => goal.start(context),
+            Self::Panic(goal) => goal.start(context),
+            Self::FollowParent(goal) => goal.start(),
+            Self::EatBlock(goal) => goal.start(context),
+            Self::MeleeAttack(goal) => goal.start(context),
+            Self::RangedBowAttack(goal) => goal.start(context),
+            Self::Swell(goal) => goal.start(context),
+            Self::LeapAtTarget(goal) => goal.start(context),
+            Self::AvoidEntity(goal) => goal.start(context),
+            Self::FleeSun(goal) => goal.start(context),
+            Self::RestrictSun(goal) => goal.start(context),
+            Self::RemoveTurtleEgg(goal) => goal.start(context),
+            Self::BreakDoor(goal) => goal.start(context),
         }
     }
 
     fn stop(&mut self, context: &mut AiContext<'_, W>) {
         match self {
-            Self::Float(_) | Self::RandomLookAround(_) => {}
+            Self::Float(_)
+            | Self::RandomLookAround(_)
+            | Self::LeapAtTarget(_)
+            | Self::FleeSun(_)
+            | Self::MoveThroughVillage(_) => {}
             Self::Stroll(goal) => goal.stop(context),
             Self::LookAtPlayer(goal) => goal.stop(),
             Self::Tempt(goal) => goal.stop(context),
             Self::NearestAttackableTarget(goal) => goal.stop(context),
+            Self::Panic(goal) => goal.stop(),
+            Self::Breed(goal) => goal.stop(),
+            Self::FollowParent(goal) => goal.stop(),
+            Self::EatBlock(goal) => goal.stop(),
+            Self::MeleeAttack(goal) => goal.stop(context),
+            Self::RangedBowAttack(goal) => goal.stop(context),
+            Self::Swell(goal) => goal.stop(),
+            Self::HurtByTarget(goal) => goal.memory().stop(context),
+            Self::AvoidEntity(goal) => goal.stop(),
+            Self::RestrictSun(goal) => goal.stop(context),
+            Self::RemoveTurtleEgg(goal) => goal.stop(context),
+            Self::BreakDoor(goal) => goal.stop(context),
         }
     }
 
     fn requires_update_every_tick(&self) -> bool {
-        matches!(self, Self::Float(_) | Self::RandomLookAround(_))
+        matches!(
+            self,
+            Self::Float(_)
+                | Self::RandomLookAround(_)
+                | Self::MeleeAttack(_)
+                | Self::RangedBowAttack(_)
+                | Self::Swell(_)
+                | Self::RemoveTurtleEgg(_)
+                | Self::BreakDoor(_)
+        )
     }
 
     fn tick(&mut self, context: &mut AiContext<'_, W>) {
@@ -520,7 +623,23 @@ impl<W: AiWorld> Goal<AiContext<'_, W>> for MobGoal {
             Self::LookAtPlayer(goal) => goal.tick(context),
             Self::RandomLookAround(goal) => goal.tick(context),
             Self::Tempt(goal) => goal.tick(context),
-            Self::Stroll(_) | Self::NearestAttackableTarget(_) => {}
+            Self::Breed(goal) => goal.tick(context),
+            Self::FollowParent(goal) => goal.tick(context),
+            Self::EatBlock(goal) => goal.tick(context),
+            Self::MeleeAttack(goal) => goal.tick(context),
+            Self::RangedBowAttack(goal) => goal.tick(context),
+            Self::Swell(goal) => goal.tick(context),
+            Self::AvoidEntity(goal) => goal.tick(context),
+            Self::RemoveTurtleEgg(goal) => goal.tick(context),
+            Self::BreakDoor(goal) => goal.tick(context),
+            Self::Stroll(_)
+            | Self::NearestAttackableTarget(_)
+            | Self::Panic(_)
+            | Self::LeapAtTarget(_)
+            | Self::HurtByTarget(_)
+            | Self::FleeSun(_)
+            | Self::RestrictSun(_)
+            | Self::MoveThroughVillage(_) => {}
         }
     }
 }
