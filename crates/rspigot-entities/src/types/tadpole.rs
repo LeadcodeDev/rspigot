@@ -1,6 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
-    VoicePitch,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobClass, MobSpawn,
+    SoundSource, SoundVolume, VoicePitch,
 };
 
 pub struct Tadpole;
@@ -71,6 +71,19 @@ impl EntityType for Tadpole {
         pitch: VoicePitch::Standard,
         source: SoundSource::Neutral,
         can_be_baby: false,
+    });
+    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {
+        placement: None,
+        check_spawn_rules: MobClass::PathfinderMob,
+        walk_target_value: Some(MobClass::PathfinderMob),
+        check_spawn_obstruction: MobClass::WaterAnimal,
+        max_spawn_cluster_size: Some(8),
+        max_spawn_cluster_size_owner: MobClass::AbstractFish,
+        is_max_group_size_reached: MobClass::Mob,
+        remove_when_far_away: MobClass::AbstractFish,
+        requires_custom_persistence: MobClass::AbstractFish,
+        spawn_dimensions_scale: 1.0,
+        immune_to: "minecraft:default_immune_to",
     });
     type Behavior = crate::family::Plain;
 }

@@ -29,12 +29,24 @@ FLAG_SOURCES = {
     "RANDOMLY_TICKS": "is_randomly_ticking",
     "FULL_COLLISION_CUBE": "is_collision_shape_full_block",
     "LEGACY_SOLID": "is_solid",
+    "REDSTONE_CONDUCTOR": "is_redstone_conductor",
+    "SIGNAL_SOURCE": "is_signal_source",
+    "PATHFINDABLE_LAND": "pathfindable_land",
+}
+
+SPAWN_SURFACES = {
+    "default": "Default",
+    "never": "Never",
+    "always": "Always",
+    "ocelot_or_parrot": "OcelotOrParrot",
+    "polar_bear": "PolarBear",
+    "fire_immune": "FireImmune",
 }
 
 RESERVED_STRUCTS = {
     "Aabb", "Block", "BlockId", "BlockKind", "BlockSettings", "BlockBehavior", "Face",
     "FaceSupport", "Linked", "LinkedProperty", "PerState", "PlaceContext", "Placement",
-    "Property", "ShapeId", "StateFlags", "StateId", "Support", "UseContext", "UseResult", "Self", "Option", "Some", "None", "Result", "Ok",
+    "Property", "ShapeId", "SpawnSurface", "StateFlags", "StateId", "Support", "UseContext", "UseResult", "Self", "Option", "Some", "None", "Result", "Ok",
     "Err", "Vec", "String", "Box", "Default", "Clone", "Copy", "Send", "Sync", "Sized",
     "Drop", "Fn", "FnMut", "FnOnce", "Iterator", "IntoIterator", "Extend", "ToString",
     "ToOwned", "PartialEq", "Eq", "PartialOrd", "Ord", "AsRef", "AsMut", "Into", "From",
@@ -381,12 +393,16 @@ def block_file(block, first_state, item, wall, behavior, bits):
     name = block["name"]
     struct = block["struct"]
     states = block["states"]
-    lines = use_line(
-        [
-            "Block", "BlockId", "BlockSettings", "FaceSupport", "PerState", "Property", "ShapeId",
-            "StateFlags", "StateId",
-        ]
-    )
+    surface = SPAWN_SURFACES.get(block["spawn_surface"])
+    if surface is None:
+        fail("%s has unknown spawn surface %r" % (name, block["spawn_surface"]))
+    imports = [
+        "Block", "BlockId", "BlockSettings", "FaceSupport", "PerState", "Property", "ShapeId",
+        "StateFlags", "StateId",
+    ]
+    if surface != "Default":
+        imports.insert(imports.index("StateFlags"), "SpawnSurface")
+    lines = use_line(imports)
     lines.extend(["", "pub struct %s;" % struct, ""])
     lines.append("impl Block for %s {" % struct)
     lines.append("    const NAME: &'static str = %s;" % rust_string(name))
@@ -449,6 +465,8 @@ def block_file(block, first_state, item, wall, behavior, bits):
     lines.extend(
         shared_per_state("FACE_SUPPORT", "FaceSupport", block["support"], render_support, block["support_shared"])
     )
+    if surface != "Default":
+        lines.append("    const SPAWN_SURFACE: SpawnSurface = SpawnSurface::%s;" % surface)
     lines.append("    type Behavior = crate::family::%s;" % behavior)
     lines.append("}")
     return "\n".join(lines) + "\n"

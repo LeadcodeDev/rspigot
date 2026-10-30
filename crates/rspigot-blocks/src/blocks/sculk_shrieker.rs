@@ -31,8 +31,8 @@ impl Block for SculkShrieker {
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(1);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2190), StateFlags(2062), StateFlags(2190), StateFlags(2062), StateFlags(2190),
-        StateFlags(2062), StateFlags(2190), StateFlags(2062),
+        StateFlags(18574), StateFlags(18446), StateFlags(18574), StateFlags(18446),
+        StateFlags(18574), StateFlags(18446), StateFlags(18574), StateFlags(18446),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(54));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(1, 1, 1));

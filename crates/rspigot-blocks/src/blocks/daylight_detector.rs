@@ -35,7 +35,7 @@ impl Block for DaylightDetector {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2094));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(26670));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(72));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(1, 1, 1));
     type Behavior = crate::family::Plain;

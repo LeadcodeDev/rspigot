@@ -12,6 +12,7 @@ import java.lang.classfile.instruction.BranchInstruction;
 import java.lang.classfile.instruction.ConstantInstruction;
 import java.lang.classfile.instruction.ConvertInstruction;
 import java.lang.classfile.instruction.FieldInstruction;
+import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.classfile.instruction.InvokeInstruction;
 import java.lang.classfile.instruction.LabelTarget;
 import java.lang.classfile.instruction.LoadInstruction;
@@ -20,6 +21,7 @@ import java.lang.classfile.instruction.OperatorInstruction;
 import java.lang.classfile.instruction.ReturnInstruction;
 import java.lang.classfile.instruction.StackInstruction;
 import java.lang.classfile.instruction.TypeCheckInstruction;
+import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -56,7 +58,12 @@ import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.SpawnPlacementType;
+import net.minecraft.world.entity.SpawnPlacementTypes;
+import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
@@ -77,6 +84,7 @@ public final class EntityDump {
         Bootstrap.bootStrap();
         HolderLookup.Provider lookup = bindComponents();
         Sounds sounds = new Sounds(lookup);
+        Spawns spawns = new Spawns(sounds);
         Map<EntityType<?>, Class<?>> classes = entityClasses();
         Map<EntityType<?>, Integer> eggs = spawnEggs();
         Path out = Path.of(args[0]).toAbsolutePath();
@@ -92,7 +100,7 @@ public final class EntityDump {
             json.name("attributes");
             writeAttributes(json);
             json.name("entity_types");
-            writeEntityTypes(json, classes, eggs, sounds);
+            writeEntityTypes(json, classes, eggs, sounds, spawns);
             json.endObject();
         }
         Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -212,7 +220,7 @@ public final class EntityDump {
     }
 
     @SuppressWarnings("unchecked")
-    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs, Sounds sounds) throws IOException, IllegalAccessException {
+    private static void writeEntityTypes(JsonWriter json, Map<EntityType<?>, Class<?>> classes, Map<EntityType<?>, Integer> eggs, Sounds sounds, Spawns spawns) throws IOException, IllegalAccessException {
         json.beginArray();
         for (int id = 0; id < BuiltInRegistries.ENTITY_TYPE.size(); id++) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.byId(id);
@@ -283,9 +291,210 @@ public final class EntityDump {
                 json.name("sounds");
                 sounds.write(json, entityClass);
             }
+            json.name("mob_spawn");
+            spawns.write(json, type, entityClass);
             json.endObject();
         }
+        spawns.checkAllWritten();
         json.endArray();
+    }
+
+    static final class Spawns {
+        private static final String ENTITY_TYPES = "net/minecraft/world/entity/EntityTypes";
+        private static final String PLACEMENT_TYPES = "net/minecraft/world/entity/SpawnPlacementTypes";
+        private static final String HEIGHTMAP_TYPES = "net/minecraft/world/level/levelgen/Heightmap$Types";
+        private static final String SPAWN_PLACEMENTS = "net/minecraft/world/entity/SpawnPlacements";
+        private static final String LEVEL_ACCESSOR = "Lnet/minecraft/world/level/LevelAccessor;";
+        private static final String LEVEL_READER = "Lnet/minecraft/world/level/LevelReader;";
+        private static final String SPAWN_REASON = "Lnet/minecraft/world/entity/EntitySpawnReason;";
+        private static final String BLOCK_POS = "Lnet/minecraft/core/BlockPos;";
+
+        private final Sounds sounds;
+        private final Map<EntityType<?>, String[]> registered = new IdentityHashMap<>();
+        private final Map<EntityType<?>, Boolean> written = new IdentityHashMap<>();
+
+        Spawns(Sounds sounds) throws IllegalAccessException {
+            this.sounds = sounds;
+            parseRegistrations();
+            checkAgainstRuntime();
+        }
+
+        private void parseRegistrations() throws IllegalAccessException {
+            MethodModel clinit = sounds.method(SpawnPlacements.class, "<clinit>", "()V");
+            if (clinit == null) {
+                throw new IllegalStateException("SpawnPlacements has no static initializer");
+            }
+            EntityType<?> type = null;
+            String placement = null;
+            String heightmap = null;
+            String predicate = null;
+            for (CodeElement element : clinit.code().orElseThrow().elementList()) {
+                if (element instanceof FieldInstruction field && field.opcode() == Opcode.GETSTATIC) {
+                    String owner = field.owner().asInternalName();
+                    String name = field.name().stringValue();
+                    if (owner.equals(ENTITY_TYPES)) {
+                        type = entityType(name);
+                    } else if (owner.equals(PLACEMENT_TYPES)) {
+                        placement = name;
+                    } else if (owner.equals(HEIGHTMAP_TYPES)) {
+                        heightmap = name;
+                    }
+                } else if (element instanceof InvokeDynamicInstruction indy) {
+                    if (indy.bootstrapArgs().size() < 2 || !(indy.bootstrapArgs().get(1) instanceof DirectMethodHandleDesc target)) {
+                        throw new IllegalStateException("unexpected spawn predicate bootstrap " + indy);
+                    }
+                    predicate = target.owner().displayName() + "." + target.methodName();
+                } else if (element instanceof InvokeInstruction invoke && invoke.opcode() == Opcode.INVOKESTATIC
+                        && invoke.owner().asInternalName().equals(SPAWN_PLACEMENTS) && invoke.name().stringValue().equals("register")) {
+                    if (type == null || placement == null || heightmap == null || predicate == null) {
+                        throw new IllegalStateException("incomplete spawn placement registration before " + invoke);
+                    }
+                    if (registered.put(type, new String[] {placement, heightmap, predicate}) != null) {
+                        throw new IllegalStateException("spawn placement registered twice for " + EntityType.getKey(type));
+                    }
+                    type = null;
+                    placement = null;
+                    heightmap = null;
+                    predicate = null;
+                }
+            }
+        }
+
+        private static EntityType<?> entityType(String field) throws IllegalAccessException {
+            try {
+                return (EntityType<?>) EntityTypes.class.getField(field).get(null);
+            } catch (NoSuchFieldException e) {
+                throw new IllegalStateException("no entity type field " + field, e);
+            }
+        }
+
+        private void checkAgainstRuntime() throws IllegalAccessException {
+            Map<?, ?> runtime;
+            try {
+                Field data = SpawnPlacements.class.getDeclaredField("DATA_BY_TYPE");
+                data.setAccessible(true);
+                runtime = (Map<?, ?>) data.get(null);
+            } catch (NoSuchFieldException e) {
+                throw new IllegalStateException("SpawnPlacements.DATA_BY_TYPE not found", e);
+            }
+            if (runtime.size() != registered.size()) {
+                throw new IllegalStateException(runtime.size() + " runtime placements but " + registered.size() + " parsed");
+            }
+            for (Map.Entry<EntityType<?>, String[]> entry : registered.entrySet()) {
+                EntityType<?> type = entry.getKey();
+                if (!runtime.containsKey(type)) {
+                    throw new IllegalStateException("parsed placement missing at runtime for " + EntityType.getKey(type));
+                }
+                String placement = entry.getValue()[0];
+                String heightmap = entry.getValue()[1];
+                if (SpawnPlacements.getPlacementType(type) != placementType(placement)) {
+                    throw new IllegalStateException("placement mismatch for " + EntityType.getKey(type));
+                }
+                if (!SpawnPlacements.getHeightmapType(type).name().equals(heightmap)) {
+                    throw new IllegalStateException("heightmap mismatch for " + EntityType.getKey(type));
+                }
+            }
+        }
+
+        private static SpawnPlacementType placementType(String field) throws IllegalAccessException {
+            try {
+                return (SpawnPlacementType) SpawnPlacementTypes.class.getField(field).get(null);
+            } catch (NoSuchFieldException e) {
+                throw new IllegalStateException("no spawn placement type " + field, e);
+            }
+        }
+
+        void write(JsonWriter json, EntityType<?> type, Class<?> entityClass) throws IOException, IllegalAccessException {
+            if (!Mob.class.isAssignableFrom(entityClass)) {
+                if (registered.containsKey(type)) {
+                    throw new IllegalStateException("spawn placement for non-mob " + EntityType.getKey(type));
+                }
+                json.nullValue();
+                return;
+            }
+            written.put(type, Boolean.TRUE);
+            json.beginObject();
+            json.name("placement");
+            String[] placement = registered.get(type);
+            if (placement == null) {
+                json.nullValue();
+            } else {
+                json.beginObject();
+                json.name("type").value(placement[0].toLowerCase(java.util.Locale.ROOT));
+                json.name("heightmap").value(placement[1]);
+                json.name("predicate").value(placement[2]);
+                json.endObject();
+            }
+            json.name("check_spawn_rules").value(owner(entityClass, "checkSpawnRules", "(" + LEVEL_ACCESSOR + SPAWN_REASON + ")Z"));
+            json.name("walk_target_value");
+            if (PathfinderMob.class.isAssignableFrom(entityClass)) {
+                json.value(owner(entityClass, "getWalkTargetValue", "(" + BLOCK_POS + LEVEL_READER + ")F"));
+            } else {
+                json.nullValue();
+            }
+            json.name("check_spawn_obstruction").value(owner(entityClass, "checkSpawnObstruction", "(" + LEVEL_READER + ")Z"));
+            Class<?> clusterOwner = sounds.declaring(entityClass, "getMaxSpawnClusterSize", "()I");
+            json.name("max_spawn_cluster_size_owner").value(clusterOwner.getSimpleName());
+            json.name("max_spawn_cluster_size");
+            Integer cluster = constantInt(sounds.method(clusterOwner, "getMaxSpawnClusterSize", "()I"));
+            if (cluster == null) {
+                json.nullValue();
+            } else {
+                json.value(cluster.intValue());
+            }
+            json.name("is_max_group_size_reached").value(owner(entityClass, "isMaxGroupSizeReached", "(I)Z"));
+            json.name("remove_when_far_away").value(owner(entityClass, "removeWhenFarAway", "(D)Z"));
+            json.name("requires_custom_persistence").value(owner(entityClass, "requiresCustomPersistence", "()Z"));
+            json.name("spawn_dimensions_scale").value(Float.valueOf(spawnDimensionsScale(type)));
+            json.name("immune_to");
+            Object immune = typeField(type, "immuneTo");
+            if (immune == null) {
+                json.nullValue();
+            } else {
+                json.value(((net.minecraft.tags.TagKey<?>) immune).location().toString());
+            }
+            json.endObject();
+        }
+
+        void checkAllWritten() {
+            for (EntityType<?> type : registered.keySet()) {
+                if (!written.containsKey(type)) {
+                    throw new IllegalStateException("spawn placement not written for " + EntityType.getKey(type));
+                }
+            }
+        }
+
+        private String owner(Class<?> entityClass, String name, String descriptor) {
+            return sounds.declaring(entityClass, name, descriptor).getSimpleName();
+        }
+
+        private static Integer constantInt(MethodModel method) {
+            List<Instruction> instructions = new ArrayList<>();
+            for (CodeElement element : method.code().orElseThrow().elementList()) {
+                if (element instanceof Instruction instruction) {
+                    instructions.add(instruction);
+                }
+            }
+            if (instructions.size() == 2 && instructions.get(0) instanceof ConstantInstruction constant
+                    && instructions.get(1) instanceof ReturnInstruction && constant.constantValue() instanceof Integer value) {
+                return value;
+            }
+            return null;
+        }
+
+        private static float spawnDimensionsScale(EntityType<?> type) throws IllegalAccessException {
+            return ((Float) typeField(type, "spawnDimensionsScale")).floatValue();
+        }
+
+        private static Object typeField(EntityType<?> type, String name) throws IllegalAccessException {
+            try {
+                Field field = EntityType.class.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(type);
+            } catch (NoSuchFieldException e) {
+                throw new IllegalStateException("EntityType has no field " + name, e);
+            }
+        }
     }
 
     static final class Sounds {

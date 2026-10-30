@@ -33,11 +33,12 @@ impl Block for TrappedChest {
         1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
-        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
-        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190),
-        StateFlags(2094), StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
-        StateFlags(2190), StateFlags(2094), StateFlags(2190), StateFlags(2094),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
+        StateFlags(10382), StateFlags(10286), StateFlags(10382), StateFlags(10286),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_CHEST);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_CHEST);

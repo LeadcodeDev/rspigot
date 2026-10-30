@@ -1,4 +1,4 @@
-use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory};
+use crate::{CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn};
 
 pub struct OminousItemSpawner;
 
@@ -23,5 +23,6 @@ impl EntityType for OminousItemSpawner {
     const ANCESTORS: &'static [&'static str] = &["OminousItemSpawner", "Entity"];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];
     const SOUNDS: Option<CreatureSounds> = None;
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

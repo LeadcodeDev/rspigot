@@ -6,7 +6,7 @@ use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos};
 use rspigot_nbt::Compound;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::queue::Priority;
 use super::workers::{ChunkJob, ChunkResult, ChunkSource, ChunkWorkers};
@@ -78,6 +78,8 @@ pub struct ChunkManager {
     now: u64,
     stats: ChunkManagerStats,
     events: ChunkEvents,
+    relight: FxHashSet<ChunkPos>,
+    mob_generation: Option<super::MobGeneration>,
 }
 
 impl ChunkManager {
@@ -90,7 +92,13 @@ impl ChunkManager {
             now: 0,
             stats: ChunkManagerStats::default(),
             events: ChunkEvents::default(),
+            relight: FxHashSet::default(),
+            mob_generation: None,
         }
+    }
+
+    pub fn set_mob_generation(&mut self, generation: Option<super::MobGeneration>) {
+        self.mob_generation = generation;
     }
 
     pub fn take_events(&mut self) -> ChunkEvents {
@@ -133,6 +141,7 @@ impl ChunkManager {
                 ChunkJob::Load {
                     dimension: Arc::clone(&self.dimension),
                     pos,
+                    mobs: self.mob_generation,
                 },
             );
             pending.priority = priority;
@@ -161,6 +170,7 @@ impl ChunkManager {
         ChunkJob::Load {
             dimension: Arc::clone(&self.dimension),
             pos,
+            mobs: self.mob_generation,
         }
     }
 
@@ -296,7 +306,23 @@ impl ChunkManager {
         if state.is_air() {
             chunk.remove_block_entity(pos);
         }
+        if crate::lighting::affects_light(current, state) {
+            self.relight.insert(pos.chunk());
+        }
         old
+    }
+
+    pub fn relight(&mut self) -> usize {
+        let has_skylight = self.dimension.has_skylight;
+        let pending: Vec<ChunkPos> = self.relight.drain().collect();
+        let mut count = 0;
+        for pos in pending {
+            if let Some(chunk) = self.chunk_mut(pos) {
+                crate::lighting::compute(chunk, has_skylight);
+                count += 1;
+            }
+        }
+        count
     }
 
     pub fn stats(&self) -> ChunkManagerStats {
@@ -463,6 +489,27 @@ mod tests {
             assert_eq!(manager.accept(result), None);
         }
         assert!(!manager.is_loaded(pos));
+        workers.shutdown();
+    }
+
+    #[test]
+    fn block_changes_relight_their_chunk_once_per_call() {
+        let (mut manager, workers, _) = setup();
+        let pos = ChunkPos::new(0, 0);
+        manager.add_ticket(pos, Priority(1), &workers);
+        drain(&mut manager, &workers, 1);
+        let lit = |manager: &ChunkManager, y| {
+            manager
+                .get(pos)
+                .map(|chunk| crate::lighting::light_level(chunk, BlockPos::new(1, y, 1), true))
+        };
+        assert_eq!(lit(&manager, 9), Some(15));
+        manager.set_block(BlockPos::new(1, 10, 1), BlockStateId(1));
+        assert_eq!(manager.relight(), 1);
+        assert_eq!(lit(&manager, 9), Some(14));
+        assert_eq!(manager.relight(), 0);
+        manager.set_block(BlockPos::new(1, 10, 1), BlockStateId(1));
+        assert_eq!(manager.relight(), 0);
         workers.shutdown();
     }
 

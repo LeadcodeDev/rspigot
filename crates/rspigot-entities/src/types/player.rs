@@ -1,6 +1,6 @@
 use crate::{
-    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, SoundSource, SoundVolume,
-    VoicePitch,
+    CreatureSound, CreatureSounds, EntityType, EntityTypeId, MobCategory, MobSpawn, SoundSource,
+    SoundVolume, VoicePitch,
 };
 
 pub struct Player;
@@ -72,5 +72,6 @@ impl EntityType for Player {
         source: SoundSource::Players,
         can_be_baby: false,
     });
+    const MOB_SPAWN: Option<MobSpawn> = None;
     type Behavior = crate::family::Plain;
 }

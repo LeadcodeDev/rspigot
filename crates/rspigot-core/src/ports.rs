@@ -44,6 +44,10 @@ pub trait EntityStore: Send + Sync + 'static {
 pub trait ChunkGenerator: Send + Sync + 'static {
     fn generate(&self, dimension: &Dimension, pos: ChunkPos) -> ChunkColumn;
     fn spawn_point(&self, dimension: &Dimension) -> Vec3;
+
+    fn spawns_original_mobs(&self, _dimension: &Dimension) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

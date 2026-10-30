@@ -20,6 +20,8 @@ import net.minecraft.server.packs.repository.ServerPacksSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.TagLoader;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -32,11 +34,13 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 public final class BlockDump {
     private static final Direction[] FACES = {Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
+    private static final String[] SPAWN_SURFACES = {"default", "never", "always", "ocelot_or_parrot", "polar_bear", "fire_immune"};
 
     private BlockDump() {
     }
@@ -121,6 +125,7 @@ public final class BlockDump {
             json.name("requires_correct_tool_for_drops").value(defaultState.requiresCorrectToolForDrops());
             json.name("ignited_by_lava").value(defaultState.ignitedByLava());
             json.name("default_state").value(Block.getId(defaultState));
+            json.name("spawn_surface").value(spawnSurface(block));
             json.name("properties").beginArray();
             for (Property<?> property : block.getStateDefinition().getProperties()) {
                 json.beginObject();
@@ -172,11 +177,44 @@ public final class BlockDump {
         json.name("is_randomly_ticking").value(state.isRandomlyTicking());
         json.name("is_collision_shape_full_block").value(state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
         json.name("is_solid").value(state.isSolid());
+        json.name("is_redstone_conductor").value(state.isRedstoneConductor(EmptyBlockGetter.INSTANCE, BlockPos.ZERO));
+        json.name("is_signal_source").value(state.isSignalSource());
+        json.name("pathfindable_land").value(state.isPathfindable(PathComputationType.LAND));
         json.name("collision_shape").value(internShape(shapes, collision));
         json.name("sturdy_full").value(sturdyMask(state, SupportType.FULL));
         json.name("sturdy_center").value(sturdyMask(state, SupportType.CENTER));
         json.name("sturdy_rigid").value(sturdyMask(state, SupportType.RIGID));
         json.endObject();
+    }
+
+    private static String spawnSurface(Block block) {
+        EntityType<?>[] probes = {EntityTypes.PIG, EntityTypes.OCELOT, EntityTypes.PARROT, EntityTypes.POLAR_BEAR, EntityTypes.STRIDER, EntityTypes.BLAZE};
+        for (String surface : SPAWN_SURFACES) {
+            boolean matches = true;
+            for (BlockState state : block.getStateDefinition().getPossibleStates()) {
+                for (EntityType<?> type : probes) {
+                    if (state.isValidSpawn(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, type) != expectedSpawn(surface, state, type)) {
+                        matches = false;
+                    }
+                }
+            }
+            if (matches) {
+                return surface;
+            }
+        }
+        throw new IllegalStateException("unclassified isValidSpawn for " + BuiltInRegistries.BLOCK.getKey(block));
+    }
+
+    private static boolean expectedSpawn(String surface, BlockState state, EntityType<?> type) {
+        return switch (surface) {
+            case "default" -> state.isFaceSturdy(EmptyBlockGetter.INSTANCE, BlockPos.ZERO, Direction.UP) && state.getLightEmission() < 14;
+            case "never" -> false;
+            case "always" -> true;
+            case "ocelot_or_parrot" -> type == EntityTypes.OCELOT || type == EntityTypes.PARROT;
+            case "polar_bear" -> type == EntityTypes.POLAR_BEAR;
+            case "fire_immune" -> type.fireImmune();
+            default -> throw new IllegalStateException("unknown spawn surface " + surface);
+        };
     }
 
     private static int internShape(Map<List<Double>, Integer> shapes, VoxelShape shape) {

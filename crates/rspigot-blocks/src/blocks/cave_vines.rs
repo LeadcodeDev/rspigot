@@ -39,17 +39,19 @@ impl Block for CaveVines {
     ]);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544), StateFlags(544),
-        StateFlags(32), StateFlags(32),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16928), StateFlags(16928),
+        StateFlags(16928), StateFlags(16928), StateFlags(16416), StateFlags(16416),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(0));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

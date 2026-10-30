@@ -26,7 +26,7 @@ impl Block for LilyPad {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(36));
+    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(16420));
     const COLLISION: PerState<ShapeId> = PerState::Uniform(ShapeId(120));
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 1, 0));
     type Behavior = crate::family::Plain;

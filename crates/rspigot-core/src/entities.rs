@@ -326,7 +326,12 @@ impl<L: ClientLink> Server<L> {
             match &entity.state {
                 EntityState::Item(_) => self.tick_item_entity(id),
                 EntityState::Falling(_) => self.tick_falling_entity(id),
-                EntityState::Living(_) => self.tick_living_entity(id),
+                EntityState::Living(_) => {
+                    if self.check_mob_despawn(id) {
+                        continue;
+                    }
+                    self.tick_living_entity(id);
+                }
                 EntityState::Orb(_) => self.tick_orb(id),
                 EntityState::Inert(_) => {}
             }

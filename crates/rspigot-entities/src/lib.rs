@@ -5,12 +5,17 @@ pub mod family;
 #[rustfmt::skip]
 mod kind;
 mod lookup;
+mod mob_spawn;
+#[rustfmt::skip]
+mod spawns;
 #[rustfmt::skip]
 mod types;
 
 pub use categories::MobCategory;
 pub use family::EntityBehavior;
 pub use kind::EntityKind;
+pub use mob_spawn::{MobSpawn, SpawnHeightmap, SpawnPlacement, SpawnPlacementType};
+pub use spawns::{MobClass, SpawnPredicate};
 pub use types::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
@@ -140,5 +145,6 @@ pub trait EntityType: 'static {
     const ANCESTORS: &'static [&'static str];
     const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)];
     const SOUNDS: Option<CreatureSounds>;
+    const MOB_SPAWN: Option<MobSpawn>;
     type Behavior: EntityBehavior;
 }

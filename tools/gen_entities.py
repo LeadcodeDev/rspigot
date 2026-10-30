@@ -19,7 +19,8 @@ NAMESPACE = "minecraft:"
 
 RESERVED_STRUCTS = {
     "EntityType", "EntityTypeId", "EntityKind", "EntityDimensions", "EntityBehavior",
-    "MobCategory", "Plain", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec",
+    "MobCategory", "MobClass", "MobSpawn", "SpawnPlacement", "SpawnPlacementType", "SpawnHeightmap",
+    "SpawnPredicate", "Plain", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec",
     "String", "Box", "Default", "Clone", "Copy", "Send", "Sync", "Sized", "Drop", "Fn", "FnMut",
     "FnOnce", "Iterator", "IntoIterator", "Extend", "ToString", "ToOwned", "PartialEq", "Eq",
     "PartialOrd", "Ord", "AsRef", "AsMut", "Into", "From", "TryFrom", "TryInto", "FromIterator",
@@ -34,6 +35,29 @@ RUST_KEYWORDS = {
     "override", "priv", "typeof", "unsized", "virtual", "yield", "try", "gen",
 }
 
+PLACEMENT_TYPES = {
+    "no_restrictions": "NoRestrictions",
+    "in_water": "InWater",
+    "in_lava": "InLava",
+    "on_ground": "OnGround",
+}
+HEIGHTMAPS = {
+    "WORLD_SURFACE_WG": "WorldSurfaceWg",
+    "WORLD_SURFACE": "WorldSurface",
+    "OCEAN_FLOOR_WG": "OceanFloorWg",
+    "OCEAN_FLOOR": "OceanFloor",
+    "MOTION_BLOCKING": "MotionBlocking",
+    "MOTION_BLOCKING_NO_LEAVES": "MotionBlockingNoLeaves",
+}
+MOB_CLASS_KEYS = (
+    "check_spawn_rules",
+    "check_spawn_obstruction",
+    "max_spawn_cluster_size_owner",
+    "is_max_group_size_reached",
+    "remove_when_far_away",
+    "requires_custom_persistence",
+)
+PREDICATE = re.compile(r"^([A-Z][A-Za-z0-9]*)\.check([A-Z][A-Za-z0-9]*)SpawnRules$")
 FAMILY_TYPE = re.compile(r"^[A-Z][A-Za-z0-9]*(<(true|false|[0-9]+)(, *(true|false|[0-9]+))*>)?$")
 MODULE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 STRUCT_NAME = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -258,6 +282,58 @@ def validate(dump, registries):
     return categories
 
 
+def predicate_variant(predicate, what):
+    match = PREDICATE.match(predicate)
+    if not match:
+        fail("%s has unsupported spawn predicate %r" % (what, predicate))
+    return match.group(2)
+
+
+def validate_spawns(entities):
+    classes = set()
+    predicates = {}
+    for entity in entities:
+        name = entity["name"]
+        spawn = entity.get("mob_spawn")
+        ancestors = entity["ancestors"]
+        if (spawn is not None) != ("Mob" in ancestors):
+            fail("%s mob_spawn %r disagrees with ancestry" % (name, spawn is not None))
+        if spawn is None:
+            continue
+        for key in MOB_CLASS_KEYS:
+            owner = spawn[key]
+            if not isinstance(owner, str) or owner not in ancestors:
+                fail("%s %s owner %r is not an ancestor" % (name, key, owner))
+            classes.add(owner)
+        walk = spawn["walk_target_value"]
+        if (walk is not None) != ("PathfinderMob" in ancestors):
+            fail("%s walk_target_value %r disagrees with ancestry" % (name, walk))
+        if walk is not None:
+            if walk not in ancestors:
+                fail("%s walk_target_value owner %r is not an ancestor" % (name, walk))
+            classes.add(walk)
+        cluster = spawn["max_spawn_cluster_size"]
+        if cluster is not None:
+            integer(cluster, 0, 255, name + " max spawn cluster size")
+        if finite(spawn["spawn_dimensions_scale"], name + " spawn dimensions scale") <= 0:
+            fail("%s spawn dimensions scale is not positive" % name)
+        rust_string(spawn["immune_to"])
+        placement = spawn["placement"]
+        if placement is None:
+            continue
+        if placement["type"] not in PLACEMENT_TYPES:
+            fail("%s has unknown placement type %r" % (name, placement["type"]))
+        if placement["heightmap"] not in HEIGHTMAPS:
+            fail("%s has unknown heightmap %r" % (name, placement["heightmap"]))
+        variant = predicate_variant(placement["predicate"], name)
+        if predicates.setdefault(variant, placement["predicate"]) != placement["predicate"]:
+            fail("spawn predicates %s and %s share variant %s" % (predicates[variant], placement["predicate"], variant))
+    for owner in classes:
+        if not STRUCT_NAME.match(owner) or owner in RESERVED_STRUCTS:
+            fail("unsupported mob class name " + owner)
+    return sorted(classes), predicates
+
+
 SOUND_SOURCES = {
     "master": "Master",
     "music": "Music",
@@ -358,19 +434,53 @@ def sounds_lines(entity, sound_names):
     return lines
 
 
+IMPORT_CANDIDATES = [
+    "CreatureSound", "CreatureSounds", "EntityType", "EntityTypeId", "MobCategory", "MobClass",
+    "MobSpawn", "SoundSource", "SoundVolume", "SpawnHeightmap", "SpawnPlacement",
+    "SpawnPlacementType", "SpawnPredicate", "VoicePitch",
+]
+
+
+def mob_spawn_lines(entity):
+    spawn = entity["mob_spawn"]
+    if spawn is None:
+        return ["    const MOB_SPAWN: Option<MobSpawn> = None;"]
+    name = entity["name"]
+    lines = ["    const MOB_SPAWN: Option<MobSpawn> = Some(MobSpawn {"]
+    placement = spawn["placement"]
+    if placement is None:
+        lines.append("        placement: None,")
+    else:
+        lines.append("        placement: Some(SpawnPlacement {")
+        lines.append("            kind: SpawnPlacementType::%s," % PLACEMENT_TYPES[placement["type"]])
+        lines.append("            heightmap: SpawnHeightmap::%s," % HEIGHTMAPS[placement["heightmap"]])
+        lines.append("            predicate: SpawnPredicate::%s," % predicate_variant(placement["predicate"], name))
+        lines.append("        }),")
+    lines.append("        check_spawn_rules: MobClass::%s," % spawn["check_spawn_rules"])
+    walk = spawn["walk_target_value"]
+    lines.append("        walk_target_value: %s," % ("None" if walk is None else "Some(MobClass::%s)" % walk))
+    lines.append("        check_spawn_obstruction: MobClass::%s," % spawn["check_spawn_obstruction"])
+    cluster = spawn["max_spawn_cluster_size"]
+    lines.append("        max_spawn_cluster_size: %s," % ("None" if cluster is None else "Some(%d)" % cluster))
+    lines.append("        max_spawn_cluster_size_owner: MobClass::%s," % spawn["max_spawn_cluster_size_owner"])
+    lines.append("        is_max_group_size_reached: MobClass::%s," % spawn["is_max_group_size_reached"])
+    lines.append("        remove_when_far_away: MobClass::%s," % spawn["remove_when_far_away"])
+    lines.append("        requires_custom_persistence: MobClass::%s," % spawn["requires_custom_persistence"])
+    lines.append("        spawn_dimensions_scale: %s," % f32_literal(spawn["spawn_dimensions_scale"], name + " spawn scale"))
+    lines.append("        immune_to: %s," % rust_string(spawn["immune_to"]))
+    lines.append("    });")
+    return lines
+
+
 def entity_file(entity, categories, behavior, sound_names):
     name = entity["name"]
     category = categories[entity["category"]]["variant"]
     interval = "Some(%d)" % entity["update_interval"] if entity["has_update_interval"] else "None"
     egg = "None" if entity["spawn_egg"] is None else "Some(%d)" % entity["spawn_egg"]
     sound_block = sounds_lines(entity, sound_names)
-    imports = ["EntityType", "EntityTypeId", "MobCategory"]
-    if entity["living"]:
-        imports = ["CreatureSound", "CreatureSounds", "EntityType", "EntityTypeId", "MobCategory", "SoundSource", "SoundVolume", "VoicePitch"]
-        if not any("CreatureSound::" in line for line in sound_block):
-            imports.remove("CreatureSound")
-    else:
-        imports = ["CreatureSounds"] + imports
+    spawn_block = mob_spawn_lines(entity)
+    used = "\n".join(sound_block + spawn_block) + "\nEntityType EntityTypeId MobCategory"
+    imports = [item for item in IMPORT_CANDIDATES if re.search(r"\b" + item + r"\b", used)]
     single = "use crate::{%s};" % ", ".join(imports)
     if len(single) <= WIDTH:
         head = [single]
@@ -428,6 +538,7 @@ def entity_file(entity, categories, behavior, sound_names):
     else:
         lines.append("    const DEFAULT_ATTRIBUTES: &'static [(&'static str, f64)] = &[];")
     lines.extend(sound_block)
+    lines.extend(spawn_block)
     lines.append("    type Behavior = crate::family::%s;" % behavior)
     lines.append("}")
     for line in lines:
@@ -476,6 +587,18 @@ def kind_file(entities):
     return "\n".join(lines) + "\n"
 
 
+def spawns_file(classes, predicates):
+    lines = ["#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]", "pub enum MobClass {"]
+    lines.extend("    %s," % owner for owner in classes)
+    lines.append("}")
+    lines.append("")
+    lines.append("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]")
+    lines.append("pub enum SpawnPredicate {")
+    lines.extend("    %s," % variant for variant in sorted(predicates))
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
 def mod_file(entities):
     ordered = sorted(entities, key=lambda entity: entity["path"])
     lines = ["mod %s;" % entity["path"] for entity in ordered]
@@ -517,6 +640,7 @@ def main():
     registries = load_json(args.registries)
     categories = validate(dump, registries)
     entities = dump["entity_types"]
+    mob_classes, predicates = validate_spawns(entities)
     by_class, by_entity = read_families(args.families, entities)
     sound_names = set(registry_names(registries, "minecraft:sound_event"))
 
@@ -535,6 +659,7 @@ def main():
     write(os.path.join(types_dir, "mod.rs"), mod_file(entities), stats, args.check)
     write(os.path.join(args.out, "kind.rs"), kind_file(entities), stats, args.check)
     write(os.path.join(args.out, "categories.rs"), categories_file(categories), stats, args.check)
+    write(os.path.join(args.out, "spawns.rs"), spawns_file(mob_classes, predicates), stats, args.check)
     removed = 0
     if os.path.isdir(types_dir):
         for entry in sorted(os.listdir(types_dir)):
@@ -545,13 +670,16 @@ def main():
                 else:
                     os.remove(os.path.join(types_dir, entry))
     print(
-        "entities %d categories %d classes %d living %d spawn_eggs %d families %d files %d bytes %d written %d removed %d"
+        "entities %d categories %d classes %d living %d spawn_eggs %d spawn_placements %d spawn_predicates %d mob_classes %d families %d files %d bytes %d written %d removed %d"
         % (
             len(entities),
             len(categories),
             len({entity["class"] for entity in entities}),
             sum(1 for entity in entities if entity["living"]),
             sum(1 for entity in entities if entity["spawn_egg"] is not None),
+            sum(1 for entity in entities if entity["mob_spawn"] and entity["mob_spawn"]["placement"]),
+            len(predicates),
+            len(mob_classes),
             len(by_class) + len(by_entity),
             stats["files"],
             stats["bytes"],

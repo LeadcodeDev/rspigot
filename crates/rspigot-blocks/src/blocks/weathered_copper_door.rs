@@ -32,7 +32,21 @@ impl Block for WeatheredCopperDoor {
     };
     const LIGHT_EMISSION: PerState<u8> = PerState::Uniform(0);
     const LIGHT_DAMPENING: PerState<u8> = PerState::Uniform(0);
-    const FLAGS: PerState<StateFlags> = PerState::Uniform(StateFlags(2598));
+    const FLAGS: PerState<StateFlags> = PerState::Varies(&[
+        StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982),
+        StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982),
+        StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598),
+        StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598),
+        StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982),
+        StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982),
+        StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598),
+        StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598),
+        StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982),
+        StateFlags(18982), StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982),
+        StateFlags(2598), StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598),
+        StateFlags(2598), StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598),
+        StateFlags(18982), StateFlags(18982), StateFlags(2598), StateFlags(2598),
+    ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_OAK_DOOR);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Varies(crate::shapes::SUPPORT_OAK_DOOR);
     type Behavior = crate::family::Door<true>;

@@ -34,13 +34,14 @@ impl Block for BigDripleaf {
         0,
     ]);
     const FLAGS: PerState<StateFlags> = PerState::Varies(&[
-        StateFlags(140), StateFlags(44), StateFlags(140), StateFlags(44), StateFlags(140),
-        StateFlags(44), StateFlags(136), StateFlags(40), StateFlags(140), StateFlags(44),
-        StateFlags(140), StateFlags(44), StateFlags(140), StateFlags(44), StateFlags(136),
-        StateFlags(40), StateFlags(140), StateFlags(44), StateFlags(140), StateFlags(44),
-        StateFlags(140), StateFlags(44), StateFlags(136), StateFlags(40), StateFlags(140),
-        StateFlags(44), StateFlags(140), StateFlags(44), StateFlags(140), StateFlags(44),
-        StateFlags(136), StateFlags(40),
+        StateFlags(16524), StateFlags(16428), StateFlags(16524), StateFlags(16428),
+        StateFlags(16524), StateFlags(16428), StateFlags(16520), StateFlags(16424),
+        StateFlags(16524), StateFlags(16428), StateFlags(16524), StateFlags(16428),
+        StateFlags(16524), StateFlags(16428), StateFlags(16520), StateFlags(16424),
+        StateFlags(16524), StateFlags(16428), StateFlags(16524), StateFlags(16428),
+        StateFlags(16524), StateFlags(16428), StateFlags(16520), StateFlags(16424),
+        StateFlags(16524), StateFlags(16428), StateFlags(16524), StateFlags(16428),
+        StateFlags(16524), StateFlags(16428), StateFlags(16520), StateFlags(16424),
     ]);
     const COLLISION: PerState<ShapeId> = PerState::Varies(crate::shapes::COLLISION_BIG_DRIPLEAF);
     const FACE_SUPPORT: PerState<FaceSupport> = PerState::Uniform(FaceSupport(0, 0, 0));

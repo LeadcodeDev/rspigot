@@ -23,5 +23,6 @@ pub mod player;
 pub mod ports;
 pub mod server;
 mod sound;
+mod spawning;
 pub mod status;
 pub mod streaming;
