@@ -46,6 +46,30 @@ pub fn has_light(chunk: &ChunkColumn) -> bool {
         .any(Option::is_some)
 }
 
+pub fn sky_is_consistent(chunk: &ChunkColumn) -> bool {
+    let min_y = chunk.height().min_y;
+    for z in 0..16 {
+        for x in 0..16 {
+            'column: for (index, section) in chunk.sections().iter().enumerate().rev() {
+                if section.is_empty() {
+                    continue;
+                }
+                for y in (0..16).rev() {
+                    let state = section.block(x, y, z);
+                    if opacity(state) != 0 {
+                        break 'column;
+                    }
+                    let pos = BlockPos::new(x as i32, min_y + (index * 16 + y) as i32, z as i32);
+                    if light_level(chunk, pos, true) != i32::from(MAX_LIGHT) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 struct Volume {
     height: usize,
     levels: Vec<u8>,
@@ -282,6 +306,67 @@ mod tests {
         assert_eq!(above, Some(15));
         assert!(chunk.light.sky[1].is_none());
         assert_eq!(chunk.light.sky.len(), 26);
+    }
+
+    fn daisy_chunk(roof: bool) -> ChunkColumn {
+        let mut chunk = ChunkColumn::empty(ChunkPos::new(0, 0), WorldHeight::OVERWORLD, BiomeId(0));
+        for x in 0..16 {
+            for z in 0..16 {
+                chunk.set_block(BlockPos::new(x, 63, z), stone());
+            }
+        }
+        chunk.set_block(
+            BlockPos::new(4, 64, 4),
+            rspigot_blocks::OxeyeDaisy::DEFAULT_STATE,
+        );
+        if roof {
+            chunk.set_block(BlockPos::new(4, 70, 4), stone());
+        }
+        compute(&mut chunk, true);
+        chunk
+    }
+
+    fn darken(chunk: &mut ChunkColumn, pos: BlockPos) {
+        let index = ((pos.y >> 4) - chunk.height().min_section() + 1) as usize;
+        if let Some(layer) = chunk.light.sky[index].as_mut() {
+            layer.set(
+                (pos.x & 15) as usize,
+                (pos.y & 15) as usize,
+                (pos.z & 15) as usize,
+                0,
+            );
+        }
+    }
+
+    #[test]
+    fn a_freshly_computed_chunk_has_consistent_sky_light() {
+        assert!(sky_is_consistent(&daisy_chunk(false)));
+        assert!(sky_is_consistent(&daisy_chunk(true)));
+    }
+
+    #[test]
+    fn a_flower_stored_dark_under_open_sky_is_inconsistent() {
+        let mut chunk = daisy_chunk(false);
+        let daisy = BlockPos::new(4, 64, 4);
+        assert_eq!(light_level(&chunk, daisy, true), 15);
+        darken(&mut chunk, daisy);
+        assert!(!sky_is_consistent(&chunk));
+    }
+
+    #[test]
+    fn an_air_cell_left_dark_under_open_sky_is_inconsistent() {
+        let mut chunk = daisy_chunk(false);
+        let air = BlockPos::new(6, 64, 6);
+        assert_eq!(light_level(&chunk, air, true), 15);
+        darken(&mut chunk, air);
+        assert!(!sky_is_consistent(&chunk));
+    }
+
+    #[test]
+    fn a_flower_under_a_roof_may_be_dark() {
+        let mut chunk = daisy_chunk(true);
+        darken(&mut chunk, BlockPos::new(4, 64, 4));
+        assert!(sky_is_consistent(&chunk));
     }
 
     #[test]

@@ -48,6 +48,7 @@ pub enum ChunkResult {
         source: ChunkSource,
         elapsed: Duration,
         entities: Option<Vec<Compound>>,
+        relit: bool,
     },
     Saved {
         pos: ChunkPos,
@@ -198,7 +199,11 @@ fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
             None
         }
     };
-    if !lighting::has_light(&chunk) {
+    let stale = source == ChunkSource::Disk
+        && dimension.has_skylight
+        && lighting::has_light(&chunk)
+        && !lighting::sky_is_consistent(&chunk);
+    if stale || !lighting::has_light(&chunk) {
         lighting::compute(&mut chunk, dimension.has_skylight);
     }
     if source == ChunkSource::Generated
@@ -215,6 +220,7 @@ fn load<S: ChunkStore + EntityStore, G: ChunkGenerator>(
         source,
         elapsed: started.elapsed(),
         entities,
+        relit: stale,
     }
 }
 
