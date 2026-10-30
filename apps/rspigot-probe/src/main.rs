@@ -27,6 +27,7 @@ struct Options {
     speed: f64,
     timeout: Duration,
     rate: f32,
+    command: Option<String>,
 }
 
 fn options() -> Options {
@@ -39,6 +40,7 @@ fn options() -> Options {
         speed: 1.0,
         timeout: Duration::from_secs(120),
         rate: 64.0,
+        command: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -52,6 +54,7 @@ fn options() -> Options {
             "--speed" => options.speed = value.parse().unwrap_or(1.0),
             "--timeout" => options.timeout = Duration::from_secs(value.parse().unwrap_or(120)),
             "--rate" => options.rate = value.parse().unwrap_or(64.0),
+            "--command" => options.command = Some(value),
             _ => {}
         }
     }
@@ -276,6 +279,8 @@ fn main() -> anyhow::Result<()> {
     let mut walk_started = None;
     let mut walk_chunks = 0usize;
     let mut missing_samples = Vec::new();
+    let mut command_sent: Option<Instant> = None;
+    let mut command_log: Vec<String> = Vec::new();
     client
         .stream
         .set_read_timeout(Some(Duration::from_millis(5)))?;
@@ -344,9 +349,53 @@ fn main() -> anyhow::Result<()> {
             ids::play::clientbound::DISCONNECT => bail!("disconnected: {}", reason(body)),
             _ => {}
         }
+        if command_sent.is_some() {
+            match id {
+                ids::play::clientbound::UPDATE_MOB_EFFECT => {
+                    let mut input = body;
+                    let entity = VarInt::decode(&mut input)?.0;
+                    let effect = VarInt::decode(&mut input)?.0;
+                    let amplifier = VarInt::decode(&mut input)?.0;
+                    let duration = VarInt::decode(&mut input)?.0;
+                    let flags = u8::decode(&mut input)?;
+                    command_log.push(format!("{{\"packet\":\"update_mob_effect\",\"entity\":{entity},\"effect\":{effect},\"amplifier\":{amplifier},\"duration\":{duration},\"flags\":{flags},\"trailing\":{}}}", input.len()));
+                }
+                ids::play::clientbound::UPDATE_ATTRIBUTES => {
+                    let mut input = body;
+                    let entity = VarInt::decode(&mut input)?.0;
+                    let count = VarInt::decode(&mut input)?.0;
+                    let mut parts = Vec::new();
+                    for _ in 0..count {
+                        let attribute = VarInt::decode(&mut input)?.0;
+                        let base = f64::decode(&mut input)?;
+                        let modifiers = VarInt::decode(&mut input)?.0;
+                        for _ in 0..modifiers {
+                            let modifier = String::decode(&mut input)?;
+                            let amount = f64::decode(&mut input)?;
+                            let operation = VarInt::decode(&mut input)?.0;
+                            parts.push(format!("{{\"attribute\":{attribute},\"base\":{base},\"modifier\":\"{modifier}\",\"amount\":{amount},\"operation\":{operation}}}"));
+                        }
+                    }
+                    command_log.push(format!("{{\"packet\":\"update_attributes\",\"entity\":{entity},\"modifiers\":[{}],\"trailing\":{}}}", parts.join(","), input.len()));
+                }
+                ids::play::clientbound::SYSTEM_CHAT => command_log.push(format!(
+                    "{{\"packet\":\"system_chat\",\"text\":\"{}\"}}",
+                    reason(&body[..body.len().saturating_sub(1)]).replace('"', "'")
+                )),
+                _ => {}
+            }
+            if command_sent.is_some_and(|at: Instant| at.elapsed() > Duration::from_millis(500)) {
+                break;
+            }
+        }
         if joined && target_reached.is_none() && chunks.len() >= options.target_chunks {
             target_reached = Some(started.elapsed());
             client.send(ids::play::serverbound::PLAYER_LOADED, &Empty)?;
+            if let Some(command) = &options.command {
+                client.send(ids::play::serverbound::CHAT_COMMAND, command)?;
+                command_sent = Some(Instant::now());
+                continue;
+            }
             if options.walk_blocks <= 0.0 {
                 break;
             }
@@ -379,6 +428,9 @@ fn main() -> anyhow::Result<()> {
                 break;
             }
         }
+    }
+    for line in &command_log {
+        println!("{line}");
     }
     let total = started.elapsed();
     let walk_seconds = walk_started.map_or(0.0, |w| w.elapsed().as_secs_f64());

@@ -1,3 +1,4 @@
+use rspigot_domain::effect::{EffectDuration, EffectId, EffectInstance};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::{Component, NamedColor};
 use rspigot_domain::world::Difficulty;
@@ -47,6 +48,13 @@ pub trait CommandContext {
     fn whitelist_add(&mut self, name: &str) -> bool;
     fn whitelist_remove(&mut self, name: &str) -> bool;
     fn whitelist_names(&self) -> Vec<String>;
+    fn select_players(
+        &self,
+        sender: CommandSender,
+        selector: &str,
+    ) -> Result<Vec<PlayerId>, Component>;
+    fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool;
+    fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool;
     fn seed(&self) -> i64;
     fn difficulty(&self) -> Difficulty;
     fn set_difficulty(&mut self, difficulty: Difficulty);
@@ -57,7 +65,8 @@ pub trait CommandContext {
     fn stop(&mut self);
 }
 
-const ADMIN_COMMANDS: [&str; 17] = [
+const ADMIN_COMMANDS: [&str; 18] = [
+    "effect",
     "whitelist",
     "say",
     "gamemode",
@@ -165,6 +174,7 @@ pub fn execute<C: CommandContext>(
         "kick" => kick(ctx, sender, &args),
         "op" | "deop" => operator(ctx, sender, &args, label == "op"),
         "whitelist" => whitelist(ctx, sender, &args),
+        "effect" => effect(ctx, sender, &args),
         "difficulty" => difficulty(ctx, sender, &args),
         "weather" => weather(ctx, sender, &args),
         "setworldspawn" => set_world_spawn(ctx, sender, &args),
@@ -630,6 +640,247 @@ fn operator<C: CommandContext>(
     CommandOutcome::Success
 }
 
+const MAX_EFFECT_SECONDS: i64 = 1_000_000;
+const MAX_AMPLIFIER: i64 = 255;
+const DEFAULT_EFFECT_TICKS: u32 = 600;
+const INSTANT_EFFECTS: [&str; 3] = [
+    "minecraft:instant_health",
+    "minecraft:instant_damage",
+    "minecraft:saturation",
+];
+
+fn fail<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    key: &str,
+    args: Vec<Component>,
+) -> CommandOutcome {
+    ctx.reply(
+        sender,
+        Component::translatable(key, args).color(NamedColor::Red),
+    );
+    CommandOutcome::Failure
+}
+
+fn bounded_int<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    raw: &str,
+    min: i64,
+    max: i64,
+) -> Result<i64, CommandOutcome> {
+    let Ok(value) = raw.parse::<i64>() else {
+        return Err(fail(
+            ctx,
+            sender,
+            "parsing.int.invalid",
+            vec![Component::text(raw)],
+        ));
+    };
+    if value < min {
+        return Err(fail(
+            ctx,
+            sender,
+            "argument.integer.low",
+            vec![
+                Component::text(min.to_string()),
+                Component::text(value.to_string()),
+            ],
+        ));
+    }
+    if value > max {
+        return Err(fail(
+            ctx,
+            sender,
+            "argument.integer.big",
+            vec![
+                Component::text(max.to_string()),
+                Component::text(value.to_string()),
+            ],
+        ));
+    }
+    Ok(value)
+}
+
+fn parse_effect<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    raw: &str,
+) -> Result<EffectId, CommandOutcome> {
+    EffectId::from_name(raw).ok_or_else(|| {
+        fail(
+            ctx,
+            sender,
+            "argument.resource.not_found",
+            vec![
+                Component::text(raw),
+                Component::text("minecraft:mob_effect"),
+            ],
+        )
+    })
+}
+
+fn select<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    selector: Option<&str>,
+) -> Result<Vec<PlayerId>, CommandOutcome> {
+    let selector = selector.unwrap_or("@s");
+    match ctx.select_players(sender, selector) {
+        Ok(targets) if targets.is_empty() => Err(fail(
+            ctx,
+            sender,
+            "argument.entity.notfound.entity",
+            Vec::new(),
+        )),
+        Ok(targets) => Ok(targets),
+        Err(message) => {
+            ctx.reply(sender, message.color(NamedColor::Red));
+            Err(CommandOutcome::Failure)
+        }
+    }
+}
+
+fn effect_name(effect: EffectId) -> Component {
+    Component::translatable(effect.translation_key().unwrap_or_default(), Vec::new())
+}
+
+fn effect<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+    match args.first().copied() {
+        Some("give") => effect_give(ctx, sender, &args[1..]).unwrap_or_else(|outcome| outcome),
+        Some("clear") => effect_clear(ctx, sender, &args[1..]).unwrap_or_else(|outcome| outcome),
+        _ => usage(
+            ctx,
+            sender,
+            "/effect <give|clear> <targets> [effect] [seconds] [amplifier] [hideParticles]",
+        ),
+    }
+}
+
+fn effect_give<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    args: &[&str],
+) -> Result<CommandOutcome, CommandOutcome> {
+    let (Some(selector), Some(raw_effect)) = (args.first(), args.get(1)) else {
+        return Err(usage(
+            ctx,
+            sender,
+            "/effect give <targets> <effect> [seconds|infinite] [amplifier] [hideParticles]",
+        ));
+    };
+    if args.len() > 5 {
+        return Err(usage(
+            ctx,
+            sender,
+            "/effect give <targets> <effect> [seconds|infinite] [amplifier] [hideParticles]",
+        ));
+    }
+    let targets = select(ctx, sender, Some(selector))?;
+    let effect = parse_effect(ctx, sender, raw_effect)?;
+    let instant = effect
+        .name()
+        .is_some_and(|name| INSTANT_EFFECTS.contains(&name));
+    let duration = match args.get(2).copied() {
+        None => EffectDuration::Ticks(if instant { 1 } else { DEFAULT_EFFECT_TICKS }),
+        Some("infinite") => EffectDuration::Infinite,
+        Some(raw) => {
+            let seconds = bounded_int(ctx, sender, raw, 1, MAX_EFFECT_SECONDS)? as u32;
+            EffectDuration::Ticks(if instant { seconds } else { seconds * 20 })
+        }
+    };
+    let amplifier = match args.get(3) {
+        None => 0,
+        Some(raw) => bounded_int(ctx, sender, raw, 0, MAX_AMPLIFIER)? as u8,
+    };
+    let hide_particles = match args.get(4).copied() {
+        None | Some("false") => false,
+        Some("true") => true,
+        Some(other) => {
+            return Err(fail(
+                ctx,
+                sender,
+                "parsing.bool.invalid",
+                vec![Component::text(other)],
+            ));
+        }
+    };
+    let instance = EffectInstance::new(effect, duration, amplifier, !hide_particles);
+    let applied = targets
+        .iter()
+        .filter(|target| ctx.give_effect(**target, instance))
+        .count();
+    if applied == 0 {
+        return Ok(fail(ctx, sender, "commands.effect.give.failed", Vec::new()));
+    }
+    let message = match targets.as_slice() {
+        [single] => Component::translatable(
+            "commands.effect.give.success.single",
+            vec![
+                effect_name(effect),
+                Component::text(ctx.player_name(*single).unwrap_or_default()),
+            ],
+        ),
+        many => Component::translatable(
+            "commands.effect.give.success.multiple",
+            vec![effect_name(effect), Component::text(many.len().to_string())],
+        ),
+    };
+    ctx.reply(sender, message);
+    Ok(CommandOutcome::Success)
+}
+
+fn effect_clear<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    args: &[&str],
+) -> Result<CommandOutcome, CommandOutcome> {
+    if args.len() > 2 {
+        return Err(usage(ctx, sender, "/effect clear [targets] [effect]"));
+    }
+    let targets = select(ctx, sender, args.first().copied())?;
+    let effect = match args.get(1) {
+        None => None,
+        Some(raw) => Some(parse_effect(ctx, sender, raw)?),
+    };
+    let cleared = targets
+        .iter()
+        .filter(|target| ctx.clear_effect(**target, effect))
+        .count();
+    let failed = match effect {
+        None => "commands.effect.clear.everything.failed",
+        Some(_) => "commands.effect.clear.specific.failed",
+    };
+    if cleared == 0 {
+        return Ok(fail(ctx, sender, failed, Vec::new()));
+    }
+    let message = match (effect, targets.as_slice()) {
+        (None, [single]) => Component::translatable(
+            "commands.effect.clear.everything.success.single",
+            vec![Component::text(
+                ctx.player_name(*single).unwrap_or_default(),
+            )],
+        ),
+        (None, many) => Component::translatable(
+            "commands.effect.clear.everything.success.multiple",
+            vec![Component::text(many.len().to_string())],
+        ),
+        (Some(effect), [single]) => Component::translatable(
+            "commands.effect.clear.specific.success.single",
+            vec![
+                effect_name(effect),
+                Component::text(ctx.player_name(*single).unwrap_or_default()),
+            ],
+        ),
+        (Some(effect), many) => Component::translatable(
+            "commands.effect.clear.specific.success.multiple",
+            vec![effect_name(effect), Component::text(many.len().to_string())],
+        ),
+    };
+    ctx.reply(sender, message);
+    Ok(CommandOutcome::Success)
+}
+
 fn whitelist<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
@@ -796,6 +1047,9 @@ mod tests {
         teleports: Vec<(PlayerId, Vec3)>,
         day_time: i64,
         stopped: bool,
+        effects: Vec<(PlayerId, EffectInstance)>,
+        cleared: Vec<(PlayerId, Option<EffectId>)>,
+        refuse_effects: bool,
     }
 
     fn alice() -> PlayerId {
@@ -869,6 +1123,26 @@ mod tests {
         }
         fn whitelist_names(&self) -> Vec<String> {
             Vec::new()
+        }
+        fn select_players(
+            &self,
+            sender: CommandSender,
+            selector: &str,
+        ) -> Result<Vec<PlayerId>, Component> {
+            match (selector, sender) {
+                ("@s", CommandSender::Player(id)) => Ok(vec![id]),
+                ("@s", CommandSender::Console) => Ok(Vec::new()),
+                ("@a" | "@e", _) => Ok(vec![alice(), PlayerId::offline("Bob")]),
+                (name, _) => Ok(self.find_player(name).into_iter().collect()),
+            }
+        }
+        fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool {
+            self.effects.push((player, effect));
+            !self.refuse_effects
+        }
+        fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool {
+            self.cleared.push((player, effect));
+            true
         }
         fn seed(&self) -> i64 {
             42
@@ -951,6 +1225,180 @@ mod tests {
         assert_eq!(
             ctx.replies.last().map(|r| r.1.as_str()),
             Some("Unknown command. Type \"/help\" for help.")
+        );
+    }
+
+    fn operator() -> FakeContext {
+        FakeContext {
+            operator: true,
+            ..FakeContext::default()
+        }
+    }
+
+    #[test]
+    fn effect_give_matches_vanilla_example() {
+        let mut ctx = operator();
+        let outcome = execute(
+            &mut ctx,
+            CommandSender::Player(alice()),
+            "/effect give @s speed 99999 250 false",
+        );
+        assert_eq!(outcome, CommandOutcome::Success);
+        let (target, effect) = ctx.effects[0];
+        assert_eq!(target, alice());
+        assert_eq!(
+            effect.effect,
+            EffectId::from_name("minecraft:speed").unwrap()
+        );
+        assert_eq!(effect.amplifier, 250);
+        assert_eq!(effect.duration, EffectDuration::Ticks(1_999_980));
+        assert!(effect.visible && effect.show_icon && !effect.ambient);
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("commands.effect.give.success.single effect.minecraft.speed Alice")
+        );
+    }
+
+    #[test]
+    fn effect_give_defaults_and_infinite() {
+        let mut ctx = operator();
+        execute(
+            &mut ctx,
+            CommandSender::Player(alice()),
+            "effect give Alice minecraft:night_vision",
+        );
+        assert_eq!(ctx.effects[0].1.duration, EffectDuration::Ticks(600));
+        assert_eq!(ctx.effects[0].1.amplifier, 0);
+        execute(
+            &mut ctx,
+            CommandSender::Player(alice()),
+            "effect give @s jump_boost infinite 2 true",
+        );
+        assert_eq!(ctx.effects[1].1.duration, EffectDuration::Infinite);
+        assert!(!ctx.effects[1].1.visible);
+        execute(
+            &mut ctx,
+            CommandSender::Player(alice()),
+            "effect give @s instant_health 5",
+        );
+        assert_eq!(ctx.effects[2].1.duration, EffectDuration::Ticks(5));
+    }
+
+    #[test]
+    fn effect_give_rejects_out_of_range_values() {
+        let mut ctx = operator();
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed 1000001"
+            ),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed 10 256"
+            ),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed 0"
+            ),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed 10 1 maybe"
+            ),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s not_real"
+            ),
+            CommandOutcome::Failure
+        );
+        assert!(ctx.effects.is_empty());
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("argument.resource.not_found not_real minecraft:mob_effect")
+        );
+    }
+
+    #[test]
+    fn effect_give_reports_failure_when_nothing_changed() {
+        let mut ctx = FakeContext {
+            operator: true,
+            refuse_effects: true,
+            ..FakeContext::default()
+        };
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed"
+            ),
+            CommandOutcome::Failure
+        );
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("commands.effect.give.failed")
+        );
+    }
+
+    #[test]
+    fn effect_give_multiple_targets_and_console_self_fails() {
+        let mut ctx = operator();
+        execute(
+            &mut ctx,
+            CommandSender::Console,
+            "effect give @a glowing 30",
+        );
+        assert_eq!(ctx.effects.len(), 2);
+        assert_eq!(
+            ctx.replies.last().map(|r| r.1.as_str()),
+            Some("commands.effect.give.success.multiple effect.minecraft.glowing 2")
+        );
+        assert_eq!(
+            execute(&mut ctx, CommandSender::Console, "effect give @s speed"),
+            CommandOutcome::Failure
+        );
+    }
+
+    #[test]
+    fn effect_clear_variants() {
+        let mut ctx = operator();
+        execute(&mut ctx, CommandSender::Player(alice()), "effect clear");
+        execute(
+            &mut ctx,
+            CommandSender::Player(alice()),
+            "effect clear @s speed",
+        );
+        assert_eq!(
+            ctx.cleared,
+            vec![(alice(), None), (alice(), EffectId::from_name("speed"))]
+        );
+    }
+
+    #[test]
+    fn effect_requires_operator() {
+        let mut ctx = FakeContext::default();
+        assert_eq!(
+            execute(
+                &mut ctx,
+                CommandSender::Player(alice()),
+                "effect give @s speed"
+            ),
+            CommandOutcome::Denied
         );
     }
 

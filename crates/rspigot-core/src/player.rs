@@ -1,3 +1,4 @@
+use rspigot_domain::effect::ActiveEffects;
 use rspigot_domain::item::Inventory;
 use rspigot_domain::player::{ClientSettings, GameMode, GameProfile, PlayerId};
 use rspigot_domain::{EntityId, Rotation, Vec3};
@@ -28,6 +29,7 @@ pub struct Player<L> {
     pub tracked: FxHashSet<EntityId>,
     pub loaded: bool,
     pub operator: bool,
+    pub effects: ActiveEffects,
 }
 
 impl<L> Player<L> {
@@ -64,6 +66,12 @@ impl<L> Player<L> {
         }
         if self.sprinting {
             flags |= 0x08;
+        }
+        if self.effects.has("minecraft:invisibility") {
+            flags |= 0x20;
+        }
+        if self.effects.has("minecraft:glowing") {
+            flags |= 0x40;
         }
         flags
     }

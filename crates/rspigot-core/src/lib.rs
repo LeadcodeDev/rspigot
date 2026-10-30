@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod console;
 mod context;
+mod effects;
 pub mod events;
 mod input;
 pub mod lighting;

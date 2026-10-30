@@ -339,6 +339,7 @@ impl<L: ClientLink> Server<L> {
             tracked: FxHashSet::default(),
             loaded: false,
             operator,
+            effects: Default::default(),
         };
         tracing::info!(
             "{}[/{}] logged in with entity id {} at ([{}]{:.1}, {:.1}, {:.1})",
@@ -507,6 +508,7 @@ impl<L: ClientLink> Server<L> {
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);
         }
+        self.tick_effects();
         self.update_tracking();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();

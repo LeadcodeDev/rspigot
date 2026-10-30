@@ -1,5 +1,8 @@
 use std::num::NonZeroU8;
 
+use std::hash::{BuildHasher, Hasher};
+
+use rspigot_domain::effect::{EffectId, EffectInstance};
 use rspigot_domain::item::{HOTBAR_START, ItemStack, PLAYER_INVENTORY_SIZE};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
@@ -249,6 +252,62 @@ impl<L: ClientLink> CommandContext for Server<L> {
             .iter()
             .map(|e| e.name.clone())
             .collect()
+    }
+
+    fn select_players(
+        &self,
+        sender: CommandSender,
+        selector: &str,
+    ) -> Result<Vec<PlayerId>, Component> {
+        let Some(kind) = selector.strip_prefix('@') else {
+            return Ok(self.find_player(selector).into_iter().collect());
+        };
+        if let Some((_, options)) = kind.split_once('[') {
+            let option = options.split(['=', ']']).next().unwrap_or_default();
+            return Err(Component::translatable(
+                "argument.entity.options.unknown",
+                vec![Component::text(option)],
+            ));
+        }
+        let origin = match sender {
+            CommandSender::Player(id) => self
+                .players
+                .get(&id)
+                .map_or(self.world.spawn, |p| p.position),
+            CommandSender::Console => self.world.spawn,
+        };
+        let mut nearest: Vec<(f64, PlayerId)> = self
+            .players
+            .values()
+            .map(|p| (p.position.distance_squared(origin), p.id))
+            .collect();
+        nearest.sort_by(|a, b| a.0.total_cmp(&b.0));
+        match kind {
+            "s" => Ok(match sender {
+                CommandSender::Player(id) => vec![id],
+                CommandSender::Console => Vec::new(),
+            }),
+            "p" => Ok(nearest.first().map(|(_, id)| *id).into_iter().collect()),
+            "a" | "e" => Ok(nearest.into_iter().map(|(_, id)| id).collect()),
+            "r" => {
+                let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+                hasher.write_u64(self.world.level.game_time as u64);
+                let index = (hasher.finish() as usize).checked_rem(nearest.len());
+                Ok(index.map(|i| nearest[i].1).into_iter().collect())
+            }
+            other => Err(Component::translatable(
+                "argument.entity.selector.unknown",
+                vec![Component::text(format!("@{other}"))],
+            )),
+        }
+    }
+
+    fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool {
+        self.apply_effect(player, effect)
+    }
+
+    fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool {
+        self.remove_effects(player, effect)
     }
 
     fn seed(&self) -> i64 {

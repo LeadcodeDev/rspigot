@@ -12,6 +12,7 @@ use rspigot_core::events::{
 use rspigot_domain::chunk::{
     ChunkColumn, HeightmapKind as DomainHeightmap, LightArray as DomainLight,
 };
+use rspigot_domain::effect::{AttributeOperation, AttributeState, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::GameMode as DomainGameMode;
 use rspigot_domain::world::Difficulty as DomainDifficulty;
@@ -29,7 +30,9 @@ use rspigot_protocol::play::commands::{
     ArgumentParser as WireParser, CommandNode as WireNode, CommandNodeKind as WireNodeKind,
     SimpleParser, StringKind, Suggestion, parser,
 };
+use rspigot_protocol::play::effect::{FLAG_AMBIENT, FLAG_BLEND, FLAG_SHOW_ICON, FLAG_VISIBLE};
 use rspigot_protocol::play::entity::{
+    AttributeModifier as WireModifier, AttributeOperation as WireOperation, AttributeSnapshot,
     EquipmentSlot as WireSlot, PositionPath, SwingAnimationStyle, SwingAnimationType, VecDelta,
 };
 use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue};
@@ -247,6 +250,9 @@ fn parser(p: &CoreParser) -> WireParser {
         CoreParser::GameMode => simple(parser::GAMEMODE),
         CoreParser::Dimension => simple(parser::DIMENSION),
         CoreParser::ResourceLocation => simple(parser::RESOURCE_LOCATION),
+        CoreParser::Resource { registry } => WireParser::Resource {
+            registry: registry.clone(),
+        },
     }
 }
 
@@ -465,6 +471,44 @@ pub fn chunk_packet(chunk: &ChunkColumn, out: &mut Vec<u8>) {
         },
     };
     write_packet(&packet, out);
+}
+
+fn effect_flags(effect: &EffectInstance, blend: bool) -> u8 {
+    let mut flags = 0;
+    if effect.ambient {
+        flags |= FLAG_AMBIENT;
+    }
+    if effect.visible {
+        flags |= FLAG_VISIBLE;
+    }
+    if effect.show_icon {
+        flags |= FLAG_SHOW_ICON;
+    }
+    if blend {
+        flags |= FLAG_BLEND;
+    }
+    flags
+}
+
+fn attribute_snapshot(state: &AttributeState) -> Option<AttributeSnapshot> {
+    let attribute = rspigot_data::registries::static_index("minecraft:attribute", state.attribute)?;
+    Some(AttributeSnapshot {
+        attribute: attribute as i32,
+        base: state.base,
+        modifiers: state
+            .modifiers
+            .iter()
+            .map(|m| WireModifier {
+                id: m.id.to_owned(),
+                amount: m.amount,
+                operation: match m.operation {
+                    AttributeOperation::AddValue => WireOperation::AddValue,
+                    AttributeOperation::AddMultipliedBase => WireOperation::AddMultipliedBase,
+                    AttributeOperation::AddMultipliedTotal => WireOperation::AddMultipliedTotal,
+                },
+            })
+            .collect(),
+    })
 }
 
 fn fixed(value: f64) -> i64 {
@@ -940,6 +984,34 @@ impl Encoder {
                 &EntityEvent {
                     entity: entity.0,
                     status: 24 + (*level).min(4) as i8,
+                },
+            ),
+            ClientEvent::EffectApplied {
+                entity,
+                effect,
+                blend,
+            } => Self::queue(
+                writer,
+                &cb::UpdateMobEffect {
+                    entity_id: entity.0,
+                    effect: i32::from(effect.effect.0),
+                    amplifier: i32::from(effect.amplifier),
+                    duration: effect.duration.wire_ticks(),
+                    flags: effect_flags(effect, *blend),
+                },
+            ),
+            ClientEvent::EffectRemoved { entity, effect } => Self::queue(
+                writer,
+                &cb::RemoveMobEffect {
+                    entity_id: entity.0,
+                    effect: i32::from(effect.0),
+                },
+            ),
+            ClientEvent::Attributes { entity, attributes } => Self::queue(
+                writer,
+                &cb::UpdateAttributes {
+                    entity_id: entity.0,
+                    attributes: attributes.iter().filter_map(attribute_snapshot).collect(),
                 },
             ),
             ClientEvent::Disconnect(_) => Ok(()),
