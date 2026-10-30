@@ -348,6 +348,7 @@ impl<L: ClientLink> Server<L> {
                     self.set_block(pos, BlockStateId::AIR);
                     if mode == GameMode::Survival {
                         self.drop_block_loot(id, pos, state);
+                        self.wear_tool_for_mining(id, hardness);
                     }
                 }
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));

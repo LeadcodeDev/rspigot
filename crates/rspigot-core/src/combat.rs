@@ -4,7 +4,6 @@ use rspigot_domain::attribute::{
 };
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::entity::physics::has_tag;
-use rspigot_domain::entity::reward::{damage_value, max_damage, set_damage_value};
 use rspigot_domain::entity::{Aabb, EntityState};
 use rspigot_domain::mth;
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -13,7 +12,7 @@ use rspigot_domain::{EntityId, Vec3};
 use rspigot_entities::SoundSource;
 
 use crate::commands::Target;
-use crate::events::{Animation, ClientEvent, EntityStatus, EquipmentSlot};
+use crate::events::{Animation, ClientEvent, Hand};
 use crate::health::{DamageSource, attributes};
 use crate::mobs::{MIN_KNOCKBACK_DIRECTION, knockback_velocity};
 use crate::ports::ClientLink;
@@ -432,49 +431,16 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn damage_weapon(&mut self, id: PlayerId) {
-        let Some(player) = self.players.get_mut(&id) else {
-            return;
-        };
-        if player.game_mode == GameMode::Creative {
-            return;
-        }
-        let slot =
-            rspigot_domain::item::HOTBAR_START + usize::from(player.inventory.selected_hotbar);
-        let Some(mut stack) = player.inventory.get(slot).cloned() else {
-            return;
-        };
-        let Some(amount) = stack
-            .item
-            .kind()
+        let amount = self
+            .players
+            .get(&id)
+            .and_then(|player| player.inventory.held())
+            .and_then(|stack| stack.item.kind())
             .and_then(|kind| kind.weapon_damage())
-            .and_then(|amount| i32::try_from(amount).ok())
-        else {
-            return;
-        };
-        let Some(max) = max_damage(&stack) else {
-            return;
-        };
-        if amount == 0 {
-            return;
+            .and_then(|amount| i32::try_from(amount).ok());
+        if let Some(amount) = amount {
+            self.hurt_and_break(id, Hand::Main, amount);
         }
-        let before = Self::equipment_of(player);
-        let damage = damage_value(&stack) + amount;
-        set_damage_value(&mut stack, damage);
-        let broken = damage_value(&stack) >= max;
-        let entity = player.entity_id;
-        player
-            .inventory
-            .set(slot, if broken { None } else { Some(stack) });
-        if broken {
-            let status = ClientEvent::EntityStatus {
-                entity,
-                status: EntityStatus::EquipmentBreak(EquipmentSlot::MainHand),
-            };
-            self.push(Audience::One(id), status.clone());
-            self.push(Audience::Trackers(entity), status);
-        }
-        self.sync_inventory(id);
-        self.broadcast_equipment_changes(id, before);
     }
 }
 
