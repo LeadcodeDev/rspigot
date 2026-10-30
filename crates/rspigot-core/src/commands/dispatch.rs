@@ -3,6 +3,7 @@ use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::{Component, NamedColor};
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, ItemId, Vec3};
+use rspigot_items::ItemKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSender {
@@ -526,12 +527,7 @@ fn give<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) ->
     let Some(target) = target_or_self(ctx, sender, args.first()) else {
         return not_found(ctx, sender);
     };
-    let item_name = if args[1].contains(':') {
-        args[1].to_owned()
-    } else {
-        format!("minecraft:{}", args[1])
-    };
-    let Some(item) = rspigot_data::items::id(&item_name) else {
+    let Some(item) = ItemKind::from_name(args[1]) else {
         ctx.reply(
             sender,
             Component::translatable("argument.item.id.invalid", vec![Component::text(args[1])])
@@ -544,7 +540,7 @@ fn give<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) ->
         .and_then(|c| c.parse::<u32>().ok())
         .unwrap_or(1)
         .clamp(1, 6400);
-    if !ctx.give(target, ItemId(item), count) {
+    if !ctx.give(target, item.id(), count) {
         return CommandOutcome::Failure;
     }
     let name = ctx.player_name(target).unwrap_or_default();
@@ -554,7 +550,7 @@ fn give<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) ->
             "commands.give.success.single",
             vec![
                 Component::text(count.to_string()),
-                Component::text(format!("[{item_name}]")),
+                Component::text(format!("[{}]", item.name())),
                 Component::text(name),
             ],
         ),

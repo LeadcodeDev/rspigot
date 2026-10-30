@@ -1,7 +1,6 @@
 pub mod entities;
 #[rustfmt::skip]
 mod generated;
-pub mod items;
 pub mod loot;
 pub mod registries;
 pub mod tags;
@@ -27,6 +26,7 @@ mod tests {
     use super::*;
 
     const STONE_ITEM_ID: u16 = 1;
+    const ITEM_COUNT: usize = 1658;
     const STONE_BLOCK_ID: u32 = 1;
     const PIG_ENTITY_ID: u16 = 101;
 
@@ -112,7 +112,8 @@ mod tests {
         );
         assert_eq!(registries::static_entries("minecraft:nope"), None);
         let items = registries::static_entries("minecraft:item").unwrap();
-        assert_eq!(items.len(), items::count());
+        assert_eq!(items.len(), ITEM_COUNT);
+        assert_eq!(items[0], "minecraft:air");
         assert_eq!(items[1], "minecraft:stone");
         for (index, name) in items.iter().enumerate() {
             assert_eq!(
@@ -120,28 +121,6 @@ mod tests {
                 Some(u32::try_from(index).unwrap())
             );
         }
-    }
-
-    #[test]
-    fn items_lookup() {
-        assert_eq!(items::id("minecraft:stone"), Some(STONE_ITEM_ID));
-        assert_eq!(items::name(STONE_ITEM_ID), Some("minecraft:stone"));
-        assert_eq!(items::id("minecraft:nope"), None);
-        assert_eq!(items::name(u16::MAX), None);
-        assert_eq!(items::id("minecraft:air"), Some(0));
-        for id in 0..items::count() as u16 {
-            let name = items::name(id).unwrap();
-            assert_eq!(items::id(name), Some(id));
-        }
-    }
-
-    #[test]
-    fn stack_sizes() {
-        let id = |name: &str| items::id(name).unwrap();
-        assert_eq!(items::max_stack_size(id("minecraft:stone")), 64);
-        assert_eq!(items::max_stack_size(id("minecraft:diamond_sword")), 1);
-        assert_eq!(items::max_stack_size(id("minecraft:ender_pearl")), 16);
-        assert_eq!(items::max_stack_size(id("minecraft:snowball")), 16);
     }
 
     #[test]

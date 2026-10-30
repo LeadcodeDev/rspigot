@@ -1239,6 +1239,7 @@ dependencies = [
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-domain",
+ "rspigot-items",
  "rspigot-nbt",
  "rustc-hash",
  "sha2",
@@ -1260,6 +1261,7 @@ dependencies = [
  "rspigot-blocks",
  "rspigot-data",
  "rspigot-effects",
+ "rspigot-items",
  "rspigot-nbt",
  "thiserror",
  "uuid",
@@ -1276,6 +1278,15 @@ dependencies = [
 name = "rspigot-entities"
 version = "0.1.0"
 dependencies = [
+ "rspigot-data",
+ "rspigot-items",
+]
+
+[[package]]
+name = "rspigot-items"
+version = "0.1.0"
+dependencies = [
+ "rspigot-blocks",
  "rspigot-data",
 ]
 

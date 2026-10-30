@@ -1,0 +1,10 @@
+BlockItem BlockItem
+DoubleHighBlockItem BlockItem
+StandingAndWallBlockItem BlockItem
+BannerItem BlockItem
+HangingSignItem BlockItem
+PlayerHeadItem BlockItem
+GameMasterBlockItem BlockItem
+PlaceOnWaterBlockItem BlockItem
+ScaffoldingBlockItem BlockItem
+SolidBucketItem BlockItem
