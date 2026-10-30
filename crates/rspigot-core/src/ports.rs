@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 
 use rspigot_domain::chunk::ChunkColumn;
-use rspigot_domain::player::GameProfile;
+use rspigot_domain::player::{GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{ChunkPos, Identifier, Vec3};
@@ -15,6 +15,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("corrupt chunk at {pos:?}: {reason}")]
     Corrupt { pos: ChunkPos, reason: String },
+    #[error("corrupt player data for {player}: {reason}")]
+    CorruptPlayer { player: PlayerId, reason: String },
 }
 
 pub trait ChunkStore: Send + Sync + 'static {
@@ -39,6 +41,11 @@ pub trait EntityStore: Send + Sync + 'static {
         pos: ChunkPos,
         entities: &[Compound],
     ) -> Result<(), StoreError>;
+}
+
+pub trait PlayerStore: Send + Sync + 'static {
+    fn load_player(&self, player: PlayerId) -> Result<Option<Compound>, StoreError>;
+    fn save_player(&self, player: PlayerId, data: &Compound) -> Result<(), StoreError>;
 }
 
 pub trait ChunkGenerator: Send + Sync + 'static {

@@ -460,6 +460,7 @@ impl<L: ClientLink> Server<L> {
         }
         if events.autosaved {
             self.save_all_entities();
+            self.persist_all_players();
         }
     }
 

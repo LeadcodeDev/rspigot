@@ -4,6 +4,7 @@ mod compression;
 mod error;
 mod layout;
 mod level;
+mod players;
 mod region;
 mod store;
 #[cfg(test)]
