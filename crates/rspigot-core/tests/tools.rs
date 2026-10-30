@@ -380,3 +380,72 @@ fn a_hoe_does_nothing_in_adventure_mode() {
 
     assert_eq!(last_update(&world.alice, SOIL), Some(soil("dirt")));
 }
+
+fn level_event(player: &Player, event: i32, pos: BlockPos) -> bool {
+    player.log.iter().any(|candidate| {
+        matches!(
+            candidate,
+            ClientEvent::LevelEvent { event: seen, pos: at, .. } if *seen == event && *at == pos
+        )
+    })
+}
+
+fn any_level_event(player: &Player) -> bool {
+    player
+        .log
+        .iter()
+        .any(|event| matches!(event, ClientEvent::LevelEvent { .. }))
+}
+
+#[test]
+fn scraping_copper_steps_it_back_and_only_the_others_see_the_particles() {
+    let mut world = world();
+    world.place_soil("iron_axe", "exposed_copper");
+    world.use_on(SOIL, Direction::Up);
+
+    assert_eq!(last_update(&world.alice, SOIL), Some(soil("copper_block")));
+    assert!(heard(&world.bob, "minecraft:item.axe.scrape"));
+    assert!(level_event(&world.bob, 3005, SOIL));
+    assert!(!any_level_event(&world.alice));
+    assert_eq!(damage_in_slot(&world.alice, 0), Some(1));
+}
+
+#[test]
+fn removing_wax_gives_back_the_unwaxed_block() {
+    let mut world = world();
+    world.place_soil("iron_axe", "waxed_oxidized_copper");
+    world.use_on(SOIL, Direction::Up);
+
+    assert_eq!(
+        last_update(&world.alice, SOIL),
+        Some(soil("oxidized_copper"))
+    );
+    assert!(heard(&world.bob, "minecraft:item.axe.wax_off"));
+    assert!(level_event(&world.bob, 3004, SOIL));
+    assert_eq!(damage_in_slot(&world.alice, 0), Some(1));
+}
+
+#[test]
+fn a_stripping_axe_makes_no_particles() {
+    let mut world = world();
+    world.place_soil("iron_axe", "oak_log");
+    world.use_on(SOIL, Direction::Up);
+
+    assert!(heard(&world.bob, "minecraft:item.axe.strip"));
+    assert!(!any_level_event(&world.bob));
+}
+
+#[test]
+fn copper_doors_are_left_alone_for_now() {
+    let mut world = world();
+    world.give("iron_axe");
+    world.give("exposed_copper_door");
+    world.select(1);
+    world.use_on(FLOOR, Direction::Up);
+    world.select(0);
+    world.use_on(SOIL, Direction::Up);
+
+    assert!(!heard(&world.bob, "minecraft:item.axe.scrape"));
+    assert!(!any_level_event(&world.bob));
+    assert_eq!(damage_in_slot(&world.alice, 0), None);
+}
