@@ -48,7 +48,7 @@ impl<L: ClientLink> Server<L> {
         velocity: Vec3,
         pickup_delay: u16,
         stack: ItemStack,
-    ) {
+    ) -> Option<EntityId> {
         let mut base = self.new_entity_base(Kind::Item);
         base.position = position;
         base.old_position = position;
@@ -56,7 +56,8 @@ impl<L: ClientLink> Server<L> {
         base.set_yaw(yaw);
         base.velocity = velocity;
         let state = ItemState::new(&mut base, stack, i32::from(pickup_delay));
-        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
+        self.add_entity(Entity::new(base, EntityState::Item(state)))
+            .ok()
     }
 
     pub(crate) fn tick_item_entity(&mut self, id: EntityId) {

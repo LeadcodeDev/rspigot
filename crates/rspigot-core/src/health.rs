@@ -61,6 +61,7 @@ pub struct DamageSource {
     pub causing: Option<SourceEntity>,
     pub direct: Option<SourceEntity>,
     pub position: Option<Vec3>,
+    pub knockback: Option<(f64, f64)>,
 }
 
 impl DamageSource {
@@ -70,6 +71,7 @@ impl DamageSource {
             causing: None,
             direct: None,
             position: None,
+            knockback: None,
         }
     }
 
@@ -79,6 +81,7 @@ impl DamageSource {
             causing: Some(source.clone()),
             direct: Some(source),
             position: None,
+            knockback: None,
         }
     }
 
@@ -91,9 +94,11 @@ impl DamageSource {
     }
 
     pub fn scales_with_difficulty(&self) -> bool {
-        self.causing
-            .as_ref()
-            .is_some_and(|c| c.kind.living() && c.kind != Kind::Player)
+        self.kind.scales_always()
+            || self
+                .causing
+                .as_ref()
+                .is_some_and(|c| c.kind.living() && c.kind != Kind::Player)
     }
 
     pub fn creative_attacker(&self) -> bool {
@@ -103,6 +108,14 @@ impl DamageSource {
     pub(crate) fn source_position(&self) -> Option<Vec3> {
         self.position
             .or_else(|| self.direct.as_ref().map(|d| d.position))
+    }
+
+    pub(crate) fn knockback_from(&self, victim: Vec3) -> (f64, f64) {
+        if let Some(direction) = self.knockback {
+            return direction;
+        }
+        self.source_position()
+            .map_or((0.0, 0.0), |s| (s.x - victim.x, s.z - victim.z))
     }
 }
 
@@ -147,6 +160,9 @@ pub struct Vitals {
     pub equipment: Vec<(ItemSlot, ItemId)>,
     pub experience: PlayerExperience,
     pub last_hurt_mob: Option<EntityId>,
+    pub fire_ticks: i32,
+    pub arrow_count: i32,
+    pub remove_arrow_time: i32,
     sent: Option<SentVitals>,
 }
 
@@ -177,6 +193,9 @@ impl Default for Vitals {
             equipment: Vec::new(),
             experience: PlayerExperience::default(),
             last_hurt_mob: None,
+            fire_ticks: 0,
+            arrow_count: 0,
+            remove_arrow_time: 0,
             sent: None,
         }
     }
@@ -417,9 +436,7 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), event.clone());
             self.push(Audience::Trackers(entity), event);
             if !kind.is(DamageTag::NoKnockback) {
-                let (dx, dz) = source
-                    .source_position()
-                    .map_or((0.0, 0.0), |s| (s.x - position.x, s.z - position.z));
+                let (dx, dz) = source.knockback_from(position);
                 self.knockback(id, crate::combat::DEFAULT_KNOCKBACK, dx, dz);
                 self.indicate_damage(id, dx, dz);
             }
@@ -686,7 +703,18 @@ impl<L: ClientLink> Server<L> {
                 }
             }
             vitals.combat.recheck(now, true);
-            if player.position.y < floor {
+            if vitals.arrow_count > 0 {
+                if vitals.remove_arrow_time <= 0 {
+                    vitals.remove_arrow_time = 20 * (30 - vitals.arrow_count);
+                }
+                vitals.remove_arrow_time -= 1;
+                if vitals.remove_arrow_time <= 0 {
+                    vitals.arrow_count -= 1;
+                    self.broadcast_metadata(id);
+                }
+            }
+            self.tick_player_fire(id);
+            if self.players.get(&id).is_some_and(|p| p.position.y < floor) {
                 self.hurt(id, &DamageSource::new(DamageType::OutOfWorld), VOID_DAMAGE);
             }
         }

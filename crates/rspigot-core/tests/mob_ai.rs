@@ -508,7 +508,7 @@ fn cow_ai_is_rebuilt_after_reload_and_keeps_its_home() {
     );
     pump(&mut server, &mut alice, 5);
     let before = only(&server, Kind::Cow);
-    assert_eq!(ai(&server, before.id).goals().goals().len(), 5);
+    assert_eq!(ai(&server, before.id).goals().goals().len(), 8);
     server.handle(Inbound::Console("tp Alice 2000 64 2000".to_owned()));
     pump(&mut server, &mut alice, 40);
     walk(&mut server, &alice, Vec3::new(2000.5, 64.0, 2000.5));
@@ -529,7 +529,7 @@ fn cow_ai_is_rebuilt_after_reload_and_keeps_its_home() {
     assert_eq!(after.uuid, before.uuid);
     assert_ne!(after.id, before.id);
     let rebuilt = ai(&server, after.id);
-    assert_eq!(rebuilt.goals().goals().len(), 5);
+    assert_eq!(rebuilt.goals().goals().len(), 8);
     assert!(rebuilt.can_float());
     let home = Vec3::new(100.5, 64.0, 100.5);
     let mut farthest = 0.0f64;

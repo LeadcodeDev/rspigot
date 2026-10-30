@@ -3,6 +3,9 @@ use rspigot_domain::entity::living::LivingState;
 use rspigot_domain::{BlockPos, EntityId, Vec3};
 use rspigot_entities::EntityKind;
 
+use crate::action::MobAction;
+use crate::blocks::BreakDoorGoal;
+use crate::combat::{MeleeAttackGoal, RangedBowAttackGoal};
 use crate::control::{BodyRotationControl, JumpControl, LookControl, MoveControl};
 use crate::goal::{Flag, GoalSelector};
 use crate::goals::MobGoal;
@@ -10,11 +13,15 @@ use crate::random::MobRandom;
 use crate::registry;
 use crate::sensing::Sensing;
 use crate::targeting;
-use crate::world::{AiWorld, Living, MobView};
+use crate::world::{AiWorld, Living, MobBody, MobView};
 use crate::{BlockView, MobProfile, MobState, MobTick, Navigation, PathType, combat_fall_distance};
 
 pub const UPDATE_GOAL_SELECTOR_EVERY_N_TICKS: i32 = 2;
 pub const CONTROL_FLAG_INTERVAL: i32 = 5;
+const HARD_BOW_INTERVAL: i32 = 20;
+const NORMAL_BOW_INTERVAL: i32 = 40;
+const BOW_ATTACK_RADIUS: f32 = 15.0;
+const SKELETON_MELEE_SPEED: f64 = 1.2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Brain {
@@ -27,6 +34,7 @@ pub struct Brain {
     pub sensing: Sensing,
     pub target: Option<EntityId>,
     pub profile: MobProfile,
+    pub actions: Vec<MobAction>,
     follow_range: f64,
 }
 
@@ -54,6 +62,7 @@ impl Brain {
             sensing: Sensing::default(),
             target: None,
             profile,
+            actions: Vec::new(),
             follow_range,
         }
     }
@@ -63,6 +72,7 @@ pub struct AiContext<'a, W> {
     pub mob: &'a MobView,
     pub world: &'a W,
     pub brain: &'a mut Brain,
+    pub body: &'a mut MobBody,
 }
 
 pub fn mob_tick(mob: &MobView, game_time: i64) -> MobTick {
@@ -112,17 +122,39 @@ impl<W: AiWorld> AiContext<'_, W> {
     }
 
     pub fn move_to_pos(&mut self, position: Vec3, speed_modifier: f64) -> bool {
+        let path = self.create_path_to(position.block(), 1);
+        self.move_along(path, speed_modifier)
+    }
+
+    pub fn act(&mut self, action: MobAction) {
+        self.brain.actions.push(action);
+    }
+
+    pub fn create_path_to(&mut self, pos: BlockPos, reach: i32) -> Option<crate::Path> {
         let profile = self.path_profile();
         let tick = self.tick_state();
         let follow = self.mob.follow_range;
-        self.brain.navigation.move_to_pos(
-            self.world,
-            &profile,
-            &tick,
-            position,
-            speed_modifier,
-            follow,
-        )
+        self.brain
+            .navigation
+            .create_path(self.world, &profile, &tick, pos, reach, follow)
+    }
+
+    pub fn move_along(&mut self, path: Option<crate::Path>, speed_modifier: f64) -> bool {
+        let profile = self.path_profile();
+        let tick = self.tick_state();
+        self.brain
+            .navigation
+            .move_to(path, speed_modifier, self.world, &profile, &tick)
+    }
+
+    pub fn move_to_entity_within(
+        &mut self,
+        target: &Living,
+        reach: i32,
+        speed_modifier: f64,
+    ) -> bool {
+        let path = self.create_path_to(target.position.block(), reach);
+        path.is_some() && self.move_along(path, speed_modifier)
     }
 
     pub fn move_to_entity(&mut self, target: &Living, speed_modifier: f64) -> bool {
@@ -171,22 +203,82 @@ impl<W: AiWorld> AiContext<'_, W> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GoalChange {
+    Weapon { bow: bool, interval: i32 },
+    BreakDoors(bool),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MobAi {
     goals: GoalSelector<MobGoal>,
     targets: GoalSelector<MobGoal>,
     brain: Brain,
+    pending: Vec<GoalChange>,
+    can_break_doors: bool,
 }
 
 impl MobAi {
-    pub fn new(kind: EntityKind, seed: i64) -> Self {
+    pub fn new(kind: EntityKind, seed: i64, settings: registry::GoalSettings) -> Self {
         let mut ai = Self {
             goals: GoalSelector::new(),
             targets: GoalSelector::new(),
             brain: Brain::new(kind, seed),
+            pending: Vec::new(),
+            can_break_doors: false,
         };
-        registry::register_goals(kind, &mut ai.goals, &mut ai.targets, &mut ai.brain);
+        registry::register_goals(
+            kind,
+            &mut ai.goals,
+            &mut ai.targets,
+            &mut ai.brain,
+            settings,
+        );
         ai
+    }
+
+    pub fn reassess_weapon(&mut self, bow: bool, hard: bool) {
+        let interval = if hard {
+            HARD_BOW_INTERVAL
+        } else {
+            NORMAL_BOW_INTERVAL
+        };
+        self.pending.push(GoalChange::Weapon { bow, interval });
+    }
+
+    pub fn set_can_break_doors(&mut self, can_break_doors: bool) {
+        if self.brain.navigation.is_climber() || self.can_break_doors == can_break_doors {
+            return;
+        }
+        self.can_break_doors = can_break_doors;
+        self.brain.profile.can_open_doors = can_break_doors;
+        self.pending.push(GoalChange::BreakDoors(can_break_doors));
+    }
+
+    pub fn can_break_doors(&self) -> bool {
+        self.can_break_doors
+    }
+
+    pub fn is_panicking(&self) -> bool {
+        self.goals
+            .goals()
+            .iter()
+            .any(|goal| goal.is_running() && matches!(goal.goal(), MobGoal::Panic(_)))
+    }
+
+    pub fn eat_animation_tick(&self) -> i32 {
+        self.goals
+            .goals()
+            .iter()
+            .find_map(|goal| match goal.goal() {
+                MobGoal::EatBlock(eat) => Some(eat.eat_animation_tick()),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    pub fn set_target(&mut self, target: Option<EntityId>) {
+        self.brain.target = target;
     }
 
     pub fn goals(&self) -> &GoalSelector<MobGoal> {
@@ -213,7 +305,15 @@ impl MobAi {
         self.brain.profile.can_float
     }
 
-    pub fn think<W: AiWorld>(&mut self, mob: &MobView, world: &W) {
+    pub fn take_actions(&mut self) -> Vec<MobAction> {
+        std::mem::take(&mut self.brain.actions)
+    }
+
+    pub fn goals_mut(&mut self) -> &mut GoalSelector<MobGoal> {
+        &mut self.goals
+    }
+
+    pub fn think<W: AiWorld>(&mut self, mob: &MobView, world: &W, body: &mut MobBody) {
         self.brain.sensing.tick();
         if self.brain.follow_range != mob.follow_range {
             self.brain.follow_range = mob.follow_range;
@@ -221,11 +321,21 @@ impl MobAi {
                 .navigation
                 .update_max_visited_nodes(mob.follow_range);
         }
+        if self.brain.profile.width != mob.width || self.brain.profile.height != mob.height {
+            self.brain.profile.width = mob.width;
+            self.brain.profile.height = mob.height;
+        }
         let mut context = AiContext {
             mob,
             world,
             brain: &mut self.brain,
+            body,
         };
+        apply_pending(
+            &mut self.goals,
+            std::mem::take(&mut self.pending),
+            &mut context,
+        );
         let phase = mob.tick_count.wrapping_add(mob.id.0);
         if phase % UPDATE_GOAL_SELECTOR_EVERY_N_TICKS != 0 && mob.tick_count > 1 {
             self.targets.tick_running_goals(&mut context, false);
@@ -263,10 +373,12 @@ impl MobAi {
         {
             return;
         }
+        let mut body = MobBody::of(mob);
         let mut context = AiContext {
             mob,
             world,
             brain: &mut self.brain,
+            body: &mut body,
         };
         context.recompute_path();
     }
@@ -279,5 +391,40 @@ impl MobAi {
         self.goals.set_control_flag(Flag::Move, true);
         self.goals.set_control_flag(Flag::Jump, true);
         self.goals.set_control_flag(Flag::Look, true);
+    }
+}
+
+fn apply_pending<W: AiWorld>(
+    goals: &mut GoalSelector<MobGoal>,
+    pending: Vec<GoalChange>,
+    context: &mut AiContext<'_, W>,
+) {
+    for change in pending {
+        match change {
+            GoalChange::Weapon { bow, interval } => {
+                goals.remove_goals(context, |goal| {
+                    matches!(goal, MobGoal::MeleeAttack(_) | MobGoal::RangedBowAttack(_))
+                });
+                let goal = if bow {
+                    MobGoal::RangedBowAttack(RangedBowAttackGoal::new(
+                        1.0,
+                        interval,
+                        BOW_ATTACK_RADIUS,
+                    ))
+                } else {
+                    MobGoal::MeleeAttack(MeleeAttackGoal::skeleton(SKELETON_MELEE_SPEED))
+                };
+                goals.add_goal(registry::WEAPON_PRIORITY, goal);
+            }
+            GoalChange::BreakDoors(true) => {
+                goals.add_goal(
+                    registry::BREAK_DOOR_PRIORITY,
+                    MobGoal::BreakDoor(BreakDoorGoal::default()),
+                );
+            }
+            GoalChange::BreakDoors(false) => {
+                goals.remove_goals(context, |goal| matches!(goal, MobGoal::BreakDoor(_)));
+            }
+        }
     }
 }

@@ -50,6 +50,7 @@ pub struct Navigation {
     required_path_length: f32,
     climber: bool,
     path_to_position: Option<BlockPos>,
+    avoid_sun: bool,
 }
 
 impl Default for Navigation {
@@ -96,6 +97,7 @@ impl Navigation {
             required_path_length: REQUIRED_PATH_LENGTH,
             climber: false,
             path_to_position: None,
+            avoid_sun: false,
         }
     }
 
@@ -341,7 +343,7 @@ impl Navigation {
         if self.is_done() {
             return false;
         }
-        self.trim(view);
+        self.trim(view, mob.state.position);
         if self.path.as_ref().is_none_or(|path| path.node_count() == 0) {
             return false;
         }
@@ -351,7 +353,31 @@ impl Navigation {
         true
     }
 
-    fn trim(&mut self, view: &impl BlockView) {
+    pub fn set_avoid_sun(&mut self, avoid_sun: bool) {
+        self.avoid_sun = avoid_sun;
+    }
+
+    pub fn avoids_sun(&self) -> bool {
+        self.avoid_sun
+    }
+
+    fn trim(&mut self, view: &impl BlockView, position: Vec3) {
+        self.trim_cauldrons(view);
+        if !self.avoid_sun {
+            return;
+        }
+        if view.can_see_sky(Vec3::new(position.x, position.y + 0.5, position.z).block()) {
+            return;
+        }
+        let Some(path) = self.path.as_mut() else {
+            return;
+        };
+        if let Some(index) = (0..path.node_count()).find(|i| view.can_see_sky(path.node(*i).pos)) {
+            path.truncate_nodes(index);
+        }
+    }
+
+    fn trim_cauldrons(&mut self, view: &impl BlockView) {
         let Some(path) = self.path.as_mut() else {
             return;
         };

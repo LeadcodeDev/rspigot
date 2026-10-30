@@ -1,6 +1,11 @@
+mod action;
+mod animal;
+mod blocks;
 mod brain;
 mod classify;
+mod combat;
 mod control;
+mod evade;
 mod finder;
 mod goal;
 mod goals;
@@ -12,17 +17,31 @@ mod profile;
 mod random;
 mod random_pos;
 mod registry;
+mod scan;
 mod sensing;
 mod targeting;
 mod view;
 mod walk;
 mod world;
 
+pub use action::MobAction;
+pub use animal::{
+    BreedGoal, EAT_GRASS_EVENT, EatBlockGoal, FollowParentGoal, PanicGoal, is_edible_for_sheep,
+};
+pub use blocks::{
+    BreakDoorGoal, MoveThroughVillageGoal, RemoveTurtleEggGoal, ZOMBIE_ATTACK_DOOR_EVENT,
+    ZOMBIE_BREAK_DOOR_EVENT,
+};
 pub use brain::{AiContext, Brain, CONTROL_FLAG_INTERVAL, MobAi, mob_tick};
+pub use combat::{
+    HurtByTargetGoal, LeapAtTargetGoal, MeleeAttackGoal, MeleeKind, RangedBowAttackGoal, SwellGoal,
+    bow_power, default_attack_reach, within_melee_range,
+};
 pub use control::{
     BodyRotationControl, HEAD_ROT_SPEED, JumpControl, LookControl, MAX_HEAD_X_ROT, MAX_HEAD_Y_ROT,
     MoveControl, Operation, rotate_towards,
 };
+pub use evade::{AvoidEntityGoal, FleeSunGoal, RestrictSunGoal};
 pub use finder::PathFinder;
 pub use goal::{
     Flag, Flags, Goal, GoalSelector, WrappedGoal, adjusted_tick_delay, reduced_tick_delay,
@@ -38,14 +57,18 @@ pub use navigation::{
 pub use path::{Path, PathNode};
 pub use path_type::PathType;
 pub use profile::{MobProfile, MobState, combat_fall_distance};
-pub use random::MobRandom;
+pub use random::{MobRandom, RandomSource};
 pub use random_pos::{
     default_pos, is_solid, is_stable_destination, land_pos, light_magic_value,
     mob_light_magic_value, move_up_out_of_solid, random_direction, walk_target_value,
 };
-pub use registry::ZOMBIE_AGGRESSIVE_TOWARDS_VILLAGER;
+pub use random_pos::{pos_away, pos_towards};
+pub use registry::{GoalSettings, ZOMBIE_AGGRESSIVE_TOWARDS_VILLAGER};
+pub use scan::{closer_to_center_than, manhattan_ordered};
 pub use sensing::{Sensing, clip_misses};
 pub use targeting::{TargetingConditions, can_attack, nearest, nearest_player, valid_target};
 pub use view::BlockView;
 pub use walk::{block_path_type, mob_path_type};
-pub use world::{AiWorld, Living, MOVEMENT_SPEED, MobView, TEMPT_RANGE, TargetKind, inflate};
+pub use world::{
+    AiWorld, Hand, Living, MOVEMENT_SPEED, MobBody, MobView, TEMPT_RANGE, TargetKind, inflate,
+};

@@ -395,6 +395,61 @@ impl Packet for LevelParticles {
     const ID: i32 = id::LEVEL_PARTICLES;
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExplosionParticle {
+    pub particle: ParticleOptions,
+    pub scaling: f32,
+    pub speed: f32,
+    pub weight: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Explode {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub radius: f32,
+    pub block_count: i32,
+    pub knockback: Option<(f64, f64, f64)>,
+    pub particle: ParticleOptions,
+    pub sound: Holder<SoundEvent>,
+    pub block_particles: Vec<ExplosionParticle>,
+    pub play_sound: bool,
+}
+
+impl Encode for Explode {
+    fn encode(&self, out: &mut Vec<u8>) {
+        self.x.encode(out);
+        self.y.encode(out);
+        self.z.encode(out);
+        self.radius.encode(out);
+        self.block_count.encode(out);
+        match self.knockback {
+            Some((x, y, z)) => {
+                true.encode(out);
+                x.encode(out);
+                y.encode(out);
+                z.encode(out);
+            }
+            None => false.encode(out),
+        }
+        self.particle.encode(out);
+        self.sound.encode(out);
+        write_var(self.block_particles.len() as i32, out);
+        for entry in &self.block_particles {
+            entry.particle.encode(out);
+            entry.scaling.encode(out);
+            entry.speed.encode(out);
+            write_var(entry.weight, out);
+        }
+        self.play_sound.encode(out);
+    }
+}
+
+impl Packet for Explode {
+    const ID: i32 = id::EXPLODE;
+}
+
 #[cfg(test)]
 mod tests {
     use rspigot_nbt::Compound;
@@ -402,6 +457,52 @@ mod tests {
     use super::*;
     use crate::codec::decode_exact;
     use crate::play::wire::testing::{encoded, roundtrip};
+
+    #[test]
+    fn explode_matches_the_26_3_stream_codec() {
+        let packet = Explode {
+            x: 0.5,
+            y: 64.0,
+            z: -1.5,
+            radius: 3.0,
+            block_count: 7,
+            knockback: Some((0.25, 0.5, 0.0)),
+            particle: ParticleOptions {
+                kind: 23,
+                data: Vec::new(),
+            },
+            sound: Holder::Reference(511),
+            block_particles: vec![ExplosionParticle {
+                particle: ParticleOptions {
+                    kind: 66,
+                    data: Vec::new(),
+                },
+                scaling: 0.5,
+                speed: 1.0,
+                weight: 1,
+            }],
+            play_sound: true,
+        };
+        let mut expected = Vec::new();
+        expected.extend(0.5f64.to_be_bytes());
+        expected.extend(64.0f64.to_be_bytes());
+        expected.extend((-1.5f64).to_be_bytes());
+        expected.extend(3.0f32.to_be_bytes());
+        expected.extend(7i32.to_be_bytes());
+        expected.push(1);
+        expected.extend(0.25f64.to_be_bytes());
+        expected.extend(0.5f64.to_be_bytes());
+        expected.extend(0.0f64.to_be_bytes());
+        expected.push(23);
+        expected.extend([0x80, 0x04]);
+        expected.push(1);
+        expected.push(66);
+        expected.extend(0.5f32.to_be_bytes());
+        expected.extend(1.0f32.to_be_bytes());
+        expected.push(1);
+        expected.push(1);
+        assert_eq!(encoded(&packet), expected);
+    }
 
     #[test]
     fn chunk_cache_and_batches() {

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use rspigot_entities::EntityKind;
 use rspigot_items::EquipmentSlot;
 
+use super::ageable::AgeableState;
 use super::base::EntityBase;
 use super::data::{Pose, SyncedValue};
 use super::fluid;
@@ -10,15 +11,13 @@ use super::physics::{
     self, BlockView, Landing, MoveTraits, apply_inside_blocks, block_jump_factor, friction,
     has_tag, move_entity, movement_affecting_pos,
 };
+use super::species::Species;
 use crate::attribute;
 use crate::combat::{CombatEntry, CombatTracker};
 use crate::damage::{self, DamageTag, DamageType, java_clamp};
-use crate::effect::{
-    ActiveEffects, AttributeModifier, AttributeOperation, AttributeState, EffectId, EffectInstance,
-};
+use crate::effect::{ActiveEffects, AttributeModifier, AttributeState, EffectId, EffectInstance};
 use crate::item::ItemStack;
 use crate::player::PlayerId;
-use crate::spawn::{SpawnGroupData, SpawnReason};
 use crate::text::Component;
 use crate::{BlockPos, EntityId, Vec3, mth};
 
@@ -30,6 +29,7 @@ pub const DATA_STINGER_COUNT: u8 = 13;
 pub const DATA_MOB_FLAGS: u8 = 15;
 pub const MOB_FLAG_NO_AI: u8 = 1;
 pub const MOB_FLAG_LEFT_HANDED: u8 = 2;
+pub const MOB_FLAG_AGGRESSIVE: u8 = 4;
 pub const DATA_SPIDER_FLAGS: u8 = 16;
 pub const SPIDER_FLAG_CLIMBING: u8 = 1;
 pub const DEATH_DURATION: i32 = 20;
@@ -62,8 +62,6 @@ pub const MOVEMENT_EFFICIENCY: &str = "minecraft:movement_efficiency";
 pub const WATER_MOVEMENT_EFFICIENCY: &str = "minecraft:water_movement_efficiency";
 pub const JUMP_STRENGTH: &str = "minecraft:jump_strength";
 const VELOCITY_THRESHOLD: f64 = 0.003;
-const SPAWN_BONUS_DEVIATION: f64 = 0.114_850_000_000_000_01;
-const LEFT_HANDED_CHANCE: f32 = 0.05;
 const AIR_FRICTION: f32 = 0.91;
 const AIR_DRAG: f32 = 0.98;
 const FLYING_SPEED: f32 = 0.02;
@@ -221,6 +219,36 @@ impl LivingAttributes {
         true
     }
 
+    pub fn remove_modifier(&mut self, name: &str, id: &str) -> bool {
+        let Some(index) = self.instances.iter().position(|i| i.attribute == name) else {
+            return false;
+        };
+        let instance = &mut self.instances[index];
+        let before = instance.modifiers.len();
+        instance.modifiers.retain(|m| m.id != id);
+        if instance.modifiers.len() == before {
+            return false;
+        }
+        let attribute = instance.attribute;
+        self.mark_dirty(attribute);
+        true
+    }
+
+    pub fn add_or_replace_modifier(&mut self, name: &str, modifier: AttributeModifier) -> bool {
+        self.remove_modifier(name, &modifier.id);
+        self.add_modifier(name, modifier)
+    }
+
+    pub fn modifier_amount(&self, name: &str, id: &str) -> Option<f64> {
+        self.instances
+            .iter()
+            .find(|i| i.attribute == name)?
+            .modifiers
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.amount)
+    }
+
     pub fn has_modifier(&self, name: &str, id: &str) -> bool {
         self.instances
             .iter()
@@ -274,6 +302,8 @@ pub struct MobState {
     pub aware: bool,
     pub home_pos: BlockPos,
     pub home_radius: i32,
+    pub ageable: Option<AgeableState>,
+    pub species: Species,
 }
 
 impl Default for MobState {
@@ -287,6 +317,8 @@ impl Default for MobState {
             aware: true,
             home_pos: BlockPos::new(0, 0, 0),
             home_radius: -1,
+            ageable: None,
+            species: Species::Plain,
         }
     }
 }
@@ -327,6 +359,9 @@ pub struct LivingState {
     pub last_hurt: f32,
     pub damage: DamageMemory,
     pub mob: Option<MobState>,
+    pub using_item: Option<(EquipmentSlot, i32)>,
+    pub swing: Option<(i32, i32)>,
+    pub remove_arrow_time: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -385,6 +420,13 @@ impl LivingState {
         if is_mob {
             base.data.define(DATA_MOB_FLAGS, SyncedValue::Byte(0));
         }
+        let mut mob = is_mob.then(MobState::default);
+        if let Some(mob) = &mut mob {
+            if kind.extends("AgeableMob") {
+                mob.ageable = Some(AgeableState::new(base));
+            }
+            mob.species = Species::new(base);
+        }
         if kind.extends("Spider") {
             base.data.define(DATA_SPIDER_FLAGS, SyncedValue::Byte(0));
         }
@@ -408,7 +450,10 @@ impl LivingState {
             no_action_time: 0,
             last_hurt: 0.0,
             damage: DamageMemory::default(),
-            mob: is_mob.then(MobState::default),
+            mob,
+            using_item: None,
+            swing: None,
+            remove_arrow_time: 0,
         };
         let max = state.max_health() as f32;
         base.data.set(DATA_HEALTH, SyncedValue::Float(max));
@@ -495,38 +540,97 @@ pub fn is_left_handed(base: &EntityBase) -> bool {
     base.data.flag(DATA_MOB_FLAGS, MOB_FLAG_LEFT_HANDED)
 }
 
+pub const LIVING_FLAG_USING: u8 = 1;
+pub const LIVING_FLAG_OFFHAND: u8 = 2;
+pub const SWING_DURATION: i32 = 6;
+const ARROW_REMOVAL_BASE: i32 = 30;
+
+pub fn start_using_item(base: &mut EntityBase, living: &mut LivingState, slot: EquipmentSlot) {
+    if living.equipment(slot).is_none() || living.using_item.is_some() {
+        return;
+    }
+    living.using_item = Some((slot, 0));
+    base.data
+        .set_flag(DATA_LIVING_FLAGS, LIVING_FLAG_USING, true);
+    base.data.set_flag(
+        DATA_LIVING_FLAGS,
+        LIVING_FLAG_OFFHAND,
+        slot == EquipmentSlot::Offhand,
+    );
+}
+
+pub fn stop_using_item(base: &mut EntityBase, living: &mut LivingState) {
+    base.data
+        .set_flag(DATA_LIVING_FLAGS, LIVING_FLAG_USING, false);
+    living.using_item = None;
+}
+
+pub fn tick_using_item(base: &mut EntityBase, living: &mut LivingState) {
+    let Some((slot, ticks)) = living.using_item else {
+        return;
+    };
+    if living.equipment(slot).is_none() {
+        stop_using_item(base, living);
+        return;
+    }
+    living.using_item = Some((slot, ticks + 1));
+}
+
+pub fn start_swing(living: &mut LivingState) -> bool {
+    if let Some((ticks, duration)) = living.swing
+        && ticks <= duration / 2
+        && ticks > 0
+    {
+        return false;
+    }
+    living.swing = Some((0, SWING_DURATION));
+    true
+}
+
+pub fn tick_swing(living: &mut LivingState) {
+    if let Some((ticks, duration)) = living.swing {
+        living.swing = if ticks > duration {
+            None
+        } else {
+            Some((ticks + 1, duration))
+        };
+    }
+}
+
+pub fn arrow_count(base: &EntityBase) -> i32 {
+    base.data.int(DATA_ARROW_COUNT)
+}
+
+pub fn set_arrow_count(base: &mut EntityBase, count: i32) {
+    base.data.set(DATA_ARROW_COUNT, SyncedValue::Int(count));
+}
+
+pub fn tick_arrows(base: &mut EntityBase, living: &mut LivingState) {
+    let arrows = arrow_count(base);
+    if arrows <= 0 {
+        return;
+    }
+    if living.remove_arrow_time <= 0 {
+        living.remove_arrow_time = 20 * (ARROW_REMOVAL_BASE - arrows);
+    }
+    living.remove_arrow_time -= 1;
+    if living.remove_arrow_time <= 0 {
+        set_arrow_count(base, arrows - 1);
+    }
+}
+
+pub fn is_aggressive(base: &EntityBase) -> bool {
+    base.data.flag(DATA_MOB_FLAGS, MOB_FLAG_AGGRESSIVE)
+}
+
+pub fn set_aggressive(base: &mut EntityBase, aggressive: bool) {
+    base.data
+        .set_flag(DATA_MOB_FLAGS, MOB_FLAG_AGGRESSIVE, aggressive);
+}
+
 pub fn set_left_handed(base: &mut EntityBase, left: bool) {
     base.data
         .set_flag(DATA_MOB_FLAGS, MOB_FLAG_LEFT_HANDED, left);
-}
-
-pub fn finalize_spawn(
-    base: &mut EntityBase,
-    living: &mut LivingState,
-    _reason: SpawnReason,
-    group: Option<SpawnGroupData>,
-    next_double: &mut impl FnMut() -> f64,
-    next_float: &mut impl FnMut() -> f32,
-) -> Option<SpawnGroupData> {
-    if living.mob.is_none() {
-        return group;
-    }
-    if !living
-        .attributes
-        .has_modifier(FOLLOW_RANGE, RANDOM_SPAWN_BONUS)
-    {
-        let bonus = SPAWN_BONUS_DEVIATION * (next_double() - next_double());
-        living.attributes.add_modifier(
-            FOLLOW_RANGE,
-            AttributeModifier {
-                id: Cow::Borrowed(RANDOM_SPAWN_BONUS),
-                amount: bonus,
-                operation: AttributeOperation::AddMultipliedBase,
-            },
-        );
-    }
-    set_left_handed(base, next_float() < LEFT_HANDED_CHANCE);
-    group
 }
 
 pub fn is_dead_or_dying(base: &EntityBase, living: &LivingState) -> bool {
@@ -695,6 +799,7 @@ pub fn fall_damage(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LivingTick {
+    pub burn: bool,
     pub died: bool,
     pub removed: bool,
     pub expired_effects: bool,
@@ -703,14 +808,10 @@ pub struct LivingTick {
 
 pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick {
     let mut outcome = LivingTick::default();
-    if base.remaining_fire_ticks > 0 {
-        if base.kind.fire_immune() {
-            base.remaining_fire_ticks = 0;
-        } else {
-            base.remaining_fire_ticks -= 1;
-        }
-    }
-    base.set_shared_flag(super::base::FLAG_ON_FIRE, base.remaining_fire_ticks > 0);
+    tick_swing(living);
+    outcome.burn = super::fire::base_tick(base).burn;
+    let on_fire = base.remaining_fire_ticks > 0;
+    super::fire::set_on_fire_flag(base, on_fire);
     let air = base.air_supply();
     let max_air = base.max_air_ticks;
     if air < max_air {
