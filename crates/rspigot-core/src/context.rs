@@ -70,6 +70,14 @@ impl<L: ClientLink> CommandContext for Server<L> {
         names
     }
 
+    fn plugin_names(&self) -> Vec<String> {
+        self.plugins
+            .summary(&self.config.plugins)
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .collect()
+    }
+
     fn max_players(&self) -> u32 {
         self.config.max_players
     }

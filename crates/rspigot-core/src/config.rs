@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::admin::AdminLists;
 use crate::chunks::ChunkManagerConfig;
+use crate::plugins::{EventKind, Priority};
 use crate::streaming::StreamConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +92,32 @@ impl Default for MobSettings {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriorityOverride {
+    pub plugin: String,
+    pub event: Option<EventKind>,
+    pub priority: Priority,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginSettings {
+    pub decision_ticks: u64,
+    pub late_cancel_ticks: u64,
+    pub order: Vec<String>,
+    pub overrides: Vec<PriorityOverride>,
+}
+
+impl Default for PluginSettings {
+    fn default() -> Self {
+        Self {
+            decision_ticks: 1,
+            late_cancel_ticks: 20,
+            order: Vec::new(),
+            overrides: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GameConfig {
     pub max_players: u32,
@@ -117,6 +144,7 @@ pub struct GameConfig {
     pub rules: GameRules,
     pub spawning: SpawningConfig,
     pub mobs: MobSettings,
+    pub plugins: PluginSettings,
 }
 
 impl Default for GameConfig {
@@ -147,6 +175,7 @@ impl Default for GameConfig {
             rules: GameRules::default(),
             spawning: SpawningConfig::default(),
             mobs: MobSettings::default(),
+            plugins: PluginSettings::default(),
         }
     }
 }

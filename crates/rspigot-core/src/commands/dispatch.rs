@@ -43,6 +43,7 @@ pub trait CommandContext {
     fn find_player(&self, name: &str) -> Option<PlayerId>;
     fn player_name(&self, player: PlayerId) -> Option<String>;
     fn player_names(&self) -> Vec<String>;
+    fn plugin_names(&self) -> Vec<String>;
     fn max_players(&self) -> u32;
     fn player_position(&self, player: PlayerId) -> Option<Vec3>;
     fn set_game_mode(&mut self, player: PlayerId, mode: GameMode);
@@ -227,9 +228,11 @@ pub fn execute<C: CommandContext>(
             CommandOutcome::Success
         }
         "plugins" | "pl" => {
+            let names = ctx.plugin_names();
             ctx.reply(
                 sender,
-                Component::text("Plugins (0): ").color(NamedColor::White),
+                Component::text(format!("Plugins ({}): {}", names.len(), names.join(", ")))
+                    .color(NamedColor::White),
             );
             CommandOutcome::Success
         }
@@ -1393,6 +1396,7 @@ mod tests {
         cleared: Vec<(PlayerId, Option<EffectId>)>,
         refuse_effects: bool,
         killed: Vec<PlayerId>,
+        plugins: Vec<String>,
     }
 
     fn alice() -> PlayerId {
@@ -1423,6 +1427,9 @@ mod tests {
         }
         fn player_names(&self) -> Vec<String> {
             vec!["Alice".to_owned()]
+        }
+        fn plugin_names(&self) -> Vec<String> {
+            self.plugins.clone()
         }
         fn max_players(&self) -> u32 {
             20
@@ -1560,6 +1567,16 @@ mod tests {
         assert_eq!(ctx.day_time, 13000);
         execute(&mut ctx, CommandSender::Console, "time add 1d");
         assert_eq!(ctx.day_time, 37000);
+    }
+
+    #[test]
+    fn plugins_lists_the_connected_names_in_the_order_given() {
+        let mut ctx = FakeContext::default();
+        execute(&mut ctx, CommandSender::Console, "plugins");
+        ctx.plugins = vec!["guard".to_owned(), "welcome".to_owned()];
+        execute(&mut ctx, CommandSender::Console, "pl");
+        let lines: Vec<&str> = ctx.replies.iter().map(|r| r.1.as_str()).collect();
+        assert_eq!(lines, ["Plugins (0): ", "Plugins (2): guard, welcome"]);
     }
 
     #[test]

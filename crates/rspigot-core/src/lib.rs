@@ -38,6 +38,7 @@ mod persistence;
 pub mod player;
 pub mod player_data;
 mod player_io;
+pub mod plugins;
 pub mod ports;
 mod projectiles;
 pub mod server;

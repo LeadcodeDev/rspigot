@@ -8,6 +8,7 @@ use rspigot_domain::{ChunkPos, Identifier, Vec3};
 use rspigot_nbt::Compound;
 
 use crate::events::ClientEvent;
+use crate::plugins::ToPlugin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -80,4 +81,8 @@ pub trait ClientLink: Send + 'static {
     fn send(&self, event: ClientEvent);
     fn disconnect(&self, reason: Component);
     fn is_connected(&self) -> bool;
+}
+
+pub trait PluginOutbox: Send + 'static {
+    fn send(&self, message: ToPlugin);
 }
