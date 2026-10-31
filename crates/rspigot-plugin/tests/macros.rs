@@ -53,6 +53,22 @@ struct Beta;
 #[listeners]
 impl Beta {}
 
+struct Conditional;
+
+#[listeners]
+impl Conditional {
+    #[cfg(any())]
+    async fn never_built(&self, event: &PlayerJoin) {
+        let _ = event;
+    }
+
+    #[cfg(test)]
+    #[priority(High)]
+    async fn always_built(&self, event: &mut PlayerMove) {
+        event.cancel();
+    }
+}
+
 fn spec(
     id: u32,
     event: EventKind,
@@ -119,6 +135,20 @@ fn listeners_registers_every_method_with_its_access_and_priority() {
         ]
     );
     assert_eq!(Greeter::handlers(), Vec::new());
+}
+
+#[test]
+fn a_handler_left_out_by_cfg_is_not_registered() {
+    assert_eq!(
+        Conditional::handlers(),
+        vec![spec(
+            2,
+            EventKind::PlayerMove,
+            Access::Decide,
+            Priority::High,
+            false
+        )]
+    );
 }
 
 #[test]

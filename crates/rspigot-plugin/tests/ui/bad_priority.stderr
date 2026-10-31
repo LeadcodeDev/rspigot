@@ -1,0 +1,5 @@
+error: `#[priority(...)]` takes one of Lowest, Low, Normal, High, Highest
+ --> tests/ui/bad_priority.rs:8:5
+  |
+8 |     #[priority(Urgent)]
+  |     ^^^^^^^^^^^^^^^^^^^

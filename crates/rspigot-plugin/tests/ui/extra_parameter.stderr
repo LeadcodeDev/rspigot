@@ -1,0 +1,5 @@
+error: a #[listeners] block only holds handlers: `async fn name(&self, event: &Event)`; put helpers in another impl block
+ --> tests/ui/extra_parameter.rs:8:5
+  |
+8 |     async fn on_player_join(&self, event: &PlayerJoin, server: &Server) {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

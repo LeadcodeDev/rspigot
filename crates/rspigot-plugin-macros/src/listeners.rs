@@ -19,6 +19,7 @@ const EVENTS: [(&str, bool); 3] = [
 ];
 
 struct Handler {
+    cfgs: Vec<Attribute>,
     id: u32,
     method: Ident,
     kind: Ident,
@@ -38,26 +39,31 @@ pub(crate) fn expand(args: TokenStream, mut block: ItemImpl) -> TokenStream {
     if !args.is_empty() {
         errors.push(Error::new_spanned(&args, "#[listeners] takes no arguments"));
     }
-    if let Some((_, path, _)) = &block.trait_ {
-        let error = Error::new_spanned(
+    let handlers: Vec<Handler> = if let Some((_, path, _)) = &block.trait_ {
+        errors.push(Error::new_spanned(
             path,
             "#[listeners] goes on the plugin's own impl block (`impl MyPlugin { ... }`), not on a trait impl",
-        )
-        .into_compile_error();
-        return quote!(#block #error);
-    }
-    let handlers: Vec<Handler> = block
-        .items
-        .iter_mut()
-        .zip(1..)
-        .filter_map(|(item, id)| match item {
-            ImplItem::Fn(method) => handler(method, id, &mut errors),
-            other => {
-                errors.push(Error::new_spanned(other, NOT_A_HANDLER));
-                None
+        ));
+        for item in &mut block.items {
+            if let ImplItem::Fn(method) = item {
+                method.attrs.retain(|attr| !is_mark(attr));
             }
-        })
-        .collect();
+        }
+        Vec::new()
+    } else {
+        block
+            .items
+            .iter_mut()
+            .zip(1..)
+            .filter_map(|(item, id)| match item {
+                ImplItem::Fn(method) => handler(method, id, &mut errors),
+                other => {
+                    errors.push(Error::new_spanned(other, NOT_A_HANDLER));
+                    None
+                }
+            })
+            .collect()
+    };
     let specs = handlers.iter().map(spec);
     let arms = handlers.iter().map(arm);
     let errors = errors.iter().map(Error::to_compile_error);
@@ -97,6 +103,12 @@ fn handler(method: &mut ImplItemFn, id: u32, errors: &mut Vec<Error>) -> Option<
         return None;
     }
     Some(Handler {
+        cfgs: method
+            .attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("cfg"))
+            .cloned()
+            .collect(),
         id,
         method: method.sig.ident.clone(),
         kind,
@@ -106,6 +118,10 @@ fn handler(method: &mut ImplItemFn, id: u32, errors: &mut Vec<Error>) -> Option<
             .unwrap_or_else(|| Ident::new("Normal", Span::call_site())),
         ignore_cancelled: marks.ignore_cancelled.is_some(),
     })
+}
+
+fn is_mark(attr: &Attribute) -> bool {
+    attr.path().is_ident("priority") || attr.path().is_ident("ignore_cancelled")
 }
 
 fn take_marks(attrs: &mut Vec<Attribute>, errors: &mut Vec<Error>) -> Marks {
@@ -201,6 +217,7 @@ fn event_type(ty: &Type) -> Option<(&'static str, bool, bool)> {
 
 fn spec(handler: &Handler) -> TokenStream {
     let Handler {
+        cfgs,
         id,
         kind,
         decides,
@@ -215,6 +232,7 @@ fn spec(handler: &Handler) -> TokenStream {
         quote!(Observe)
     };
     quote! {
+        #(#cfgs)*
         ::rspigot_plugin::HandlerSpec {
             id: #id,
             event: ::rspigot_plugin::EventKind::#kind,
@@ -227,11 +245,16 @@ fn spec(handler: &Handler) -> TokenStream {
 
 fn arm(handler: &Handler) -> TokenStream {
     let Handler {
-        id, method, kind, ..
+        cfgs,
+        id,
+        method,
+        kind,
+        ..
     } = handler;
     let id = Literal::u32_unsuffixed(*id);
     if handler.decides {
         quote! {
+            #(#cfgs)*
             ::rspigot_plugin::Call::#kind { handler: #id, mut event } => {
                 self.#method(&mut event).await;
                 ::rspigot_plugin::Outcome::Decided { cancel: event.is_cancelled() }
@@ -239,6 +262,7 @@ fn arm(handler: &Handler) -> TokenStream {
         }
     } else {
         quote! {
+            #(#cfgs)*
             ::rspigot_plugin::Call::#kind { handler: #id, event } => {
                 self.#method(&event).await;
                 ::rspigot_plugin::Outcome::Observed
