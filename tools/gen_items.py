@@ -33,7 +33,7 @@ RESERVED_STRUCTS = {
     "Item", "ItemId", "ItemKind", "ItemBehavior", "ItemSet", "ItemTag", "BlockSet", "BlockTag",
     "BlockId", "BlockKind", "Tool", "ToolRule", "Food", "Rarity", "EquipmentSlot", "Plain",
     "BlockItem", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec", "Box",
-    "AttributeModifier", "ModifierOperation", "SlotGroup", "Craft", "CookingKind", "Product", "ProductComponent",
+    "AttributeModifier", "ModifierOperation", "SlotGroup", "Craft", "CookingKind", "Fuel", "Product", "ProductComponent",
     "StewEffect", "FireworkShapes",
 }
 
@@ -468,6 +468,69 @@ def validate(dump, registries, components_dir):
     return block_names
 
 
+FAST_COOKING = "minecraft:block/fast_cooking"
+DEFAULT_SPEED = "minecraft:cooking/speed_default"
+
+
+def provider_path(datapack, kind, name):
+    prefix = NAMESPACE
+    if not name.startswith(prefix):
+        fail("unsupported provider name " + name)
+    return os.path.join(datapack, "context_" + kind + "_provider", name[len(prefix):] + ".json")
+
+
+def provider_constant(datapack, kind, name):
+    value = load_json(provider_path(datapack, kind, name))
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        fail("provider %s is not a constant" % name)
+    return value
+
+
+def check_speed_provider(datapack):
+    speed = load_json(provider_path(datapack, "float", DEFAULT_SPEED))
+    if speed.get("type") != "minecraft:conditional" or speed.get("condition") != FAST_COOKING:
+        fail("unsupported cooking speed provider %r" % speed)
+    normal = provider_constant(datapack, "float", speed["on_false"])
+    fast = provider_constant(datapack, "float", speed["on_true"])
+    if (normal, fast) != (1.0, 2.0):
+        fail("cooking speed multipliers changed: %r" % ((normal, fast),))
+
+
+def burn_times(datapack, name):
+    spec = load_json(provider_path(datapack, "int", name))
+    right = spec.get("right")
+    valid = (
+        spec.get("type") == "minecraft:div"
+        and isinstance(spec.get("left"), int)
+        and isinstance(right, dict)
+        and right.get("type") == "minecraft:conditional"
+        and right.get("condition") == FAST_COOKING
+    )
+    if not valid:
+        fail("unsupported burn time provider %s: %r" % (name, spec))
+    normal = spec["left"] // provider_constant(datapack, "int", right["on_false"])
+    fast = spec["left"] // provider_constant(datapack, "int", right["on_true"])
+    integer(normal, 1, 65535, name + " burn time")
+    integer(fast, 1, 65535, name + " fast burn time")
+    return normal, fast
+
+
+def read_fuels(items, components_dir, datapack):
+    check_speed_provider(datapack)
+    cache = {}
+    for item in items:
+        report = load_json(os.path.join(components_dir, item["path"] + ".json"))
+        fuel = report["components"].get("minecraft:cooking_fuel")
+        item["cooking_fuel"] = None
+        if fuel is None:
+            continue
+        if set(fuel) != {"burn_time", "speed_multiplier"} or fuel["speed_multiplier"] != DEFAULT_SPEED:
+            fail("%s has an unsupported cooking fuel %r" % (item["name"], fuel))
+        if fuel["burn_time"] not in cache:
+            cache[fuel["burn_time"]] = burn_times(datapack, fuel["burn_time"])
+        item["cooking_fuel"] = cache[fuel["burn_time"]]
+
+
 def weapon_damage(weapon, name):
     if weapon is None:
         return None
@@ -883,6 +946,7 @@ class Crafts:
             node = struct_node(
                 "Craft::Cooking",
                 [
+                    ("id", Atom(rust_string(self.recipe_id))),
                     ("kind", Atom("CookingKind::" + COOKING_KINDS[kind])),
                     ("ingredient", self.node(recipe["ingredient"], where)),
                     ("experience", Atom(f32_literal(recipe["experience"], where + " experience"))),
@@ -1011,6 +1075,7 @@ class Crafts:
             if not kind.startswith("minecraft:") or kind[len("minecraft:") :] not in CRAFTING_TYPES:
                 continue
             total += 1
+            self.recipe_id = NAMESPACE + path
             outcome = self.single(recipe, "recipe " + path)
             pairs = outcome if isinstance(outcome, list) else [outcome]
             expanded += len(pairs) - 1
@@ -1051,6 +1116,15 @@ def item_file(item, behavior, crafts):
     body.extend(modifier_lines(item["attribute_modifiers"], name, used))
     if item["crafting_remainder"] is not None:
         body.append("    const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(%d));" % item["crafting_remainder"]["item"])
+    if item["cooking_fuel"] is not None:
+        normal, fast = item["cooking_fuel"]
+        body.extend(
+            assignment(
+                "COOKING_FUEL",
+                "Option<Fuel>",
+                "Some(Fuel { burn_time: %d, fast_burn_time: %d })" % (normal, fast),
+            )
+        )
     craft_lines = []
     if crafts:
         craft_lines = render(Group("&[", crafts, "]"), "    ", "const CRAFTS: &'static [Craft] = ", ";")
@@ -1062,10 +1136,12 @@ def item_file(item, behavior, crafts):
     names.extend(
         name for name in ("BlockSet", "ModifierOperation", "SlotGroup", "ToolRule") if name in used
     )
+    if item["cooking_fuel"] is not None:
+        names.append("Fuel")
     craft_text = "\n".join(craft_lines)
     names.extend(
         name
-        for name in ("CookingKind", "Craft", "FireworkShapes", "Product", "ProductComponent", "StewEffect")
+        for name in ("CookingKind", "Craft", "FireworkShapes", "Fuel", "Product", "ProductComponent", "StewEffect")
         if re.search(r"\b" + name + r"\b", craft_text)
     )
     if "tags" in used:
@@ -1188,6 +1264,7 @@ def main():
     block_names = validate(dump, registries, args.components)
     items = dump["items"]
     by_class, by_item = read_families(args.families, items)
+    read_fuels(items, args.components, args.datapack)
     crafts = Crafts(dump, [item["name"] for item in items])
     recipes = crafts.read(args.datapack)
 

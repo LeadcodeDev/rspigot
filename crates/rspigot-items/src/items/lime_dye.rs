@@ -30,6 +30,7 @@ impl Item for LimeDye {
             product: Product::of(2),
         },
         Craft::Cooking {
+            id: "minecraft:lime_dye_from_smelting",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(249)]),
             experience: 0.1,

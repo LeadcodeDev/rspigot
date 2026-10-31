@@ -24,6 +24,7 @@ impl Item for MagentaGlazedTerracotta {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:magenta_glazed_terracotta",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(563)]),
         experience: 0.1,

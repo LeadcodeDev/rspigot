@@ -25,6 +25,7 @@ impl Item for Glass {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:glass",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Tag(&tags::ITEM_SMELTS_TO_GLASS),
         experience: 0.1,

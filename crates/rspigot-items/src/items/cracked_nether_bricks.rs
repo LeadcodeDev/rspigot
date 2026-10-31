@@ -24,6 +24,7 @@ impl Item for CrackedNetherBricks {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:cracked_nether_bricks",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(498)]),
         experience: 0.1,

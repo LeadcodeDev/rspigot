@@ -24,6 +24,7 @@ impl Item for Sponge {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:sponge",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(230)]),
         experience: 0.15,

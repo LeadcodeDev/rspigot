@@ -30,6 +30,7 @@ impl Item for CopperNugget {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:copper_nugget_from_blasting",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[
                 ItemId(1030),
@@ -49,6 +50,7 @@ impl Item for CopperNugget {
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:copper_nugget_from_smelting",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[
                 ItemId(1030),

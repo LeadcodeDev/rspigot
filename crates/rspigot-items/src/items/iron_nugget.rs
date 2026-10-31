@@ -30,6 +30,7 @@ impl Item for IronNugget {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:iron_nugget_from_blasting",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[
                 ItemId(1045),
@@ -53,6 +54,7 @@ impl Item for IronNugget {
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:iron_nugget_from_smelting",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[
                 ItemId(1045),

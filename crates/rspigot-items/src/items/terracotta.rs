@@ -24,6 +24,7 @@ impl Item for Terracotta {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:terracotta",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(415)]),
         experience: 0.35,

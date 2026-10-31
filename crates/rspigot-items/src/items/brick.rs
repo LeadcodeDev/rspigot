@@ -24,6 +24,7 @@ impl Item for Brick {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:brick",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(1143)]),
         experience: 0.3,

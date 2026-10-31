@@ -30,24 +30,28 @@ impl Item for Emerald {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:emerald_from_blasting_deepslate_emerald_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(104)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:emerald_from_blasting_emerald_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(103)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:emerald_from_smelting_deepslate_emerald_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(104)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:emerald_from_smelting_emerald_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(103)]),
             experience: 1.0,

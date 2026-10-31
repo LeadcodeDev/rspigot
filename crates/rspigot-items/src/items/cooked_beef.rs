@@ -29,18 +29,21 @@ impl Item for CookedBeef {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
+            id: "minecraft:cooked_beef",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(1260)]),
             experience: 0.35,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:cooked_beef_from_campfire_cooking",
             kind: CookingKind::Campfire,
             ingredient: ItemSet::Direct(&[ItemId(1260)]),
             experience: 0.35,
             cooking_time: 600,
         },
         Craft::Cooking {
+            id: "minecraft:cooked_beef_from_smoking",
             kind: CookingKind::Smoking,
             ingredient: ItemSet::Direct(&[ItemId(1260)]),
             experience: 0.35,

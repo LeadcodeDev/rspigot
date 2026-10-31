@@ -29,18 +29,21 @@ impl Item for BakedPotato {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
+            id: "minecraft:baked_potato",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(1379)]),
             experience: 0.35,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:baked_potato_from_campfire_cooking",
             kind: CookingKind::Campfire,
             ingredient: ItemSet::Direct(&[ItemId(1379)]),
             experience: 0.35,
             cooking_time: 600,
         },
         Craft::Cooking {
+            id: "minecraft:baked_potato_from_smoking",
             kind: CookingKind::Smoking,
             ingredient: ItemSet::Direct(&[ItemId(1379)]),
             experience: 0.35,

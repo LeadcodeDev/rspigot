@@ -26,24 +26,28 @@ impl Item for GoldIngot {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_blasting_deepslate_gold_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(100)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_blasting_gold_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(99)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_blasting_nether_gold_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(109)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_blasting_raw_gold",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(1021)]),
             experience: 1.0,
@@ -71,24 +75,28 @@ impl Item for GoldIngot {
             product: Product::of(1),
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_smelting_deepslate_gold_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(100)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_smelting_gold_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(99)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_smelting_nether_gold_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(109)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:gold_ingot_from_smelting_raw_gold",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(1021)]),
             experience: 1.0,

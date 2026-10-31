@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool,
-    tags,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Fuel, Item, ItemId, ItemSet, Rarity,
+    Tool, tags,
 };
 
 pub struct Charcoal;
@@ -24,7 +24,9 @@ impl Item for Charcoal {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1600, fast_burn_time: 800 });
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:charcoal",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Tag(&tags::ITEM_LOGS_THAT_BURN),
         experience: 0.15,

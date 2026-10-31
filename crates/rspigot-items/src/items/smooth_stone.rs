@@ -24,6 +24,7 @@ impl Item for SmoothStone {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:smooth_stone",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(1)]),
         experience: 0.1,

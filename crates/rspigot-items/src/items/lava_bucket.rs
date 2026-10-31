@@ -1,6 +1,6 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{AttributeModifier, EquipmentSlot, Food, Fuel, Item, ItemId, ItemSet, Rarity, Tool};
 
 pub struct LavaBucket;
 
@@ -22,5 +22,6 @@ impl Item for LavaBucket {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(1128));
+    const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 20000, fast_burn_time: 10000 });
     type Behavior = crate::family::Plain;
 }

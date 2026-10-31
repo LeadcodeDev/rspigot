@@ -24,6 +24,7 @@ impl Item for Deepslate {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:deepslate",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(9)]),
         experience: 0.1,

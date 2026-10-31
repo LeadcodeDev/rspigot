@@ -1,6 +1,6 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{AttributeModifier, EquipmentSlot, Food, Fuel, Item, ItemId, ItemSet, Rarity, Tool};
 
 pub struct Bamboo;
 
@@ -21,5 +21,6 @@ impl Item for Bamboo {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     type Behavior = crate::family::BlockItem;
 }

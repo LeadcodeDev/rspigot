@@ -154,6 +154,54 @@ fn every_cooking_recipe_is_declared_on_the_item_it_makes() {
 }
 
 #[test]
+fn a_cooking_recipe_carries_the_id_it_has_in_the_datapack() {
+    let ids: Vec<&str> = ItemKind::BakedPotato
+        .crafts()
+        .iter()
+        .filter_map(|craft| match craft {
+            Craft::Cooking { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "minecraft:baked_potato",
+            "minecraft:baked_potato_from_campfire_cooking",
+            "minecraft:baked_potato_from_smoking"
+        ]
+    );
+}
+
+#[test]
+fn fuels_burn_for_the_same_number_of_items_in_every_furnace() {
+    let burn = |kind: ItemKind| {
+        kind.cooking_fuel()
+            .map(|fuel| (fuel.burn_time(false), fuel.burn_time(true)))
+    };
+    assert_eq!(burn(ItemKind::Coal), Some((1600, 800)));
+    assert_eq!(burn(ItemKind::Charcoal), Some((1600, 800)));
+    assert_eq!(burn(ItemKind::LavaBucket), Some((20000, 10000)));
+    assert_eq!(burn(ItemKind::CoalBlock), Some((16000, 8000)));
+    assert_eq!(burn(ItemKind::BlazeRod), Some((2400, 1200)));
+    assert_eq!(burn(ItemKind::DriedKelpBlock), Some((4001, 2000)));
+    assert_eq!(burn(ItemKind::Stick), Some((100, 50)));
+    assert_eq!(burn(ItemKind::WhiteCarpet), Some((67, 33)));
+    assert_eq!(burn(ItemKind::OakPlanks), Some((300, 150)));
+    assert_eq!(burn(ItemKind::OakSlab), Some((150, 75)));
+    assert_eq!(burn(ItemKind::CrimsonPlanks), None);
+    assert_eq!(burn(ItemKind::OakLeaves), None);
+    assert_eq!(burn(ItemKind::Dirt), None);
+    assert_eq!(
+        ItemKind::ALL
+            .into_iter()
+            .filter(|kind| kind.cooking_fuel().is_some())
+            .count(),
+        347
+    );
+}
+
+#[test]
 fn stonecutting_and_smithing_recipes_are_declared_too() {
     let counts: Vec<u8> = all_crafts()
         .into_iter()

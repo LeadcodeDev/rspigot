@@ -34,18 +34,21 @@ impl Item for DriedKelp {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:dried_kelp_from_campfire_cooking",
             kind: CookingKind::Campfire,
             ingredient: ItemSet::Direct(&[ItemId(328)]),
             experience: 0.1,
             cooking_time: 600,
         },
         Craft::Cooking {
+            id: "minecraft:dried_kelp_from_smelting",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(328)]),
             experience: 0.1,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:dried_kelp_from_smoking",
             kind: CookingKind::Smoking,
             ingredient: ItemSet::Direct(&[ItemId(328)]),
             experience: 0.1,

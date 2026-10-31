@@ -1,7 +1,7 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    AttributeModifier, Craft, EquipmentSlot, Food, Fuel, Item, ItemId, ItemSet, ModifierOperation,
     Product, Rarity, SlotGroup, Tool, tags,
 };
 
@@ -39,6 +39,7 @@ impl Item for WoodenSpear {
             slot: SlotGroup::Mainhand,
         },
     ];
+    const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[
         Craft::RepairItem,
         Craft::Shaped {

@@ -229,6 +229,22 @@ pub struct FireworkShapes {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Fuel {
+    pub burn_time: u16,
+    pub fast_burn_time: u16,
+}
+
+impl Fuel {
+    pub const fn burn_time(self, fast: bool) -> u16 {
+        if fast {
+            self.fast_burn_time
+        } else {
+            self.burn_time
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CookingKind {
     Smelting,
     Blasting,
@@ -301,6 +317,7 @@ pub enum Craft {
         material: ItemSet,
     },
     Cooking {
+        id: &'static str,
         kind: CookingKind,
         ingredient: ItemSet,
         experience: f32,
@@ -394,6 +411,7 @@ pub trait Item: 'static {
     const USE_REMAINDER: Option<ItemId>;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier];
     const CRAFTING_REMAINDER: Option<ItemId> = None;
+    const COOKING_FUEL: Option<Fuel> = None;
     const CRAFTS: &'static [Craft] = &[];
     type Behavior: ItemBehavior;
 }

@@ -30,24 +30,28 @@ impl Item for Redstone {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:redstone_from_blasting_deepslate_redstone_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(102)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:redstone_from_blasting_redstone_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(101)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:redstone_from_smelting_deepslate_redstone_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(102)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:redstone_from_smelting_redstone_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(101)]),
             experience: 0.7,

@@ -26,18 +26,21 @@ impl Item for IronIngot {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_blasting_deepslate_iron_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(96)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_blasting_iron_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(95)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_blasting_raw_iron",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(1017)]),
             experience: 0.7,
@@ -65,18 +68,21 @@ impl Item for IronIngot {
             product: Product::of(1),
         },
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_smelting_deepslate_iron_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(96)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_smelting_iron_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(95)]),
             experience: 0.7,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:iron_ingot_from_smelting_raw_iron",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(1017)]),
             experience: 0.7,

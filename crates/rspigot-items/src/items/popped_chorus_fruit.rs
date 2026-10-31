@@ -24,6 +24,7 @@ impl Item for PoppedChorusFruit {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:popped_chorus_fruit",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(1434)]),
         experience: 0.1,

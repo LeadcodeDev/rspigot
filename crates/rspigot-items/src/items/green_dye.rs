@@ -24,6 +24,7 @@ impl Item for GreenDye {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:green_dye",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(413)]),
         experience: 1.0,

@@ -24,6 +24,7 @@ impl Item for CrackedPolishedBlackstoneBricks {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:cracked_polished_blackstone_bricks",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(1545)]),
         experience: 0.1,

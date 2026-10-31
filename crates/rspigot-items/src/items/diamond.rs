@@ -30,24 +30,28 @@ impl Item for Diamond {
             product: Product::of(9),
         },
         Craft::Cooking {
+            id: "minecraft:diamond_from_blasting_deepslate_diamond_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(108)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:diamond_from_blasting_diamond_ore",
             kind: CookingKind::Blasting,
             ingredient: ItemSet::Direct(&[ItemId(107)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:diamond_from_smelting_deepslate_diamond_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(108)]),
             experience: 1.0,
             cooking_time: 200,
         },
         Craft::Cooking {
+            id: "minecraft:diamond_from_smelting_diamond_ore",
             kind: CookingKind::Smelting,
             ingredient: ItemSet::Direct(&[ItemId(107)]),
             experience: 1.0,

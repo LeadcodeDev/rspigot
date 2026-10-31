@@ -24,6 +24,7 @@ impl Item for CrackedDeepslateTiles {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:cracked_deepslate_tiles",
         kind: CookingKind::Smelting,
         ingredient: ItemSet::Direct(&[ItemId(457)]),
         experience: 0.1,
