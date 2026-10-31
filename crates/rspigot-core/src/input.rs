@@ -392,8 +392,15 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
+        let lost = self
+            .world
+            .chunks
+            .block(pos)
+            .map(|old| self.contents_lost_by(pos, old, state))
+            .unwrap_or_default();
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
+                self.drop_contents(pos, lost);
                 self.mob_paths_block_changed(pos, old, state);
                 self.notify_neighbours(pos);
                 self.push(

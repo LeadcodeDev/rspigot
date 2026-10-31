@@ -4,12 +4,12 @@ use rspigot_domain::chunk::BlockEntity;
 use rspigot_domain::container_menu::{ContainerMenu, MenuKind};
 use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::entity::save::{item_stack_from_nbt, item_stack_to_nbt};
-use rspigot_domain::item::Slot;
+use rspigot_domain::item::{ItemStack, Slot, split};
 use rspigot_domain::menu::{Clicker, MenuEffect, OUTSIDE, RemoteUpdate};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::spawn::placement::is_redstone_conductor;
 use rspigot_domain::text::Component;
-use rspigot_domain::{BlockPos, BlockStateId, Identifier};
+use rspigot_domain::{BlockPos, BlockStateId, Identifier, Vec3};
 use rspigot_entities::SoundSource;
 use rspigot_nbt::{Compound, Tag};
 
@@ -24,6 +24,10 @@ const ITEMS: &str = "Items";
 const BLOCK_EVENT_RANGE: f64 = 64.0;
 const LID_ACTION: u8 = 1;
 const LID_VOLUME: f32 = 0.5;
+const ITEM_WIDTH: f64 = 0.25;
+const MIN_DROPPED_PIECE: u32 = 10;
+const MAX_DROPPED_PIECE: u32 = 30;
+const DROP_SPREAD: f64 = 0.114_850_001_711_397_36;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Lid {
@@ -279,6 +283,51 @@ impl<L: ClientLink> Server<L> {
                 kind: Identifier::minecraft(entity),
                 data: Compound::new(),
             });
+        }
+    }
+
+    pub(crate) fn contents_lost_by(
+        &self,
+        pos: BlockPos,
+        old: BlockStateId,
+        new: BlockStateId,
+    ) -> Vec<ItemStack> {
+        if old.kind() == new.kind() {
+            return Vec::new();
+        }
+        let Some(opening) = opening_of(old).filter(|opening| opening.entity.is_some()) else {
+            return Vec::new();
+        };
+        self.half_items(pos, opening.kind.container_size())
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+
+    pub(crate) fn drop_contents(&mut self, pos: BlockPos, stacks: Vec<ItemStack>) {
+        for stack in stacks {
+            self.drop_item_stack(pos, stack);
+        }
+    }
+
+    fn drop_item_stack(&mut self, pos: BlockPos, stack: ItemStack) {
+        let room = 1.0 - ITEM_WIDTH;
+        let position = Vec3::new(
+            f64::from(pos.x) + self.rng.random::<f64>() * room + ITEM_WIDTH / 2.0,
+            f64::from(pos.y) + self.rng.random::<f64>() * room,
+            f64::from(pos.z) + self.rng.random::<f64>() * room + ITEM_WIDTH / 2.0,
+        );
+        let mut rest = Some(stack);
+        while rest.is_some() {
+            let amount = self.rng.random_range(MIN_DROPPED_PIECE..=MAX_DROPPED_PIECE);
+            let Some(piece) = split(&mut rest, amount) else {
+                break;
+            };
+            let mut triangle = |center: f64| {
+                center + DROP_SPREAD * (self.rng.random::<f64>() - self.rng.random::<f64>())
+            };
+            let velocity = Vec3::new(triangle(0.0), triangle(0.2), triangle(0.0));
+            self.spawn_item_entity(position, velocity, 0, piece);
         }
     }
 
