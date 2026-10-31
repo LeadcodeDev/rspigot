@@ -123,8 +123,137 @@ impl ChestType {
     }
 }
 
+pub(crate) const COPPER_CHESTS: [BlockKind; 8] = [
+    BlockKind::CopperChest,
+    BlockKind::ExposedCopperChest,
+    BlockKind::WeatheredCopperChest,
+    BlockKind::OxidizedCopperChest,
+    BlockKind::WaxedCopperChest,
+    BlockKind::WaxedExposedCopperChest,
+    BlockKind::WaxedWeatheredCopperChest,
+    BlockKind::WaxedOxidizedCopperChest,
+];
+
+pub(crate) fn is_copper_chest(kind: BlockKind) -> bool {
+    COPPER_CHESTS.contains(&kind)
+}
+
 pub(crate) fn is_pairable(kind: BlockKind) -> bool {
-    matches!(kind, BlockKind::Chest | BlockKind::TrappedChest)
+    matches!(kind, BlockKind::Chest | BlockKind::TrappedChest) || is_copper_chest(kind)
+}
+
+fn connects(kind: BlockKind, other: BlockKind) -> bool {
+    kind == other || (is_copper_chest(kind) && is_copper_chest(other))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Oxidation {
+    Unaffected,
+    Exposed,
+    Weathered,
+    Oxidized,
+}
+
+impl Oxidation {
+    const ORDER: [Oxidation; 4] = [
+        Oxidation::Unaffected,
+        Oxidation::Exposed,
+        Oxidation::Weathered,
+        Oxidation::Oxidized,
+    ];
+
+    fn rank(self) -> usize {
+        Self::ORDER
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or_default()
+    }
+}
+
+pub(crate) fn oxidation_of(kind: BlockKind) -> Option<Oxidation> {
+    match kind {
+        BlockKind::CopperChest | BlockKind::WaxedCopperChest => Some(Oxidation::Unaffected),
+        BlockKind::ExposedCopperChest | BlockKind::WaxedExposedCopperChest => {
+            Some(Oxidation::Exposed)
+        }
+        BlockKind::WeatheredCopperChest | BlockKind::WaxedWeatheredCopperChest => {
+            Some(Oxidation::Weathered)
+        }
+        BlockKind::OxidizedCopperChest | BlockKind::WaxedOxidizedCopperChest => {
+            Some(Oxidation::Oxidized)
+        }
+        _ => None,
+    }
+}
+
+fn is_waxed(kind: BlockKind) -> bool {
+    matches!(
+        kind,
+        BlockKind::WaxedCopperChest
+            | BlockKind::WaxedExposedCopperChest
+            | BlockKind::WaxedWeatheredCopperChest
+            | BlockKind::WaxedOxidizedCopperChest
+    )
+}
+
+fn copper_chest_of(oxidation: Oxidation, waxed: bool) -> BlockKind {
+    match (oxidation, waxed) {
+        (Oxidation::Unaffected, false) => BlockKind::CopperChest,
+        (Oxidation::Exposed, false) => BlockKind::ExposedCopperChest,
+        (Oxidation::Weathered, false) => BlockKind::WeatheredCopperChest,
+        (Oxidation::Oxidized, false) => BlockKind::OxidizedCopperChest,
+        (Oxidation::Unaffected, true) => BlockKind::WaxedCopperChest,
+        (Oxidation::Exposed, true) => BlockKind::WaxedExposedCopperChest,
+        (Oxidation::Weathered, true) => BlockKind::WaxedWeatheredCopperChest,
+        (Oxidation::Oxidized, true) => BlockKind::WaxedOxidizedCopperChest,
+    }
+}
+
+fn with_properties_of(kind: BlockKind, source: BlockStateId) -> BlockStateId {
+    ["facing", "type", "waterlogged"]
+        .into_iter()
+        .fold(kind.default_state(), |state, name| {
+            source
+                .property(name)
+                .and_then(|value| state.with_property(name, value))
+                .unwrap_or(state)
+        })
+}
+
+fn least_oxidized(state: BlockStateId, partner: BlockStateId) -> BlockStateId {
+    let (Some(own), Some(theirs)) = (state.kind(), partner.kind()) else {
+        return state;
+    };
+    let (Some(own_oxidation), Some(their_oxidation)) = (oxidation_of(own), oxidation_of(theirs))
+    else {
+        return state;
+    };
+    if chest_type(state) == Some(ChestType::Single) {
+        return state;
+    }
+    let mixed_wax = is_waxed(own) != is_waxed(theirs);
+    let (own_waxed, their_waxed) = if mixed_wax {
+        (false, false)
+    } else {
+        (is_waxed(own), is_waxed(theirs))
+    };
+    let chosen = if own_oxidation.rank() <= their_oxidation.rank() {
+        copper_chest_of(own_oxidation, own_waxed)
+    } else {
+        copper_chest_of(their_oxidation, their_waxed)
+    };
+    with_properties_of(chosen, state)
+}
+
+fn unified_with_partner(
+    state: BlockStateId,
+    pos: BlockPos,
+    block_at: &impl Fn(BlockPos) -> Option<BlockStateId>,
+) -> BlockStateId {
+    let Some(partner) = partner_pos(state, pos).and_then(block_at) else {
+        return state;
+    };
+    least_oxidized(state, partner)
 }
 
 pub(crate) fn chest_type(state: BlockStateId) -> Option<ChestType> {
@@ -188,7 +317,9 @@ fn candidate_partner_facing(
     block_at: &impl Fn(BlockPos) -> Option<BlockStateId>,
 ) -> Option<Dir> {
     let neighbour = block_at(toward.offset(pos))?;
-    if neighbour.kind() == Some(kind) && chest_type(neighbour) == Some(ChestType::Single) {
+    if neighbour.kind().is_some_and(|other| connects(kind, other))
+        && chest_type(neighbour) == Some(ChestType::Single)
+    {
         facing(neighbour)
     } else {
         None
@@ -234,7 +365,12 @@ pub(crate) fn placed_state(
             ChestType::Single
         };
     }
-    with(state, facing, kind_of_chest)
+    let placed = with(state, facing, kind_of_chest);
+    if is_copper_chest(kind) {
+        unified_with_partner(placed, target, &block_at)
+    } else {
+        placed
+    }
 }
 
 pub(crate) fn neighbour_fixes(
@@ -252,19 +388,31 @@ pub(crate) fn neighbour_fixes(
             continue;
         };
         let from_neighbour = toward.opposite();
-        let joined = changed.filter(|state| state.kind() == Some(kind));
+        let joined =
+            changed.filter(|state| state.kind().is_some_and(|other| connects(kind, other)));
         match joined {
             Some(state) => {
                 let (Some(own), Some(theirs)) = (chest_type(neighbour), chest_type(state)) else {
                     continue;
                 };
+                let mut next = neighbour;
                 if own == ChestType::Single
                     && theirs != ChestType::Single
                     && facing(neighbour) == facing(state)
                     && connected_direction(state) == Some(from_neighbour.opposite())
                     && let Some(face) = facing(neighbour)
                 {
-                    fixes.push((at, with(neighbour, face, theirs.opposite())));
+                    next = with(neighbour, face, theirs.opposite());
+                }
+                if is_copper_chest(kind)
+                    && chest_type(next) != Some(ChestType::Single)
+                    && connected_direction(next) == Some(from_neighbour)
+                    && let Some(joined_kind) = state.kind()
+                {
+                    next = with_properties_of(joined_kind, next);
+                }
+                if next != neighbour {
+                    fixes.push((at, next));
                 }
             }
             None => {
@@ -297,6 +445,8 @@ impl<L: crate::ports::ClientLink> crate::server::Server<L> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+
+    use rspigot_domain::entity::physics::has_tag;
 
     use super::*;
 
@@ -439,5 +589,255 @@ mod tests {
     fn a_single_chest_next_to_a_removed_block_is_left_alone() {
         let blocks = [(FIRST, chest(Dir::North, ChestType::Single))];
         assert!(neighbour_fixes(EAST_OF_FIRST, None, world(&blocks)).is_empty());
+    }
+
+    fn copper(kind: BlockKind, facing: Dir, chest_type: ChestType) -> BlockStateId {
+        with(kind.default_state(), facing, chest_type)
+    }
+
+    fn placed_copper(
+        kind: BlockKind,
+        neighbour: BlockKind,
+        sneaking: bool,
+    ) -> Option<(BlockKind, ChestType)> {
+        let blocks = [(FIRST, copper(neighbour, Dir::North, ChestType::Single))];
+        let state = placed_state(
+            copper(kind, Dir::North, ChestType::Single),
+            EAST_OF_FIRST,
+            Direction::Up,
+            sneaking,
+            world(&blocks),
+        );
+        Some((state.kind()?, chest_type(state)?))
+    }
+
+    #[test]
+    fn every_copper_chest_pairs_with_every_other_copper_chest() {
+        for kind in COPPER_CHESTS {
+            for neighbour in COPPER_CHESTS {
+                let (_, chest_type) =
+                    placed_copper(kind, neighbour, false).expect("a copper chest state");
+                assert_eq!(
+                    chest_type,
+                    ChestType::Right,
+                    "{kind:?} next to {neighbour:?}"
+                );
+            }
+        }
+    }
+
+    fn single(kind: BlockKind) -> BlockStateId {
+        with(kind.default_state(), Dir::North, ChestType::Single)
+    }
+
+    fn placed_next_to(kind: BlockKind, neighbour: BlockKind) -> Option<ChestType> {
+        let blocks = [(FIRST, single(neighbour))];
+        let state = placed_state(
+            single(kind),
+            EAST_OF_FIRST,
+            Direction::Up,
+            false,
+            world(&blocks),
+        );
+        chest_type(state)
+    }
+
+    #[test]
+    fn a_copper_chest_does_not_pair_with_a_plain_or_a_trapped_chest() {
+        for other in [BlockKind::Chest, BlockKind::TrappedChest] {
+            assert_eq!(
+                placed_next_to(BlockKind::CopperChest, other),
+                Some(ChestType::Single),
+                "copper next to {other:?}"
+            );
+            assert_eq!(
+                placed_next_to(other, BlockKind::CopperChest),
+                Some(ChestType::Single),
+                "{other:?} next to copper"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pair_takes_the_block_of_the_less_oxidized_half() {
+        let cases = [
+            (
+                BlockKind::ExposedCopperChest,
+                BlockKind::WeatheredCopperChest,
+                BlockKind::ExposedCopperChest,
+            ),
+            (
+                BlockKind::WeatheredCopperChest,
+                BlockKind::ExposedCopperChest,
+                BlockKind::ExposedCopperChest,
+            ),
+            (
+                BlockKind::OxidizedCopperChest,
+                BlockKind::CopperChest,
+                BlockKind::CopperChest,
+            ),
+            (
+                BlockKind::CopperChest,
+                BlockKind::OxidizedCopperChest,
+                BlockKind::CopperChest,
+            ),
+            (
+                BlockKind::WeatheredCopperChest,
+                BlockKind::WeatheredCopperChest,
+                BlockKind::WeatheredCopperChest,
+            ),
+        ];
+        for (placed_kind, neighbour, expected) in cases {
+            let (kind, chest_type) = placed_copper(placed_kind, neighbour, false).expect("state");
+            assert_eq!(kind, expected, "{placed_kind:?} next to {neighbour:?}");
+            assert_eq!(chest_type, ChestType::Right);
+        }
+    }
+
+    #[test]
+    fn two_waxed_chests_stay_waxed_and_take_the_less_oxidized_block() {
+        let (kind, _) = placed_copper(
+            BlockKind::WaxedWeatheredCopperChest,
+            BlockKind::WaxedOxidizedCopperChest,
+            false,
+        )
+        .expect("state");
+        assert_eq!(kind, BlockKind::WaxedWeatheredCopperChest);
+        let (kind, _) = placed_copper(
+            BlockKind::WaxedOxidizedCopperChest,
+            BlockKind::WaxedExposedCopperChest,
+            false,
+        )
+        .expect("state");
+        assert_eq!(kind, BlockKind::WaxedExposedCopperChest);
+    }
+
+    #[test]
+    fn a_waxed_chest_next_to_an_unwaxed_one_loses_its_wax_in_the_pair() {
+        let cases = [
+            (
+                BlockKind::WaxedCopperChest,
+                BlockKind::CopperChest,
+                BlockKind::CopperChest,
+            ),
+            (
+                BlockKind::ExposedCopperChest,
+                BlockKind::WaxedCopperChest,
+                BlockKind::CopperChest,
+            ),
+            (
+                BlockKind::WaxedExposedCopperChest,
+                BlockKind::OxidizedCopperChest,
+                BlockKind::ExposedCopperChest,
+            ),
+            (
+                BlockKind::OxidizedCopperChest,
+                BlockKind::WaxedWeatheredCopperChest,
+                BlockKind::WeatheredCopperChest,
+            ),
+        ];
+        for (placed_kind, neighbour, expected) in cases {
+            let (kind, _) = placed_copper(placed_kind, neighbour, false).expect("state");
+            assert_eq!(kind, expected, "{placed_kind:?} next to {neighbour:?}");
+        }
+    }
+
+    #[test]
+    fn a_single_copper_chest_keeps_its_block() {
+        let (kind, chest_type) =
+            placed_copper(BlockKind::OxidizedCopperChest, BlockKind::CopperChest, true)
+                .expect("state");
+        assert_eq!(kind, BlockKind::OxidizedCopperChest);
+        assert_eq!(chest_type, ChestType::Single);
+    }
+
+    #[test]
+    fn the_neighbour_of_a_new_copper_half_takes_its_block() {
+        let new = copper(BlockKind::ExposedCopperChest, Dir::North, ChestType::Right);
+        let blocks = [
+            (
+                FIRST,
+                copper(
+                    BlockKind::WeatheredCopperChest,
+                    Dir::North,
+                    ChestType::Single,
+                ),
+            ),
+            (EAST_OF_FIRST, new),
+        ];
+        let fixes = neighbour_fixes(EAST_OF_FIRST, Some(new), world(&blocks));
+        assert_eq!(
+            fixes,
+            vec![(
+                FIRST,
+                copper(BlockKind::ExposedCopperChest, Dir::North, ChestType::Left)
+            )]
+        );
+    }
+
+    #[test]
+    fn a_half_follows_the_block_its_partner_changes_into() {
+        let left = copper(BlockKind::CopperChest, Dir::North, ChestType::Left);
+        let changed = copper(BlockKind::WaxedCopperChest, Dir::North, ChestType::Right);
+        let blocks = [(FIRST, left), (EAST_OF_FIRST, changed)];
+        let fixes = neighbour_fixes(EAST_OF_FIRST, Some(changed), world(&blocks));
+        assert_eq!(
+            fixes,
+            vec![(
+                FIRST,
+                copper(BlockKind::WaxedCopperChest, Dir::North, ChestType::Left)
+            )]
+        );
+    }
+
+    #[test]
+    fn a_pair_that_is_already_one_block_needs_no_fix() {
+        let left = copper(BlockKind::CopperChest, Dir::North, ChestType::Left);
+        let right = copper(BlockKind::CopperChest, Dir::North, ChestType::Right);
+        let blocks = [(FIRST, left), (EAST_OF_FIRST, right)];
+        assert!(neighbour_fixes(EAST_OF_FIRST, Some(right), world(&blocks)).is_empty());
+    }
+
+    #[test]
+    fn a_copper_half_whose_partner_is_removed_becomes_single() {
+        let blocks = [(
+            FIRST,
+            copper(BlockKind::WeatheredCopperChest, Dir::North, ChestType::Left),
+        )];
+        let fixes = neighbour_fixes(EAST_OF_FIRST, None, world(&blocks));
+        assert_eq!(
+            fixes,
+            vec![(
+                FIRST,
+                copper(
+                    BlockKind::WeatheredCopperChest,
+                    Dir::North,
+                    ChestType::Single
+                )
+            )]
+        );
+    }
+
+    #[test]
+    fn halves_of_two_different_copper_blocks_do_not_make_a_pair() {
+        let left = copper(BlockKind::CopperChest, Dir::North, ChestType::Left);
+        let right = copper(BlockKind::ExposedCopperChest, Dir::North, ChestType::Right);
+        let blocks = [(FIRST, left), (EAST_OF_FIRST, right)];
+        assert_eq!(pair_of(FIRST, left, world(&blocks)), None);
+    }
+
+    #[test]
+    fn the_copper_chest_kinds_are_the_eight_of_the_vanilla_tag() {
+        let named: Vec<BlockKind> = BlockKind::ALL
+            .into_iter()
+            .filter(|kind| kind.name().ends_with("copper_chest"))
+            .collect();
+        let tagged: Vec<BlockKind> = BlockKind::ALL
+            .into_iter()
+            .filter(|kind| has_tag(kind.default_state(), "minecraft:copper_chests"))
+            .collect();
+        assert_eq!(named.len(), COPPER_CHESTS.len());
+        assert_eq!(tagged, named);
+        assert!(named.iter().all(|kind| is_copper_chest(*kind)));
     }
 }

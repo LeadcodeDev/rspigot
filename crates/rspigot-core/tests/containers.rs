@@ -1117,3 +1117,197 @@ fn an_ender_chest_placed_but_never_opened_is_in_the_chunk_of_a_late_joiner() {
         "minecraft:ender_chest"
     ));
 }
+
+const COPPER_CHESTS: [&str; 8] = [
+    "copper_chest",
+    "exposed_copper_chest",
+    "weathered_copper_chest",
+    "oxidized_copper_chest",
+    "waxed_copper_chest",
+    "waxed_exposed_copper_chest",
+    "waxed_weathered_copper_chest",
+    "waxed_oxidized_copper_chest",
+];
+
+fn kind_at(player: &Player, pos: BlockPos) -> Option<BlockKind> {
+    last_update(player, pos).and_then(BlockStateId::kind)
+}
+
+impl World {
+    fn place_pair_of(&mut self, first: &str, second: &str) {
+        self.give(first);
+        self.give(second);
+        self.select(0);
+        self.use_on(FLOOR, Direction::Up);
+        self.select(1);
+        self.use_on(BlockPos::new(3, 63, 2), Direction::Up);
+    }
+}
+
+#[test]
+fn every_copper_chest_opens_a_three_row_window() {
+    for item in COPPER_CHESTS {
+        let mut world = world();
+        world.place_storage(item);
+        world.open_chest();
+
+        assert_eq!(opened(&world.alice), Some((WINDOW, 2)), "{item}");
+        let slots = content(&world.alice, WINDOW).unwrap_or_else(|| panic!("{item} content"));
+        assert_eq!(slots.len(), 63, "{item}");
+    }
+}
+
+#[test]
+fn copper_chest_items_are_kept_in_the_chest_block_entity() {
+    let mut world = world();
+    world.place_storage("copper_chest");
+    world.give("stone");
+    world.open_chest();
+    world.click(WINDOW, 27 + 27, 0, ClickInput::Pickup);
+    world.click(WINDOW, 4, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.open_chest();
+
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[4], Some((item("minecraft:stone"), 1)));
+    let mut carol = join(&mut world.server, "Carol");
+    run_ticks(&mut world.server, &mut [&mut carol], 30);
+    assert!(carries_a_block_entity(&carol, CHEST, "minecraft:chest"));
+}
+
+#[test]
+fn the_copper_chest_hinge_sound_follows_the_oxidation() {
+    let sounds = [
+        ("copper_chest", "copper_chest"),
+        ("exposed_copper_chest", "copper_chest"),
+        ("weathered_copper_chest", "copper_chest_weathered"),
+        ("oxidized_copper_chest", "copper_chest_oxidized"),
+        ("waxed_copper_chest", "copper_chest"),
+        ("waxed_exposed_copper_chest", "copper_chest"),
+        ("waxed_weathered_copper_chest", "copper_chest_weathered"),
+        ("waxed_oxidized_copper_chest", "copper_chest_oxidized"),
+    ];
+    for (item, sound) in sounds {
+        let mut world = world();
+        world.place_storage(item);
+        world.open_chest();
+        let open = format!("minecraft:block.{sound}.open");
+        let close = format!("minecraft:block.{sound}.close");
+        assert_eq!(sounds_heard(&world.bob, &open), 1, "{item}");
+        assert_eq!(
+            sounds_heard(&world.bob, "minecraft:block.chest.open"),
+            0,
+            "{item}"
+        );
+        assert_eq!(lid_events(&world.bob), vec![1], "{item}");
+
+        world.close(WINDOW);
+        assert_eq!(sounds_heard(&world.bob, &close), 1, "{item}");
+        assert_eq!(lid_events(&world.bob), vec![1, 0], "{item}");
+    }
+}
+
+#[test]
+fn a_solid_block_above_a_copper_chest_keeps_it_shut() {
+    let mut world = world();
+    world.place_storage("copper_chest");
+    world.give("stone");
+    world.select(0);
+    world.sneak(true);
+    world.use_on(CHEST, Direction::Up);
+    world.sneak(false);
+    assert!(last_update(&world.alice, ABOVE).is_some());
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), None);
+}
+
+#[test]
+fn two_copper_chests_of_different_oxidation_make_one_double_chest_of_the_least_oxidized() {
+    let mut world = world();
+    world.place_pair_of("weathered_copper_chest", "exposed_copper_chest");
+
+    for player in [&world.alice, &world.bob] {
+        assert_eq!(kind_at(player, CHEST), Some(BlockKind::ExposedCopperChest));
+        assert_eq!(
+            kind_at(player, RIGHT_HALF),
+            Some(BlockKind::ExposedCopperChest)
+        );
+        assert_eq!(chest_type_at(player, CHEST).as_deref(), Some("left"));
+        assert_eq!(chest_type_at(player, RIGHT_HALF).as_deref(), Some("right"));
+    }
+    world.open_at(CHEST);
+    assert_eq!(opened(&world.alice), Some((WINDOW, 5)));
+    assert_eq!(content(&world.alice, WINDOW).expect("content").len(), 90);
+}
+
+#[test]
+fn a_waxed_copper_chest_loses_its_wax_when_it_pairs_with_an_unwaxed_one() {
+    let mut world = world();
+    world.place_pair_of("waxed_copper_chest", "exposed_copper_chest");
+
+    assert_eq!(kind_at(&world.alice, CHEST), Some(BlockKind::CopperChest));
+    assert_eq!(
+        kind_at(&world.alice, RIGHT_HALF),
+        Some(BlockKind::CopperChest)
+    );
+    assert_eq!(chest_type_at(&world.alice, CHEST).as_deref(), Some("left"));
+}
+
+#[test]
+fn two_waxed_copper_chests_stay_waxed() {
+    let mut world = world();
+    world.place_pair_of(
+        "waxed_oxidized_copper_chest",
+        "waxed_weathered_copper_chest",
+    );
+
+    assert_eq!(
+        kind_at(&world.alice, CHEST),
+        Some(BlockKind::WaxedWeatheredCopperChest)
+    );
+    assert_eq!(
+        kind_at(&world.alice, RIGHT_HALF),
+        Some(BlockKind::WaxedWeatheredCopperChest)
+    );
+}
+
+#[test]
+fn a_copper_chest_next_to_a_plain_chest_stays_a_single_chest() {
+    let mut world = world();
+    world.place_pair_of("chest", "copper_chest");
+
+    assert_eq!(kind_at(&world.alice, CHEST), Some(BlockKind::Chest));
+    assert_eq!(
+        chest_type_at(&world.alice, CHEST).as_deref(),
+        Some("single")
+    );
+    assert_eq!(
+        chest_type_at(&world.alice, RIGHT_HALF).as_deref(),
+        Some("single")
+    );
+}
+
+#[test]
+fn breaking_one_copper_half_makes_the_other_a_single_copper_chest() {
+    let mut world = world();
+    world.place_pair_of("copper_chest", "exposed_copper_chest");
+    world.open_at(CHEST);
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
+            action: DigAction::Finish,
+            pos: RIGHT_HALF,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.settle();
+
+    assert!(closed(&world.alice, WINDOW));
+    assert_eq!(kind_at(&world.alice, CHEST), Some(BlockKind::CopperChest));
+    assert_eq!(
+        chest_type_at(&world.alice, CHEST).as_deref(),
+        Some("single")
+    );
+}

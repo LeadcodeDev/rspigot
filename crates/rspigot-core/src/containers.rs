@@ -13,7 +13,7 @@ use rspigot_domain::{BlockPos, BlockStateId, Identifier};
 use rspigot_entities::SoundSource;
 use rspigot_nbt::{Compound, Tag};
 
-use crate::chests;
+use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -29,6 +29,7 @@ const LID_VOLUME: f32 = 0.5;
 pub(crate) enum Lid {
     None,
     Chest,
+    CopperChest(Oxidation),
     Ender,
     Shulker,
     Barrel,
@@ -102,6 +103,14 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
         })
     };
     let rows = MenuKind::Generic { rows: 3 };
+    if let Some(oxidation) = chests::oxidation_of(block) {
+        return storage(
+            rows,
+            "chest",
+            "container.chest",
+            Lid::CopperChest(oxidation),
+        );
+    }
     match block {
         BlockKind::Chest => storage(rows, "chest", "container.chest", Lid::Chest),
         BlockKind::EnderChest => Some(Opening {
@@ -169,6 +178,18 @@ fn facing_step(state: BlockStateId) -> (i32, i32, i32) {
 fn lid_sounds(lid: Lid) -> Option<(&'static str, &'static str)> {
     match lid {
         Lid::Chest => Some(("minecraft:block.chest.open", "minecraft:block.chest.close")),
+        Lid::CopperChest(Oxidation::Weathered) => Some((
+            "minecraft:block.copper_chest_weathered.open",
+            "minecraft:block.copper_chest_weathered.close",
+        )),
+        Lid::CopperChest(Oxidation::Oxidized) => Some((
+            "minecraft:block.copper_chest_oxidized.open",
+            "minecraft:block.copper_chest_oxidized.close",
+        )),
+        Lid::CopperChest(Oxidation::Unaffected | Oxidation::Exposed) => Some((
+            "minecraft:block.copper_chest.open",
+            "minecraft:block.copper_chest.close",
+        )),
         Lid::Ender => Some((
             "minecraft:block.ender_chest.open",
             "minecraft:block.ender_chest.close",
@@ -320,7 +341,9 @@ impl<L: ClientLink> Server<L> {
         };
         let viewers = self.viewer_count(pos);
         let shut = match opening.lid {
-            Lid::Chest | Lid::Ender => blocked_above(self.world.chunks.block(pos.offset(0, 1, 0))),
+            Lid::Chest | Lid::CopperChest(_) | Lid::Ender => {
+                blocked_above(self.world.chunks.block(pos.offset(0, 1, 0)))
+            }
             Lid::Shulker => viewers == 0 && self.shulker_is_obstructed(pos, state),
             Lid::Barrel | Lid::None => false,
         };
@@ -787,6 +810,56 @@ mod tests {
             assert_eq!(opening.kind, MenuKind::ShulkerBox, "{}", block.name());
             assert_eq!(opening.entity, Some("shulker_box"), "{}", block.name());
         }
+    }
+
+    #[test]
+    fn every_copper_chest_opens_a_three_row_chest_menu_on_the_chest_block_entity() {
+        for block in chests::COPPER_CHESTS {
+            let opening =
+                opening_of(block.default_state()).unwrap_or_else(|| panic!("{}", block.name()));
+            assert_eq!(
+                opening.kind,
+                MenuKind::Generic { rows: 3 },
+                "{}",
+                block.name()
+            );
+            assert_eq!(opening.entity, Some("chest"), "{}", block.name());
+            assert_eq!(opening.title, "container.chest", "{}", block.name());
+            assert!(!opening.ender, "{}", block.name());
+        }
+    }
+
+    #[test]
+    fn the_hinge_sounds_follow_the_oxidation_and_ignore_the_wax() {
+        let sounds = |block: BlockKind| {
+            let opening =
+                opening_of(block.default_state()).unwrap_or_else(|| panic!("{}", block.name()));
+            lid_sounds(opening.lid)
+        };
+        let plain = Some((
+            "minecraft:block.copper_chest.open",
+            "minecraft:block.copper_chest.close",
+        ));
+        let weathered = Some((
+            "minecraft:block.copper_chest_weathered.open",
+            "minecraft:block.copper_chest_weathered.close",
+        ));
+        let oxidized = Some((
+            "minecraft:block.copper_chest_oxidized.open",
+            "minecraft:block.copper_chest_oxidized.close",
+        ));
+        assert_eq!(sounds(BlockKind::CopperChest), plain);
+        assert_eq!(sounds(BlockKind::ExposedCopperChest), plain);
+        assert_eq!(sounds(BlockKind::WaxedCopperChest), plain);
+        assert_eq!(sounds(BlockKind::WaxedExposedCopperChest), plain);
+        assert_eq!(sounds(BlockKind::WeatheredCopperChest), weathered);
+        assert_eq!(sounds(BlockKind::WaxedWeatheredCopperChest), weathered);
+        assert_eq!(sounds(BlockKind::OxidizedCopperChest), oxidized);
+        assert_eq!(sounds(BlockKind::WaxedOxidizedCopperChest), oxidized);
+        assert_eq!(
+            sounds(BlockKind::Chest),
+            Some(("minecraft:block.chest.open", "minecraft:block.chest.close"))
+        );
     }
 
     #[test]
