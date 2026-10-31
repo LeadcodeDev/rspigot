@@ -49,6 +49,7 @@ pub async fn run_with<P: Plugin>(
     url: String,
     token: Option<String>,
 ) -> Result<(), Error> {
+    let endpoint = endpoint(&url)?;
     let link = Link::default();
     let (queue, queued) = mpsc::unbounded_channel();
     let hello = v1::Hello {
@@ -62,20 +63,30 @@ pub async fn run_with<P: Plugin>(
             .collect(),
     };
     tokio::select! {
-        error = keep_connected(url, hello, &link, queue) => Err(error),
+        error = keep_connected(endpoint, url, hello, &link, queue) => Err(error),
         () = handle_events(&plugin, &link, queued) => Ok(()),
     }
 }
 
-async fn keep_connected(url: String, hello: v1::Hello, link: &Link, queue: Queue) -> Error {
-    let Ok(endpoint) = Endpoint::from_shared(url.clone()) else {
-        return Error::Url(url);
-    };
-    let endpoint = endpoint
+fn endpoint(url: &str) -> Result<Endpoint, Error> {
+    let endpoint = Endpoint::from_shared(url.to_owned()).map_err(|_| Error::Url(url.to_owned()))?;
+    if !matches!(endpoint.uri().scheme_str(), Some("http" | "https")) {
+        return Err(Error::Url(url.to_owned()));
+    }
+    Ok(endpoint
         .connect_timeout(CONNECT_TIMEOUT)
         .http2_keep_alive_interval(KEEP_ALIVE_INTERVAL)
         .keep_alive_timeout(KEEP_ALIVE_TIMEOUT)
-        .keep_alive_while_idle(true);
+        .keep_alive_while_idle(true))
+}
+
+async fn keep_connected(
+    endpoint: Endpoint,
+    url: String,
+    hello: v1::Hello,
+    link: &Link,
+    queue: Queue,
+) -> Error {
     let mut backoff = Backoff::default();
     loop {
         let reason = match connect(&endpoint, &hello, link, &queue, &mut backoff).await {
@@ -101,7 +112,7 @@ async fn connect(
 ) -> Ended {
     let channel = match endpoint.connect().await {
         Ok(channel) => channel,
-        Err(error) => return Ended::Lost(error.to_string()),
+        Err(error) => return Ended::Lost(causes(&error)),
     };
     let (outbound, said) = mpsc::unbounded_channel();
     let _ = outbound.send(message(from_plugin::Body::Hello(hello.clone())));
@@ -175,6 +186,19 @@ async fn read(
             Some(to_plugin::Body::Replaced(_)) => return Ended::Replaced,
             Some(to_plugin::Body::Accepted(_)) | None => {}
         }
+    }
+}
+
+fn causes(error: &tonic::transport::Error) -> String {
+    let mut causes: Vec<String> =
+        std::iter::successors(std::error::Error::source(error), |cause| cause.source())
+            .map(ToString::to_string)
+            .collect();
+    causes.dedup();
+    if causes.is_empty() {
+        error.to_string()
+    } else {
+        causes.join(": ")
     }
 }
 
@@ -275,6 +299,29 @@ mod tests {
 
         assert!(matches!(accepted, Err(Ended::Lost(_))));
         assert!(started.elapsed() >= ANSWER_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn a_failed_connection_says_why() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let endpoint = Endpoint::from_shared(format!("http://{address}")).unwrap();
+        let (queue, _queued) = mpsc::unbounded_channel();
+
+        let ended = connect(
+            &endpoint,
+            &v1::Hello::default(),
+            &Link::default(),
+            &queue,
+            &mut Backoff::default(),
+        )
+        .await;
+
+        let Ended::Lost(reason) = ended else {
+            panic!("expected a lost connection");
+        };
+        assert!(reason.contains("refused"), "{reason}");
     }
 
     #[test]

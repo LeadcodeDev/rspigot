@@ -29,7 +29,7 @@ impl PlayerLeave {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PlayerMove {
     pub player: Player,
     pub from: Position,
@@ -54,6 +54,17 @@ impl PlayerMove {
 
     pub const fn is_rolled_back(&self) -> bool {
         self.rolled_back
+    }
+
+    pub(crate) fn copy(&self) -> Self {
+        Self {
+            player: self.player.clone(),
+            from: self.from,
+            to: self.to,
+            id: self.id,
+            cancelled: self.cancelled,
+            rolled_back: self.rolled_back,
+        }
     }
 }
 
@@ -103,7 +114,7 @@ impl Received {
             },
             Self::Move(event) => Call::PlayerMove {
                 handler,
-                event: event.clone(),
+                event: event.copy(),
             },
         }
     }

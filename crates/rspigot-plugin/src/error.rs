@@ -3,7 +3,7 @@ use tonic::Status;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("`{0}` is not a valid rspigot URL")]
+    #[error("`{0}` is not a valid rspigot URL, expected http://host:port")]
     Url(String),
     #[error("rspigot refused the plugin: {}", .0.message())]
     Refused(Status),

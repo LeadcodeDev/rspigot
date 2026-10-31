@@ -75,7 +75,7 @@ impl HandlerSpec {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Call {
     PlayerJoin { handler: u32, event: PlayerJoin },
     PlayerLeave { handler: u32, event: PlayerLeave },

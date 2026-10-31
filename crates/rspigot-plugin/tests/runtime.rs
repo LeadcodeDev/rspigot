@@ -699,6 +699,23 @@ async fn a_replaced_plugin_stops() {
 }
 
 #[tokio::test]
+async fn a_url_without_a_scheme_is_refused_at_once() {
+    for url in ["127.0.0.1:25580", "rspigot:25580", "ftp://127.0.0.1:25580"] {
+        let (marks, _marked) = mpsc::unbounded_channel();
+        let (joins, _joined) = mpsc::unbounded_channel();
+        let started = Instant::now();
+
+        let ended = within(run_with(Guard { marks, joins }, url.to_owned(), None)).await;
+
+        let Err(Error::Url(refused)) = ended else {
+            panic!("expected {url} to be refused, got {ended:?}");
+        };
+        assert_eq!(refused, url);
+        assert!(started.elapsed() < Duration::from_millis(900));
+    }
+}
+
+#[tokio::test]
 async fn a_lost_connection_is_retried() {
     let mut host = Host::start().await;
     let mut plugin = launch(&host, None);
