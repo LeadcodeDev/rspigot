@@ -1311,3 +1311,157 @@ fn breaking_one_copper_half_makes_the_other_a_single_copper_chest() {
         Some("single")
     );
 }
+
+fn titled(player: &Player, key: &str) -> bool {
+    player.log.iter().any(|event| {
+        matches!(event, ClientEvent::OpenScreen { title, .. }
+            if format!("{title:?}").contains(key))
+    })
+}
+
+#[test]
+fn each_station_opens_its_own_menu_with_its_title_and_data_slots() {
+    let stations = [
+        ("anvil", 8, 39, "container.repair", 1),
+        ("chipped_anvil", 8, 39, "container.repair", 1),
+        ("damaged_anvil", 8, 39, "container.repair", 1),
+        ("grindstone", 15, 39, "container.grindstone_title", 0),
+        ("stonecutter", 24, 38, "container.stonecutter", 1),
+        (
+            "cartography_table",
+            23,
+            39,
+            "container.cartography_table",
+            0,
+        ),
+        ("loom", 18, 40, "container.loom", 1),
+        ("smithing_table", 21, 40, "container.upgrade", 1),
+    ];
+    for (block, menu, slots, title, data) in stations {
+        let mut world = world();
+        world.place_storage(block);
+        world.open_chest();
+
+        assert_eq!(opened(&world.alice), Some((WINDOW, menu)), "{block}");
+        let content = content(&world.alice, WINDOW).unwrap_or_else(|| panic!("{block} content"));
+        assert_eq!(content.len(), slots, "{block}");
+        assert!(titled(&world.alice, title), "{block}");
+        assert_eq!(
+            data_events(&world.alice, WINDOW),
+            (0..data).map(|id| (id, 0)).collect::<Vec<_>>(),
+            "{block}"
+        );
+    }
+}
+
+#[test]
+fn stations_have_no_block_entity() {
+    for block in [
+        "anvil",
+        "grindstone",
+        "stonecutter",
+        "cartography_table",
+        "loom",
+        "smithing_table",
+    ] {
+        let mut world = world();
+        world.place_storage(block);
+        let mut carol = join(&mut world.server, "Carol");
+        run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+        assert!(
+            !carries_a_block_entity(&carol, CHEST, &format!("minecraft:{block}")),
+            "{block}"
+        );
+    }
+}
+
+#[test]
+fn the_items_put_in_a_station_come_back_when_its_window_closes() {
+    let stations = [
+        ("anvil", "iron_pickaxe", 30),
+        ("grindstone", "iron_pickaxe", 30),
+        ("smithing_table", "iron_pickaxe", 31),
+        ("loom", "white_banner", 31),
+        ("stonecutter", "stone", 29),
+    ];
+    for (block, stack, hotbar_0) in stations {
+        let mut world = world();
+        world.place_storage(block);
+        world.give(stack);
+        world.open_chest();
+        world.click(WINDOW, hotbar_0, 0, ClickInput::Pickup);
+        world.click(WINDOW, 0, 0, ClickInput::Pickup);
+        assert_eq!(
+            slot_update(&world.alice, WINDOW, 0),
+            Some(Some((item(&format!("minecraft:{stack}")), 1))),
+            "{block}"
+        );
+        world.close(WINDOW);
+        world.open_chest();
+
+        let slots = content(&world.alice, 2).expect("second window");
+        assert!(slots[..3].iter().all(Option::is_none), "{block}");
+        let back = world.alice.log.iter().rev().any(|event| {
+            matches!(
+                event,
+                ClientEvent::PlayerInventorySlot { stack: Some(held), .. }
+                    if held.item.0 == item(&format!("minecraft:{stack}"))
+            )
+        });
+        assert!(back, "{block}");
+    }
+}
+
+#[test]
+fn the_grindstone_refuses_an_item_that_is_neither_damageable_nor_enchanted() {
+    let mut world = world();
+    world.place_storage("grindstone");
+    world.give("stick");
+    world.open_chest();
+    world.click(WINDOW, 30, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.open_chest();
+
+    let slots = content(&world.alice, 2).expect("second window");
+    assert!(slots[..3].iter().all(Option::is_none));
+    let kept = world.alice.log.iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::PlayerInventorySlot { stack: Some(stack), .. }
+                if stack.item.0 == item("minecraft:stick")
+        )
+    });
+    assert!(kept);
+}
+
+#[test]
+fn breaking_a_station_closes_its_window_and_returns_the_items() {
+    let mut world = world();
+    world.place_storage("grindstone");
+    world.give("iron_pickaxe");
+    world.open_chest();
+    world.click(WINDOW, 30, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
+            action: DigAction::Finish,
+            pos: CHEST,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.settle();
+
+    assert!(closed(&world.alice, WINDOW));
+    let back = world.alice.log.iter().rev().any(|event| {
+        matches!(
+            event,
+            ClientEvent::PlayerInventorySlot { stack: Some(stack), .. }
+                if stack.item.0 == item("minecraft:iron_pickaxe")
+        )
+    });
+    assert!(back);
+}
