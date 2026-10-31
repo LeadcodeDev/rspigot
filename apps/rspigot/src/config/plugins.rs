@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn priorities_parse_per_plugin_and_per_event() {
         let config = file(
-            "order: [guard, welcome]\npriorities:\n  welcome: high\n  welcome.player_move: lowest\n  guard.player_join: highest\n  guard.player_leave: low\n  guard.player_fly: high\n  ghost: urgent\n",
+            "order: [guard, welcome]\npriorities:\n  welcome: high\n  welcome.player_move: lowest\n  guard.player_join: highest\n  guard.player_leave: low\n  guard.player_fly: high\n  ghost: urgent\n  guard:\n    player_move: high\n",
         );
         let settings = settings(&config);
         assert_eq!(settings.order, vec!["guard", "welcome"]);

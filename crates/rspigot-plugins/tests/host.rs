@@ -19,6 +19,7 @@ use rspigot_plugin_protocol::v1::{self, event, from_plugin, to_plugin};
 use rspigot_plugins::{PluginHostConfig, PluginHostError, run, serve};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::transport::{Channel, Endpoint};
 use tonic::{Code, Status, Streaming};
@@ -60,7 +61,8 @@ struct Host {
     address: SocketAddr,
     seen: mpsc::UnboundedReceiver<Seen>,
     outboxes: Outboxes,
-    _stop: watch::Sender<bool>,
+    stop: watch::Sender<bool>,
+    served: JoinHandle<Result<(), PluginHostError>>,
 }
 
 impl Host {
@@ -73,12 +75,13 @@ impl Host {
         let outboxes = Outboxes::default();
         let shared = Arc::clone(&outboxes);
         std::thread::spawn(move || play_the_core(inbox, shared, witness));
-        tokio::spawn(serve(listener, token.map(str::to_owned), inbound, stopped));
+        let served = tokio::spawn(serve(listener, token.map(str::to_owned), inbound, stopped));
         Self {
             address,
             seen,
             outboxes,
-            _stop: stop,
+            stop,
+            served,
         }
     }
 
@@ -87,8 +90,9 @@ impl Host {
     }
 
     fn tell(&self, connection: u64, message: ToPlugin) {
-        let outboxes = self.outboxes.lock().unwrap();
-        outboxes[&connection].1.send(message);
+        if let Some((_, outbox)) = self.outboxes.lock().unwrap().get(&connection) {
+            outbox.send(message);
+        }
     }
 
     async fn health(&self, service: &str) -> ServingStatus {
@@ -154,6 +158,23 @@ async fn channel(address: SocketAddr) -> Channel {
         .connect()
         .await
         .unwrap()
+}
+
+async fn silent_client(
+    address: SocketAddr,
+) -> (
+    mpsc::UnboundedSender<v1::FromPlugin>,
+    impl Future<Output = Result<(), Status>>,
+) {
+    let (says, said) = mpsc::unbounded_channel();
+    let mut client = PluginHostClient::new(channel(address).await);
+    let answer = async move {
+        client
+            .connect(UnboundedReceiverStream::new(said))
+            .await
+            .map(drop)
+    };
+    (says, answer)
 }
 
 struct Plugin {
@@ -474,4 +495,60 @@ async fn a_network_host_without_a_token_does_not_start() {
         token: None,
     };
     assert!(local.validate().is_ok());
+}
+
+#[tokio::test]
+async fn a_plugin_that_stops_reading_is_disconnected() {
+    let mut host = Host::start(None).await;
+    let mut plugin = Plugin::accepted(host.address, hello("welcome")).await;
+    let Seen::Connected { connection, .. } = host.next().await else {
+        panic!("expected a connection");
+    };
+
+    let warning = "w".repeat(1024);
+    let mut disconnected = None;
+    for _ in 0..64 {
+        for _ in 0..1024 {
+            host.tell(connection, ToPlugin::Warning(warning.clone()));
+        }
+        if let Ok(seen) = tokio::time::timeout(Duration::from_millis(50), host.seen.recv()).await {
+            disconnected = seen;
+            break;
+        }
+    }
+    assert!(matches!(
+        disconnected,
+        Some(Seen::Disconnected { connection: 1 })
+    ));
+
+    let ended = loop {
+        match within(plugin.hears.message()).await {
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("the stream ended without a status"),
+            Err(status) => break status,
+        }
+    };
+    assert_eq!(ended.code(), Code::ResourceExhausted);
+}
+
+#[tokio::test]
+async fn stopping_the_host_disconnects_its_plugins() {
+    let mut host = Host::start(None).await;
+    let mut plugin = Plugin::accepted(host.address, hello("welcome")).await;
+    assert!(matches!(
+        host.next().await,
+        Seen::Connected { connection: 1, .. }
+    ));
+    let (_says, answer) = silent_client(host.address).await;
+    let waiting = tokio::spawn(answer);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    host.stop.send(true).unwrap();
+    assert!(matches!(
+        host.next().await,
+        Seen::Disconnected { connection: 1 }
+    ));
+    assert!(matches!(within(plugin.hears.message()).await, Ok(None)));
+    within(host.served).await.unwrap().unwrap();
+    assert!(within(waiting).await.unwrap().is_err());
 }

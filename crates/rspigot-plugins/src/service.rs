@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use crossbeam_channel::Sender;
 use rspigot_core::events::Inbound;
@@ -10,7 +12,7 @@ use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::plugin_host_server::PluginHost;
 use rspigot_plugin_protocol::v1::{self, from_plugin};
 use tokio::sync::{Mutex, mpsc, watch};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tonic_health::ServingStatus;
 use tonic_health::server::HealthReporter;
@@ -18,7 +20,10 @@ use tonic_health::server::HealthReporter;
 use crate::convert;
 use crate::outbox::Outbox;
 
+const REPLY_CAPACITY: usize = 4096;
+
 type Reply = Result<v1::ToPlugin, Status>;
+type Ending = ControlFlow<Option<Status>>;
 
 pub(crate) async fn stopped(stop: &mut watch::Receiver<bool>) {
     let _ = stop.wait_for(|stopped| *stopped).await;
@@ -66,6 +71,7 @@ pub(crate) struct Host<L> {
     inbound: Sender<Inbound<L>>,
     health: Health,
     stop: watch::Receiver<bool>,
+    introduction_timeout: Duration,
     next_connection: AtomicU64,
 }
 
@@ -75,12 +81,14 @@ impl<L: ClientLink> Host<L> {
         inbound: Sender<Inbound<L>>,
         health: Health,
         stop: watch::Receiver<bool>,
+        introduction_timeout: Duration,
     ) -> Self {
         Self {
             token,
             inbound,
             health,
             stop,
+            introduction_timeout,
             next_connection: AtomicU64::new(1),
         }
     }
@@ -88,27 +96,14 @@ impl<L: ClientLink> Host<L> {
     async fn open(
         &self,
         mut incoming: Streaming<v1::FromPlugin>,
-    ) -> Result<UnboundedReceiverStream<Reply>, Status> {
+    ) -> Result<ReceiverStream<Reply>, Status> {
         let hello = self.introduction(&mut incoming).await?;
         let intro = self.admit(hello)?;
-        let connection = self.next_connection.fetch_add(1, Ordering::Relaxed);
-        let name = intro.name.clone();
-        let version = intro.version.clone();
         let (outbox, from_core) = mpsc::unbounded_channel();
-        let (replies, stream) = mpsc::unbounded_channel();
-        let connected = Inbound::PluginConnected {
-            connection,
-            intro,
-            outbox: Box::new(Outbox::new(outbox)),
-        };
-        let announce = || self.inbound.send(connected).is_ok();
-        if !self.health.join(&name, connection, announce).await {
-            return Err(Status::unavailable("the server is stopping"));
-        }
-        tracing::info!("Plugin {name} {version} connected");
+        let (replies, stream) = mpsc::channel(REPLY_CAPACITY + 1);
         let session = Session {
-            connection,
-            name,
+            connection: self.next_connection.fetch_add(1, Ordering::Relaxed),
+            name: intro.name.clone(),
             incoming,
             from_core,
             replies,
@@ -116,8 +111,8 @@ impl<L: ClientLink> Host<L> {
             health: self.health.clone(),
             stop: self.stop.clone(),
         };
-        tokio::spawn(session.run());
-        Ok(UnboundedReceiverStream::new(stream))
+        tokio::spawn(session.run(intro, Outbox::new(outbox)));
+        Ok(ReceiverStream::new(stream))
     }
 
     async fn introduction(
@@ -126,7 +121,9 @@ impl<L: ClientLink> Host<L> {
     ) -> Result<v1::Hello, Status> {
         let mut stop = self.stop.clone();
         let first = tokio::select! {
-            first = incoming.message() => first?,
+            first = tokio::time::timeout(self.introduction_timeout, incoming.message()) => {
+                first.map_err(|_| Status::deadline_exceeded("no introduction"))??
+            }
             () = stopped(&mut stop) => return Err(Status::unavailable("the server is stopping")),
         };
         match first.and_then(|message| message.body) {
@@ -169,7 +166,7 @@ fn same_token(expected: &str, given: &str) -> bool {
 
 #[tonic::async_trait]
 impl<L: ClientLink> PluginHost for Host<L> {
-    type ConnectStream = UnboundedReceiverStream<Reply>;
+    type ConnectStream = ReceiverStream<Reply>;
 
     async fn connect(
         &self,
@@ -188,15 +185,40 @@ struct Session<L> {
     name: String,
     incoming: Streaming<v1::FromPlugin>,
     from_core: mpsc::UnboundedReceiver<ToPlugin>,
-    replies: mpsc::UnboundedSender<Reply>,
+    replies: mpsc::Sender<Reply>,
     inbound: Sender<Inbound<L>>,
     health: Health,
     stop: watch::Receiver<bool>,
 }
 
 impl<L: ClientLink> Session<L> {
-    async fn run(mut self) {
-        while self.step().await {}
+    async fn run(mut self, intro: PluginIntro, outbox: Outbox) {
+        let version = intro.version.clone();
+        let connected = Inbound::PluginConnected {
+            connection: self.connection,
+            intro,
+            outbox: Box::new(outbox),
+        };
+        let announce = || self.inbound.send(connected).is_ok();
+        if !self
+            .health
+            .join(&self.name, self.connection, announce)
+            .await
+        {
+            let _ = self
+                .replies
+                .try_send(Err(Status::unavailable("the server is stopping")));
+            return;
+        }
+        tracing::info!("Plugin {} {version} connected", self.name);
+        let ending = loop {
+            if let ControlFlow::Break(ending) = self.step().await {
+                break ending;
+            }
+        };
+        if let Some(status) = ending {
+            let _ = self.replies.try_send(Err(status));
+        }
         self.health.leave(&self.name, self.connection).await;
         let _ = self.inbound.send(Inbound::PluginDisconnected {
             connection: self.connection,
@@ -204,22 +226,25 @@ impl<L: ClientLink> Session<L> {
         tracing::info!("Plugin {} disconnected", self.name);
     }
 
-    async fn step(&mut self) -> bool {
+    async fn step(&mut self) -> Ending {
         tokio::select! {
             received = self.incoming.message() => match received {
                 Ok(Some(message)) => {
                     self.forward(message);
-                    true
+                    ControlFlow::Continue(())
                 }
-                Ok(None) => false,
+                Ok(None) => ControlFlow::Break(None),
                 Err(status) => {
                     tracing::debug!(plugin = %self.name, %status, "plugin stream failed");
-                    false
+                    ControlFlow::Break(None)
                 }
             },
-            sent = self.from_core.recv() => sent.is_some_and(|message| self.reply(message)),
-            () = self.replies.closed() => false,
-            () = stopped(&mut self.stop) => false,
+            sent = self.from_core.recv() => match sent {
+                Some(message) => self.reply(message),
+                None => ControlFlow::Break(None),
+            },
+            () = self.replies.closed() => ControlFlow::Break(None),
+            () = stopped(&mut self.stop) => ControlFlow::Break(None),
         }
     }
 
@@ -235,15 +260,29 @@ impl<L: ClientLink> Session<L> {
         }
     }
 
-    fn reply(&self, message: ToPlugin) -> bool {
+    fn reply(&self, message: ToPlugin) -> Ending {
+        if self.replies.capacity() <= 1 {
+            tracing::warn!(
+                "Plugin {} is not reading its stream, dropping it",
+                self.name
+            );
+            return ControlFlow::Break(Some(Status::resource_exhausted(
+                "the plugin is not reading its stream",
+            )));
+        }
         let replaced = matches!(message, ToPlugin::Replaced);
-        let delivered = self.replies.send(Ok(convert::to_plugin(message))).is_ok();
+        if self
+            .replies
+            .try_send(Ok(convert::to_plugin(message)))
+            .is_err()
+        {
+            return ControlFlow::Break(None);
+        }
         if replaced {
-            let _ = self.replies.send(Err(Status::already_exists(
+            return ControlFlow::Break(Some(Status::already_exists(
                 "replaced by a newer connection",
             )));
-            return false;
         }
-        delivered
+        ControlFlow::Continue(())
     }
 }

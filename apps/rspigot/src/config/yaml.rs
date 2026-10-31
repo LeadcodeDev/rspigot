@@ -221,13 +221,20 @@ impl YamlConfig {
     }
 
     pub fn entries(&self, path: &str) -> Vec<(String, String)> {
-        match self.get(path) {
-            Some(Value::Mapping(entries)) => entries
-                .iter()
-                .filter_map(|(key, value)| Some((scalar(key)?, scalar(value)?)))
-                .collect(),
-            _ => Vec::new(),
-        }
+        let Some(Value::Mapping(entries)) = self.get(path) else {
+            return Vec::new();
+        };
+        entries
+            .iter()
+            .filter_map(|(key, value)| {
+                let entry = scalar(key).zip(scalar(value));
+                if entry.is_none() {
+                    let name = scalar(key).unwrap_or_else(|| format!("{key:?}"));
+                    tracing::warn!("Ignoring `{path}.{name}`: expected a single value");
+                }
+                entry
+            })
+            .collect()
     }
 
     pub fn int(&self, path: &str, fallback: i64) -> i64 {
