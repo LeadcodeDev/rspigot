@@ -1,5 +1,6 @@
 pub mod attribute;
 pub mod biome;
+pub mod campfire;
 pub mod chunk;
 pub mod combat;
 pub mod container_menu;
