@@ -831,3 +831,164 @@ fn furnace_items_are_kept_and_the_result_slot_refuses_them() {
     assert_eq!(slots[0], Some((item("minecraft:iron_ore"), 1)));
     assert_eq!(slots[2], None);
 }
+
+const RIGHT_HALF: BlockPos = BlockPos::new(3, 64, 2);
+
+fn chest_type_at(player: &Player, pos: BlockPos) -> Option<String> {
+    last_update(player, pos).and_then(|state| state.property("type").map(str::to_owned))
+}
+
+impl World {
+    fn place_double_chest(&mut self) {
+        self.give("chest");
+        self.give("chest");
+        self.select(0);
+        self.use_on(FLOOR, Direction::Up);
+        self.use_on(BlockPos::new(3, 63, 2), Direction::Up);
+    }
+
+    fn open_at(&mut self, pos: BlockPos) {
+        self.select(8);
+        self.use_on(pos, Direction::Up);
+    }
+}
+
+#[test]
+fn two_chests_side_by_side_become_the_two_halves_of_a_double_chest() {
+    let mut world = world();
+    world.place_double_chest();
+
+    assert_eq!(chest_type_at(&world.alice, CHEST).as_deref(), Some("left"));
+    assert_eq!(
+        chest_type_at(&world.alice, RIGHT_HALF).as_deref(),
+        Some("right")
+    );
+    assert_eq!(chest_type_at(&world.bob, CHEST).as_deref(), Some("left"));
+}
+
+#[test]
+fn a_double_chest_opens_a_54_slot_window_from_either_half() {
+    let mut world = world();
+    world.place_double_chest();
+    world.open_at(CHEST);
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 5)));
+    assert_eq!(content(&world.alice, WINDOW).expect("content").len(), 90);
+    let title_is_double = world.alice.log.iter().any(|event| {
+        matches!(event, ClientEvent::OpenScreen { title, .. }
+            if format!("{title:?}").contains("container.chestDouble"))
+    });
+    assert!(title_is_double);
+    world.close(WINDOW);
+    world.open_at(RIGHT_HALF);
+    assert_eq!(opened(&world.alice), Some((2, 5)));
+}
+
+#[test]
+fn the_two_halves_hold_the_first_and_the_last_27_slots() {
+    let mut world = world();
+    world.place_double_chest();
+    world.give("stone");
+    world.open_at(CHEST);
+    let hotbar_0 = 54 + 27;
+    world.click(WINDOW, hotbar_0 as i16, 0, ClickInput::Pickup);
+    world.click(WINDOW, 40, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.open_at(RIGHT_HALF);
+
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[40], Some((item("minecraft:stone"), 1)));
+    assert_eq!(slots[..40].iter().flatten().count(), 0);
+}
+
+#[test]
+fn both_halves_animate_and_the_sound_comes_once_from_the_middle() {
+    let mut world = world();
+    world.place_double_chest();
+    world.open_at(CHEST);
+
+    let events = |player: &Player, pos: BlockPos| -> Vec<u8> {
+        player
+            .log
+            .iter()
+            .filter_map(|event| match event {
+                ClientEvent::BlockEvent {
+                    pos: at,
+                    action: 1,
+                    data,
+                    ..
+                } if *at == pos => Some(*data),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(events(&world.bob, CHEST), vec![1]);
+    assert_eq!(events(&world.bob, RIGHT_HALF), vec![1]);
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.chest.open"), 1);
+    let middle = world.bob.log.iter().find_map(|event| match event {
+        ClientEvent::Sound {
+            sound, position, ..
+        } if *sound == "minecraft:block.chest.open" => Some(*position),
+        _ => None,
+    });
+    assert_eq!(middle, Some(Vec3::new(3.0, 64.5, 2.5)));
+}
+
+#[test]
+fn breaking_one_half_makes_the_other_a_single_chest_and_closes_the_window() {
+    let mut world = world();
+    world.place_double_chest();
+    world.open_at(CHEST);
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
+            action: DigAction::Finish,
+            pos: RIGHT_HALF,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.settle();
+
+    assert!(closed(&world.alice, WINDOW));
+    assert_eq!(
+        chest_type_at(&world.alice, CHEST).as_deref(),
+        Some("single")
+    );
+}
+
+#[test]
+fn a_blocked_partner_opens_only_the_clicked_half() {
+    let mut world = world();
+    world.place_double_chest();
+    world.give("stone");
+    world.select(0);
+    world.sneak(true);
+    world.use_on(RIGHT_HALF, Direction::Up);
+    world.sneak(false);
+    world.open_at(CHEST);
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 2)));
+    assert_eq!(content(&world.alice, WINDOW).expect("content").len(), 63);
+}
+
+#[test]
+fn sneaking_keeps_two_neighbouring_chests_apart() {
+    let mut world = world();
+    world.give("chest");
+    world.give("chest");
+    world.select(0);
+    world.sneak(true);
+    world.use_on(FLOOR, Direction::Up);
+    world.use_on(BlockPos::new(3, 63, 2), Direction::Up);
+    world.sneak(false);
+
+    assert_eq!(
+        chest_type_at(&world.alice, CHEST).as_deref(),
+        Some("single")
+    );
+    assert_eq!(
+        chest_type_at(&world.alice, RIGHT_HALF).as_deref(),
+        Some("single")
+    );
+}

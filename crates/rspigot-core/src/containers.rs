@@ -13,6 +13,7 @@ use rspigot_domain::{BlockPos, BlockStateId, Identifier};
 use rspigot_entities::SoundSource;
 use rspigot_nbt::{Compound, Tag};
 
+use crate::chests;
 use crate::events::{ClientEvent, ContainerClick};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -35,9 +36,20 @@ pub(crate) enum Lid {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Backing {
     pub pos: BlockPos,
+    pub second: Option<BlockPos>,
     pub entity: Option<&'static str>,
     pub block: BlockKind,
     pub lid: Lid,
+}
+
+impl Backing {
+    fn positions(&self) -> impl Iterator<Item = BlockPos> {
+        std::iter::once(self.pos).chain(self.second)
+    }
+
+    fn includes(&self, pos: BlockPos) -> bool {
+        self.positions().any(|candidate| candidate == pos)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -181,12 +193,24 @@ fn blocked_above(state_above: Option<BlockStateId>) -> bool {
 }
 
 impl<L: ClientLink> Server<L> {
-    fn container_items(&self, backing: Backing, size: usize) -> Vec<Slot> {
+    fn half_items(&self, pos: BlockPos, size: usize) -> Vec<Slot> {
         self.world
             .chunks
-            .get(backing.pos.chunk())
-            .and_then(|chunk| chunk.block_entity(backing.pos))
+            .get(pos.chunk())
+            .and_then(|chunk| chunk.block_entity(pos))
             .map_or_else(|| vec![None; size], |entity| read_items(&entity.data, size))
+    }
+
+    fn container_items(&self, backing: Backing, size: usize) -> Vec<Slot> {
+        match backing.second {
+            Some(second) => {
+                let half = size / 2;
+                let mut items = self.half_items(backing.pos, half);
+                items.extend(self.half_items(second, half));
+                items
+            }
+            None => self.half_items(backing.pos, size),
+        }
     }
 
     fn open_items(&self, open: &OpenMenu) -> Vec<Slot> {
@@ -200,22 +224,33 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    fn store_half(&mut self, pos: BlockPos, entity: &'static str, items: &[Slot]) {
+        let Some(chunk) = self.world.chunks.chunk_mut(pos.chunk()) else {
+            return;
+        };
+        let mut data = chunk
+            .block_entity(pos)
+            .map_or_else(Compound::new, |existing| existing.data.clone());
+        write_items(&mut data, items);
+        chunk.set_block_entity(BlockEntity {
+            pos,
+            kind: Identifier::minecraft(entity),
+            data,
+        });
+    }
+
     fn store_container(&mut self, backing: Backing, items: &[Slot]) {
         let Some(entity) = backing.entity else {
             return;
         };
-        let Some(chunk) = self.world.chunks.chunk_mut(backing.pos.chunk()) else {
-            return;
-        };
-        let mut data = chunk
-            .block_entity(backing.pos)
-            .map_or_else(Compound::new, |entity| entity.data.clone());
-        write_items(&mut data, items);
-        chunk.set_block_entity(BlockEntity {
-            pos: backing.pos,
-            kind: Identifier::minecraft(entity),
-            data,
-        });
+        match backing.second {
+            Some(second) => {
+                let half = items.len() / 2;
+                self.store_half(backing.pos, entity, &items[..half]);
+                self.store_half(second, entity, &items[half..]);
+            }
+            None => self.store_half(backing.pos, entity, items),
+        }
     }
 
     pub(crate) fn open_block_menu(
@@ -224,7 +259,7 @@ impl<L: ClientLink> Server<L> {
         pos: BlockPos,
         state: BlockStateId,
     ) -> bool {
-        let Some(opening) = opening_of(state) else {
+        let Some(mut opening) = opening_of(state) else {
             return false;
         };
         let viewers = self.viewer_count(pos);
@@ -236,8 +271,19 @@ impl<L: ClientLink> Server<L> {
         if shut {
             return true;
         }
+        let (mut first, mut second) = (pos, None);
+        let chunks = &self.world.chunks;
+        if let Some((right, left)) = chests::pair_of(pos, state, |at| chunks.block(at)) {
+            let partner = if pos == right { left } else { right };
+            if !blocked_above(chunks.block(partner.offset(0, 1, 0))) {
+                (first, second) = (right, Some(left));
+                opening.kind = MenuKind::Generic { rows: 6 };
+                opening.title = "container.chestDouble";
+            }
+        }
         let backing = Backing {
-            pos,
+            pos: first,
+            second,
             entity: opening.entity,
             block: opening.block,
             lid: opening.lid,
@@ -297,7 +343,7 @@ impl<L: ClientLink> Server<L> {
                 .values()
                 .filter(|player| {
                     player.open_menu.as_ref().is_some_and(|open| {
-                        open.backing.pos == pos && open.backing.entity.is_some()
+                        open.backing.includes(pos) && open.backing.entity.is_some()
                     })
                 })
                 .count();
@@ -320,7 +366,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let first_or_last = if opened { count == 1 } else { count == 0 };
-        let center = backing.pos.center();
+        let center = backing.pos.center() + rspigot_domain::Vec3::new(0.0, 0.5, 0.0);
         let mut position = center;
         if backing.lid == Lid::Barrel {
             let (dx, dy, dz) = facing_step(state);
@@ -337,19 +383,28 @@ impl<L: ClientLink> Server<L> {
                 self.set_block(backing.pos, next);
             }
         } else if backing.lid != Lid::None {
-            self.push(
-                Audience::Nearby {
-                    position: center,
-                    range: BLOCK_EVENT_RANGE,
-                    except: None,
-                },
-                ClientEvent::BlockEvent {
-                    pos: backing.pos,
-                    action: LID_ACTION,
-                    data: count,
-                    block: backing.block.id().0,
-                },
-            );
+            if backing.second.is_some()
+                && let Some(dir) = chests::connected_direction(state)
+            {
+                let (dx, dz) = dir.step();
+                position = center
+                    + rspigot_domain::Vec3::new(f64::from(dx) / 2.0, 0.0, f64::from(dz) / 2.0);
+            }
+            for half in backing.positions() {
+                self.push(
+                    Audience::Nearby {
+                        position: half.center(),
+                        range: BLOCK_EVENT_RANGE,
+                        except: None,
+                    },
+                    ClientEvent::BlockEvent {
+                        pos: half,
+                        action: LID_ACTION,
+                        data: count,
+                        block: backing.block.id().0,
+                    },
+                );
+            }
         }
         if first_or_last && let Some((open, close)) = lid_sounds(backing.lid) {
             let pitch = self.rng.random::<f32>() * 0.1 + 0.9;
@@ -483,7 +538,7 @@ impl<L: ClientLink> Server<L> {
             .filter(|(id, player)| {
                 Some(**id) != except
                     && player.open_menu.as_ref().is_some_and(|open| {
-                        open.backing.pos == pos && open.backing.entity.is_some()
+                        open.backing.includes(pos) && open.backing.entity.is_some()
                     })
             })
             .map(|(id, _)| *id)
@@ -553,16 +608,21 @@ impl<L: ClientLink> Server<L> {
             return false;
         };
         let backing = open.backing;
-        let present = self
-            .world
-            .chunks
-            .block(backing.pos)
-            .and_then(BlockStateId::kind)
-            == Some(backing.block);
-        let center = backing.pos.center();
+        let present = backing.positions().all(|at| {
+            self.world.chunks.block(at).and_then(BlockStateId::kind) == Some(backing.block)
+        });
+        let paired = backing.second.is_none_or(|left| {
+            self.world.chunks.block(backing.pos).is_some_and(|state| {
+                chests::pair_of(backing.pos, state, |at| self.world.chunks.block(at))
+                    == Some((backing.pos, left))
+            })
+        });
         present
+            && paired
             && !player.vitals.is_dead()
-            && player.position.distance_squared(center) <= MAX_VIEW_DISTANCE_SQUARED
+            && backing.positions().all(|at| {
+                player.position.distance_squared(at.center()) <= MAX_VIEW_DISTANCE_SQUARED
+            })
     }
 }
 

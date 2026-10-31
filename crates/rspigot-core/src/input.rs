@@ -9,6 +9,7 @@ use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
 use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 
 use crate::block_tools::ToolUse;
+use crate::chests;
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
@@ -399,6 +400,7 @@ impl<L: ClientLink> Server<L> {
                     Audience::ChunkViewers(pos.chunk()),
                     ClientEvent::BlockUpdate { pos, state },
                 );
+                self.fix_chest_pairs(pos, old, state);
                 true
             }
             _ => false,
@@ -498,6 +500,8 @@ impl<L: ClientLink> Server<L> {
             self.refuse_block(id, target, sequence);
             return;
         };
+        let chunks = &self.world.chunks;
+        let state = chests::placed_state(state, target, face, sneaking, |at| chunks.block(at));
         self.set_block(target, state);
         if let Some(linked) = placement.linked {
             let other = target.offset(0, i32::from(linked.dy), 0);
