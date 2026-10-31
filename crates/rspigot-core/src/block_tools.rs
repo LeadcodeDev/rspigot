@@ -7,12 +7,13 @@ use rspigot_domain::{BlockPos, BlockStateId};
 use rspigot_entities::{EntityKind, SoundSource};
 use rspigot_items::ItemKind;
 
-use crate::events::{Direction, Hand};
+use crate::events::{ClientEvent, Direction, Hand};
 use crate::loot::{self, LootContext, LootEntity};
 use crate::ports::ClientLink;
-use crate::server::Server;
+use crate::server::{Audience, Server};
 
 const CLICKED_FACE: &str = "clicked_face";
+const LEVEL_EVENT_RANGE: f64 = 64.0;
 
 pub(crate) struct ToolUse {
     pub hand: Hand,
@@ -45,10 +46,21 @@ fn tool_groups(stack: &ItemStack) -> Option<&'static [Group]> {
     }
 }
 
+fn particle_event(name: &str) -> Option<i32> {
+    match name {
+        "scrape" => Some(3005),
+        "wax_on" => Some(3003),
+        "wax_off" => Some(3004),
+        _ => None,
+    }
+}
+
 fn is_plain(group: &Group) -> bool {
-    group.particle.is_none()
-        && group.transform_type.is_none()
+    group.transform_type.is_none()
         && group.update_from_neighbors
+        && group
+            .particle
+            .is_none_or(|name| particle_event(name).is_some())
         && group
             .drop_strategy
             .is_none_or(|strategy| strategy == CLICKED_FACE)
@@ -169,6 +181,20 @@ impl<L: ClientLink> Server<L> {
             1.0,
             1.0,
         );
+        if let Some(event) = group.particle.and_then(particle_event) {
+            self.push(
+                Audience::Nearby {
+                    position: usage.pos.center(),
+                    range: LEVEL_EVENT_RANGE,
+                    except: Some(id),
+                },
+                ClientEvent::LevelEvent {
+                    event,
+                    pos: usage.pos,
+                    data: 0,
+                },
+            );
+        }
         self.hurt_and_break(id, usage.hand, i32::from(group.damage));
         true
     }
@@ -325,6 +351,80 @@ mod tests {
             ))
             .is_none()
         );
+    }
+
+    #[test]
+    fn scraping_steps_copper_back_one_stage_and_keeps_its_properties() {
+        let slab = state("exposed_cut_copper_slab")
+            .with_property("type", "top")
+            .and_then(|state| state.with_property("waterlogged", "true"))
+            .expect("slab properties");
+        let found =
+            transform(transformers::axe(), Direction::Up, AT, |_| Some(slab)).expect("scrapes");
+        assert_eq!(found.state.kind(), Some(kind("cut_copper_slab")));
+        assert_eq!(found.state.property("type"), Some("top"));
+        assert_eq!(found.state.property("waterlogged"), Some("true"));
+        assert_eq!(found.group.particle, Some("scrape"));
+        assert_eq!(found.group.sound, "minecraft:item.axe.scrape");
+        let block = result(on(
+            transformers::axe(),
+            Direction::Up,
+            "oxidized_copper",
+            "air",
+        ));
+        assert_eq!(block, Some(state("weathered_copper")));
+    }
+
+    #[test]
+    fn removing_wax_gives_the_unwaxed_block_with_the_wax_off_effects() {
+        let found = on(
+            transformers::axe(),
+            Direction::Up,
+            "waxed_oxidized_copper",
+            "air",
+        )
+        .expect("waxed");
+        assert_eq!(found.state, state("oxidized_copper"));
+        assert_eq!(found.group.particle, Some("wax_off"));
+        assert_eq!(found.group.sound, "minecraft:item.axe.wax_off");
+    }
+
+    #[test]
+    fn every_scrape_and_wax_rule_keeps_the_properties_of_the_block() {
+        for index in [1, 4] {
+            for rule in transformers::axe()[index].rules {
+                let (Condition::Block(from), Then::Copy { to, .. }) = (rule.when, rule.then) else {
+                    panic!("copper rules match one block and copy its properties");
+                };
+                let old = state(from);
+                let found = transform(transformers::axe(), Direction::Up, AT, |_| Some(old))
+                    .unwrap_or_else(|| panic!("{from} has no transformation"));
+                assert_eq!(found.state.kind(), BlockKind::from_name(to), "{from}");
+                for (name, value) in old.properties() {
+                    if found.state.property(name).is_some() {
+                        assert_eq!(found.state.property(name), Some(value), "{from} {name}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn copper_doors_and_chests_are_not_handled_yet() {
+        for name in [
+            "exposed_copper_door",
+            "exposed_copper_chest",
+            "waxed_copper_door",
+            "waxed_copper_chest",
+        ] {
+            assert!(
+                transform(transformers::axe(), Direction::Up, AT, |_| Some(state(
+                    name
+                )))
+                .is_none(),
+                "{name}"
+            );
+        }
     }
 
     #[test]
