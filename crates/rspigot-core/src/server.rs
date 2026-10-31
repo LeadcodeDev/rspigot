@@ -24,7 +24,10 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore};
+use crate::plugins::{PluginIntro, Registry, ToPlugin};
+use crate::ports::{
+    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
+};
 use crate::spawning::Spawning;
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
@@ -97,6 +100,7 @@ pub struct Server<L> {
     pub(crate) falls: ScheduledFalls,
     pub(crate) rng: StdRng,
     pub(crate) spawning: Spawning,
+    pub(crate) plugins: Registry,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -158,6 +162,7 @@ impl<L: ClientLink> Server<L> {
             falls: ScheduledFalls::default(),
             rng: StdRng::from_os_rng(),
             spawning,
+            plugins: Registry::default(),
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -249,8 +254,31 @@ impl<L: ClientLink> Server<L> {
             Inbound::Console(line) => {
                 crate::commands::execute(self, crate::commands::CommandSender::Console, &line);
             }
+            Inbound::PluginConnected {
+                connection,
+                intro,
+                outbox,
+            } => self.plugin_connected(connection, intro, outbox),
+            Inbound::PluginMessage { .. } => {}
+            Inbound::PluginDisconnected { connection } => {
+                self.plugins.disconnect(connection);
+            }
             Inbound::Shutdown => self.running = false,
         }
+    }
+
+    fn plugin_connected(
+        &mut self,
+        connection: u64,
+        intro: PluginIntro,
+        outbox: Box<dyn PluginOutbox>,
+    ) {
+        let tick = self.current_tick();
+        let replaced = self.plugins.connect(connection, intro, outbox, tick);
+        if let Some(old) = replaced {
+            old.send(ToPlugin::Replaced);
+        }
+        self.plugins.send(connection, ToPlugin::Accepted);
     }
 
     pub(crate) fn current_tick(&self) -> u64 {

@@ -10,6 +10,8 @@ use rspigot_domain::world::{Difficulty, Dimension};
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Identifier, Rotation, Vec3};
 
 use crate::commands::CommandTree;
+use crate::plugins::{FromPlugin, PluginIntro};
+use crate::ports::PluginOutbox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hand {
@@ -185,6 +187,18 @@ pub enum Inbound<L> {
         player: PlayerId,
     },
     Console(String),
+    PluginConnected {
+        connection: u64,
+        intro: PluginIntro,
+        outbox: Box<dyn PluginOutbox>,
+    },
+    PluginMessage {
+        connection: u64,
+        message: FromPlugin,
+    },
+    PluginDisconnected {
+        connection: u64,
+    },
     Shutdown,
 }
 
