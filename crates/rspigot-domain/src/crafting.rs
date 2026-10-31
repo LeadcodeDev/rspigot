@@ -1,12 +1,32 @@
 use std::num::NonZeroU8;
 use std::sync::OnceLock;
 
-use rspigot_items::{Craft, ItemKind, ItemSet, Product, ProductComponent};
+use rspigot_items::{Craft, FireworkShapes, ItemKind, ItemSet, Product, ProductComponent};
 use rspigot_nbt::{Compound, Tag};
 
+use crate::dye::{DYE_COLORS, of_dye_item};
 use crate::item::{ItemStack, Slot, count, same_item_same_components, with_count};
 
 const SUSPICIOUS_STEW_EFFECTS: &str = "minecraft:suspicious_stew_effects";
+const WRITTEN_BOOK_CONTENT: &str = "minecraft:written_book_content";
+const MAX_CLONABLE_GENERATION: i32 = 1;
+const MAX_DAMAGE: &str = "minecraft:max_damage";
+const DAMAGE: &str = "minecraft:damage";
+const ENCHANTMENTS: &str = "minecraft:enchantments";
+const REPAIR_BONUS_PERCENT: i32 = 5;
+const BANNER_PATTERNS: &str = "minecraft:banner_patterns";
+const BASE_COLOR: &str = "minecraft:base_color";
+const POT_DECORATIONS: &str = "minecraft:pot_decorations";
+const POTION_CONTENTS: &str = "minecraft:potion_contents";
+const MAX_BANNER_LAYERS: usize = 6;
+const BANNER_SUFFIX: &str = "_banner";
+const BRICK: &str = "minecraft:brick";
+const DYED_COLOR: &str = "minecraft:dyed_color";
+const FIREWORK_EXPLOSION: &str = "minecraft:firework_explosion";
+const FIREWORKS: &str = "minecraft:fireworks";
+const SMALL_BALL: &str = "small_ball";
+const MAX_FIREWORK_FUEL: usize = 3;
+const DEFAULT_FLIGHT_DURATION: i32 = 1;
 
 struct Input<'a> {
     width: usize,
@@ -77,6 +97,43 @@ fn matches(owner: ItemKind, craft: &Craft, input: &Input) -> bool {
             input,
         ),
         Craft::Shapeless { ingredients, .. } => shapeless_matches(ingredients, input),
+        Craft::Dye { dye } => dyeable(owner, dye, input).is_some(),
+        Craft::FireworkStar {
+            dye,
+            fuel,
+            trail,
+            twinkle,
+            shapes,
+        } => star_parts(
+            &StarIngredients {
+                dye,
+                fuel,
+                trail,
+                twinkle,
+                shapes,
+            },
+            input,
+        )
+        .is_some(),
+        Craft::FireworkStarFade { dye } => fadeable(owner, dye, input).is_some(),
+        Craft::FireworkRocket {
+            shell, star, fuel, ..
+        } => rocket_parts(shell, star, fuel, input).is_some(),
+        Craft::RepairItem => repairable(owner, input).is_some(),
+        Craft::BannerDuplicate => duplicable(owner, input).is_some(),
+        Craft::ShieldDecoration { banner } => decorable(owner, banner, input).is_some(),
+        Craft::DecoratedPot {
+            back,
+            front,
+            left,
+            right,
+        } => pot_sides(back, front, left, right, input).is_some(),
+        Craft::Imbue {
+            source, material, ..
+        } => imbuable(source, material, input).is_some(),
+        Craft::BookCloning { source, material } => {
+            input.filled >= 2 && cloning(source, material, input).is_some()
+        }
         Craft::Transmute {
             input: base,
             material,
@@ -218,6 +275,442 @@ fn transmute_matches(
     size != 1 || found.base.item != owner.id()
 }
 
+fn durability(stack: &ItemStack) -> Option<i32> {
+    stack.components.get_i32(MAX_DAMAGE).or_else(|| {
+        let max = stack.item.kind()?.max_damage()?;
+        i32::try_from(max).ok()
+    })
+}
+
+fn damage_of(stack: &ItemStack, max: i32) -> i32 {
+    stack.components.get_i32(DAMAGE).unwrap_or(0).clamp(0, max)
+}
+
+fn repairable<'a>(owner: ItemKind, input: &Input<'a>) -> Option<(&'a ItemStack, &'a ItemStack)> {
+    if input.filled != 2 {
+        return None;
+    }
+    let stacks = input.stacks();
+    let (first, second) = (stacks[0], stacks[1]);
+    let combinable = first.item == owner.id()
+        && second.item == owner.id()
+        && first.count.get() == 1
+        && second.count.get() == 1
+        && durability(first).is_some()
+        && durability(second).is_some();
+    combinable.then_some((first, second))
+}
+
+fn enchantment_levels(stack: &ItemStack) -> Vec<(String, i32)> {
+    let Some(enchantments) = stack.components.get_compound(ENCHANTMENTS) else {
+        return Vec::new();
+    };
+    let levels = enchantments.get_compound("levels").unwrap_or(enchantments);
+    levels
+        .iter()
+        .filter_map(|(name, level)| Some((name.to_owned(), i32::try_from(level.as_i64()?).ok()?)))
+        .collect()
+}
+
+fn is_curse(enchantment: &str) -> bool {
+    rspigot_data::registries::synced_index("minecraft:enchantment", enchantment)
+        .zip(rspigot_data::tags::tag(
+            "minecraft:enchantment",
+            "minecraft:curse",
+        ))
+        .is_some_and(|(id, curses)| curses.contains(&id))
+}
+
+fn repaired(owner: ItemKind, first: &ItemStack, second: &ItemStack) -> Slot {
+    let default = owner.max_damage().and_then(|max| i32::try_from(max).ok());
+    let first_max = durability(first)?;
+    let second_max = durability(second)?;
+    let max = first_max.max(second_max);
+    let left =
+        (first_max - damage_of(first, first_max)) + (second_max - damage_of(second, second_max));
+    let total = left + max * REPAIR_BONUS_PERCENT / 100;
+    let mut components = Compound::new();
+    if default != Some(max) {
+        components.insert(MAX_DAMAGE, max);
+    }
+    let damage = (max - total).clamp(0, max);
+    if damage > 0 {
+        components.insert(DAMAGE, damage);
+    }
+    let mut curses = Compound::new();
+    for (name, level) in enchantment_levels(first) {
+        if is_curse(&name) {
+            let other = enchantment_levels(second)
+                .into_iter()
+                .find_map(|(other, level)| (other == name).then_some(level))
+                .unwrap_or(0);
+            curses.insert(name, level.max(other));
+        }
+    }
+    for (name, level) in enchantment_levels(second) {
+        if is_curse(&name) && !curses.contains_key(&name) {
+            curses.insert(name, level);
+        }
+    }
+    if !curses.is_empty() {
+        components.insert(ENCHANTMENTS, curses);
+    }
+    Some(ItemStack {
+        item: owner.id(),
+        count: NonZeroU8::MIN,
+        components,
+    })
+}
+
+fn dyeable<'a>(
+    owner: ItemKind,
+    dye: ItemSet,
+    input: &Input<'a>,
+) -> Option<(&'a ItemStack, Vec<usize>)> {
+    if input.filled < 2 {
+        return None;
+    }
+    let mut target = None;
+    let mut colors = Vec::new();
+    for stack in input.stacks() {
+        if stack.item == owner.id() {
+            if target.replace(stack).is_some() {
+                return None;
+            }
+        } else {
+            let color = dye
+                .contains(stack.item)
+                .then(|| of_dye_item(stack))
+                .flatten()?;
+            colors.push(color);
+        }
+    }
+    let target = target?;
+    (!colors.is_empty()).then_some((target, colors))
+}
+
+fn blended(current: Option<i32>, colors: &[usize]) -> i32 {
+    let mut sums = [0i32; 3];
+    let mut brightest = 0i32;
+    let mut count = 0i32;
+    let rgb = current
+        .into_iter()
+        .chain(colors.iter().map(|&color| DYE_COLORS[color].texture));
+    for color in rgb {
+        let channels = [(color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF];
+        brightest += channels.into_iter().max().unwrap_or(0);
+        for (sum, channel) in sums.iter_mut().zip(channels) {
+            *sum += channel;
+        }
+        count += 1;
+    }
+    let average = sums.map(|sum| sum / count);
+    let average_max = brightest as f32 / count as f32;
+    let max_average = average.into_iter().max().unwrap_or(0) as f32;
+    let [red, green, blue] =
+        average.map(|channel| (channel as f32 * average_max / max_average) as i32);
+    ((red & 0xFF) << 16) | ((green & 0xFF) << 8) | (blue & 0xFF)
+}
+
+struct StarIngredients {
+    dye: ItemSet,
+    fuel: ItemSet,
+    trail: ItemSet,
+    twinkle: ItemSet,
+    shapes: FireworkShapes,
+}
+
+struct Star {
+    shape: &'static str,
+    colors: Vec<i32>,
+    trail: bool,
+    twinkle: bool,
+}
+
+fn shape_of(shapes: &FireworkShapes, stack: &ItemStack) -> Option<&'static str> {
+    [
+        ("burst", shapes.burst),
+        ("creeper", shapes.creeper),
+        ("large_ball", shapes.large_ball),
+        ("star", shapes.star),
+    ]
+    .into_iter()
+    .find_map(|(name, set)| set.contains(stack.item).then_some(name))
+}
+
+fn star_parts(ingredients: &StarIngredients, input: &Input) -> Option<Star> {
+    if input.filled < 2 {
+        return None;
+    }
+    let mut star = Star {
+        shape: SMALL_BALL,
+        colors: Vec::new(),
+        trail: false,
+        twinkle: false,
+    };
+    let (mut shaped, mut fueled) = (false, false);
+    for stack in input.stacks() {
+        let item = stack.item;
+        if ingredients.twinkle.contains(item) {
+            if std::mem::replace(&mut star.twinkle, true) {
+                return None;
+            }
+        } else if ingredients.trail.contains(item) {
+            if std::mem::replace(&mut star.trail, true) {
+                return None;
+            }
+        } else if ingredients.fuel.contains(item) {
+            if std::mem::replace(&mut fueled, true) {
+                return None;
+            }
+        } else if ingredients.dye.contains(item) && of_dye_item(stack).is_some() {
+            star.colors.push(DYE_COLORS[of_dye_item(stack)?].firework);
+        } else {
+            let shape = shape_of(&ingredients.shapes, stack)?;
+            if std::mem::replace(&mut shaped, true) {
+                return None;
+            }
+            star.shape = shape;
+        }
+    }
+    (fueled && !star.colors.is_empty()).then_some(star)
+}
+
+fn color_list(colors: &[i32]) -> Tag {
+    Tag::List(colors.iter().map(|&color| Tag::Int(color)).collect())
+}
+
+fn explosion(star: &Star) -> Compound {
+    let mut explosion = Compound::new().with("shape", star.shape);
+    if !star.colors.is_empty() {
+        explosion.insert("colors", color_list(&star.colors));
+    }
+    if star.trail {
+        explosion.insert("has_trail", true);
+    }
+    if star.twinkle {
+        explosion.insert("has_twinkle", true);
+    }
+    explosion
+}
+
+fn fadeable<'a>(
+    owner: ItemKind,
+    dye: ItemSet,
+    input: &Input<'a>,
+) -> Option<(&'a ItemStack, Vec<i32>)> {
+    if input.filled < 2 {
+        return None;
+    }
+    let mut target = None;
+    let mut fade = Vec::new();
+    for stack in input.stacks() {
+        if let Some(color) = dye
+            .contains(stack.item)
+            .then(|| of_dye_item(stack))
+            .flatten()
+        {
+            fade.push(DYE_COLORS[color].firework);
+        } else if stack.item == owner.id() {
+            if target.replace(stack).is_some() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    let target = target?;
+    (!fade.is_empty()).then_some((target, fade))
+}
+
+fn rocket_parts<'a>(
+    shell: ItemSet,
+    star: ItemSet,
+    fuel: ItemSet,
+    input: &Input<'a>,
+) -> Option<(usize, Vec<&'a ItemStack>)> {
+    if input.filled < 2 {
+        return None;
+    }
+    let mut shelled = false;
+    let mut flight = 0;
+    let mut stars = Vec::new();
+    for stack in input.stacks() {
+        if shell.contains(stack.item) {
+            if std::mem::replace(&mut shelled, true) {
+                return None;
+            }
+        } else if fuel.contains(stack.item) {
+            flight += 1;
+            if flight > MAX_FIREWORK_FUEL {
+                return None;
+            }
+        } else if star.contains(stack.item) {
+            stars.push(stack);
+        } else {
+            return None;
+        }
+    }
+    (shelled && flight >= 1).then_some((flight, stars))
+}
+
+fn layers(stack: &ItemStack) -> usize {
+    stack
+        .components
+        .get(BANNER_PATTERNS)
+        .and_then(Tag::as_list)
+        .map_or(0, <[Tag]>::len)
+}
+
+fn duplicable<'a>(owner: ItemKind, input: &Input<'a>) -> Option<&'a ItemStack> {
+    if input.filled != 2 {
+        return None;
+    }
+    let mut patterned = None;
+    let mut blank = false;
+    for stack in input.stacks() {
+        if stack.item != owner.id() {
+            return None;
+        }
+        match layers(stack) {
+            0 if blank => return None,
+            0 => blank = true,
+            1..=MAX_BANNER_LAYERS if patterned.is_none() => patterned = Some(stack),
+            _ => return None,
+        }
+    }
+    patterned.filter(|_| blank)
+}
+
+fn banner_color(stack: &ItemStack) -> Option<&'static str> {
+    let name = stack.item.kind()?.name();
+    name.strip_prefix("minecraft:")?.strip_suffix(BANNER_SUFFIX)
+}
+
+fn decorable<'a>(
+    owner: ItemKind,
+    banner: ItemSet,
+    input: &Input<'a>,
+) -> Option<(&'a ItemStack, &'a ItemStack)> {
+    if input.filled != 2 {
+        return None;
+    }
+    let mut found_banner = None;
+    let mut found_shield = None;
+    for stack in input.stacks() {
+        if banner.contains(stack.item) && banner_color(stack).is_some() {
+            if found_banner.replace(stack).is_some() {
+                return None;
+            }
+        } else if stack.item == owner.id() {
+            if layers(stack) > 0 || found_shield.replace(stack).is_some() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    Some((found_shield?, found_banner?))
+}
+
+fn decorated(owner: ItemKind, shield: &ItemStack, banner: &ItemStack) -> Slot {
+    let mut components = shield.components.clone();
+    match banner.components.get(BANNER_PATTERNS) {
+        Some(patterns) if layers(banner) > 0 => {
+            components.insert(BANNER_PATTERNS, patterns.clone());
+        }
+        _ => {
+            components.remove(BANNER_PATTERNS);
+        }
+    }
+    components.insert(BASE_COLOR, banner_color(banner)?);
+    Some(ItemStack {
+        item: owner.id(),
+        count: NonZeroU8::MIN,
+        components,
+    })
+}
+
+fn pot_sides<'a>(
+    back: ItemSet,
+    front: ItemSet,
+    left: ItemSet,
+    right: ItemSet,
+    input: &Input<'a>,
+) -> Option<[&'a ItemStack; 4]> {
+    if input.filled != 4 || input.width != 3 || input.height != 3 {
+        return None;
+    }
+    let side =
+        |set: ItemSet, index: usize| input.cells[index].filter(|stack| set.contains(stack.item));
+    Some([
+        side(back, 1)?,
+        side(left, 3)?,
+        side(right, 5)?,
+        side(front, 7)?,
+    ])
+}
+
+fn pot_decorations(sides: [&ItemStack; 4]) -> Option<Compound> {
+    let mut decorations = Compound::new();
+    let mut plain_bricks = true;
+    for (key, stack) in ["back", "left", "right", "front"].into_iter().zip(sides) {
+        let name = stack.item.kind()?.name();
+        let mut template = Compound::new().with("id", name);
+        if !stack.components.is_empty() {
+            template.insert("components", stack.components.clone());
+        }
+        plain_bricks &= name == BRICK && stack.components.is_empty();
+        decorations.insert(key, template);
+    }
+    (!plain_bricks).then_some(decorations)
+}
+
+fn imbuable<'a>(source: ItemSet, material: ItemSet, input: &Input<'a>) -> Option<&'a ItemStack> {
+    if input.filled != 9 || input.width != 3 || input.height != 3 {
+        return None;
+    }
+    let potion = input.cells[4].filter(|stack| source.contains(stack.item))?;
+    let others = input
+        .cells
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != 4)
+        .all(|(_, cell)| cell.is_some_and(|stack| material.contains(stack.item)));
+    others.then_some(potion)
+}
+
+struct Cloning<'a> {
+    source: &'a ItemStack,
+    generation: i32,
+    copies: usize,
+}
+
+fn cloning<'a>(source: ItemSet, material: ItemSet, input: &Input<'a>) -> Option<Cloning<'a>> {
+    let mut found = None;
+    let mut copies = 0;
+    for stack in input.stacks() {
+        if source.contains(stack.item) {
+            let content = stack.components.get_compound(WRITTEN_BOOK_CONTENT)?;
+            let generation = content.get_i32("generation").unwrap_or(0);
+            if !(0..=MAX_CLONABLE_GENERATION).contains(&generation) || found.is_some() {
+                return None;
+            }
+            found = Some((stack, generation));
+        } else if material.contains(stack.item) {
+            copies += 1;
+        } else {
+            return None;
+        }
+    }
+    let (source, generation) = found?;
+    (copies > 0).then_some(Cloning {
+        source,
+        generation,
+        copies,
+    })
+}
+
 fn product_stack(owner: ItemKind, product: &Product) -> Slot {
     let mut components = Compound::new();
     for component in product.components {
@@ -269,6 +762,147 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components: found.base.components.clone(),
             })
         }
+        Craft::Dye { dye } => {
+            let (target, colors) = dyeable(owner, dye, input)?;
+            let current = target.components.get_i32(DYED_COLOR);
+            let mut components = target.components.clone();
+            components.insert(DYED_COLOR, blended(current, &colors));
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::MIN,
+                components,
+            })
+        }
+        Craft::FireworkStar {
+            dye,
+            fuel,
+            trail,
+            twinkle,
+            shapes,
+        } => {
+            let star = star_parts(
+                &StarIngredients {
+                    dye,
+                    fuel,
+                    trail,
+                    twinkle,
+                    shapes,
+                },
+                input,
+            )?;
+            let mut components = Compound::new();
+            components.insert(FIREWORK_EXPLOSION, explosion(&star));
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::MIN,
+                components,
+            })
+        }
+        Craft::FireworkStarFade { dye } => {
+            let (target, fade) = fadeable(owner, dye, input)?;
+            let mut components = target.components.clone();
+            let mut faded = target
+                .components
+                .get_compound(FIREWORK_EXPLOSION)
+                .cloned()
+                .unwrap_or_else(|| Compound::new().with("shape", SMALL_BALL));
+            faded.insert("fade_colors", color_list(&fade));
+            components.insert(FIREWORK_EXPLOSION, faded);
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::MIN,
+                components,
+            })
+        }
+        Craft::FireworkRocket {
+            shell,
+            star,
+            fuel,
+            count,
+        } => {
+            let (flight, stars) = rocket_parts(shell, star, fuel, input)?;
+            let explosions: Vec<Tag> = stars
+                .iter()
+                .filter_map(|star| star.components.get_compound(FIREWORK_EXPLOSION))
+                .map(|explosion| Tag::Compound(explosion.clone()))
+                .collect();
+            let flight = i32::try_from(flight).ok()?;
+            let mut components = Compound::new();
+            if flight != DEFAULT_FLIGHT_DURATION || !explosions.is_empty() {
+                let mut fireworks =
+                    Compound::new().with("flight_duration", i8::try_from(flight).ok()?);
+                if !explosions.is_empty() {
+                    fireworks.insert("explosions", Tag::List(explosions));
+                }
+                components.insert(FIREWORKS, fireworks);
+            }
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::new(count)?,
+                components,
+            })
+        }
+        Craft::RepairItem => {
+            let (first, second) = repairable(owner, input)?;
+            repaired(owner, first, second)
+        }
+        Craft::BannerDuplicate => {
+            let patterned = duplicable(owner, input)?;
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::MIN,
+                components: patterned.components.clone(),
+            })
+        }
+        Craft::ShieldDecoration { banner } => {
+            let (shield, banner) = decorable(owner, banner, input)?;
+            decorated(owner, shield, banner)
+        }
+        Craft::DecoratedPot {
+            back,
+            front,
+            left,
+            right,
+        } => {
+            let mut components = Compound::new();
+            if let Some(decorations) = pot_decorations(pot_sides(back, front, left, right, input)?)
+            {
+                components.insert(POT_DECORATIONS, decorations);
+            }
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::MIN,
+                components,
+            })
+        }
+        Craft::Imbue {
+            source,
+            material,
+            count,
+        } => {
+            let potion = imbuable(source, material, input)?;
+            let mut components = Compound::new();
+            if let Some(contents) = potion.components.get(POTION_CONTENTS) {
+                components.insert(POTION_CONTENTS, contents.clone());
+            }
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::new(count)?,
+                components,
+            })
+        }
+        Craft::BookCloning { source, material } => {
+            let cloned = cloning(source, material, input)?;
+            let mut components = cloned.source.components.clone();
+            if let Some(Tag::Compound(content)) = components.get_mut(WRITTEN_BOOK_CONTENT) {
+                content.insert("generation", cloned.generation + 1);
+            }
+            Some(ItemStack {
+                item: owner.id(),
+                count: NonZeroU8::new(u8::try_from(cloned.copies).ok()?)?,
+                components,
+            })
+        }
         _ => None,
     }
 }
@@ -284,18 +918,43 @@ pub fn result(width: usize, height: usize, slots: &[Slot]) -> Slot {
     assemble(owner, craft, &input)
 }
 
+fn remainders(craft: &Craft, slots: &[Slot]) -> Vec<Slot> {
+    let mut remainders = vec![None; slots.len()];
+    for (index, slot) in slots.iter().enumerate() {
+        let Some(stack) = slot else {
+            continue;
+        };
+        if let Some(remainder) = remainder_of(stack) {
+            remainders[index] = Some(remainder);
+            continue;
+        }
+        match craft {
+            Craft::BookCloning { .. } if stack.components.contains_key(WRITTEN_BOOK_CONTENT) => {
+                remainders[index] = with_count(stack, 1);
+                break;
+            }
+            Craft::BannerDuplicate if layers(stack) > 0 => {
+                remainders[index] = with_count(stack, 1);
+            }
+            _ => {}
+        }
+    }
+    remainders
+}
+
 pub fn take_result(width: usize, height: usize, slots: &mut [Slot]) -> Vec<ItemStack> {
     let matched = Input::of(width, height, slots).and_then(|input| find(&input));
     let mut leftovers = Vec::new();
-    if matched.is_none() {
+    let Some((_, craft)) = matched else {
         return leftovers;
-    }
-    for slot in slots.iter_mut() {
+    };
+    let remainders = remainders(craft, slots);
+    for (slot, remainder) in slots.iter_mut().zip(remainders) {
         let Some(stack) = slot.take() else {
             continue;
         };
         *slot = with_count(&stack, u32::from(stack.count.get()) - 1);
-        let Some(remainder) = remainder_of(&stack) else {
+        let Some(remainder) = remainder else {
             continue;
         };
         match slot {
@@ -532,6 +1191,782 @@ mod tests {
             (3, ItemKind::OakPlanks, 1),
         ];
         assert_eq!(crafted(3, 2, &lopsided), None);
+    }
+
+    fn with(kind: ItemKind, amount: u8, key: &str, value: impl Into<Tag>) -> Slot {
+        let mut stack = stack(kind, amount).unwrap();
+        stack.components.insert(key, value);
+        Some(stack)
+    }
+
+    fn laid(slots: Vec<Slot>) -> Vec<Slot> {
+        let mut grid = vec![None; 9];
+        for (index, slot) in slots.into_iter().enumerate() {
+            grid[index] = slot;
+        }
+        grid
+    }
+
+    fn colors_of(stack: &ItemStack, key: &str, list: &str) -> Vec<i32> {
+        stack
+            .components
+            .get_compound(key)
+            .and_then(|compound| compound.get_list(list))
+            .map(|tags| {
+                tags.iter()
+                    .map(|tag| i32::try_from(tag.as_i64().unwrap()).unwrap())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_dye_colours_leather_armor_with_the_dye_colour() {
+        let boots = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::LeatherBoots, 1),
+                stack(ItemKind::RedDye, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(boots.item, ItemKind::LeatherBoots.id());
+        assert_eq!(
+            boots.components.get_i32("minecraft:dyed_color"),
+            Some(0xB02E26)
+        );
+    }
+
+    #[test]
+    fn dyes_blend_with_each_other_and_with_the_colour_already_there() {
+        let both = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::LeatherBoots, 1),
+                stack(ItemKind::RedDye, 1),
+                stack(ItemKind::WhiteDye, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            both.components.get_i32("minecraft:dyed_color"),
+            Some(0xD79894)
+        );
+        let again = result(
+            3,
+            3,
+            &laid(vec![
+                with(ItemKind::LeatherBoots, 1, "minecraft:dyed_color", 0xB02E26),
+                stack(ItemKind::WhiteDye, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            again.components.get_i32("minecraft:dyed_color"),
+            Some(0xD79894)
+        );
+    }
+
+    #[test]
+    fn a_stack_of_dye_counts_once_and_the_rest_of_the_item_is_kept() {
+        let boots = result(
+            3,
+            3,
+            &laid(vec![
+                with(ItemKind::LeatherBoots, 1, "minecraft:damage", 12),
+                stack(ItemKind::RedDye, 5),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            boots.components.get_i32("minecraft:dyed_color"),
+            Some(0xB02E26)
+        );
+        assert_eq!(boots.components.get_i32("minecraft:damage"), Some(12));
+    }
+
+    #[test]
+    fn dyeing_needs_one_garment_some_dye_and_nothing_else() {
+        let dyed = |extra: Vec<Slot>| result(3, 3, &laid(extra));
+        assert_eq!(dyed(vec![stack(ItemKind::LeatherBoots, 1)]), None);
+        assert_eq!(dyed(vec![stack(ItemKind::RedDye, 1)]), None);
+        assert_eq!(
+            dyed(vec![
+                stack(ItemKind::LeatherBoots, 1),
+                stack(ItemKind::LeatherBoots, 1),
+                stack(ItemKind::RedDye, 1)
+            ]),
+            None
+        );
+        assert_eq!(
+            dyed(vec![
+                stack(ItemKind::LeatherBoots, 1),
+                stack(ItemKind::RedDye, 1),
+                stack(ItemKind::Stick, 1)
+            ]),
+            None
+        );
+        assert_eq!(
+            dyed(vec![
+                stack(ItemKind::IronBoots, 1),
+                stack(ItemKind::RedDye, 1)
+            ]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_firework_star_takes_its_colours_shape_and_effects() {
+        let star = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::Gunpowder, 1),
+                stack(ItemKind::RedDye, 1),
+                stack(ItemKind::BlueDye, 1),
+                stack(ItemKind::Feather, 1),
+                stack(ItemKind::Diamond, 1),
+                stack(ItemKind::GlowstoneDust, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(star.item, ItemKind::FireworkStar.id());
+        let explosion = star
+            .components
+            .get_compound("minecraft:firework_explosion")
+            .unwrap();
+        assert_eq!(explosion.get_str("shape"), Some("burst"));
+        assert_eq!(
+            colors_of(&star, "minecraft:firework_explosion", "colors"),
+            vec![0xB3312C, 0x253192]
+        );
+        assert_eq!(explosion.get_bool("has_trail"), Some(true));
+        assert_eq!(explosion.get_bool("has_twinkle"), Some(true));
+    }
+
+    #[test]
+    fn a_plain_firework_star_is_a_small_ball_without_effects() {
+        let star = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::Gunpowder, 1),
+                stack(ItemKind::LimeDye, 1),
+            ]),
+        )
+        .unwrap();
+        let explosion = star
+            .components
+            .get_compound("minecraft:firework_explosion")
+            .unwrap();
+        assert_eq!(explosion.get_str("shape"), Some("small_ball"));
+        assert_eq!(explosion.get_bool("has_trail"), None);
+        assert_eq!(explosion.get_bool("has_twinkle"), None);
+        assert!(explosion.get_list("fade_colors").is_none());
+    }
+
+    #[test]
+    fn a_firework_star_needs_fuel_a_dye_and_at_most_one_of_the_rest() {
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        let dye = || stack(ItemKind::RedDye, 1);
+        let gunpowder = || stack(ItemKind::Gunpowder, 1);
+        assert_eq!(make(vec![dye(), stack(ItemKind::Feather, 1)]), None);
+        assert_eq!(make(vec![gunpowder(), stack(ItemKind::Feather, 1)]), None);
+        assert_eq!(make(vec![gunpowder(), gunpowder(), dye()]), None);
+        assert_eq!(
+            make(vec![
+                gunpowder(),
+                dye(),
+                stack(ItemKind::GlowstoneDust, 1),
+                stack(ItemKind::GlowstoneDust, 1)
+            ]),
+            None
+        );
+        assert_eq!(
+            make(vec![
+                gunpowder(),
+                dye(),
+                stack(ItemKind::Feather, 1),
+                stack(ItemKind::GoldNugget, 1)
+            ]),
+            None
+        );
+        assert_eq!(
+            make(vec![
+                gunpowder(),
+                dye(),
+                stack(ItemKind::Diamond, 1),
+                stack(ItemKind::Diamond, 1)
+            ]),
+            None
+        );
+        assert_eq!(
+            make(vec![gunpowder(), dye(), stack(ItemKind::Stick, 1)]),
+            None
+        );
+        assert!(make(vec![gunpowder(), dye(), dye(), dye()]).is_some());
+        for (shape, name) in [
+            (ItemKind::FireCharge, "large_ball"),
+            (ItemKind::GoldNugget, "star"),
+            (ItemKind::CreeperHead, "creeper"),
+        ] {
+            let star = make(vec![gunpowder(), dye(), stack(shape, 1)]).unwrap();
+            let explosion = star
+                .components
+                .get_compound("minecraft:firework_explosion")
+                .unwrap();
+            assert_eq!(explosion.get_str("shape"), Some(name));
+        }
+    }
+
+    #[test]
+    fn fading_a_star_replaces_its_fade_colours_and_keeps_the_rest() {
+        let explosion = Compound::new()
+            .with("shape", "star")
+            .with("colors", Tag::List(vec![Tag::Int(0xB3312C)]))
+            .with("fade_colors", Tag::List(vec![Tag::Int(1)]))
+            .with("has_trail", true);
+        let faded = result(
+            3,
+            3,
+            &laid(vec![
+                with(
+                    ItemKind::FireworkStar,
+                    1,
+                    "minecraft:firework_explosion",
+                    explosion,
+                ),
+                stack(ItemKind::BlueDye, 1),
+                stack(ItemKind::GreenDye, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            colors_of(&faded, "minecraft:firework_explosion", "fade_colors"),
+            vec![0x253192, 0x3B511A]
+        );
+        assert_eq!(
+            colors_of(&faded, "minecraft:firework_explosion", "colors"),
+            vec![0xB3312C]
+        );
+        let compound = faded
+            .components
+            .get_compound("minecraft:firework_explosion")
+            .unwrap();
+        assert_eq!(compound.get_str("shape"), Some("star"));
+        assert_eq!(compound.get_bool("has_trail"), Some(true));
+        assert_eq!(
+            result(3, 3, &laid(vec![stack(ItemKind::FireworkStar, 1)])),
+            None
+        );
+        assert_eq!(
+            result(
+                3,
+                3,
+                &laid(vec![
+                    stack(ItemKind::FireworkStar, 1),
+                    stack(ItemKind::Stick, 1)
+                ])
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_rocket_flies_as_long_as_it_has_gunpowder_and_carries_the_stars() {
+        let star = with(
+            ItemKind::FireworkStar,
+            1,
+            "minecraft:firework_explosion",
+            Compound::new().with("shape", "creeper"),
+        );
+        let rocket = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::Paper, 1),
+                stack(ItemKind::Gunpowder, 1),
+                stack(ItemKind::Gunpowder, 1),
+                star.clone(),
+                star,
+            ]),
+        )
+        .unwrap();
+        assert_eq!(rocket.item, ItemKind::FireworkRocket.id());
+        assert_eq!(rocket.count.get(), 3);
+        let fireworks = rocket
+            .components
+            .get_compound("minecraft:fireworks")
+            .unwrap();
+        assert_eq!(fireworks.get_i32("flight_duration"), Some(2));
+        assert_eq!(fireworks.get_list("explosions").map(<[Tag]>::len), Some(2));
+    }
+
+    #[test]
+    fn a_rocket_with_one_gunpowder_and_no_star_is_the_default_rocket() {
+        let rocket = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::Paper, 1),
+                stack(ItemKind::Gunpowder, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(rocket.item, ItemKind::FireworkRocket.id());
+        assert_eq!(rocket.count.get(), 3);
+        assert!(rocket.components.is_empty());
+    }
+
+    #[test]
+    fn a_rocket_takes_one_paper_and_one_to_three_gunpowder() {
+        let paper = || stack(ItemKind::Paper, 1);
+        let powder = || stack(ItemKind::Gunpowder, 1);
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        assert!(make(vec![paper(), powder(), powder(), powder()]).is_some());
+        assert_eq!(
+            make(vec![paper(), powder(), powder(), powder(), powder()]),
+            None
+        );
+        assert_eq!(make(vec![paper(), paper(), powder()]), None);
+        assert_eq!(make(vec![powder(), stack(ItemKind::FireworkStar, 1)]), None);
+        assert_eq!(make(vec![paper(), stack(ItemKind::FireworkStar, 1)]), None);
+        assert_eq!(
+            make(vec![paper(), powder(), stack(ItemKind::Stick, 1)]),
+            None
+        );
+    }
+
+    fn pickaxe(damage: i32) -> Slot {
+        if damage == 0 {
+            stack(ItemKind::IronPickaxe, 1)
+        } else {
+            with(ItemKind::IronPickaxe, 1, "minecraft:damage", damage)
+        }
+    }
+
+    #[test]
+    fn two_damaged_tools_make_one_with_the_durability_left_plus_a_bonus() {
+        let tool = result(3, 3, &laid(vec![pickaxe(200), pickaxe(200)])).unwrap();
+        assert_eq!(tool.item, ItemKind::IronPickaxe.id());
+        assert_eq!(tool.count.get(), 1);
+        assert_eq!(tool.components.get_i32("minecraft:damage"), Some(138));
+        let whole = result(3, 3, &laid(vec![pickaxe(100), pickaxe(0)])).unwrap();
+        assert_eq!(whole.components.get_i32("minecraft:damage"), None);
+        let some = result(3, 3, &laid(vec![pickaxe(249), pickaxe(249)])).unwrap();
+        assert_eq!(
+            some.components.get_i32("minecraft:damage"),
+            Some(250 - 2 - 12)
+        );
+    }
+
+    #[test]
+    fn repair_wants_two_single_copies_of_the_same_damageable_item() {
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        assert_eq!(make(vec![pickaxe(5)]), None);
+        assert_eq!(make(vec![pickaxe(5), pickaxe(5), pickaxe(5)]), None);
+        assert_eq!(make(vec![pickaxe(5), stack(ItemKind::IronAxe, 1)]), None);
+        assert_eq!(make(vec![pickaxe(5), stack(ItemKind::Stick, 1)]), None);
+        assert_eq!(
+            make(vec![stack(ItemKind::IronPickaxe, 2), pickaxe(5)]),
+            None
+        );
+        assert_eq!(
+            make(vec![stack(ItemKind::Stick, 1), stack(ItemKind::Stick, 1)]),
+            None
+        );
+    }
+
+    #[test]
+    fn repair_keeps_only_the_curses_at_their_highest_level() {
+        let curses = |name: &str, level: i32| {
+            Compound::new()
+                .with(name, level)
+                .with("minecraft:sharpness", 5)
+        };
+        let mut first = pickaxe(10).unwrap();
+        first.components.insert(
+            "minecraft:enchantments",
+            curses("minecraft:vanishing_curse", 1),
+        );
+        first.components.insert("minecraft:custom_name", "named");
+        let mut second = pickaxe(10).unwrap();
+        second.components.insert(
+            "minecraft:enchantments",
+            Compound::new()
+                .with("minecraft:binding_curse", 1)
+                .with("minecraft:vanishing_curse", 3)
+                .with("minecraft:efficiency", 4),
+        );
+        let tool = result(3, 3, &laid(vec![Some(first), Some(second)])).unwrap();
+        let kept = tool
+            .components
+            .get_compound("minecraft:enchantments")
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept.get_i32("minecraft:vanishing_curse"), Some(3));
+        assert_eq!(kept.get_i32("minecraft:binding_curse"), Some(1));
+        assert!(tool.components.get("minecraft:custom_name").is_none());
+    }
+
+    #[test]
+    fn repair_without_curses_leaves_no_enchantments() {
+        let mut first = pickaxe(10).unwrap();
+        first.components.insert(
+            "minecraft:enchantments",
+            Compound::new().with("minecraft:sharpness", 5),
+        );
+        let tool = result(3, 3, &laid(vec![Some(first), pickaxe(10)])).unwrap();
+        assert!(tool.components.get("minecraft:enchantments").is_none());
+    }
+
+    #[test]
+    fn repair_follows_a_max_damage_override() {
+        let big = |damage: i32| {
+            let mut tool = pickaxe(damage).unwrap();
+            tool.components.insert("minecraft:max_damage", 1000);
+            Some(tool)
+        };
+        let tool = result(3, 3, &laid(vec![big(500), big(500)])).unwrap();
+        assert_eq!(tool.components.get_i32("minecraft:max_damage"), Some(1000));
+        assert_eq!(tool.components.get_i32("minecraft:damage"), None);
+        let worn = result(3, 3, &laid(vec![big(900), big(900)])).unwrap();
+        assert_eq!(worn.components.get_i32("minecraft:damage"), Some(750));
+        let plain = result(3, 3, &laid(vec![pickaxe(0), pickaxe(0)])).unwrap();
+        assert!(plain.components.get_i32("minecraft:max_damage").is_none());
+    }
+
+    fn book(generation: i32) -> Slot {
+        with(
+            ItemKind::WrittenBook,
+            1,
+            "minecraft:written_book_content",
+            Compound::new()
+                .with("title", "t")
+                .with("author", "a")
+                .with("generation", generation),
+        )
+    }
+
+    fn generation_of(stack: &ItemStack) -> Option<i32> {
+        stack
+            .components
+            .get_compound("minecraft:written_book_content")
+            .map(|content| content.get_i32("generation").unwrap_or(0))
+    }
+
+    #[test]
+    fn writable_books_turn_a_written_book_into_copies_one_generation_older() {
+        let copies = result(
+            3,
+            3,
+            &laid(vec![
+                book(0),
+                stack(ItemKind::WritableBook, 1),
+                stack(ItemKind::WritableBook, 1),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(copies.item, ItemKind::WrittenBook.id());
+        assert_eq!(copies.count.get(), 2);
+        assert_eq!(generation_of(&copies), Some(1));
+        let again = result(3, 3, &laid(vec![book(1), stack(ItemKind::WritableBook, 1)])).unwrap();
+        assert_eq!(generation_of(&again), Some(2));
+        let plain = with(
+            ItemKind::WrittenBook,
+            1,
+            "minecraft:written_book_content",
+            Compound::new().with("title", "t").with("author", "a"),
+        );
+        let copy = result(3, 3, &laid(vec![plain, stack(ItemKind::WritableBook, 1)])).unwrap();
+        assert_eq!(generation_of(&copy), Some(1));
+    }
+
+    #[test]
+    fn a_copy_of_a_copy_cannot_be_copied_again() {
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        let writable = || stack(ItemKind::WritableBook, 1);
+        assert_eq!(make(vec![book(2), writable()]), None);
+        assert_eq!(make(vec![book(3), writable()]), None);
+        assert_eq!(make(vec![book(0), book(0), writable()]), None);
+        assert_eq!(make(vec![book(0)]), None);
+        assert_eq!(make(vec![writable(), writable()]), None);
+        assert_eq!(
+            make(vec![book(0), writable(), stack(ItemKind::Stick, 1)]),
+            None
+        );
+        assert_eq!(
+            make(vec![stack(ItemKind::WrittenBook, 1), writable()]),
+            None
+        );
+    }
+
+    #[test]
+    fn cloning_a_book_keeps_the_original_and_uses_the_writable_books() {
+        let mut slots = laid(vec![
+            stack(ItemKind::WritableBook, 1),
+            book(0),
+            stack(ItemKind::WritableBook, 1),
+        ]);
+        assert!(take_result(3, 3, &mut slots).is_empty());
+        assert_eq!(slots[0], None);
+        assert_eq!(slots[1], book(0));
+        assert_eq!(slots[2], None);
+    }
+
+    fn banner(kind: ItemKind, layers: usize) -> Slot {
+        if layers == 0 {
+            return stack(kind, 1);
+        }
+        let layer = Tag::Compound(
+            Compound::new()
+                .with("pattern", "minecraft:stripe_bottom")
+                .with("color", "red"),
+        );
+        with(
+            kind,
+            1,
+            "minecraft:banner_patterns",
+            Tag::List(vec![layer; layers]),
+        )
+    }
+
+    #[test]
+    fn a_patterned_banner_is_copied_onto_a_blank_one_of_the_same_colour() {
+        let copy = result(
+            3,
+            3,
+            &laid(vec![
+                banner(ItemKind::WhiteBanner, 0),
+                banner(ItemKind::WhiteBanner, 3),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(copy.item, ItemKind::WhiteBanner.id());
+        assert_eq!(copy.count.get(), 1);
+        assert_eq!(layers(&copy), 3);
+    }
+
+    #[test]
+    fn banner_copying_needs_exactly_one_blank_and_one_patterned_banner() {
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        let white = |layers| banner(ItemKind::WhiteBanner, layers);
+        assert_eq!(make(vec![white(1), white(2)]), None);
+        assert_eq!(make(vec![white(0), white(0)]), None);
+        assert_eq!(make(vec![white(0), white(7)]), None);
+        assert!(make(vec![white(0), white(6)]).is_some());
+        assert_eq!(make(vec![white(0), banner(ItemKind::RedBanner, 2)]), None);
+        assert_eq!(make(vec![white(2)]), None);
+        assert_eq!(make(vec![white(0), white(2), white(0)]), None);
+        assert_eq!(make(vec![white(2), stack(ItemKind::Stick, 1)]), None);
+    }
+
+    #[test]
+    fn copying_a_banner_leaves_the_patterned_one_behind() {
+        let mut slots = laid(vec![
+            banner(ItemKind::WhiteBanner, 0),
+            banner(ItemKind::WhiteBanner, 3),
+        ]);
+        assert!(take_result(3, 3, &mut slots).is_empty());
+        assert_eq!(slots[0], None);
+        assert_eq!(slots[1], banner(ItemKind::WhiteBanner, 3));
+    }
+
+    #[test]
+    fn a_banner_decorates_a_shield_with_its_colour_and_patterns() {
+        let shield = result(
+            3,
+            3,
+            &laid(vec![
+                with(ItemKind::Shield, 1, "minecraft:damage", 20),
+                banner(ItemKind::RedBanner, 2),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(shield.item, ItemKind::Shield.id());
+        assert_eq!(
+            shield.components.get_str("minecraft:base_color"),
+            Some("red")
+        );
+        assert_eq!(layers(&shield), 2);
+        assert_eq!(shield.components.get_i32("minecraft:damage"), Some(20));
+        let plain = result(
+            3,
+            3,
+            &laid(vec![
+                stack(ItemKind::Shield, 1),
+                banner(ItemKind::BlueBanner, 0),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            plain.components.get_str("minecraft:base_color"),
+            Some("blue")
+        );
+        assert!(plain.components.get("minecraft:banner_patterns").is_none());
+    }
+
+    #[test]
+    fn a_shield_is_decorated_only_when_it_has_no_patterns_and_one_banner_is_given() {
+        let make = |items: Vec<Slot>| result(3, 3, &laid(items));
+        let shield = || stack(ItemKind::Shield, 1);
+        let red = |layers| banner(ItemKind::RedBanner, layers);
+        assert_eq!(make(vec![shield()]), None);
+        assert_eq!(make(vec![red(1)]), None);
+        assert_eq!(make(vec![shield(), red(0), red(0)]), None);
+        assert_eq!(make(vec![shield(), shield(), red(0)]), None);
+        assert_eq!(make(vec![shield(), stack(ItemKind::Stick, 1)]), None);
+        let patterned = with(
+            ItemKind::Shield,
+            1,
+            "minecraft:banner_patterns",
+            Tag::List(vec![Tag::Compound(Compound::new())]),
+        );
+        assert_eq!(make(vec![patterned, red(0)]), None);
+        let based = with(ItemKind::Shield, 1, "minecraft:base_color", "green");
+        let redone = make(vec![based, red(0)]).unwrap();
+        assert_eq!(
+            redone.components.get_str("minecraft:base_color"),
+            Some("red")
+        );
+    }
+
+    fn pot(back: ItemKind, left: ItemKind, right: ItemKind, front: ItemKind) -> Vec<Slot> {
+        let mut grid = vec![None; 9];
+        grid[1] = stack(back, 1);
+        grid[3] = stack(left, 1);
+        grid[5] = stack(right, 1);
+        grid[7] = stack(front, 1);
+        grid
+    }
+
+    #[test]
+    fn sherds_around_the_empty_centre_make_a_decorated_pot() {
+        let decorated = result(
+            3,
+            3,
+            &pot(
+                ItemKind::Brick,
+                ItemKind::ArcherPotterySherd,
+                ItemKind::AnglerPotterySherd,
+                ItemKind::BladePotterySherd,
+            ),
+        )
+        .unwrap();
+        assert_eq!(decorated.item, ItemKind::DecoratedPot.id());
+        let sides = decorated
+            .components
+            .get_compound("minecraft:pot_decorations")
+            .unwrap();
+        let id = |side: &str| sides.get_compound(side).and_then(|s| s.get_str("id"));
+        assert_eq!(id("back"), Some("minecraft:brick"));
+        assert_eq!(id("left"), Some("minecraft:archer_pottery_sherd"));
+        assert_eq!(id("right"), Some("minecraft:angler_pottery_sherd"));
+        assert_eq!(id("front"), Some("minecraft:blade_pottery_sherd"));
+    }
+
+    #[test]
+    fn a_pot_of_four_bricks_is_the_plain_pot() {
+        let plain = result(
+            3,
+            3,
+            &pot(
+                ItemKind::Brick,
+                ItemKind::Brick,
+                ItemKind::Brick,
+                ItemKind::Brick,
+            ),
+        );
+        assert!(plain.unwrap().components.is_empty());
+    }
+
+    #[test]
+    fn the_pot_pattern_needs_the_plus_shape_and_pottery_items() {
+        let mut shifted = pot(
+            ItemKind::Brick,
+            ItemKind::Brick,
+            ItemKind::Brick,
+            ItemKind::Brick,
+        );
+        shifted.swap(1, 0);
+        assert_eq!(result(3, 3, &shifted), None);
+        let mut corner = pot(
+            ItemKind::Brick,
+            ItemKind::Brick,
+            ItemKind::Brick,
+            ItemKind::Brick,
+        );
+        corner[0] = stack(ItemKind::Brick, 1);
+        assert_eq!(result(3, 3, &corner), None);
+        assert_eq!(
+            result(
+                3,
+                3,
+                &pot(
+                    ItemKind::Brick,
+                    ItemKind::Brick,
+                    ItemKind::Brick,
+                    ItemKind::Stick
+                )
+            ),
+            None
+        );
+    }
+
+    fn lingering() -> Slot {
+        with(
+            ItemKind::LingeringPotion,
+            1,
+            "minecraft:potion_contents",
+            Compound::new().with("potion", "minecraft:poison"),
+        )
+    }
+
+    #[test]
+    fn a_lingering_potion_ringed_by_arrows_makes_tipped_arrows() {
+        let mut grid = vec![stack(ItemKind::Arrow, 1); 9];
+        grid[4] = lingering();
+        let arrows = result(3, 3, &grid).unwrap();
+        assert_eq!(arrows.item, ItemKind::TippedArrow.id());
+        assert_eq!(arrows.count.get(), 8);
+        assert_eq!(
+            arrows
+                .components
+                .get_compound("minecraft:potion_contents")
+                .and_then(|contents| contents.get_str("potion")),
+            Some("minecraft:poison")
+        );
+    }
+
+    #[test]
+    fn the_tipped_arrow_recipe_needs_the_potion_in_the_middle_and_eight_arrows() {
+        let mut grid = vec![stack(ItemKind::Arrow, 1); 9];
+        grid[4] = lingering();
+        grid[0] = None;
+        assert_eq!(result(3, 3, &grid), None);
+        let mut off = vec![stack(ItemKind::Arrow, 1); 9];
+        off[0] = lingering();
+        assert_eq!(result(3, 3, &off), None);
+        let mut plain = vec![stack(ItemKind::Arrow, 1); 9];
+        plain[4] = stack(ItemKind::Potion, 1);
+        assert_eq!(result(3, 3, &plain), None);
+    }
+
+    #[test]
+    fn the_potion_is_used_up_and_leaves_no_bottle() {
+        let mut grid = vec![stack(ItemKind::Arrow, 1); 9];
+        grid[4] = lingering();
+        assert!(take_result(3, 3, &mut grid).is_empty());
+        assert!(grid.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn the_blend_of_nothing_in_particular_stays_in_range() {
+        assert_eq!(blended(None, &[0]), 0xF9FFFE);
+        assert_eq!(blended(None, &[15]), 0x1D1D21);
+        assert_eq!(blended(Some(0), &[15]), 0x0E0E10);
     }
 
     #[test]

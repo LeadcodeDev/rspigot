@@ -14,6 +14,7 @@ use rspigot_data::variants::Farm;
 use rspigot_domain::chunk::{
     ChunkColumn, HeightmapKind as DomainHeightmap, LightArray as DomainLight,
 };
+use rspigot_domain::dye::dye_color_id;
 use rspigot_domain::effect::{AttributeOperation, AttributeState, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
 use rspigot_domain::player::GameMode as DomainGameMode;
@@ -40,7 +41,7 @@ use rspigot_protocol::play::entity::{
 };
 use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue, RegistryVariant};
 use rspigot_protocol::play::player::{CommonPlayerSpawnInfo, PlayerInfoActions, PlayerInfoEntry};
-use rspigot_protocol::play::slot::{ComponentValue, ItemStack as WireStack};
+use rspigot_protocol::play::slot::{ComponentValue, DataComponentPatch, ItemStack as WireStack};
 use rspigot_protocol::play::types::{
     ByteBitSet, ChunkPos as WireChunkPos, Difficulty as WireDifficulty, GameMode as WireGameMode,
     GlobalPos, Hand as WireHand, Holder, LpVec3, Pose as WirePose, PositionMoveRotation, Relatives,
@@ -121,6 +122,81 @@ fn optional_absent(out: &mut Vec<u8>) {
     false.encode(out);
 }
 
+const FIREWORK_SHAPES: [&str; 5] = ["small_ball", "large_ball", "star", "creeper", "burst"];
+
+fn write_var_len(len: usize, out: &mut Vec<u8>) -> Option<()> {
+    write_var(i32::try_from(len).ok()?, out);
+    Some(())
+}
+
+fn write_colors(value: Option<&[rspigot_nbt::Tag]>, out: &mut Vec<u8>) -> Option<()> {
+    let colors = value.unwrap_or_default();
+    write_var_len(colors.len(), out)?;
+    for color in colors {
+        out.extend_from_slice(&i32::try_from(color.as_i64()?).ok()?.to_be_bytes());
+    }
+    Some(())
+}
+
+fn write_explosion(explosion: &rspigot_nbt::Compound, out: &mut Vec<u8>) -> Option<()> {
+    let name = explosion.get_str("shape")?;
+    let shape = FIREWORK_SHAPES.iter().position(|shape| *shape == name)?;
+    write_var(i32::try_from(shape).ok()?, out);
+    write_colors(explosion.get_list("colors"), out)?;
+    write_colors(explosion.get_list("fade_colors"), out)?;
+    explosion.get_bool("has_trail").unwrap_or(false).encode(out);
+    explosion
+        .get_bool("has_twinkle")
+        .unwrap_or(false)
+        .encode(out);
+    Some(())
+}
+
+fn write_banner_layer(layer: &rspigot_nbt::Compound, out: &mut Vec<u8>) -> Option<()> {
+    match layer.get("pattern")? {
+        rspigot_nbt::Tag::String(name) => {
+            let id = rspigot_data::registries::synced_index("minecraft:banner_pattern", name)?;
+            write_var(i32::try_from(id).ok()?.checked_add(1)?, out);
+        }
+        rspigot_nbt::Tag::Compound(direct) => {
+            write_var(0, out);
+            direct.get_str("asset_id")?.encode(out);
+            direct.get_str("translation_key")?.encode(out);
+        }
+        _ => return None,
+    }
+    write_var(
+        i32::try_from(dye_color_id(layer.get_str("color")?)?).ok()?,
+        out,
+    );
+    Some(())
+}
+
+fn write_pot_side(side: Option<&rspigot_nbt::Compound>, out: &mut Vec<u8>) -> Option<()> {
+    let Some(template) = side else {
+        false.encode(out);
+        return Some(());
+    };
+    true.encode(out);
+    let item = rspigot_data::registries::static_index("minecraft:item", template.get_str("id")?)?;
+    write_var(i32::try_from(item).ok()?, out);
+    write_var(template.get_i32("count").unwrap_or(1), out);
+    let patch = DataComponentPatch {
+        added: template
+            .get_compound("components")
+            .map(|components| {
+                components
+                    .iter()
+                    .filter_map(|(name, value)| component_value(name, value))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        removed: Vec::new(),
+    };
+    patch.encode_trusted(out);
+    Some(())
+}
+
 fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValue> {
     let mut data = Vec::new();
     match name {
@@ -141,6 +217,38 @@ fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValu
             optional_absent(&mut data);
             write_var(0, &mut data);
             optional_absent(&mut data);
+        }
+        "minecraft:dyed_color" => {
+            data.extend_from_slice(&i32::try_from(value.as_i64()?).ok()?.to_be_bytes());
+        }
+        "minecraft:base_color" => {
+            write_var(
+                i32::try_from(dye_color_id(value.as_str()?)?).ok()?,
+                &mut data,
+            );
+        }
+        "minecraft:firework_explosion" => write_explosion(value.as_compound()?, &mut data)?,
+        "minecraft:fireworks" => {
+            let fireworks = value.as_compound()?;
+            write_var(fireworks.get_i32("flight_duration").unwrap_or(0), &mut data);
+            let explosions = fireworks.get_list("explosions").unwrap_or_default();
+            write_var_len(explosions.len(), &mut data)?;
+            for explosion in explosions {
+                write_explosion(explosion.as_compound()?, &mut data)?;
+            }
+        }
+        "minecraft:banner_patterns" => {
+            let layers = value.as_list()?;
+            write_var_len(layers.len(), &mut data)?;
+            for layer in layers {
+                write_banner_layer(layer.as_compound()?, &mut data)?;
+            }
+        }
+        "minecraft:pot_decorations" => {
+            let sides = value.as_compound()?;
+            for side in ["back", "left", "right", "front"] {
+                write_pot_side(sides.get_compound(side), &mut data)?;
+            }
         }
         "minecraft:suspicious_stew_effects" => {
             let entries = value.as_list()?;
@@ -1903,6 +2011,87 @@ mod tests {
         let mut body = Vec::new();
         stack(&Some(unknown)).encode(&mut body);
         assert_eq!(body[body.len() - 2..], [0, 0]);
+    }
+
+    fn component_bytes(name: &str, value: impl Into<rspigot_nbt::Tag>) -> Vec<u8> {
+        component_value(name, &value.into()).expect(name).data
+    }
+
+    fn explosion_tag() -> rspigot_nbt::Compound {
+        rspigot_nbt::Compound::new()
+            .with("shape", "star")
+            .with(
+                "colors",
+                rspigot_nbt::Tag::List(vec![
+                    rspigot_nbt::Tag::Int(0xB3312C),
+                    rspigot_nbt::Tag::Int(0x253192),
+                ]),
+            )
+            .with("has_trail", true)
+    }
+
+    fn explosion_bytes() -> Vec<u8> {
+        let mut bytes = vec![2, 2];
+        bytes.extend_from_slice(&0xB3312Ci32.to_be_bytes());
+        bytes.extend_from_slice(&0x253192i32.to_be_bytes());
+        bytes.extend_from_slice(&[0, 1, 0]);
+        bytes
+    }
+
+    #[test]
+    fn dye_and_firework_components_golden_bytes() {
+        assert_eq!(
+            component_bytes("minecraft:dyed_color", 0xB02E26),
+            0xB02E26i32.to_be_bytes()
+        );
+        assert_eq!(component_bytes("minecraft:base_color", "red"), vec![14]);
+        assert_eq!(
+            component_bytes("minecraft:firework_explosion", explosion_tag()),
+            explosion_bytes()
+        );
+        let fireworks = rspigot_nbt::Compound::new()
+            .with("flight_duration", rspigot_nbt::Tag::Byte(2))
+            .with(
+                "explosions",
+                rspigot_nbt::Tag::List(vec![rspigot_nbt::Tag::Compound(explosion_tag())]),
+            );
+        let mut expected = vec![2, 1];
+        expected.extend(explosion_bytes());
+        assert_eq!(component_bytes("minecraft:fireworks", fireworks), expected);
+        let bare = rspigot_nbt::Compound::new().with("flight_duration", rspigot_nbt::Tag::Byte(3));
+        assert_eq!(component_bytes("minecraft:fireworks", bare), vec![3, 0]);
+    }
+
+    #[test]
+    fn banner_and_pot_components_golden_bytes() {
+        let stripe = rspigot_data::registries::synced_index(
+            "minecraft:banner_pattern",
+            "minecraft:stripe_bottom",
+        )
+        .unwrap();
+        let layer = rspigot_nbt::Compound::new()
+            .with("pattern", "minecraft:stripe_bottom")
+            .with("color", "red");
+        assert_eq!(
+            component_bytes(
+                "minecraft:banner_patterns",
+                rspigot_nbt::Tag::List(vec![rspigot_nbt::Tag::Compound(layer)])
+            ),
+            vec![1, u8::try_from(stripe + 1).unwrap(), 14]
+        );
+        let brick =
+            rspigot_data::registries::static_index("minecraft:item", "minecraft:brick").unwrap();
+        let sides = rspigot_nbt::Compound::new().with(
+            "back",
+            rspigot_nbt::Compound::new().with("id", "minecraft:brick"),
+        );
+        let mut expected = vec![1];
+        write_var(i32::try_from(brick).unwrap(), &mut expected);
+        expected.extend([1, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            component_bytes("minecraft:pot_decorations", sides),
+            expected
+        );
     }
 
     #[test]

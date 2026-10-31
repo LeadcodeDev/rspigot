@@ -39,22 +39,25 @@ impl Item for CopperLeggings {
             slot: SlotGroup::Legs,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

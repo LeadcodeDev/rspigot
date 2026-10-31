@@ -25,6 +25,7 @@ impl Item for Shield {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
         Craft::Shaped {
             width: 3,
             height: 3,

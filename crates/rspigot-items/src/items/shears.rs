@@ -50,17 +50,20 @@ impl Item for Shears {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 2,
-        height: 2,
-        symmetrical: false,
-        cells: &[
-            None,
-            Some(ItemSet::Direct(&[ItemId(1018)])),
-            Some(ItemSet::Direct(&[ItemId(1018)])),
-            None,
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
+        Craft::Shaped {
+            width: 2,
+            height: 2,
+            symmetrical: false,
+            cells: &[
+                None,
+                Some(ItemSet::Direct(&[ItemId(1018)])),
+                Some(ItemSet::Direct(&[ItemId(1018)])),
+                None,
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

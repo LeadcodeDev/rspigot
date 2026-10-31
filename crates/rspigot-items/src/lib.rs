@@ -264,6 +264,7 @@ pub enum Craft {
         right: ItemSet,
     },
     BannerDuplicate,
+    RepairItem,
     ShieldDecoration {
         banner: ItemSet,
     },

@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
-    Rarity, SlotGroup, Tool, ToolRule, tags,
+    AttributeModifier, BlockSet, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet,
+    ModifierOperation, Rarity, SlotGroup, Tool, ToolRule, tags,
 };
 
 pub struct NetheriteAxe;
@@ -55,5 +55,6 @@ impl Item for NetheriteAxe {
             slot: SlotGroup::Mainhand,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
     type Behavior = crate::family::Plain;
 }

@@ -23,9 +23,12 @@ impl Item for FlintAndSteel {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(1018)]), ItemSet::Direct(&[ItemId(1096)])],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(1018)]), ItemSet::Direct(&[ItemId(1096)])],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

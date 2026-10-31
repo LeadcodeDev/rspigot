@@ -39,22 +39,25 @@ impl Item for DiamondSpear {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: false,
-        cells: &[
-            None,
-            None,
-            Some(ItemSet::Tag(&tags::ITEM_DIAMOND_TOOL_MATERIALS)),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            None,
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                None,
+                None,
+                Some(ItemSet::Tag(&tags::ITEM_DIAMOND_TOOL_MATERIALS)),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                None,
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }
