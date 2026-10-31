@@ -12,12 +12,12 @@ use rspigot_core::events::{
 use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, StoreError};
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
-use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::chunk::{BlockEntity, ChunkColumn};
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Vec3};
-use rspigot_nbt::Compound;
+use rspigot_nbt::{Compound, Tag};
 
 #[derive(Clone, Default)]
 struct Link {
@@ -80,6 +80,35 @@ impl EntityStore for NoStore {
     }
 }
 
+const LECTERN: BlockPos = BlockPos::new(4, 64, 4);
+
+fn seed_lectern(chunk: &mut ChunkColumn) {
+    let state = BlockKind::Lectern
+        .default_state()
+        .with_property("has_book", "true")
+        .expect("has_book property");
+    chunk.set_block(LECTERN, state);
+    let pages: Vec<Tag> = ["one", "two", "three"]
+        .into_iter()
+        .map(|page| Tag::String(page.to_owned()))
+        .collect();
+    let book = Compound::new()
+        .with("id", "minecraft:written_book")
+        .with("count", 1)
+        .with(
+            "components",
+            Compound::new().with(
+                "minecraft:written_book_content",
+                Compound::new().with("pages", Tag::List(pages)),
+            ),
+        );
+    chunk.set_block_entity(BlockEntity {
+        pos: LECTERN,
+        kind: Identifier::minecraft("lectern"),
+        data: Compound::new().with("Book", book).with("Page", 0),
+    });
+}
+
 struct Floor;
 
 impl ChunkGenerator for Floor {
@@ -94,6 +123,9 @@ impl ChunkGenerator for Floor {
                     );
                 }
             }
+        }
+        if LECTERN.chunk() == pos {
+            seed_lectern(&mut chunk);
         }
         chunk
     }
@@ -1597,4 +1629,284 @@ fn pairing_a_second_chest_with_a_loaded_one_does_not_drop_its_items() {
     let slots = content(&world.alice, 2).expect("double window");
     assert_eq!(slots.len(), 90);
     assert_eq!(slots[27], Some((item("minecraft:stone"), 1)));
+}
+
+impl World {
+    fn open_lectern(&mut self) {
+        self.select(8);
+        self.use_on(LECTERN, Direction::Up);
+    }
+
+    fn press(&mut self, window: i32, button: i32) {
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::ContainerButtonClick { window, button },
+        });
+        self.settle();
+    }
+
+    fn open_lectern_as_bob(&mut self) {
+        self.server.handle(Inbound::Input {
+            player: self.bob.id,
+            input: PlayerInput::UseItemOn {
+                hand: Hand::Main,
+                pos: LECTERN,
+                face: Direction::Up,
+                cursor: Vec3::new(0.5, 1.0, 0.5),
+                inside_block: false,
+                sequence: 9,
+            },
+        });
+        self.settle();
+    }
+}
+
+fn page_shown(player: &Player, window: i32) -> Option<i16> {
+    data_events(player, window).last().map(|(_, value)| *value)
+}
+
+#[test]
+fn a_lectern_with_a_book_opens_a_one_slot_window_with_the_book_and_the_page() {
+    let mut world = world();
+    world.open_lectern();
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 17)));
+    assert!(titled(&world.alice, "container.lectern"));
+    let slots = content(&world.alice, WINDOW).expect("content");
+    assert_eq!(slots, vec![Some((item("minecraft:written_book"), 1))]);
+    assert_eq!(data_events(&world.alice, WINDOW), vec![(0, 0)]);
+}
+
+#[test]
+fn the_page_buttons_move_through_the_book_and_stop_at_both_ends() {
+    let mut world = world();
+    world.open_lectern();
+    world.press(WINDOW, 2);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(1));
+    world.press(WINDOW, 2);
+    world.press(WINDOW, 2);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(2));
+    world.press(WINDOW, 1);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(1));
+    world.press(WINDOW, 1);
+    world.press(WINDOW, 1);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(0));
+    world.press(WINDOW, 102);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(2));
+    world.press(WINDOW, 150);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(2));
+    world.press(WINDOW, 100);
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(0));
+}
+
+#[test]
+fn a_button_that_means_nothing_changes_nothing() {
+    let mut world = world();
+    world.open_lectern();
+    world.press(WINDOW, 2);
+    let before = data_events(&world.alice, WINDOW);
+    for button in [0, 4, 50, 99, -1] {
+        world.press(WINDOW, button);
+    }
+    world.press(WINDOW + 5, 2);
+    assert_eq!(data_events(&world.alice, WINDOW), before);
+}
+
+#[test]
+fn a_page_turned_by_one_reader_reaches_the_other_one() {
+    let mut world = world();
+    world.open_lectern();
+    world.open_lectern_as_bob();
+    world.press(WINDOW, 2);
+
+    assert_eq!(page_shown(&world.alice, WINDOW), Some(1));
+    assert_eq!(page_shown(&world.bob, WINDOW), Some(1));
+}
+
+#[test]
+fn the_page_stays_when_the_lectern_is_closed_and_opened_again() {
+    let mut world = world();
+    world.open_lectern();
+    world.press(WINDOW, 2);
+    world.close(WINDOW);
+    world.open_lectern();
+
+    assert_eq!(data_events(&world.alice, 2), vec![(0, 1)]);
+}
+
+#[test]
+fn taking_the_book_gives_it_back_and_empties_the_lectern() {
+    let mut world = world();
+    world.open_lectern();
+    world.press(WINDOW, 3);
+
+    assert!(closed(&world.alice, WINDOW));
+    let given = world.alice.log.iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::InventorySlot { stack: Some(stack), .. }
+                if stack.item.0 == item("minecraft:written_book")
+        )
+    });
+    assert!(given);
+    assert!(on_the_ground(&world, "minecraft:written_book").is_empty());
+    let state = last_update(&world.alice, LECTERN).expect("lectern update");
+    assert_eq!(state.property("has_book"), Some("false"));
+    world.open_lectern();
+    assert_eq!(opened(&world.alice), Some((WINDOW, 17)));
+}
+
+#[test]
+fn taking_the_book_closes_the_window_of_the_other_reader() {
+    let mut world = world();
+    world.open_lectern();
+    world.open_lectern_as_bob();
+    world.press(WINDOW, 3);
+
+    assert!(closed(&world.bob, WINDOW));
+}
+
+#[test]
+fn an_adventurer_cannot_take_the_book() {
+    let mut world = world();
+    world.console("gamemode adventure Alice");
+    world.open_lectern();
+    world.press(WINDOW, 3);
+
+    assert!(!closed(&world.alice, WINDOW));
+    let state = last_update(&world.alice, LECTERN);
+    assert!(state.is_none_or(|state| state.property("has_book") == Some("true")));
+}
+
+#[test]
+fn clicks_on_the_book_slot_do_not_take_the_book() {
+    let mut world = world();
+    world.open_lectern();
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::QuickMove);
+    assert!(!closed(&world.alice, WINDOW));
+    world.close(WINDOW);
+
+    let book = item("minecraft:written_book");
+    let handed_out = world.alice.log.iter().any(|event| match event {
+        ClientEvent::CursorItem(Some(stack))
+        | ClientEvent::InventorySlot {
+            stack: Some(stack), ..
+        }
+        | ClientEvent::PlayerInventorySlot {
+            stack: Some(stack), ..
+        } => stack.item.0 == book,
+        _ => false,
+    });
+    assert!(!handed_out);
+    let state = last_update(&world.alice, LECTERN);
+    assert!(state.is_none_or(|state| state.property("has_book") == Some("true")));
+    world.open_lectern();
+    assert_eq!(content(&world.alice, 2), Some(vec![Some((book, 1))]));
+}
+
+#[test]
+fn walking_away_closes_the_lectern() {
+    let mut world = world();
+    world.open_lectern();
+    world.console("tp Alice 40 64 40");
+
+    assert!(closed(&world.alice, WINDOW));
+}
+
+fn place_lectern(world: &mut World) {
+    world.place_storage("lectern");
+}
+
+#[test]
+fn a_lectern_without_a_book_does_not_open() {
+    let mut world = world();
+    place_lectern(&mut world);
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), None);
+}
+
+#[test]
+fn a_book_in_hand_is_put_on_an_empty_lectern() {
+    for book in ["writable_book", "written_book"] {
+        let mut world = world();
+        place_lectern(&mut world);
+        world.give(book);
+        world.select(0);
+        let before = world.alice.log.len();
+        world.use_on(CHEST, Direction::Up);
+
+        let state = last_update(&world.alice, CHEST).expect("lectern update");
+        assert_eq!(state.property("has_book"), Some("true"), "{book}");
+        assert_eq!(state.property("powered"), Some("false"), "{book}");
+        assert_eq!(
+            sounds_heard(&world.bob, "minecraft:item.book.put"),
+            1,
+            "{book}"
+        );
+        assert_eq!(opened(&world.alice), None, "{book}");
+        let consumed = world.alice.log[before..].iter().any(|event| {
+            matches!(
+                event,
+                ClientEvent::InventorySlot {
+                    slot: 36,
+                    stack: None,
+                    ..
+                }
+            )
+        });
+        assert!(consumed, "{book}");
+
+        world.open_chest();
+        assert_eq!(opened(&world.alice), Some((WINDOW, 17)), "{book}");
+        let slots = content(&world.alice, WINDOW).expect("content");
+        assert_eq!(
+            slots,
+            vec![Some((item(&format!("minecraft:{book}")), 1))],
+            "{book}"
+        );
+    }
+}
+
+#[test]
+fn something_that_is_not_a_book_is_not_put_on_the_lectern() {
+    let mut world = world();
+    place_lectern(&mut world);
+    world.give("stick");
+    world.select(0);
+    world.use_on(CHEST, Direction::Up);
+
+    let state = last_update(&world.alice, CHEST).expect("lectern update");
+    assert_eq!(state.property("has_book"), Some("false"));
+    assert_eq!(sounds_heard(&world.bob, "minecraft:item.book.put"), 0);
+}
+
+#[test]
+fn a_placed_lectern_has_its_block_entity_for_a_late_joiner() {
+    let mut world = world();
+    place_lectern(&mut world);
+    let mut carol = join(&mut world.server, "Carol");
+    run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+    assert!(carries_a_block_entity(&carol, CHEST, "minecraft:lectern"));
+}
+
+#[test]
+fn breaking_a_lectern_pops_its_book() {
+    let mut world = world();
+    world.break_at(LECTERN);
+
+    assert_eq!(on_the_ground(&world, "minecraft:written_book"), vec![1]);
+    assert!(closed(&world.alice, WINDOW) || opened(&world.alice).is_none());
+}
+
+#[test]
+fn breaking_an_empty_lectern_pops_nothing() {
+    let mut world = world();
+    place_lectern(&mut world);
+    world.break_at(CHEST);
+
+    assert!(on_the_ground(&world, "minecraft:written_book").is_empty());
+    assert!(on_the_ground(&world, "minecraft:writable_book").is_empty());
 }

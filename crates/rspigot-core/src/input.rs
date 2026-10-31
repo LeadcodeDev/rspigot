@@ -180,6 +180,9 @@ impl<L: ClientLink> Server<L> {
             } => self.handle_interact(id, target, hand, sneaking),
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
             PlayerInput::ContainerClose(window) => self.handle_container_close(id, window),
+            PlayerInput::ContainerButtonClick { window, button } => {
+                self.handle_container_button(id, window, button);
+            }
         }
     }
 
@@ -392,15 +395,17 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
-        let lost = self
-            .world
-            .chunks
-            .block(pos)
+        let before = self.world.chunks.block(pos);
+        let lost = before
             .map(|old| self.contents_lost_by(pos, old, state))
             .unwrap_or_default();
+        let book = before.and_then(|old| self.lectern_book_lost_by(pos, old, state));
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
                 self.drop_contents(pos, lost);
+                if let Some((at, book)) = book {
+                    self.pop_book(at, book);
+                }
                 self.mob_paths_block_changed(pos, old, state);
                 self.notify_neighbours(pos);
                 self.push(
@@ -448,6 +453,10 @@ impl<L: ClientLink> Server<L> {
                 .players
                 .get(&id)
                 .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
+        if !(sneaking && holding) && self.place_book_on_lectern(id, slot, pos, clicked) {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        }
         if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
@@ -552,7 +561,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn consume_one(&mut self, id: PlayerId, slot: usize, stack: ItemStack) {
+    pub(crate) fn consume_one(&mut self, id: PlayerId, slot: usize, stack: ItemStack) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
