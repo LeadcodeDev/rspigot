@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool,
+};
 
 pub struct NetheriteScrap;
 
@@ -21,5 +23,21 @@ impl Item for NetheriteScrap {
     const DAMAGE_RESISTANT: Option<&'static str> = Some("minecraft:is_fire");
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Cooking {
+            id: "minecraft:netherite_scrap",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(111)]),
+            experience: 2.0,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:netherite_scrap_from_blasting",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(111)]),
+            experience: 2.0,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

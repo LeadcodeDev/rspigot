@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Fuel, Item, ItemId, ItemSet,
+    Product, Rarity, Tool,
 };
 
 pub struct Coal;
@@ -23,9 +24,40 @@ impl Item for Coal {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(112)])],
-        product: Product::of(9),
-    }];
+    const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1600, fast_burn_time: 800 });
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(112)])],
+            product: Product::of(9),
+        },
+        Craft::Cooking {
+            id: "minecraft:coal_from_blasting_coal_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(93)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:coal_from_blasting_deepslate_coal_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(94)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:coal_from_smelting_coal_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(93)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:coal_from_smelting_deepslate_coal_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(94)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

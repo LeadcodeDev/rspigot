@@ -23,22 +23,25 @@ impl Item for OxidizedCopperGrate {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            None,
-            Some(ItemSet::Direct(&[ItemId(123)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(123)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(123)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(123)])),
-            None,
-        ],
-        product: Product::of(4),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                None,
+                Some(ItemSet::Direct(&[ItemId(123)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(123)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(123)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(123)])),
+                None,
+            ],
+            product: Product::of(4),
+        },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(123)]), count: 4 },
+    ];
     type Behavior = crate::family::BlockItem;
 }

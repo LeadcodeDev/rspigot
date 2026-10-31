@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct CopperIngot;
@@ -28,6 +29,27 @@ impl Item for CopperIngot {
             ingredients: &[ItemSet::Direct(&[ItemId(120)])],
             product: Product::of(9),
         },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_blasting_copper_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(97)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_blasting_deepslate_copper_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(98)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_blasting_raw_copper",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(1019)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
         Craft::Shaped {
             width: 3,
             height: 3,
@@ -44,6 +66,27 @@ impl Item for CopperIngot {
                 Some(ItemSet::Direct(&[ItemId(1457)])),
             ],
             product: Product::of(1),
+        },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_smelting_copper_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(97)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_smelting_deepslate_copper_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(98)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:copper_ingot_from_smelting_raw_copper",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(1019)]),
+            experience: 0.7,
+            cooking_time: 200,
         },
         Craft::Shapeless {
             ingredients: &[ItemSet::Direct(&[ItemId(124)])],

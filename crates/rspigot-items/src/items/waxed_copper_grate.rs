@@ -45,6 +45,7 @@ impl Item for WaxedCopperGrate {
             ingredients: &[ItemSet::Direct(&[ItemId(1621)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(124)]), count: 4 },
     ];
     type Behavior = crate::family::BlockItem;
 }

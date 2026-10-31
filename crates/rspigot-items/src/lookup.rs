@@ -112,6 +112,12 @@ macro_rules! item_kinds {
                 }
             }
 
+            pub const fn cooking_fuel(self) -> Option<$crate::Fuel> {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::COOKING_FUEL,)*
+                }
+            }
+
             pub const fn crafts(self) -> &'static [$crate::Craft] {
                 match self {
                     $(Self::$kind => <$crate::items::$kind as $crate::Item>::CRAFTS,)*

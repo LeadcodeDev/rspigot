@@ -23,12 +23,16 @@ impl Item for WeatheredChiseledCopper {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 1,
-        height: 2,
-        symmetrical: true,
-        cells: &[Some(ItemSet::Direct(&[ItemId(157)])), Some(ItemSet::Direct(&[ItemId(157)]))],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 1,
+            height: 2,
+            symmetrical: true,
+            cells: &[Some(ItemSet::Direct(&[ItemId(157)])), Some(ItemSet::Direct(&[ItemId(157)]))],
+            product: Product::of(1),
+        },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(122)]), count: 4 },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(141)]), count: 1 },
+    ];
     type Behavior = crate::family::BlockItem;
 }

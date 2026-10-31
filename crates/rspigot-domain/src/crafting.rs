@@ -70,6 +70,7 @@ fn recipes() -> &'static [(ItemKind, &'static Craft)] {
         ItemKind::ALL
             .into_iter()
             .flat_map(|kind| kind.crafts().iter().map(move |craft| (kind, craft)))
+            .filter(|(_, craft)| craft.uses_crafting_grid())
             .collect()
     })
 }

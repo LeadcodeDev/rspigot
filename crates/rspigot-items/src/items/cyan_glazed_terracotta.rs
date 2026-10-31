@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool,
+};
 
 pub struct CyanGlazedTerracotta;
 
@@ -21,5 +23,12 @@ impl Item for CyanGlazedTerracotta {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Cooking {
+        id: "minecraft:cyan_glazed_terracotta",
+        kind: CookingKind::Smelting,
+        ingredient: ItemSet::Direct(&[ItemId(570)]),
+        experience: 0.1,
+        cooking_time: 200,
+    }];
     type Behavior = crate::family::BlockItem;
 }

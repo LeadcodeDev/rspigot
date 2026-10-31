@@ -60,6 +60,13 @@ impl Item for NetheriteSword {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::SmithingTransform {
+            template: ItemSet::Direct(&[ItemId(1579)]),
+            base: ItemSet::Direct(&[ItemId(1050)]),
+            addition: ItemSet::Tag(&tags::ITEM_NETHERITE_TOOL_MATERIALS),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct Redstone;
@@ -23,9 +24,39 @@ impl Item for Redstone {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(826)])],
-        product: Product::of(9),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(826)])],
+            product: Product::of(9),
+        },
+        Craft::Cooking {
+            id: "minecraft:redstone_from_blasting_deepslate_redstone_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(102)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:redstone_from_blasting_redstone_ore",
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(101)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:redstone_from_smelting_deepslate_redstone_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(102)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            id: "minecraft:redstone_from_smelting_redstone_ore",
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(101)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }
