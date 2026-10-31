@@ -160,6 +160,15 @@ fn merge(target: &mut Mapping, defaults: &Mapping) -> bool {
     changed
 }
 
+fn scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct YamlConfig {
     root: Value,
@@ -199,12 +208,33 @@ impl YamlConfig {
     }
 
     pub fn string(&self, path: &str, fallback: &str) -> String {
+        self.get(path)
+            .and_then(scalar)
+            .unwrap_or_else(|| fallback.to_owned())
+    }
+
+    pub fn strings(&self, path: &str) -> Vec<String> {
         match self.get(path) {
-            Some(Value::String(s)) => s.clone(),
-            Some(Value::Number(n)) => n.to_string(),
-            Some(Value::Bool(b)) => b.to_string(),
-            _ => fallback.to_owned(),
+            Some(Value::Sequence(items)) => items.iter().filter_map(scalar).collect(),
+            _ => Vec::new(),
         }
+    }
+
+    pub fn entries(&self, path: &str) -> Vec<(String, String)> {
+        let Some(Value::Mapping(entries)) = self.get(path) else {
+            return Vec::new();
+        };
+        entries
+            .iter()
+            .filter_map(|(key, value)| {
+                let entry = scalar(key).zip(scalar(value));
+                if entry.is_none() {
+                    let name = scalar(key).unwrap_or_else(|| format!("{key:?}"));
+                    tracing::warn!("Ignoring `{path}.{name}`: expected a single value");
+                }
+                entry
+            })
+            .collect()
     }
 
     pub fn int(&self, path: &str, fallback: i64) -> i64 {

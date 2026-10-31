@@ -1,3 +1,4 @@
+mod plugins;
 mod properties;
 mod yaml;
 
@@ -13,7 +14,9 @@ use rspigot_domain::player::GameMode;
 use rspigot_domain::spawn::state::{CategorySettings, SpawnSettings};
 use rspigot_domain::world::Difficulty;
 use rspigot_network::NetworkConfig;
+use rspigot_plugins::PluginHostConfig;
 
+use plugins::PLUGINS_DEFAULTS;
 pub use properties::Properties;
 use yaml::{BUKKIT_DEFAULTS, SPIGOT_DEFAULTS, YamlConfig};
 
@@ -21,6 +24,7 @@ pub struct ServerFiles {
     pub properties: Properties,
     pub spigot: YamlConfig,
     pub bukkit: YamlConfig,
+    pub plugins: YamlConfig,
 }
 
 impl ServerFiles {
@@ -29,6 +33,7 @@ impl ServerFiles {
             properties: Properties::load_or_create(&root.join("server.properties"))?,
             spigot: YamlConfig::load_or_create(&root.join("spigot.yml"), SPIGOT_DEFAULTS)?,
             bukkit: YamlConfig::load_or_create(&root.join("bukkit.yml"), BUKKIT_DEFAULTS)?,
+            plugins: YamlConfig::load_or_create(&root.join("plugins.yml"), PLUGINS_DEFAULTS)?,
         })
     }
 
@@ -77,6 +82,7 @@ impl ServerFiles {
             is_flat: p.string("level-type").ends_with("flat"),
             spawning: self.spawning(),
             mobs: self.mob_settings(),
+            plugins: plugins::settings(&self.plugins),
             ..GameConfig::default()
         }
     }
@@ -186,6 +192,13 @@ impl ServerFiles {
         }
     }
 
+    pub fn plugin_host_config(
+        &self,
+        environment_token: Option<String>,
+    ) -> anyhow::Result<PluginHostConfig> {
+        plugins::host_config(&self.plugins, environment_token)
+    }
+
     pub fn network_config(&self, favicon: Option<String>) -> anyhow::Result<NetworkConfig> {
         let p = &self.properties;
         let ip = p.string("server-ip");
@@ -244,6 +257,7 @@ mod tests {
             properties: Properties::parse(""),
             spigot: merged(spigot, SPIGOT_DEFAULTS),
             bukkit: merged(bukkit, BUKKIT_DEFAULTS),
+            plugins: YamlConfig::from_str(PLUGINS_DEFAULTS).unwrap(),
         }
     }
 
