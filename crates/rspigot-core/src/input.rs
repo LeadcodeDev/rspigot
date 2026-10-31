@@ -403,9 +403,14 @@ impl<L: ClientLink> Server<L> {
             .map(|old| self.contents_lost_by(pos, old, state))
             .unwrap_or_default();
         let book = before.and_then(|old| self.lectern_book_lost_by(pos, old, state));
+        let owed = match before {
+            Some(old) => self.furnace_experience_lost_by(pos, old, state),
+            None => Vec::new(),
+        };
         match self.world.chunks.set_block(pos, state) {
             Some(old) if old != state => {
                 self.drop_contents(pos, lost);
+                self.pop_furnace_experience(pos, owed);
                 if let Some((at, book)) = book {
                     self.pop_book(at, book);
                 }

@@ -10,6 +10,7 @@ pub mod config;
 pub mod console;
 mod containers;
 mod context;
+mod cooking;
 mod drops;
 mod durability;
 mod effects;

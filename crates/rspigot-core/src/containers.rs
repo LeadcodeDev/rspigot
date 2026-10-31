@@ -17,7 +17,7 @@ use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
-use crate::{beacon, lectern};
+use crate::{beacon, cooking, lectern};
 
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
@@ -67,6 +67,7 @@ pub(crate) struct OpenMenu {
     pub backing: Backing,
     pub state_id: i32,
     pub local: Vec<Slot>,
+    pub data: Vec<i16>,
 }
 
 impl OpenMenu {
@@ -465,6 +466,7 @@ impl<L: ClientLink> Server<L> {
         let initial_data = match opening.kind {
             MenuKind::Lectern => vec![i16::try_from(self.lectern_page(pos)).unwrap_or(0)],
             MenuKind::Beacon => self.beacon_menu_data(pos),
+            kind if kind.is_furnace() => self.furnace_data(pos),
             kind => vec![0; kind.data_count()],
         };
         let Some(player) = self.players.get_mut(&id) else {
@@ -482,6 +484,7 @@ impl<L: ClientLink> Server<L> {
             } else {
                 items.clone()
             },
+            data: initial_data.clone(),
         };
         let (slots, carried) = open.menu.sync_all(&items, &player.inventory);
         let state_id = open.next_state();
@@ -615,6 +618,7 @@ impl<L: ClientLink> Server<L> {
         };
         let full_resync = click.state_id != open.state_id || backing.block == BlockKind::Lectern;
         let mut items = self.open_items(open);
+        let before = items.clone();
         let Some(player) = self.players.get_mut(&id) else {
             return true;
         };
@@ -641,6 +645,7 @@ impl<L: ClientLink> Server<L> {
             || effects
                 .iter()
                 .any(|effect| matches!(effect, MenuEffect::FullResync));
+        let output_taken = effects.contains(&MenuEffect::FurnaceOutputTaken);
         let drops: Vec<MenuEffect> = effects
             .into_iter()
             .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
@@ -648,6 +653,12 @@ impl<L: ClientLink> Server<L> {
         if !spectator {
             if backing.entity.is_some() {
                 self.store_container(backing, &items);
+                if let Some(kind) = cooking::cooking_of(backing.block) {
+                    self.furnace_clicked(backing.pos, kind, &before, &items);
+                    if output_taken {
+                        self.pay_furnace_experience(id, backing.pos);
+                    }
+                }
             } else if let Some(player) = self.players.get_mut(&id) {
                 if backing.ender {
                     player.ender_items = items.clone();
@@ -659,6 +670,7 @@ impl<L: ClientLink> Server<L> {
         }
         self.apply_menu_effects(id, drops);
         self.sync_open_menu(id, resync);
+        self.sync_furnace_data();
         self.sync_viewers(backing.pos, Some(id));
         self.sync_inventory(id);
         true
@@ -787,8 +799,51 @@ impl<L: ClientLink> Server<L> {
         self.sync_open_menu(id, false);
     }
 
+    pub(crate) fn sync_furnace_data(&mut self) {
+        let viewers: Vec<PlayerId> = self
+            .players
+            .iter()
+            .filter(|(_, player)| {
+                player
+                    .open_menu
+                    .as_ref()
+                    .is_some_and(|open| open.menu.kind().is_furnace())
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        for id in viewers {
+            let Some(pos) = self
+                .players
+                .get(&id)
+                .and_then(|player| player.open_menu.as_ref())
+                .map(|open| open.backing.pos)
+            else {
+                continue;
+            };
+            let current = self.furnace_data(pos);
+            let Some(player) = self.players.get_mut(&id) else {
+                continue;
+            };
+            let Some(open) = player.open_menu.as_mut() else {
+                continue;
+            };
+            for (index, value) in current.iter().enumerate() {
+                if open.data.get(index) != Some(value) {
+                    open.data.resize(current.len(), 0);
+                    open.data[index] = *value;
+                    player.link.send(ClientEvent::ContainerData {
+                        window: open.window,
+                        id: index as i16,
+                        value: *value,
+                    });
+                }
+            }
+        }
+    }
+
     pub(crate) fn tick_open_menus(&mut self) {
         self.recheck_beacon_levels();
+        self.sync_furnace_data();
         let ids: Vec<PlayerId> = self
             .players
             .iter()

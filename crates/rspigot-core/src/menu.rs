@@ -168,6 +168,7 @@ impl<L: ClientLink> Server<L> {
                         }
                     }
                 }
+                MenuEffect::FurnaceOutputTaken => {}
                 MenuEffect::FullResync => self.send_inventory(id),
                 MenuEffect::PlacedBack { slot, stack } => {
                     if let Some(player) = self.players.get(&id) {

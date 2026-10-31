@@ -12,6 +12,7 @@ pub mod entity;
 pub mod experience;
 pub mod explosion;
 pub mod food;
+pub mod furnace;
 pub mod ident;
 pub mod ids;
 pub mod item;
