@@ -137,6 +137,18 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
             Lid::None,
         ),
         BlockKind::CraftingTable => station(MenuKind::Crafting, None, "container.crafting"),
+        BlockKind::Grindstone => station(MenuKind::Grindstone, None, "container.grindstone_title"),
+        BlockKind::Stonecutter => station(MenuKind::Stonecutter, None, "container.stonecutter"),
+        BlockKind::CartographyTable => station(
+            MenuKind::CartographyTable,
+            None,
+            "container.cartography_table",
+        ),
+        BlockKind::Loom => station(MenuKind::Loom, None, "container.loom"),
+        BlockKind::SmithingTable => station(MenuKind::Smithing, None, "container.upgrade"),
+        _ if has_tag(state, "minecraft:anvil") => {
+            station(MenuKind::Anvil, None, "container.repair")
+        }
         BlockKind::Furnace => station(MenuKind::Furnace, Some("furnace"), "container.furnace"),
         BlockKind::BlastFurnace => station(
             MenuKind::BlastFurnace,

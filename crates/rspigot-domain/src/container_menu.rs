@@ -1,3 +1,6 @@
+use rspigot_items::ItemKind;
+
+use crate::entity::reward::max_damage;
 use crate::item::{
     HOTBAR_START, Inventory, ItemStack, Slot, count, max_stack, menu_slot, same_item,
     same_item_same_components, split, stacks_match, with_count,
@@ -23,6 +26,12 @@ pub enum MenuKind {
     Furnace,
     BlastFurnace,
     Smoker,
+    Anvil,
+    Smithing,
+    Grindstone,
+    Stonecutter,
+    CartographyTable,
+    Loom,
 }
 
 impl MenuKind {
@@ -36,6 +45,12 @@ impl MenuKind {
             Self::Furnace => 14,
             Self::BlastFurnace => 10,
             Self::Smoker => 22,
+            Self::Anvil => 8,
+            Self::Smithing => 21,
+            Self::Grindstone => 15,
+            Self::Stonecutter => 24,
+            Self::CartographyTable => 23,
+            Self::Loom => 18,
         }
     }
 
@@ -47,13 +62,27 @@ impl MenuKind {
             Self::ShulkerBox => 27,
             Self::Crafting => 10,
             Self::Furnace | Self::BlastFurnace | Self::Smoker => 3,
+            Self::Grindstone | Self::CartographyTable => 3,
+            Self::Anvil => 3,
+            Self::Smithing | Self::Loom => 4,
+            Self::Stonecutter => 2,
         }
     }
 
     pub fn data_count(self) -> usize {
         match self {
             Self::Furnace | Self::BlastFurnace | Self::Smoker => 4,
+            Self::Anvil | Self::Smithing | Self::Stonecutter | Self::Loom => 1,
             _ => 0,
+        }
+    }
+
+    fn station_inputs(self) -> Option<usize> {
+        match self {
+            Self::Anvil | Self::Grindstone | Self::CartographyTable => Some(2),
+            Self::Smithing | Self::Loom => Some(3),
+            Self::Stonecutter => Some(1),
+            _ => None,
         }
     }
 
@@ -61,8 +90,53 @@ impl MenuKind {
         matches!(self, Self::Furnace | Self::BlastFurnace | Self::Smoker)
     }
 
-    fn quick_move_plan(self, slot: usize) -> Vec<(usize, usize, bool)> {
+    fn station_plan(
+        self,
+        inputs: usize,
+        slot: usize,
+        stack: &ItemStack,
+        container: &[Slot],
+    ) -> Vec<(usize, usize, bool)> {
         let total = self.slot_count();
+        let main = inputs + 1;
+        let hotbar = main + MAIN_SLOTS;
+        if slot == inputs {
+            return vec![(main, total, true)];
+        }
+        if slot < inputs {
+            return vec![(main, total, false)];
+        }
+        let swap = || {
+            if slot < hotbar {
+                vec![(hotbar, total, false)]
+            } else {
+                vec![(main, hotbar, false)]
+            }
+        };
+        let filled = |index: usize| container.get(index).is_some_and(Option::is_some);
+        match self {
+            Self::Anvil => vec![(0, inputs, false)],
+            Self::Grindstone if filled(0) && filled(1) => swap(),
+            Self::Grindstone => vec![(0, 2, false)],
+            Self::CartographyTable if is_map(stack) => vec![(0, 1, false)],
+            Self::CartographyTable if is_map_material(stack) => vec![(1, 2, false)],
+            Self::Loom if is_banner(stack) => vec![(0, 1, false)],
+            Self::Loom if is_loom_dye(stack) => vec![(1, 2, false)],
+            Self::Loom if is_loom_pattern(stack) => vec![(2, 3, false)],
+            _ => swap(),
+        }
+    }
+
+    fn quick_move_plan(
+        self,
+        slot: usize,
+        stack: &ItemStack,
+        container: &[Slot],
+    ) -> Vec<(usize, usize, bool)> {
+        let total = self.slot_count();
+        if let Some(inputs) = self.station_inputs() {
+            return self.station_plan(inputs, slot, stack, container);
+        }
         match self {
             Self::Crafting => match slot {
                 0 => vec![(10, 46, true)],
@@ -88,6 +162,9 @@ impl MenuKind {
     }
 
     fn clears_on_close(self, slot: usize) -> bool {
+        if let Some(inputs) = self.station_inputs() {
+            return slot < inputs;
+        }
         matches!(self, Self::Crafting) && (1..=9).contains(&slot)
     }
 
@@ -96,7 +173,18 @@ impl MenuKind {
     }
 
     fn accepts(self, slot: usize, stack: &ItemStack) -> bool {
+        if let Some(inputs) = self.station_inputs()
+            && slot == inputs
+        {
+            return false;
+        }
         match self {
+            Self::Grindstone if slot < 2 => is_damageable(stack) || has_enchantments(stack),
+            Self::CartographyTable if slot == 0 => is_map(stack),
+            Self::CartographyTable if slot == 1 => is_map_material(stack),
+            Self::Loom if slot == 0 => is_banner(stack),
+            Self::Loom if slot == 1 => is_loom_dye(stack),
+            Self::Loom if slot == 2 => is_loom_pattern(stack),
             Self::ShulkerBox if slot < self.container_size() => !is_shulker_box(stack),
             Self::Crafting => slot != 0,
             Self::Furnace | Self::BlastFurnace | Self::Smoker => slot != 2,
@@ -105,9 +193,59 @@ impl MenuKind {
     }
 }
 
-fn is_shulker_box(stack: &ItemStack) -> bool {
-    rspigot_data::tags::tag("minecraft:item", SHULKER_BOXES_TAG)
+fn in_item_tag(stack: &ItemStack, tag: &str) -> bool {
+    rspigot_data::tags::tag("minecraft:item", tag)
         .is_some_and(|ids| ids.binary_search(&u32::from(stack.item.0)).is_ok())
+}
+
+fn is_shulker_box(stack: &ItemStack) -> bool {
+    in_item_tag(stack, SHULKER_BOXES_TAG)
+}
+
+fn is_damageable(stack: &ItemStack) -> bool {
+    max_damage(stack).is_some()
+}
+
+fn lists_enchantments(stack: &ItemStack, key: &str) -> bool {
+    stack
+        .components
+        .get_compound(key)
+        .is_some_and(|enchantments| {
+            enchantments
+                .get_compound("levels")
+                .map_or(!enchantments.is_empty(), |levels| !levels.is_empty())
+        })
+}
+
+fn has_enchantments(stack: &ItemStack) -> bool {
+    lists_enchantments(stack, "minecraft:enchantments")
+        || lists_enchantments(stack, "minecraft:stored_enchantments")
+}
+
+fn is_map(stack: &ItemStack) -> bool {
+    stack.components.contains_key("minecraft:map_id")
+}
+
+fn is_map_material(stack: &ItemStack) -> bool {
+    matches!(
+        stack.item.kind(),
+        Some(ItemKind::Paper | ItemKind::Map | ItemKind::GlassPane)
+    )
+}
+
+fn is_banner(stack: &ItemStack) -> bool {
+    in_item_tag(stack, "minecraft:banners")
+}
+
+fn is_loom_dye(stack: &ItemStack) -> bool {
+    in_item_tag(stack, "minecraft:loom_dyes") || stack.components.contains_key("minecraft:dye")
+}
+
+fn is_loom_pattern(stack: &ItemStack) -> bool {
+    in_item_tag(stack, "minecraft:loom_patterns")
+        || stack
+            .components
+            .contains_key("minecraft:provides_banner_patterns")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -457,7 +595,7 @@ impl Session<'_> {
         let copy = self.item(slot)?;
         let mut stack = Some(copy.clone());
         let mut moved = false;
-        for (start, end, reverse) in self.kind.quick_move_plan(slot) {
+        for (start, end, reverse) in self.kind.quick_move_plan(slot, &copy, self.container) {
             if self.move_to(&mut stack, start, end, reverse) {
                 moved = true;
                 break;
@@ -773,7 +911,7 @@ impl ContainerMenu {
 mod tests {
     use std::num::NonZeroU8;
 
-    use rspigot_items::ItemKind;
+    use rspigot_nbt::Compound;
 
     use super::*;
 
@@ -1370,5 +1508,396 @@ mod tests {
         assert!(menu.changes(&container, &player).is_empty());
         menu.receive_remote(2, HashedSlot::of(&None));
         assert_eq!(menu.changes(&container, &player).len(), 1);
+    }
+
+    const STATIONS: [(MenuKind, usize); 6] = [
+        (MenuKind::Anvil, 2),
+        (MenuKind::Smithing, 3),
+        (MenuKind::Grindstone, 2),
+        (MenuKind::Stonecutter, 1),
+        (MenuKind::CartographyTable, 2),
+        (MenuKind::Loom, 3),
+    ];
+
+    fn with_component(
+        mut stack: ItemStack,
+        key: &str,
+        value: impl Into<rspigot_nbt::Tag>,
+    ) -> ItemStack {
+        stack.components.insert(key, value);
+        stack
+    }
+
+    fn enchanted(name: &str, key: &str) -> ItemStack {
+        with_component(
+            stack(name, 1),
+            key,
+            Compound::new().with("minecraft:sharpness", 1),
+        )
+    }
+
+    fn place_in(
+        kind: MenuKind,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        menu: &mut ContainerMenu,
+        slot: usize,
+        item: ItemStack,
+    ) -> bool {
+        player.set(MAIN_START, Some(item));
+        click(
+            menu,
+            container,
+            player,
+            kind.container_size() as i16,
+            0,
+            ClickInput::Pickup,
+        );
+        click(menu, container, player, slot as i16, 0, ClickInput::Pickup);
+        let accepted = container[slot].is_some();
+        if !accepted {
+            click(
+                menu,
+                container,
+                player,
+                kind.container_size() as i16,
+                0,
+                ClickInput::Pickup,
+            );
+        }
+        accepted
+    }
+
+    fn accepts_at(kind: MenuKind, slot: usize, item: ItemStack) -> bool {
+        let (mut menu, mut container, mut player) = workstation(kind);
+        place_in(kind, &mut container, &mut player, &mut menu, slot, item)
+    }
+
+    #[test]
+    fn the_station_menu_ids_match_the_registry() {
+        let registry = |name: &str| {
+            let index = rspigot_data::registries::static_index("minecraft:menu", name).expect(name);
+            i32::try_from(index).expect("small id")
+        };
+        assert_eq!(MenuKind::Anvil.protocol_id(), registry("minecraft:anvil"));
+        assert_eq!(
+            MenuKind::Smithing.protocol_id(),
+            registry("minecraft:smithing")
+        );
+        assert_eq!(
+            MenuKind::Grindstone.protocol_id(),
+            registry("minecraft:grindstone")
+        );
+        assert_eq!(
+            MenuKind::Stonecutter.protocol_id(),
+            registry("minecraft:stonecutter")
+        );
+        assert_eq!(
+            MenuKind::CartographyTable.protocol_id(),
+            registry("minecraft:cartography_table")
+        );
+        assert_eq!(MenuKind::Loom.protocol_id(), registry("minecraft:loom"));
+    }
+
+    #[test]
+    fn each_station_has_its_vanilla_slots_and_data_slots() {
+        let expected = [
+            (MenuKind::Anvil, 3, 1),
+            (MenuKind::Smithing, 4, 1),
+            (MenuKind::Grindstone, 3, 0),
+            (MenuKind::Stonecutter, 2, 1),
+            (MenuKind::CartographyTable, 3, 0),
+            (MenuKind::Loom, 4, 1),
+        ];
+        for (kind, container, data) in expected {
+            assert_eq!(kind.container_size(), container, "{kind:?}");
+            assert_eq!(kind.slot_count(), container + 36, "{kind:?}");
+            assert_eq!(kind.data_count(), data, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn the_result_slot_of_a_station_takes_nothing() {
+        for (kind, result) in STATIONS {
+            let accepted = accepts_at(kind, result, stack("minecraft:stone", 1));
+            assert!(!accepted, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn closing_a_station_gives_the_inputs_back_and_keeps_the_result() {
+        for (kind, result) in STATIONS {
+            let (mut menu, mut container, mut player) = workstation(kind);
+            for entry in container.iter_mut().take(result + 1) {
+                *entry = Some(stack("minecraft:stone", 1));
+            }
+            menu.close_transient(&mut container, &mut player);
+            assert!(container[..result].iter().all(Option::is_none), "{kind:?}");
+            assert!(container[result].is_some(), "{kind:?}");
+            let held: u32 = (0..46)
+                .filter_map(|slot| player.get(slot))
+                .map(|s| u32::from(s.count.get()))
+                .sum();
+            assert_eq!(held, result as u32, "{kind:?}");
+        }
+    }
+
+    fn shift_click(kind: MenuKind, container: &mut Vec<Slot>, player: &mut Inventory, slot: usize) {
+        let mut menu = ContainerMenu::new(kind);
+        click(
+            &mut menu,
+            container,
+            player,
+            slot as i16,
+            0,
+            ClickInput::QuickMove,
+        );
+    }
+
+    #[test]
+    fn shift_clicking_a_station_result_fills_the_inventory_from_the_end() {
+        for (kind, result) in STATIONS {
+            let (mut container, mut player) =
+                (vec![None; kind.container_size()], Inventory::default());
+            container[result] = Some(stack("minecraft:stone", 1));
+            shift_click(kind, &mut container, &mut player, result);
+            assert!(container[result].is_none(), "{kind:?}");
+            assert_eq!(
+                player.get(HOTBAR_START + 8).map(|s| s.count.get()),
+                Some(1),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_anvil_inputs_take_any_item_and_shift_click_fills_them_before_anything_else() {
+        let kind = MenuKind::Anvil;
+        let (mut menu, mut container, mut player) = workstation(kind);
+        assert!(place_in(
+            kind,
+            &mut container,
+            &mut player,
+            &mut menu,
+            0,
+            stack("minecraft:stone", 1)
+        ));
+        assert!(place_in(
+            kind,
+            &mut container,
+            &mut player,
+            &mut menu,
+            1,
+            stack("minecraft:stick", 1)
+        ));
+
+        let (mut container, mut player) = (vec![None; 3], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:stone", 2)));
+        player.set(HOTBAR_START, Some(stack("minecraft:stick", 3)));
+        player.set(HOTBAR_START + 1, Some(stack("minecraft:dirt", 4)));
+        shift_click(kind, &mut container, &mut player, 3);
+        shift_click(kind, &mut container, &mut player, 30);
+        assert_eq!(container[0].as_ref().map(|s| s.count.get()), Some(2));
+        assert_eq!(container[1].as_ref().map(|s| s.count.get()), Some(3));
+        shift_click(kind, &mut container, &mut player, 31);
+        assert_eq!(player.get(HOTBAR_START + 1).map(|s| s.count.get()), Some(4));
+        assert!(player.get(MAIN_START).is_none());
+        shift_click(kind, &mut container, &mut player, 0);
+        assert!(container[0].is_none());
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(2));
+    }
+
+    #[test]
+    fn the_smithing_inputs_take_any_item_and_shift_click_only_swaps_main_and_hotbar() {
+        let kind = MenuKind::Smithing;
+        let (mut menu, mut container, mut player) = workstation(kind);
+        for slot in 0..3 {
+            assert!(
+                place_in(
+                    kind,
+                    &mut container,
+                    &mut player,
+                    &mut menu,
+                    slot,
+                    stack("minecraft:stone", 1)
+                ),
+                "{slot}"
+            );
+        }
+        let (mut container, mut player) = (vec![None; 4], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:netherite_ingot", 1)));
+        shift_click(kind, &mut container, &mut player, 4);
+        assert!(container.iter().all(Option::is_none));
+        assert!(player.get(MAIN_START).is_none());
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(1));
+        shift_click(kind, &mut container, &mut player, 31);
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(1));
+    }
+
+    #[test]
+    fn the_grindstone_takes_only_damageable_or_enchanted_items() {
+        let kind = MenuKind::Grindstone;
+        for slot in [0, 1] {
+            assert!(
+                accepts_at(kind, slot, stack("minecraft:iron_pickaxe", 1)),
+                "pickaxe {slot}"
+            );
+            assert!(
+                accepts_at(
+                    kind,
+                    slot,
+                    enchanted("minecraft:stone", "minecraft:enchantments")
+                ),
+                "enchanted {slot}"
+            );
+            assert!(
+                accepts_at(
+                    kind,
+                    slot,
+                    enchanted("minecraft:book", "minecraft:stored_enchantments")
+                ),
+                "stored {slot}"
+            );
+            assert!(
+                !accepts_at(kind, slot, stack("minecraft:stick", 1)),
+                "stick {slot}"
+            );
+            assert!(
+                !accepts_at(
+                    kind,
+                    slot,
+                    with_component(
+                        stack("minecraft:stone", 1),
+                        "minecraft:enchantments",
+                        Compound::new()
+                    )
+                ),
+                "empty {slot}"
+            );
+            assert!(
+                !accepts_at(
+                    kind,
+                    slot,
+                    with_component(
+                        stack("minecraft:iron_pickaxe", 1),
+                        "minecraft:unbreakable",
+                        Compound::new()
+                    )
+                ),
+                "unbreakable {slot}"
+            );
+        }
+    }
+
+    #[test]
+    fn grindstone_shift_click_fills_the_inputs_then_swaps_main_and_hotbar() {
+        let kind = MenuKind::Grindstone;
+        let (mut container, mut player) = (vec![None; 3], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:stick", 1)));
+        shift_click(kind, &mut container, &mut player, 3);
+        assert!(container.iter().all(Option::is_none));
+        assert!(player.get(MAIN_START).is_some());
+
+        player.set(MAIN_START + 1, Some(stack("minecraft:iron_pickaxe", 1)));
+        shift_click(kind, &mut container, &mut player, 4);
+        assert!(container[0].is_some());
+        player.set(MAIN_START + 2, Some(stack("minecraft:iron_axe", 1)));
+        shift_click(kind, &mut container, &mut player, 5);
+        assert!(container[1].is_some());
+
+        shift_click(kind, &mut container, &mut player, 3);
+        assert!(player.get(MAIN_START).is_none());
+        assert!(player.get(HOTBAR_START).is_some());
+    }
+
+    #[test]
+    fn the_stonecutter_input_takes_any_item_and_shift_click_swaps_main_and_hotbar() {
+        let kind = MenuKind::Stonecutter;
+        assert!(accepts_at(kind, 0, stack("minecraft:stone", 1)));
+        assert!(accepts_at(kind, 0, stack("minecraft:stick", 1)));
+        let (mut container, mut player) = (vec![None; 2], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:stone", 5)));
+        shift_click(kind, &mut container, &mut player, 2);
+        assert!(container.iter().all(Option::is_none));
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(5));
+        shift_click(kind, &mut container, &mut player, 29);
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(5));
+    }
+
+    #[test]
+    fn the_cartography_table_takes_a_filled_map_then_paper_a_map_or_a_glass_pane() {
+        let kind = MenuKind::CartographyTable;
+        let filled = with_component(stack("minecraft:filled_map", 1), "minecraft:map_id", 3);
+        assert!(accepts_at(kind, 0, filled.clone()));
+        assert!(!accepts_at(kind, 0, stack("minecraft:filled_map", 1)));
+        assert!(!accepts_at(kind, 0, stack("minecraft:paper", 1)));
+        assert!(!accepts_at(kind, 1, filled));
+        for name in ["minecraft:paper", "minecraft:map", "minecraft:glass_pane"] {
+            assert!(accepts_at(kind, 1, stack(name, 1)), "{name}");
+        }
+        assert!(!accepts_at(kind, 1, stack("minecraft:stone", 1)));
+    }
+
+    #[test]
+    fn cartography_shift_click_routes_maps_and_materials_to_their_slot() {
+        let kind = MenuKind::CartographyTable;
+        let (mut container, mut player) = (vec![None; 3], Inventory::default());
+        player.set(
+            MAIN_START,
+            Some(with_component(
+                stack("minecraft:filled_map", 1),
+                "minecraft:map_id",
+                3,
+            )),
+        );
+        player.set(MAIN_START + 1, Some(stack("minecraft:paper", 2)));
+        player.set(MAIN_START + 2, Some(stack("minecraft:stone", 2)));
+        shift_click(kind, &mut container, &mut player, 3);
+        shift_click(kind, &mut container, &mut player, 4);
+        shift_click(kind, &mut container, &mut player, 5);
+        assert!(container[0].is_some());
+        assert_eq!(container[1].as_ref().map(|s| s.count.get()), Some(2));
+        assert!(player.get(MAIN_START + 2).is_none());
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(2));
+    }
+
+    #[test]
+    fn the_loom_takes_a_banner_a_dye_and_a_pattern_in_their_own_slot() {
+        let kind = MenuKind::Loom;
+        assert!(accepts_at(kind, 0, stack("minecraft:white_banner", 1)));
+        assert!(accepts_at(kind, 0, stack("minecraft:red_banner", 1)));
+        assert!(!accepts_at(kind, 0, stack("minecraft:red_dye", 1)));
+        assert!(accepts_at(kind, 1, stack("minecraft:red_dye", 1)));
+        assert!(accepts_at(kind, 1, stack("minecraft:black_dye", 1)));
+        assert!(!accepts_at(kind, 1, stack("minecraft:white_banner", 1)));
+        assert!(accepts_at(
+            kind,
+            2,
+            stack("minecraft:creeper_banner_pattern", 1)
+        ));
+        assert!(!accepts_at(kind, 2, stack("minecraft:red_dye", 1)));
+        assert!(!accepts_at(kind, 2, stack("minecraft:stone", 1)));
+    }
+
+    #[test]
+    fn loom_shift_click_routes_each_item_to_its_slot_and_swaps_the_rest() {
+        let kind = MenuKind::Loom;
+        let (mut container, mut player) = (vec![None; 4], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:white_banner", 1)));
+        player.set(MAIN_START + 1, Some(stack("minecraft:red_dye", 3)));
+        player.set(
+            MAIN_START + 2,
+            Some(stack("minecraft:creeper_banner_pattern", 1)),
+        );
+        player.set(MAIN_START + 3, Some(stack("minecraft:stone", 1)));
+        for slot in 4..8 {
+            shift_click(kind, &mut container, &mut player, slot);
+        }
+        assert!(container[0].is_some());
+        assert_eq!(container[1].as_ref().map(|s| s.count.get()), Some(3));
+        assert!(container[2].is_some());
+        assert!(container[3].is_none());
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(1));
+        assert!(player.get(MAIN_START + 3).is_none());
     }
 }
