@@ -36,7 +36,11 @@ impl Item for OxidizedCutCopper {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(123)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_cut_copper_from_oxidized_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(123)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

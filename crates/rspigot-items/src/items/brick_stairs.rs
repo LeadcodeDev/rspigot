@@ -41,7 +41,11 @@ impl Item for BrickStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(376)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:brick_stairs_from_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(376)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

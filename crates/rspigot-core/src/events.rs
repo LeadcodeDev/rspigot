@@ -330,6 +330,7 @@ pub enum ClientEvent {
     },
     Abilities(Abilities),
     HeldSlot(u8),
+    RecipeSync,
     SpawnPosition {
         dimension: Identifier,
         pos: BlockPos,

@@ -41,7 +41,11 @@ impl Item for GreenConcreteStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(702)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:green_concrete_stairs_from_green_concrete_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(702)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

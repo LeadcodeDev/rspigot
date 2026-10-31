@@ -35,8 +35,16 @@ impl Item for CobblestoneSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(62)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:cobblestone_slab_from_cobblestone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(62)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:cobblestone_slab_from_stone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

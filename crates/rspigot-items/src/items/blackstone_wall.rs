@@ -38,7 +38,11 @@ impl Item for BlackstoneWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1537)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:blackstone_wall_from_blackstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1537)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

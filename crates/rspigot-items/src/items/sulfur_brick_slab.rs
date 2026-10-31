@@ -35,9 +35,21 @@ impl Item for SulfurBrickSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(31)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(35)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(26)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:sulfur_brick_slab_from_polished_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(31)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:sulfur_brick_slab_from_sulfur_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(35)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:sulfur_brick_slab_from_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(26)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

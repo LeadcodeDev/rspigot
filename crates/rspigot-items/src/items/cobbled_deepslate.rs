@@ -22,6 +22,7 @@ impl Item for CobbledDeepslate {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Stonecutting {
+        id: "minecraft:cobbled_deepslate_from_deepslate_stonecutting",
         ingredient: ItemSet::Direct(&[ItemId(8)]),
         count: 1,
     }];

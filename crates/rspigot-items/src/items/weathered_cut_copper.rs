@@ -36,7 +36,11 @@ impl Item for WeatheredCutCopper {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(122)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:weathered_cut_copper_from_weathered_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(122)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

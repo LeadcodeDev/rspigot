@@ -35,7 +35,11 @@ impl Item for DioriteSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(4)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:diorite_slab_from_diorite_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(4)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

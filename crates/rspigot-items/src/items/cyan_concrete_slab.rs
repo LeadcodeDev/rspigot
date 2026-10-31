@@ -35,7 +35,11 @@ impl Item for CyanConcreteSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(698)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:cyan_concrete_slab_from_cyan_concrete_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(698)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

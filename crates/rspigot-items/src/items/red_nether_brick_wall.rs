@@ -38,7 +38,11 @@ impl Item for RedNetherBrickWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(653)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:red_nether_brick_wall_from_red_nether_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(653)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

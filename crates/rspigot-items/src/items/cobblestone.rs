@@ -22,6 +22,7 @@ impl Item for Cobblestone {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Stonecutting {
+        id: "minecraft:cobblestone_from_stone_stonecutting",
         ingredient: ItemSet::Direct(&[ItemId(1)]),
         count: 1,
     }];

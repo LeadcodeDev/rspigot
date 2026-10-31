@@ -45,7 +45,11 @@ impl Item for WaxedExposedCopperGrate {
             ingredients: &[ItemSet::Direct(&[ItemId(1622)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(125)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_exposed_copper_grate_from_waxed_exposed_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(125)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

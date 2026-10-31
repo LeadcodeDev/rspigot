@@ -39,9 +39,13 @@ use rspigot_protocol::play::entity::{
     DeltaStep, EquipmentSlot as WireSlot, PositionPath, PositionStep, SwingAnimationStyle,
     SwingAnimationType, VecDelta,
 };
+use rspigot_protocol::play::inventory::{RecipePropertySet, SlotDisplay, StonecutterEntry};
 use rspigot_protocol::play::metadata::{EntityDataItem, EntityDataValue, RegistryVariant};
 use rspigot_protocol::play::player::{CommonPlayerSpawnInfo, PlayerInfoActions, PlayerInfoEntry};
-use rspigot_protocol::play::slot::{ComponentValue, DataComponentPatch, ItemStack as WireStack};
+use rspigot_protocol::play::slot::{
+    ComponentValue, DataComponentPatch, ItemStack as WireStack, ItemStackTemplate,
+};
+use rspigot_protocol::play::types::HolderSet;
 use rspigot_protocol::play::types::{
     ByteBitSet, ChunkPos as WireChunkPos, Difficulty as WireDifficulty, GameMode as WireGameMode,
     GlobalPos, Hand as WireHand, Holder, LpVec3, Pose as WirePose, PositionMoveRotation, Relatives,
@@ -110,6 +114,35 @@ fn difficulty(d: DomainDifficulty) -> WireDifficulty {
         DomainDifficulty::Easy => WireDifficulty::Easy,
         DomainDifficulty::Normal => WireDifficulty::Normal,
         DomainDifficulty::Hard => WireDifficulty::Hard,
+    }
+}
+
+pub fn update_recipes() -> cb::UpdateRecipes {
+    cb::UpdateRecipes {
+        property_sets: rspigot_domain::recipes::property_sets()
+            .into_iter()
+            .map(|(key, items)| RecipePropertySet {
+                key: key.to_owned(),
+                items: items.into_iter().map(i32::from).collect(),
+            })
+            .collect(),
+        stonecutter: rspigot_domain::stonecutting::recipes()
+            .iter()
+            .map(|cut| StonecutterEntry {
+                input: HolderSet::Ids(
+                    cut.ingredient
+                        .items()
+                        .iter()
+                        .map(|item| i32::from(item.0))
+                        .collect(),
+                ),
+                display: SlotDisplay::ItemStack(ItemStackTemplate {
+                    item: i32::from(cut.result.id().0),
+                    count: i32::from(cut.count),
+                    components: DataComponentPatch::EMPTY,
+                }),
+            })
+            .collect(),
     }
 }
 
@@ -837,6 +870,7 @@ impl Encoder {
                 },
             ),
             ClientEvent::Abilities(a) => Self::queue(writer, &abilities(a)),
+            ClientEvent::RecipeSync => Self::queue(writer, &update_recipes()),
             ClientEvent::HeldSlot(slot) => Self::queue(
                 writer,
                 &cb::SetHeldSlot {
@@ -2158,6 +2192,44 @@ mod tests {
             data: rspigot_nbt::Compound::new(),
         };
         assert_eq!(encode(unknown), Vec::new());
+    }
+
+    #[test]
+    fn the_recipe_sync_lists_the_sets_and_every_stonecutter_recipe() {
+        let packet = update_recipes();
+        assert_eq!(packet.property_sets.len(), 9);
+        assert_eq!(packet.stonecutter.len(), 351);
+        let first = &packet.stonecutter[0];
+        let stone = i32::from(named("minecraft:stone").0);
+        let chiseled = packet
+            .stonecutter
+            .iter()
+            .find(|entry| {
+                entry.display
+                    == SlotDisplay::ItemStack(ItemStackTemplate {
+                        item: i32::from(named("minecraft:chiseled_stone_bricks").0),
+                        count: 1,
+                        components: DataComponentPatch::EMPTY,
+                    })
+                    && entry.input == HolderSet::Ids(vec![stone])
+            })
+            .expect("chiseled stone bricks from stone");
+        let mut bytes = Vec::new();
+        chiseled.encode(&mut bytes);
+        let mut expected = vec![2];
+        write_var(stone, &mut expected);
+        expected.push(5);
+        write_var(
+            i32::from(named("minecraft:chiseled_stone_bricks").0),
+            &mut expected,
+        );
+        expected.extend([1, 0, 0]);
+        assert_eq!(bytes, expected);
+        assert!(matches!(&first.input, HolderSet::Ids(ids) if ids.len() == 1));
+        let event = encode(ClientEvent::RecipeSync);
+        assert_eq!(event.len(), 1);
+        assert_eq!(event[0].0, id::UPDATE_RECIPES);
+        assert_eq!(event[0].1[0], 9);
     }
 
     #[test]

@@ -36,7 +36,11 @@ impl Item for CutCopper {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(120)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:cut_copper_from_copper_block_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(120)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

@@ -41,7 +41,11 @@ impl Item for LightBlueConcreteStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(692)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:light_blue_concrete_stairs_from_light_blue_concrete_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(692)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

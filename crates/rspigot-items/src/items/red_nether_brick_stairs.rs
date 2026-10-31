@@ -41,7 +41,11 @@ impl Item for RedNetherBrickStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(653)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:red_nether_brick_stairs_from_red_nether_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(653)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

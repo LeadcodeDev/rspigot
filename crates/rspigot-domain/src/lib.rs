@@ -23,7 +23,9 @@ pub mod particle;
 pub mod player;
 pub mod pos;
 pub mod random;
+pub mod recipes;
 pub mod spawn;
+pub mod stonecutting;
 pub mod text;
 pub mod world;
 

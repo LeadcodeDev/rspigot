@@ -35,8 +35,16 @@ impl Item for CobbledDeepslateSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(9)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(8)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:cobbled_deepslate_slab_from_cobbled_deepslate_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(9)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:cobbled_deepslate_slab_from_deepslate_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(8)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

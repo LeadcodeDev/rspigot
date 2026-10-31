@@ -36,7 +36,11 @@ impl Item for ExposedCutCopper {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(121)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:exposed_cut_copper_from_exposed_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(121)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

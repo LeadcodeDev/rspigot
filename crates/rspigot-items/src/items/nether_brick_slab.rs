@@ -35,7 +35,11 @@ impl Item for NetherBrickSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(498)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:nether_brick_slab_from_nether_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(498)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

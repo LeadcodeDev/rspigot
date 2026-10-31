@@ -136,6 +136,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_container_button(&mut self, id: PlayerId, window: i32, button: i32) {
+        if self.press_menu_button(id, window, button) {
+            return;
+        }
         let Some(pos) = self
             .players
             .get(&id)

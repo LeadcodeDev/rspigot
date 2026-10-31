@@ -35,7 +35,11 @@ impl Item for SmoothQuartzSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(372)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:smooth_quartz_slab_from_smooth_quartz_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(372)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

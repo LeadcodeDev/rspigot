@@ -35,8 +35,16 @@ impl Item for PolishedSulfurSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(31)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(26)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:polished_sulfur_slab_from_polished_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(31)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:polished_sulfur_slab_from_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(26)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

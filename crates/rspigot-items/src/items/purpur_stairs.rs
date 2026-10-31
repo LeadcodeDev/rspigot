@@ -41,7 +41,11 @@ impl Item for PurpurStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(399)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:purpur_stairs_from_purpur_block_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(399)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

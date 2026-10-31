@@ -728,6 +728,7 @@ CRAFTING_TYPES = {
     "smithing_trim",
 }
 ID_PATTERN = re.compile(r"^minecraft:[a-z0-9_]+$")
+RECIPE_ID_LINE = re.compile(r'^\s+id: "minecraft:[a-z0-9_/]+",$')
 COOKING_KINDS = {
     "smelting": "Smelting",
     "blasting": "Blasting",
@@ -961,7 +962,11 @@ class Crafts:
             count = integer(result.get("count", 1), 1, 99, where + " count")
             node = struct_node(
                 "Craft::Stonecutting",
-                [("ingredient", self.node(recipe["ingredient"], where)), ("count", number(count))],
+                [
+                    ("id", Atom(rust_string(self.recipe_id))),
+                    ("ingredient", self.node(recipe["ingredient"], where)),
+                    ("count", number(count)),
+                ],
             )
             return self.item(result["id"], where), node
         if kind == "smithing_transform":
@@ -1159,7 +1164,7 @@ def item_file(item, behavior, crafts):
     lines.extend(body)
     lines.append("}")
     for line in lines:
-        if len(line) > WIDTH:
+        if len(line) > WIDTH and not RECIPE_ID_LINE.match(line):
             fail("%s line too long: %s" % (name, line))
     return "\n".join(lines) + "\n"
 

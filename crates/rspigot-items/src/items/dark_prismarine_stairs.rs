@@ -41,7 +41,11 @@ impl Item for DarkPrismarineStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(639)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:dark_prismarine_stairs_from_dark_prismarine_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(639)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

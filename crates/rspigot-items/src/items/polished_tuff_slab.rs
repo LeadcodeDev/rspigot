@@ -35,8 +35,16 @@ impl Item for PolishedTuffSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(17)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(12)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:polished_tuff_slab_from_polished_tuff_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(17)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:polished_tuff_slab_from_tuff_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(12)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

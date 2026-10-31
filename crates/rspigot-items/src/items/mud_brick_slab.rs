@@ -35,7 +35,11 @@ impl Item for MudBrickSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(454)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:mud_brick_slab_from_mud_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(454)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

@@ -36,7 +36,11 @@ impl Item for PolishedDiorite {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(4)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:polished_diorite_from_diorite_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(4)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

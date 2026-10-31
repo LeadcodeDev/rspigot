@@ -35,7 +35,11 @@ impl Item for LimeConcreteSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(694)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:lime_concrete_slab_from_lime_concrete_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(694)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }
