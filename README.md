@@ -38,3 +38,7 @@ It prints one JSON line: time to first chunk, time until the whole view is loade
 | `rspigot-auth` | Mojang session verification |
 | `apps/rspigot` | The server binary |
 | `apps/rspigot-probe` | Test client |
+
+## License
+
+MIT, see LICENSE.
