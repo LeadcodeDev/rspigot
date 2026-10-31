@@ -32,6 +32,7 @@ pub enum MenuKind {
     Stonecutter,
     CartographyTable,
     Loom,
+    Lectern,
 }
 
 impl MenuKind {
@@ -51,6 +52,7 @@ impl MenuKind {
             Self::Stonecutter => 24,
             Self::CartographyTable => 23,
             Self::Loom => 18,
+            Self::Lectern => 17,
         }
     }
 
@@ -66,13 +68,14 @@ impl MenuKind {
             Self::Anvil => 3,
             Self::Smithing | Self::Loom => 4,
             Self::Stonecutter => 2,
+            Self::Lectern => 1,
         }
     }
 
     pub fn data_count(self) -> usize {
         match self {
             Self::Furnace | Self::BlastFurnace | Self::Smoker => 4,
-            Self::Anvil | Self::Smithing | Self::Stonecutter | Self::Loom => 1,
+            Self::Anvil | Self::Smithing | Self::Stonecutter | Self::Loom | Self::Lectern => 1,
             _ => 0,
         }
     }
@@ -169,7 +172,10 @@ impl MenuKind {
     }
 
     pub fn slot_count(self) -> usize {
-        self.container_size() + MAIN_SLOTS + HOTBAR_SLOTS
+        match self {
+            Self::Lectern => self.container_size(),
+            _ => self.container_size() + MAIN_SLOTS + HOTBAR_SLOTS,
+        }
     }
 
     fn accepts(self, slot: usize, stack: &ItemStack) -> bool {
@@ -1899,5 +1905,71 @@ mod tests {
         assert!(container[3].is_none());
         assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(1));
         assert!(player.get(MAIN_START + 3).is_none());
+    }
+
+    #[test]
+    fn the_lectern_menu_id_matches_the_registry() {
+        let index = rspigot_data::registries::static_index("minecraft:menu", "minecraft:lectern")
+            .expect("lectern");
+        assert_eq!(
+            MenuKind::Lectern.protocol_id(),
+            i32::try_from(index).expect("small id")
+        );
+    }
+
+    #[test]
+    fn the_lectern_menu_is_one_book_slot_with_a_page_and_no_player_inventory() {
+        assert_eq!(MenuKind::Lectern.container_size(), 1);
+        assert_eq!(MenuKind::Lectern.slot_count(), 1);
+        assert_eq!(MenuKind::Lectern.data_count(), 1);
+        let (mut menu, container, player) = workstation(MenuKind::Lectern);
+        let mut container = container;
+        container[0] = Some(stack("minecraft:written_book", 1));
+        let (slots, _) = menu.sync_all(&container, &player);
+        assert_eq!(slots.len(), 1);
+        assert!(slots[0].is_some());
+    }
+
+    #[test]
+    fn clicks_outside_the_single_lectern_slot_change_nothing() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Lectern);
+        player.set(MAIN_START, Some(stack("minecraft:stone", 3)));
+        for slot in [1, 2, 10, 36] {
+            click(
+                &mut menu,
+                &mut container,
+                &mut player,
+                slot,
+                0,
+                ClickInput::Pickup,
+            );
+            click(
+                &mut menu,
+                &mut container,
+                &mut player,
+                slot,
+                0,
+                ClickInput::QuickMove,
+            );
+        }
+        assert!(menu.carried().is_none());
+        assert!(container[0].is_none());
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(3));
+    }
+
+    #[test]
+    fn shift_click_on_the_lectern_book_moves_nothing() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Lectern);
+        container[0] = Some(stack("minecraft:written_book", 1));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert!(container[0].is_some());
+        assert!((0..46).all(|slot| player.get(slot).is_none()));
     }
 }

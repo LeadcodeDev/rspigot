@@ -150,6 +150,10 @@ pub enum PlayerInput {
     },
     ContainerClick(ContainerClick),
     ContainerClose(i32),
+    ContainerButtonClick {
+        window: i32,
+        button: i32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

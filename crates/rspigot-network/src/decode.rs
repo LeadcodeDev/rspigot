@@ -242,6 +242,10 @@ pub fn decode(packet: ServerboundPlay) -> Decoded {
             carried: hashed(&p.carried),
         })),
         ServerboundPlay::ContainerClose(p) => input(PlayerInput::ContainerClose(p.container_id)),
+        ServerboundPlay::ContainerButtonClick(p) => input(PlayerInput::ContainerButtonClick {
+            window: p.container_id,
+            button: p.button_id,
+        }),
         ServerboundPlay::KeepAlive(p) => Decoded::KeepAlive(p.id),
         ServerboundPlay::PingRequest(p) => Decoded::Ping(p.time),
         _ => Decoded::Ignored,

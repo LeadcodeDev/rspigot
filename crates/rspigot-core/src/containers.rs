@@ -15,6 +15,7 @@ use rspigot_nbt::{Compound, Tag};
 
 use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
+use crate::lectern;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -149,6 +150,14 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
             "container.cartography_table",
         ),
         BlockKind::Loom => station(MenuKind::Loom, None, "container.loom"),
+        BlockKind::Lectern if lectern::has_book(state) => Some(Opening {
+            kind: MenuKind::Lectern,
+            entity: Some("lectern"),
+            ender: false,
+            title: "container.lectern",
+            block,
+            lid: Lid::None,
+        }),
         BlockKind::SmithingTable => station(MenuKind::Smithing, None, "container.upgrade"),
         _ if has_tag(state, "minecraft:anvil") => {
             station(MenuKind::Anvil, None, "container.repair")
@@ -171,6 +180,9 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
 }
 
 pub(crate) fn container_entity(state: BlockStateId) -> Option<&'static str> {
+    if lectern::is_lectern(state) {
+        return Some("lectern");
+    }
     opening_of(state).and_then(|opening| {
         if opening.ender {
             Some("ender_chest")
@@ -340,6 +352,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn container_items(&self, backing: Backing, size: usize) -> Vec<Slot> {
+        if backing.block == BlockKind::Lectern {
+            return vec![self.lectern_book(backing.pos)];
+        }
         match backing.second {
             Some(second) => {
                 let half = size / 2;
@@ -443,6 +458,11 @@ impl<L: ClientLink> Server<L> {
         } else {
             vec![None; size]
         };
+        let initial_data = if opening.kind == MenuKind::Lectern {
+            i16::try_from(self.lectern_page(pos)).unwrap_or(0)
+        } else {
+            0
+        };
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -476,7 +496,7 @@ impl<L: ClientLink> Server<L> {
             player.link.send(ClientEvent::ContainerData {
                 window,
                 id: property as i16,
-                value: 0,
+                value: initial_data,
             });
         }
         player.open_menu = Some(open);
@@ -584,11 +604,12 @@ impl<L: ClientLink> Server<L> {
         if click.slot != -1 && click.slot != OUTSIDE && (click.slot < 0 || click.slot >= total) {
             return true;
         }
-        let spectator = player.game_mode == GameMode::Spectator;
+        let spectator =
+            player.game_mode == GameMode::Spectator || backing.block == BlockKind::Lectern;
         let clicker = Clicker {
             infinite_materials: player.game_mode == GameMode::Creative,
         };
-        let full_resync = click.state_id != open.state_id;
+        let full_resync = click.state_id != open.state_id || backing.block == BlockKind::Lectern;
         let mut items = self.open_items(open);
         let Some(player) = self.players.get_mut(&id) else {
             return true;
@@ -767,8 +788,15 @@ impl<L: ClientLink> Server<L> {
                     == Some((backing.pos, left))
             })
         });
+        let reads = backing.block != BlockKind::Lectern
+            || self
+                .world
+                .chunks
+                .block(backing.pos)
+                .is_some_and(lectern::has_book);
         present
             && paired
+            && reads
             && !player.vitals.is_dead()
             && backing.positions().all(|at| {
                 player.position.distance_squared(at.center()) <= MAX_VIEW_DISTANCE_SQUARED
