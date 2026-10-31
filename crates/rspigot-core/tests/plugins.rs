@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
-use rspigot_core::plugins::{PluginIntro, ToPlugin};
+use rspigot_core::plugins::{
+    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority,
+    ToPlugin,
+};
 use rspigot_core::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PluginOutbox, StoreError,
 };
@@ -170,18 +173,53 @@ fn join(server: &mut Server<Link>, name: &str) -> Player {
     Player { id, link }
 }
 
-fn connect(server: &mut Server<Link>, connection: u64, name: &str) -> Mailbox {
+fn observe(id: u32, event: EventKind) -> HandlerSpec {
+    HandlerSpec {
+        id,
+        event,
+        access: Access::Observe,
+        priority: Priority::Normal,
+        ignore_cancelled: false,
+    }
+}
+
+fn connect_with(
+    server: &mut Server<Link>,
+    connection: u64,
+    name: &str,
+    handlers: Vec<HandlerSpec>,
+) -> Mailbox {
     let mailbox = Mailbox::default();
     server.handle(Inbound::PluginConnected {
         connection,
         intro: PluginIntro {
             name: name.to_owned(),
             version: "1.0.0".to_owned(),
-            handlers: Vec::new(),
+            handlers,
         },
         outbox: Box::new(mailbox.clone()),
     });
     mailbox
+}
+
+fn connect(server: &mut Server<Link>, connection: u64, name: &str) -> Mailbox {
+    connect_with(server, connection, name, Vec::new())
+}
+
+fn heard(mailbox: &Mailbox) -> Vec<ToPlugin> {
+    mailbox
+        .received()
+        .into_iter()
+        .filter(|message| *message != ToPlugin::Accepted)
+        .collect()
+}
+
+fn order(server: &mut Server<Link>, connection: u64, message: FromPlugin) {
+    server.handle(Inbound::PluginMessage {
+        connection,
+        message,
+    });
+    server.deliver();
 }
 
 fn plugins_line(server: &mut Server<Link>, player: &Player) -> String {
@@ -252,4 +290,257 @@ fn a_disconnected_plugin_leaves_the_list() {
     connect(&mut server, 1, "welcome");
     server.handle(Inbound::PluginDisconnected { connection: 1 });
     assert_eq!(plugins_line(&mut server, &alice), "Plugins (0): ");
+}
+
+#[test]
+fn observers_hear_a_player_join_and_leave() {
+    let mut server = server(PluginSettings::default());
+    let observer = connect_with(
+        &mut server,
+        1,
+        "welcome",
+        vec![
+            observe(1, EventKind::PlayerJoin),
+            observe(2, EventKind::PlayerLeave),
+            observe(3, EventKind::PlayerJoin),
+        ],
+    );
+    let alice = join(&mut server, "Alice");
+
+    let joined = heard(&observer);
+    assert_eq!(joined.len(), 1);
+    let ToPlugin::Event {
+        id,
+        handlers,
+        phase,
+        cancelled,
+        payload: EventPayload::PlayerJoin { player },
+    } = &joined[0]
+    else {
+        panic!("expected a join event, got {:?}", joined[0]);
+    };
+    assert_eq!(
+        (*id, handlers.as_slice(), *phase, *cancelled),
+        (1, &[1, 3][..], Phase::Settled, false)
+    );
+    assert_eq!(player.id, alice.id);
+    assert_eq!(player.name, "Alice");
+    assert_eq!(player.world, "minecraft:overworld");
+    assert_eq!(player.position, Vec3::new(0.5, 64.0, 0.5));
+    assert_eq!(player.game_mode, GameConfig::default().default_game_mode);
+
+    server.handle(Inbound::Leave { player: alice.id });
+
+    let left = heard(&observer);
+    assert_eq!(left.len(), 2);
+    let ToPlugin::Event {
+        id,
+        handlers,
+        phase,
+        cancelled,
+        payload: EventPayload::PlayerLeave { player },
+    } = &left[1]
+    else {
+        panic!("expected a leave event, got {:?}", left[1]);
+    };
+    assert_eq!(
+        (*id, handlers.as_slice(), *phase, *cancelled),
+        (2, &[2][..], Phase::Settled, false)
+    );
+    assert_eq!(player.id, alice.id);
+    assert_eq!(player.name, "Alice");
+    assert_eq!(player.position, Vec3::new(0.5, 64.0, 0.5));
+}
+
+#[test]
+fn a_plugin_that_does_not_listen_hears_nothing() {
+    let mut server = server(PluginSettings::default());
+    let quiet = connect(&mut server, 1, "quiet");
+    let leaver = connect_with(
+        &mut server,
+        2,
+        "leaver",
+        vec![observe(1, EventKind::PlayerLeave)],
+    );
+    let alice = join(&mut server, "Alice");
+    assert!(heard(&quiet).is_empty());
+    assert!(heard(&leaver).is_empty());
+
+    server.handle(Inbound::Leave { player: alice.id });
+    assert!(heard(&quiet).is_empty());
+    assert_eq!(heard(&leaver).len(), 1);
+}
+
+#[test]
+fn send_message_reaches_the_player() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    connect(&mut server, 1, "welcome");
+    alice.link.take();
+    order(
+        &mut server,
+        1,
+        FromPlugin::SendMessage {
+            player: alice.id,
+            text: "hi".to_owned(),
+        },
+    );
+    let messages: Vec<(String, bool)> = alice
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::SystemChat { message, overlay } => Some((message.plain_text(), overlay)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(messages, [("hi".to_owned(), false)]);
+}
+
+#[test]
+fn resolve_answers_with_the_current_state_or_not_found() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let welcome = connect(&mut server, 1, "welcome");
+
+    order(
+        &mut server,
+        1,
+        FromPlugin::ResolvePlayer {
+            request: 7,
+            player: alice.id,
+        },
+    );
+    server.give_experience(alice.id, 7);
+    order(
+        &mut server,
+        1,
+        FromPlugin::ResolvePlayer {
+            request: 8,
+            player: alice.id,
+        },
+    );
+    order(
+        &mut server,
+        1,
+        FromPlugin::ResolvePlayer {
+            request: 9,
+            player: PlayerId::offline("Nobody"),
+        },
+    );
+
+    let answers = heard(&welcome);
+    assert_eq!(answers.len(), 3);
+    let ToPlugin::Answer {
+        request: 7,
+        answer: Answer::Player(before),
+    } = &answers[0]
+    else {
+        panic!("expected the state of Alice, got {:?}", answers[0]);
+    };
+    assert_eq!(before.player.id, alice.id);
+    assert_eq!(before.player.name, "Alice");
+    assert_eq!(before.health, 20.0);
+    assert_eq!(before.food, 20);
+    assert_eq!(before.level, 0);
+    let ToPlugin::Answer {
+        request: 8,
+        answer: Answer::Player(after),
+    } = &answers[1]
+    else {
+        panic!("expected the state of Alice, got {:?}", answers[1]);
+    };
+    assert_eq!(after.level, 1);
+    assert_eq!(
+        answers[2],
+        ToPlugin::Answer {
+            request: 9,
+            answer: Answer::NotFound
+        }
+    );
+}
+
+#[test]
+fn fetch_lists_the_online_players() {
+    let mut server = server(PluginSettings::default());
+    let welcome = connect(&mut server, 1, "welcome");
+    order(&mut server, 1, FromPlugin::FetchPlayers { request: 8 });
+    join(&mut server, "Alice");
+    join(&mut server, "Bob");
+    order(&mut server, 1, FromPlugin::FetchPlayers { request: 9 });
+
+    let answers = heard(&welcome);
+    assert_eq!(answers.len(), 2);
+    assert_eq!(
+        answers[0],
+        ToPlugin::Answer {
+            request: 8,
+            answer: Answer::Players(Vec::new())
+        }
+    );
+    let ToPlugin::Answer {
+        request: 9,
+        answer: Answer::Players(players),
+    } = &answers[1]
+    else {
+        panic!("expected the online players, got {:?}", answers[1]);
+    };
+    let names: Vec<&str> = players.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["Alice", "Bob"]);
+    assert_eq!(players[0].id, PlayerId::offline("Alice"));
+    assert_eq!(players[1].id, PlayerId::offline("Bob"));
+}
+
+#[test]
+fn an_answer_goes_only_to_the_connection_that_asked() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let asker = connect(&mut server, 1, "asker");
+    let bystander = connect(&mut server, 2, "bystander");
+    order(
+        &mut server,
+        1,
+        FromPlugin::ResolvePlayer {
+            request: 1,
+            player: alice.id,
+        },
+    );
+    order(&mut server, 1, FromPlugin::FetchPlayers { request: 2 });
+    assert_eq!(heard(&asker).len(), 2);
+    assert!(heard(&bystander).is_empty());
+}
+
+#[test]
+fn messages_from_an_unknown_connection_are_ignored() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let old = connect(&mut server, 1, "welcome");
+    let new = connect(&mut server, 2, "welcome");
+    alice.link.take();
+    for connection in [1, 99] {
+        order(
+            &mut server,
+            connection,
+            FromPlugin::SendMessage {
+                player: alice.id,
+                text: "hi".to_owned(),
+            },
+        );
+        order(
+            &mut server,
+            connection,
+            FromPlugin::ResolvePlayer {
+                request: 1,
+                player: alice.id,
+            },
+        );
+        order(
+            &mut server,
+            connection,
+            FromPlugin::FetchPlayers { request: 2 },
+        );
+    }
+    assert!(alice.link.take().is_empty());
+    assert_eq!(heard(&old), [ToPlugin::Replaced]);
+    assert!(heard(&new).is_empty());
 }

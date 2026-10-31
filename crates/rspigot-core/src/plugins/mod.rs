@@ -1,4 +1,5 @@
 mod registry;
+mod server;
 
 use rspigot_domain::Vec3;
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -117,6 +118,16 @@ pub enum EventPayload {
         from: Vec3,
         to: Vec3,
     },
+}
+
+impl EventPayload {
+    pub const fn kind(&self) -> EventKind {
+        match self {
+            Self::PlayerJoin { .. } => EventKind::PlayerJoin,
+            Self::PlayerLeave { .. } => EventKind::PlayerLeave,
+            Self::PlayerMove { .. } => EventKind::PlayerMove,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -259,7 +259,10 @@ impl<L: ClientLink> Server<L> {
                 intro,
                 outbox,
             } => self.plugin_connected(connection, intro, outbox),
-            Inbound::PluginMessage { .. } => {}
+            Inbound::PluginMessage {
+                connection,
+                message,
+            } => self.plugin_message(connection, message),
             Inbound::PluginDisconnected { connection } => {
                 self.plugins.disconnect(connection);
             }
@@ -487,6 +490,7 @@ impl<L: ClientLink> Server<L> {
         tracing::info!("{}", crate::console::console_text(&joined));
         self.push(Audience::All, ClientEvent::system(joined));
         self.refresh_status();
+        self.tell_plugins_of_join(id);
     }
 
     fn send_join_sequence(&self, player: &mut Player<L>) {
@@ -572,6 +576,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn remove_player(&mut self, id: PlayerId, announce: bool) {
         self.close_open_menu(id, false);
+        self.tell_plugins_of_leave(id);
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };

@@ -13,6 +13,7 @@ struct Connected {
 #[derive(Default)]
 pub(crate) struct Registry {
     connected: BTreeMap<u64, Connected>,
+    last_event: u64,
 }
 
 impl Registry {
@@ -46,12 +47,15 @@ impl Registry {
         self.connected.remove(&connection).is_some()
     }
 
-    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn next_event_id(&mut self) -> u64 {
+        self.last_event += 1;
+        self.last_event
+    }
+
     pub(crate) fn is_current(&self, connection: u64) -> bool {
         self.connected.contains_key(&connection)
     }
 
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn listeners(
         &self,
         event: EventKind,
@@ -492,6 +496,16 @@ mod tests {
             .map(|(name, _, _)| name)
             .collect();
         assert_eq!(names, ["zeta", "alpha", "beta"]);
+    }
+
+    #[test]
+    fn event_ids_start_at_one_and_never_repeat() {
+        let mut registry = Registry::default();
+        assert_eq!(registry.next_event_id(), 1);
+        assert_eq!(registry.next_event_id(), 2);
+        connect(&mut registry, 1, mover("welcome", Priority::Normal));
+        registry.disconnect(1);
+        assert_eq!(registry.next_event_id(), 3);
     }
 
     #[test]
