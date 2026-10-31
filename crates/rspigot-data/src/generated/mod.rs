@@ -1,3 +1,4 @@
+pub mod block_transformers;
 pub mod climate;
 pub mod loot;
 pub mod spawns;

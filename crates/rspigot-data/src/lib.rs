@@ -6,6 +6,7 @@ pub mod loot;
 pub mod registries;
 pub mod spawns;
 pub mod tags;
+pub mod transformers;
 pub mod variants;
 
 pub const PROTOCOL_VERSION: i32 = 777;
