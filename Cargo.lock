@@ -2498,6 +2498,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "welcome"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "rspigot-core",
+ "rspigot-domain",
+ "rspigot-nbt",
+ "rspigot-plugin",
+ "rspigot-plugins",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
