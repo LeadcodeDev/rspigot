@@ -1,7 +1,7 @@
 use rspigot_data::{registries, tags};
 use rspigot_items::{
-    Craft, FilledMap, IronPickaxe, Item, ItemId, ItemKind, ItemSet, LavaBucket, MilkBucket,
-    OakPlanks, Product, ProductComponent, StewEffect, SuspiciousStew, WaterBucket,
+    CookingKind, Craft, FilledMap, IronPickaxe, Item, ItemId, ItemKind, ItemSet, LavaBucket,
+    MilkBucket, OakPlanks, Product, ProductComponent, StewEffect, SuspiciousStew, WaterBucket,
 };
 
 fn registry_item(name: &str) -> ItemId {
@@ -61,6 +61,20 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
             shell, star, fuel, ..
         } => vec![shell, star, fuel],
         Craft::BookCloning { source, material } => vec![source, material],
+        Craft::Cooking { ingredient, .. } | Craft::Stonecutting { ingredient, .. } => {
+            vec![ingredient]
+        }
+        Craft::SmithingTransform {
+            template,
+            base,
+            addition,
+        }
+        | Craft::SmithingTrim {
+            template,
+            base,
+            addition,
+            ..
+        } => vec![template, base, addition],
     }
 }
 
@@ -78,7 +92,13 @@ fn every_crafting_table_recipe_is_declared_on_an_item() {
         .filter(|kind| kind.max_damage().is_some())
         .count();
     assert_eq!(damageable, 84);
-    assert_eq!(all_crafts().len(), 1265 + 16 + damageable);
+    assert_eq!(
+        all_crafts()
+            .into_iter()
+            .filter(|(_, craft)| craft.uses_crafting_grid())
+            .count(),
+        1265 + 16 + damageable
+    );
     assert_eq!(count_of(|c| matches!(c, Craft::RepairItem)), damageable);
     assert_eq!(count_of(|c| matches!(c, Craft::Shaped { .. })), 827);
     assert_eq!(count_of(|c| matches!(c, Craft::Shapeless { .. })), 375);
@@ -93,6 +113,105 @@ fn every_crafting_table_recipe_is_declared_on_an_item() {
     assert_eq!(count_of(|c| matches!(c, Craft::FireworkStar { .. })), 1);
     assert_eq!(count_of(|c| matches!(c, Craft::FireworkRocket { .. })), 1);
     assert_eq!(count_of(|c| matches!(c, Craft::BookCloning { .. })), 1);
+}
+
+fn cooking(kind: CookingKind) -> Vec<(ItemKind, f32, u16)> {
+    all_crafts()
+        .into_iter()
+        .filter_map(|(owner, craft)| match *craft {
+            Craft::Cooking {
+                kind: candidate,
+                experience,
+                cooking_time,
+                ..
+            } if candidate == kind => Some((owner, experience, cooking_time)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn every_cooking_recipe_is_declared_on_the_item_it_makes() {
+    assert_eq!(cooking(CookingKind::Smelting).len(), 73);
+    assert_eq!(cooking(CookingKind::Blasting).len(), 25);
+    assert_eq!(cooking(CookingKind::Smoking).len(), 9);
+    assert_eq!(cooking(CookingKind::Campfire).len(), 9);
+    let potato = cooking(CookingKind::Smelting)
+        .into_iter()
+        .find(|(owner, ..)| *owner == ItemKind::BakedPotato)
+        .unwrap();
+    assert_eq!((potato.1, potato.2), (0.35, 200));
+    let campfire = cooking(CookingKind::Campfire)
+        .into_iter()
+        .find(|(owner, ..)| *owner == ItemKind::BakedPotato)
+        .unwrap();
+    assert_eq!(campfire.2, 600);
+    let coal = cooking(CookingKind::Blasting)
+        .into_iter()
+        .find(|(owner, ..)| *owner == ItemKind::Coal)
+        .unwrap();
+    assert_eq!((coal.1, coal.2), (0.1, 200));
+}
+
+#[test]
+fn stonecutting_and_smithing_recipes_are_declared_too() {
+    let counts: Vec<u8> = all_crafts()
+        .into_iter()
+        .filter_map(|(_, craft)| match *craft {
+            Craft::Stonecutting { count, .. } => Some(count),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(counts.len(), 351);
+    assert_eq!(counts.iter().filter(|count| **count == 2).count(), 100);
+    assert_eq!(counts.iter().filter(|count| **count == 8).count(), 8);
+    assert_eq!(
+        count_of(|c| matches!(c, Craft::SmithingTransform { .. })),
+        12
+    );
+    assert_eq!(count_of(|c| matches!(c, Craft::SmithingTrim { .. })), 18);
+    let [
+        Craft::SmithingTransform {
+            template,
+            base,
+            addition,
+        },
+        ..,
+    ] = ItemKind::NetheriteAxe.crafts()
+    else {
+        panic!("{:?}", ItemKind::NetheriteAxe.crafts());
+    };
+    assert_eq!(
+        template.items(),
+        [registry_item(
+            "minecraft:netherite_upgrade_smithing_template"
+        )]
+    );
+    assert_eq!(base.items(), [registry_item("minecraft:diamond_axe")]);
+    assert_eq!(addition.tag(), Some("minecraft:netherite_tool_materials"));
+}
+
+#[test]
+fn a_trim_recipe_is_declared_on_its_template_because_the_result_is_dynamic() {
+    let [
+        Craft::SmithingTrim {
+            pattern,
+            base,
+            addition,
+            ..
+        },
+    ] = ItemKind::BoltArmorTrimSmithingTemplate
+        .crafts()
+        .iter()
+        .filter(|craft| matches!(craft, Craft::SmithingTrim { .. }))
+        .copied()
+        .collect::<Vec<_>>()[..]
+    else {
+        panic!("{:?}", ItemKind::BoltArmorTrimSmithingTemplate.crafts());
+    };
+    assert_eq!(pattern, "minecraft:bolt");
+    assert_eq!(base.tag(), Some("minecraft:trimmable_armor"));
+    assert_eq!(addition.tag(), Some("minecraft:trim_materials"));
 }
 
 #[test]
@@ -233,7 +352,7 @@ fn ingredient_sets_resolve_to_real_items() {
             }
         })
         .sum();
-    assert_eq!(tag_sets, 347);
+    assert_eq!(tag_sets, 398);
 }
 
 #[test]

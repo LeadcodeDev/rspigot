@@ -452,6 +452,14 @@ pub(crate) static ITEM_JUNGLE_LOGS: ItemTag = ItemTag {
     ],
 };
 
+pub(crate) static ITEM_LEAVES: ItemTag = ItemTag {
+    name: "minecraft:leaves",
+    items: &[
+        ItemId(215), ItemId(216), ItemId(217), ItemId(218), ItemId(219), ItemId(220), ItemId(221),
+        ItemId(222), ItemId(223), ItemId(224), ItemId(225), ItemId(226), ItemId(227), ItemId(228),
+    ],
+};
+
 pub(crate) static ITEM_LOGS: ItemTag = ItemTag {
     name: "minecraft:logs",
     items: &[
@@ -462,6 +470,18 @@ pub(crate) static ITEM_LOGS: ItemTag = ItemTag {
         ItemId(194), ItemId(195), ItemId(196), ItemId(197), ItemId(198), ItemId(199), ItemId(200),
         ItemId(201), ItemId(203), ItemId(204), ItemId(205), ItemId(206), ItemId(207), ItemId(208),
         ItemId(209), ItemId(210), ItemId(211), ItemId(212), ItemId(213), ItemId(214),
+    ],
+};
+
+pub(crate) static ITEM_LOGS_THAT_BURN: ItemTag = ItemTag {
+    name: "minecraft:logs_that_burn",
+    items: &[
+        ItemId(163), ItemId(164), ItemId(165), ItemId(166), ItemId(167), ItemId(168), ItemId(169),
+        ItemId(170), ItemId(171), ItemId(172), ItemId(178), ItemId(179), ItemId(180), ItemId(181),
+        ItemId(182), ItemId(183), ItemId(184), ItemId(185), ItemId(186), ItemId(187), ItemId(190),
+        ItemId(191), ItemId(192), ItemId(193), ItemId(194), ItemId(195), ItemId(196), ItemId(197),
+        ItemId(198), ItemId(199), ItemId(203), ItemId(204), ItemId(205), ItemId(206), ItemId(207),
+        ItemId(208), ItemId(209), ItemId(210), ItemId(211), ItemId(212),
     ],
 };
 
@@ -602,6 +622,13 @@ pub(crate) static ITEM_SKULLS: ItemTag = ItemTag {
     ],
 };
 
+pub(crate) static ITEM_SMELTS_TO_GLASS: ItemTag = ItemTag {
+    name: "minecraft:smelts_to_glass",
+    items: &[
+        ItemId(88), ItemId(91),
+    ],
+};
+
 pub(crate) static ITEM_SOUL_FIRE_BASE_BLOCKS: ItemTag = ItemTag {
     name: "minecraft:soul_fire_base_blocks",
     items: &[
@@ -627,6 +654,25 @@ pub(crate) static ITEM_STONE_TOOL_MATERIALS: ItemTag = ItemTag {
     name: "minecraft:stone_tool_materials",
     items: &[
         ItemId(9), ItemId(62), ItemId(1537),
+    ],
+};
+
+pub(crate) static ITEM_TRIM_MATERIALS: ItemTag = ItemTag {
+    name: "minecraft:trim_materials",
+    items: &[
+        ItemId(824), ItemId(1012), ItemId(1013), ItemId(1014), ItemId(1015), ItemId(1016),
+        ItemId(1018), ItemId(1020), ItemId(1022), ItemId(1023), ItemId(1397),
+    ],
+};
+
+pub(crate) static ITEM_TRIMMABLE_ARMOR: ItemTag = ItemTag {
+    name: "minecraft:trimmable_armor",
+    items: &[
+        ItemId(1001), ItemId(1068), ItemId(1069), ItemId(1070), ItemId(1071), ItemId(1072),
+        ItemId(1073), ItemId(1074), ItemId(1075), ItemId(1076), ItemId(1077), ItemId(1078),
+        ItemId(1079), ItemId(1080), ItemId(1081), ItemId(1082), ItemId(1083), ItemId(1084),
+        ItemId(1085), ItemId(1086), ItemId(1087), ItemId(1088), ItemId(1089), ItemId(1090),
+        ItemId(1091), ItemId(1092), ItemId(1093), ItemId(1094), ItemId(1095),
     ],
 };
 

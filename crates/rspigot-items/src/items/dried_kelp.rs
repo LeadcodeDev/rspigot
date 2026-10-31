@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct DriedKelp;
@@ -27,9 +28,29 @@ impl Item for DriedKelp {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(1144)])],
-        product: Product::of(9),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(1144)])],
+            product: Product::of(9),
+        },
+        Craft::Cooking {
+            kind: CookingKind::Campfire,
+            ingredient: ItemSet::Direct(&[ItemId(328)]),
+            experience: 0.1,
+            cooking_time: 600,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(328)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smoking,
+            ingredient: ItemSet::Direct(&[ItemId(328)]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

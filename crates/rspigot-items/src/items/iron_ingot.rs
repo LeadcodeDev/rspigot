@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct IronIngot;
@@ -24,6 +25,24 @@ impl Item for IronIngot {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(96)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(95)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(1017)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
         Craft::Shapeless {
             ingredients: &[ItemSet::Direct(&[ItemId(119)])],
             product: Product::of(9),
@@ -44,6 +63,24 @@ impl Item for IronIngot {
                 Some(ItemSet::Direct(&[ItemId(1456)])),
             ],
             product: Product::of(1),
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(96)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(95)]),
+            experience: 0.7,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(1017)]),
+            experience: 0.7,
+            cooking_time: 200,
         },
     ];
     type Behavior = crate::family::Plain;

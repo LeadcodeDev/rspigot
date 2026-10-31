@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool,
+};
 
 pub struct CookedChicken;
 
@@ -25,5 +27,25 @@ impl Item for CookedChicken {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(1262)]),
+            experience: 0.35,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Campfire,
+            ingredient: ItemSet::Direct(&[ItemId(1262)]),
+            experience: 0.35,
+            cooking_time: 600,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smoking,
+            ingredient: ItemSet::Direct(&[ItemId(1262)]),
+            experience: 0.35,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

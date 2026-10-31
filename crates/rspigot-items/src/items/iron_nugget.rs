@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct IronNugget;
@@ -23,9 +24,57 @@ impl Item for IronNugget {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(1018)])],
-        product: Product::of(9),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(1018)])],
+            product: Product::of(9),
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[
+                ItemId(1045),
+                ItemId(1046),
+                ItemId(1047),
+                ItemId(1048),
+                ItemId(1049),
+                ItemId(1076),
+                ItemId(1077),
+                ItemId(1078),
+                ItemId(1079),
+                ItemId(1080),
+                ItemId(1081),
+                ItemId(1082),
+                ItemId(1083),
+                ItemId(1407),
+                ItemId(1450),
+                ItemId(1485),
+            ]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[
+                ItemId(1045),
+                ItemId(1046),
+                ItemId(1047),
+                ItemId(1048),
+                ItemId(1049),
+                ItemId(1076),
+                ItemId(1077),
+                ItemId(1078),
+                ItemId(1079),
+                ItemId(1080),
+                ItemId(1081),
+                ItemId(1082),
+                ItemId(1083),
+                ItemId(1407),
+                ItemId(1450),
+                ItemId(1485),
+            ]),
+            experience: 0.1,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

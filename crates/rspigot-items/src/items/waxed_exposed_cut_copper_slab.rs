@@ -39,6 +39,8 @@ impl Item for WaxedExposedCutCopperSlab {
             ingredients: &[ItemSet::Direct(&[ItemId(156)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(125)]), count: 8 },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(144)]), count: 2 },
     ];
     type Behavior = crate::family::BlockItem;
 }

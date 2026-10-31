@@ -1,7 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product,
+    Rarity, Tool,
 };
 
 pub struct Emerald;
@@ -23,9 +24,35 @@ impl Item for Emerald {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
-        ingredients: &[ItemSet::Direct(&[ItemId(514)])],
-        product: Product::of(9),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(514)])],
+            product: Product::of(9),
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(104)]),
+            experience: 1.0,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(103)]),
+            experience: 1.0,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(104)]),
+            experience: 1.0,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(103)]),
+            experience: 1.0,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

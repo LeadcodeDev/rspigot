@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, CookingKind, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool,
+};
 
 pub struct Quartz;
 
@@ -21,5 +23,19 @@ impl Item for Quartz {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Cooking {
+            kind: CookingKind::Smelting,
+            ingredient: ItemSet::Direct(&[ItemId(110)]),
+            experience: 0.2,
+            cooking_time: 200,
+        },
+        Craft::Cooking {
+            kind: CookingKind::Blasting,
+            ingredient: ItemSet::Direct(&[ItemId(110)]),
+            experience: 0.2,
+            cooking_time: 200,
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

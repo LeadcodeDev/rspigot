@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
-    SlotGroup, Tool,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    SlotGroup, Tool, tags,
 };
 
 pub struct NetheriteHorseArmor;
@@ -46,5 +46,10 @@ impl Item for NetheriteHorseArmor {
             slot: SlotGroup::Body,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::SmithingTransform {
+        template: ItemSet::Direct(&[ItemId(1579)]),
+        base: ItemSet::Direct(&[ItemId(1409)]),
+        addition: ItemSet::Tag(&tags::ITEM_NETHERITE_TOOL_MATERIALS),
+    }];
     type Behavior = crate::family::Plain;
 }

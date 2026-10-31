@@ -45,6 +45,8 @@ impl Item for WaxedCutCopperStairs {
             ingredients: &[ItemSet::Direct(&[ItemId(147)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(124)]), count: 4 },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(143)]), count: 1 },
     ];
     type Behavior = crate::family::BlockItem;
 }

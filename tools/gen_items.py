@@ -33,7 +33,7 @@ RESERVED_STRUCTS = {
     "Item", "ItemId", "ItemKind", "ItemBehavior", "ItemSet", "ItemTag", "BlockSet", "BlockTag",
     "BlockId", "BlockKind", "Tool", "ToolRule", "Food", "Rarity", "EquipmentSlot", "Plain",
     "BlockItem", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec", "Box",
-    "AttributeModifier", "ModifierOperation", "SlotGroup", "Craft", "Product", "ProductComponent",
+    "AttributeModifier", "ModifierOperation", "SlotGroup", "Craft", "CookingKind", "Product", "ProductComponent",
     "StewEffect", "FireworkShapes",
 }
 
@@ -656,6 +656,20 @@ CRAFTING_TYPES = {
     "crafting_special_firework_star",
     "crafting_special_firework_rocket",
     "crafting_special_bookcloning",
+    "smelting",
+    "blasting",
+    "smoking",
+    "campfire_cooking",
+    "stonecutting",
+    "smithing_transform",
+    "smithing_trim",
+}
+ID_PATTERN = re.compile(r"^minecraft:[a-z0-9_]+$")
+COOKING_KINDS = {
+    "smelting": "Smelting",
+    "blasting": "Blasting",
+    "smoking": "Smoking",
+    "campfire_cooking": "Campfire",
 }
 STEW_EFFECTS = "minecraft:suspicious_stew_effects"
 FIREWORK_SHAPES = ["burst", "creeper", "large_ball", "star"]
@@ -862,6 +876,54 @@ class Crafts:
             return self.shapeless(recipe, where)
         if kind == "crafting_transmute":
             return self.transmute(recipe, where)
+        if kind in COOKING_KINDS:
+            result = recipe["result"]
+            expect_keys(recipe, {"type", "category", "group", "cookingtime", "experience", "ingredient", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            node = struct_node(
+                "Craft::Cooking",
+                [
+                    ("kind", Atom("CookingKind::" + COOKING_KINDS[kind])),
+                    ("ingredient", self.node(recipe["ingredient"], where)),
+                    ("experience", Atom(f32_literal(recipe["experience"], where + " experience"))),
+                    ("cooking_time", number(integer(recipe["cookingtime"], 1, 65535, where + " cooking time"))),
+                ],
+            )
+            return self.item(result["id"], where), node
+        if kind == "stonecutting":
+            result = recipe["result"]
+            expect_keys(recipe, {"type", "ingredient", "result"}, where)
+            expect_keys(result, {"id", "count"}, where)
+            count = integer(result.get("count", 1), 1, 99, where + " count")
+            node = struct_node(
+                "Craft::Stonecutting",
+                [("ingredient", self.node(recipe["ingredient"], where)), ("count", number(count))],
+            )
+            return self.item(result["id"], where), node
+        if kind == "smithing_transform":
+            result = recipe["result"]
+            expect_keys(recipe, {"type", "template", "base", "addition", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            fields = [(key, self.node(recipe[key], where)) for key in ("template", "base", "addition")]
+            return self.item(result["id"], where), struct_node("Craft::SmithingTransform", fields)
+        if kind == "smithing_trim":
+            expect_keys(recipe, {"type", "template", "base", "addition", "pattern"}, where)
+            template_node, template_ids = self.ingredient(recipe["template"], where)
+            if len(template_ids) != 1:
+                fail("%s template is not a single item" % where)
+            pattern = recipe["pattern"]
+            if not isinstance(pattern, str) or not ID_PATTERN.match(pattern):
+                fail("%s unsupported trim pattern %r" % (where, pattern))
+            node = struct_node(
+                "Craft::SmithingTrim",
+                [
+                    ("template", template_node),
+                    ("base", self.node(recipe["base"], where)),
+                    ("addition", self.node(recipe["addition"], where)),
+                    ("pattern", Atom(rust_string(pattern))),
+                ],
+            )
+            return next(iter(template_ids)), node
         if kind == "crafting_special_repairitem":
             expect_keys(recipe, {"type"}, where)
             return [(owner, Atom("Craft::RepairItem")) for owner in self.damageable]
@@ -1003,7 +1065,7 @@ def item_file(item, behavior, crafts):
     craft_text = "\n".join(craft_lines)
     names.extend(
         name
-        for name in ("Craft", "FireworkShapes", "Product", "ProductComponent", "StewEffect")
+        for name in ("CookingKind", "Craft", "FireworkShapes", "Product", "ProductComponent", "StewEffect")
         if re.search(r"\b" + name + r"\b", craft_text)
     )
     if "tags" in used:

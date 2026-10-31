@@ -23,22 +23,25 @@ impl Item for ResinBrickStairs {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: false,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(488)])),
-            None,
-            None,
-            Some(ItemSet::Direct(&[ItemId(488)])),
-            Some(ItemSet::Direct(&[ItemId(488)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(488)])),
-            Some(ItemSet::Direct(&[ItemId(488)])),
-            Some(ItemSet::Direct(&[ItemId(488)])),
-        ],
-        product: Product::of(4),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(488)])),
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(488)])),
+                Some(ItemSet::Direct(&[ItemId(488)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(488)])),
+                Some(ItemSet::Direct(&[ItemId(488)])),
+                Some(ItemSet::Direct(&[ItemId(488)])),
+            ],
+            product: Product::of(4),
+        },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(488)]), count: 1 },
+    ];
     type Behavior = crate::family::BlockItem;
 }

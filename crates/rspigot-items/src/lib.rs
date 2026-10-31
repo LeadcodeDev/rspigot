@@ -229,6 +229,14 @@ pub struct FireworkShapes {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookingKind {
+    Smelting,
+    Blasting,
+    Smoking,
+    Campfire,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Craft {
     Shaped {
         width: u8,
@@ -292,6 +300,39 @@ pub enum Craft {
         source: ItemSet,
         material: ItemSet,
     },
+    Cooking {
+        kind: CookingKind,
+        ingredient: ItemSet,
+        experience: f32,
+        cooking_time: u16,
+    },
+    Stonecutting {
+        ingredient: ItemSet,
+        count: u8,
+    },
+    SmithingTransform {
+        template: ItemSet,
+        base: ItemSet,
+        addition: ItemSet,
+    },
+    SmithingTrim {
+        template: ItemSet,
+        base: ItemSet,
+        addition: ItemSet,
+        pattern: &'static str,
+    },
+}
+
+impl Craft {
+    pub const fn uses_crafting_grid(&self) -> bool {
+        !matches!(
+            self,
+            Self::Cooking { .. }
+                | Self::Stonecutting { .. }
+                | Self::SmithingTransform { .. }
+                | Self::SmithingTrim { .. }
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

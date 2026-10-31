@@ -23,12 +23,15 @@ impl Item for ChiseledResinBricks {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 1,
-        height: 2,
-        symmetrical: true,
-        cells: &[Some(ItemSet::Direct(&[ItemId(490)])), Some(ItemSet::Direct(&[ItemId(490)]))],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 1,
+            height: 2,
+            symmetrical: true,
+            cells: &[Some(ItemSet::Direct(&[ItemId(490)])), Some(ItemSet::Direct(&[ItemId(490)]))],
+            product: Product::of(1),
+        },
+        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(488)]), count: 1 },
+    ];
     type Behavior = crate::family::BlockItem;
 }
