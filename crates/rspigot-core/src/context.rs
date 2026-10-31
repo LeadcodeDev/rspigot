@@ -91,32 +91,8 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn teleport(&mut self, player: PlayerId, position: Vec3) {
-        let Some(p) = self.players.get_mut(&player) else {
-            return;
-        };
-        let from = p.position;
-        p.position = position;
-        let id = p.next_teleport_id();
-        p.link.send(ClientEvent::Teleport {
-            id,
-            position,
-            rotation: p.rotation,
-        });
-        let chunk = position.chunk();
-        p.streamer
-            .move_to(chunk, &mut self.world.chunks, &self.workers, &p.link);
-        let entity = p.entity_id;
-        let on_ground = p.on_ground;
-        self.push(
-            Audience::Trackers(entity),
-            ClientEvent::EntityMoved {
-                entity,
-                from,
-                to: position,
-                rotation: None,
-                on_ground,
-            },
-        );
+        self.decisions.forget(player);
+        self.teleport_player(player, position);
     }
 
     fn day_time(&self) -> i64 {
@@ -569,6 +545,35 @@ fn selection_box(selector: &Selector, origin: Vec3) -> Option<Aabb> {
 }
 
 impl<L: ClientLink> Server<L> {
+    pub(crate) fn teleport_player(&mut self, player: PlayerId, position: Vec3) {
+        let Some(p) = self.players.get_mut(&player) else {
+            return;
+        };
+        let from = p.position;
+        p.position = position;
+        let id = p.next_teleport_id();
+        p.link.send(ClientEvent::Teleport {
+            id,
+            position,
+            rotation: p.rotation,
+        });
+        let chunk = position.chunk();
+        p.streamer
+            .move_to(chunk, &mut self.world.chunks, &self.workers, &p.link);
+        let entity = p.entity_id;
+        let on_ground = p.on_ground;
+        self.push(
+            Audience::Trackers(entity),
+            ClientEvent::EntityMoved {
+                entity,
+                from,
+                to: position,
+                rotation: None,
+                on_ground,
+            },
+        );
+    }
+
     fn candidates(&self, include_entities: bool) -> Vec<Candidate<'_>> {
         let mut out: Vec<Candidate<'_>> = self
             .players

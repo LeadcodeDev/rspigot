@@ -52,8 +52,22 @@ impl Registry {
         self.last_event
     }
 
+    pub(crate) fn issued(&self, event: u64) -> bool {
+        (1..=self.last_event).contains(&event)
+    }
+
     pub(crate) fn is_current(&self, connection: u64) -> bool {
         self.connected.contains_key(&connection)
+    }
+
+    pub(crate) fn listens(&self, event: EventKind, access: Access) -> bool {
+        self.connected.values().any(|plugin| {
+            plugin
+                .intro
+                .handlers
+                .iter()
+                .any(|spec| spec.event == event && spec.access == access)
+        })
     }
 
     pub(crate) fn listeners(
@@ -414,6 +428,10 @@ mod tests {
                 .listeners(EventKind::PlayerLeave, Access::Observe, &settings)
                 .is_empty()
         );
+        assert!(registry.listens(EventKind::PlayerMove, Access::Decide));
+        assert!(registry.listens(EventKind::PlayerJoin, Access::Observe));
+        assert!(!registry.listens(EventKind::PlayerJoin, Access::Decide));
+        assert!(!registry.listens(EventKind::PlayerLeave, Access::Observe));
     }
 
     #[test]
@@ -501,8 +519,11 @@ mod tests {
     #[test]
     fn event_ids_start_at_one_and_never_repeat() {
         let mut registry = Registry::default();
+        assert!(!registry.issued(1));
         assert_eq!(registry.next_event_id(), 1);
         assert_eq!(registry.next_event_id(), 2);
+        assert!(registry.issued(1) && registry.issued(2));
+        assert!(!registry.issued(0) && !registry.issued(3));
         connect(&mut registry, 1, mover("welcome", Priority::Normal));
         registry.disconnect(1);
         assert_eq!(registry.next_event_id(), 3);

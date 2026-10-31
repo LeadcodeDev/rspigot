@@ -24,7 +24,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::plugins::{PluginIntro, Registry, ToPlugin};
+use crate::plugins::{Decisions, PluginIntro, Registry, ToPlugin};
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
@@ -101,6 +101,7 @@ pub struct Server<L> {
     pub(crate) rng: StdRng,
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
+    pub(crate) decisions: Decisions,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -163,6 +164,7 @@ impl<L: ClientLink> Server<L> {
             rng: StdRng::from_os_rng(),
             spawning,
             plugins: Registry::default(),
+            decisions: Decisions::default(),
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -210,6 +212,16 @@ impl<L: ClientLink> Server<L> {
         while self.running {
             let now = Instant::now();
             if now >= next_tick {
+                let mut waiting = queued(inbound);
+                while self.running
+                    && let Some(message) = waiting.next()
+                {
+                    self.handle(message);
+                    self.deliver();
+                }
+                if !self.running {
+                    break;
+                }
                 self.tick();
                 next_tick += tick_length;
                 let behind = Instant::now().saturating_duration_since(next_tick);
@@ -263,9 +275,7 @@ impl<L: ClientLink> Server<L> {
                 connection,
                 message,
             } => self.plugin_message(connection, message),
-            Inbound::PluginDisconnected { connection } => {
-                self.plugins.disconnect(connection);
-            }
+            Inbound::PluginDisconnected { connection } => self.plugin_disconnected(connection),
             Inbound::Shutdown => self.running = false,
         }
     }
@@ -282,6 +292,7 @@ impl<L: ClientLink> Server<L> {
             old.send(ToPlugin::Replaced);
         }
         self.plugins.send(connection, ToPlugin::Accepted);
+        self.release_departed_plugins();
     }
 
     pub(crate) fn current_tick(&self) -> u64 {
@@ -577,6 +588,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn remove_player(&mut self, id: PlayerId, announce: bool) {
         self.close_open_menu(id, false);
         self.tell_plugins_of_leave(id);
+        self.decisions.forget(id);
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };
@@ -642,6 +654,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_furnaces();
         self.tick_campfires();
         self.tick_inventories();
+        self.tick_plugins();
         self.tick_open_menus();
         self.tick_falling_blocks();
         self.update_tracking();
@@ -808,5 +821,31 @@ impl<L: ClientLink> Server<L> {
             stats.average_load_time().as_secs_f64() * 1000.0
         );
         self.world.level
+    }
+}
+
+fn queued<T>(inbound: &Receiver<T>) -> impl Iterator<Item = T> {
+    let waiting = inbound.len();
+    inbound.try_iter().take(waiting)
+}
+
+#[cfg(test)]
+mod tests {
+    use crossbeam_channel::unbounded;
+
+    use super::queued;
+
+    #[test]
+    fn queued_takes_the_waiting_messages_in_order_and_no_more() {
+        let (sender, receiver) = unbounded();
+        for message in 1..=3 {
+            sender.send(message).expect("open");
+        }
+        let mut batch = queued(&receiver);
+        assert_eq!(batch.next(), Some(1));
+        sender.send(4).expect("open");
+        assert_eq!(batch.collect::<Vec<_>>(), [2, 3]);
+        assert_eq!(queued(&receiver).collect::<Vec<_>>(), [4]);
+        assert_eq!(queued(&receiver).count(), 0);
     }
 }

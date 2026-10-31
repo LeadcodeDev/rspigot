@@ -14,6 +14,7 @@ use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
 use crate::loot::{self, LootContext, LootEntity};
+use crate::plugins::Held;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -196,13 +197,14 @@ impl<L: ClientLink> Server<L> {
         rotation: Option<Rotation>,
         on_ground: bool,
     ) {
+        let reference = self.decisions.reference(id);
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
         if player.pending_teleport.is_some() || player.vitals.is_dead() {
             return;
         }
-        let from = player.position;
+        let from = reference.unwrap_or(player.position);
         if let Some(target) = position {
             if !target.is_finite()
                 || target.x.abs() > 3.0e7
@@ -231,6 +233,32 @@ impl<L: ClientLink> Server<L> {
                 });
                 return;
             }
+        }
+        match position {
+            Some(to) if to != from => self.decide_move(id, from, to, rotation, on_ground),
+            _ => self.hold_or_apply(
+                id,
+                Held {
+                    position,
+                    rotation,
+                    on_ground,
+                },
+            ),
+        }
+    }
+
+    pub(crate) fn apply_move(
+        &mut self,
+        id: PlayerId,
+        position: Option<Vec3>,
+        rotation: Option<Rotation>,
+        on_ground: bool,
+    ) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        let from = player.position;
+        if let Some(target) = position {
             player.known_movement = target - from;
             player.moved_this_tick = true;
             player.position = target;
