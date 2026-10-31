@@ -1465,3 +1465,136 @@ fn breaking_a_station_closes_its_window_and_returns_the_items() {
     });
     assert!(back);
 }
+
+fn on_the_ground(world: &World, name: &str) -> Vec<u32> {
+    let wanted = item(name);
+    world
+        .server
+        .ground_items()
+        .into_iter()
+        .filter(|(_, stack)| stack.item.0 == wanted)
+        .map(|(_, stack)| u32::from(stack.count.get()))
+        .collect()
+}
+
+impl World {
+    fn step_away(&mut self) {
+        self.console("tp Alice 6 64 2");
+    }
+
+    fn break_at(&mut self, pos: BlockPos) {
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::Dig {
+                action: DigAction::Finish,
+                pos,
+                face: Direction::Up,
+                sequence: 4,
+            },
+        });
+        self.settle();
+    }
+
+    fn stock_first_slot(&mut self, hotbar_0: i16, item_name: &str) {
+        self.give(item_name);
+        self.open_chest();
+        self.click(WINDOW, hotbar_0, 0, ClickInput::Pickup);
+        self.click(WINDOW, 0, 0, ClickInput::Pickup);
+        self.close(WINDOW);
+    }
+}
+
+#[test]
+fn breaking_a_container_drops_what_it_holds() {
+    let containers = [
+        ("chest", 54),
+        ("barrel", 54),
+        ("hopper", 32),
+        ("dispenser", 36),
+        ("furnace", 30),
+        ("shulker_box", 54),
+    ];
+    for (block, hotbar_0) in containers {
+        let mut world = world();
+        world.place_storage(block);
+        world.stock_first_slot(hotbar_0, "stone");
+        assert!(
+            on_the_ground(&world, "minecraft:stone").is_empty(),
+            "{block}"
+        );
+        world.step_away();
+        world.break_at(CHEST);
+
+        assert_eq!(on_the_ground(&world, "minecraft:stone"), vec![1], "{block}");
+    }
+}
+
+#[test]
+fn a_big_stack_falls_in_pieces_of_ten_to_thirty() {
+    let mut world = world();
+    world.place_chest();
+    world.console("give Alice minecraft:stone 64");
+    world.open_chest();
+    world.click(WINDOW, HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.step_away();
+    world.break_at(CHEST);
+
+    let pieces = on_the_ground(&world, "minecraft:stone");
+    assert_eq!(pieces.iter().sum::<u32>(), 64);
+    assert!(pieces.len() >= 3);
+    assert!(pieces.iter().all(|count| *count <= 30));
+    assert!(pieces[..pieces.len() - 1].iter().all(|count| *count >= 10));
+}
+
+#[test]
+fn breaking_one_half_of_a_double_chest_drops_only_its_own_items() {
+    let mut world = world();
+    world.place_double_chest();
+    world.give("stone");
+    world.give("dirt");
+    world.open_at(CHEST);
+    world.click(WINDOW, 54 + 27, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 54 + 28, 0, ClickInput::Pickup);
+    world.click(WINDOW, 27, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.step_away();
+    world.break_at(RIGHT_HALF);
+
+    assert_eq!(on_the_ground(&world, "minecraft:stone"), vec![1]);
+    assert!(on_the_ground(&world, "minecraft:dirt").is_empty());
+    world.console("tp Alice 2.5 64 4.5");
+    world.open_chest();
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[0], Some((item("minecraft:dirt"), 1)));
+}
+
+#[test]
+fn opening_a_loaded_barrel_does_not_drop_its_items() {
+    let mut world = world();
+    world.place_storage("barrel");
+    world.stock_first_slot(54, "stone");
+    world.open_chest();
+
+    assert!(on_the_ground(&world, "minecraft:stone").is_empty());
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[0], Some((item("minecraft:stone"), 1)));
+}
+
+#[test]
+fn pairing_a_second_chest_with_a_loaded_one_does_not_drop_its_items() {
+    let mut world = world();
+    world.place_chest();
+    world.stock_first_slot(54, "stone");
+    world.give("chest");
+    world.select(0);
+    world.use_on(BlockPos::new(3, 63, 2), Direction::Up);
+    world.open_at(CHEST);
+
+    assert!(on_the_ground(&world, "minecraft:stone").is_empty());
+    let slots = content(&world.alice, 2).expect("double window");
+    assert_eq!(slots.len(), 90);
+    assert_eq!(slots[27], Some((item("minecraft:stone"), 1)));
+}
