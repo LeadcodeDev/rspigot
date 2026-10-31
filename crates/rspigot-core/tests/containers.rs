@@ -992,3 +992,45 @@ fn sneaking_keeps_two_neighbouring_chests_apart() {
         Some("single")
     );
 }
+
+fn carries_a_block_entity(player: &Player, pos: BlockPos, kind: &str) -> bool {
+    player.log.iter().any(|event| match event {
+        ClientEvent::Chunk { chunk, .. } => chunk
+            .block_entity(pos)
+            .is_some_and(|entity| entity.kind.to_string() == kind),
+        _ => false,
+    })
+}
+
+#[test]
+fn a_container_placed_but_never_opened_is_in_the_chunk_sent_to_a_late_joiner() {
+    let blocks = [
+        ("chest", "minecraft:chest"),
+        ("barrel", "minecraft:barrel"),
+        ("furnace", "minecraft:furnace"),
+        ("hopper", "minecraft:hopper"),
+        ("shulker_box", "minecraft:shulker_box"),
+    ];
+    for (item, kind) in blocks {
+        let mut world = world();
+        world.place_storage(item);
+        let mut carol = join(&mut world.server, "Carol");
+        run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+        assert!(carries_a_block_entity(&carol, CHEST, kind), "{item}");
+    }
+}
+
+#[test]
+fn a_crafting_table_has_no_block_entity() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    let mut carol = join(&mut world.server, "Carol");
+    run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+    assert!(!carries_a_block_entity(
+        &carol,
+        CHEST,
+        "minecraft:crafting_table"
+    ));
+}

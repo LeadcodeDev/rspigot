@@ -132,6 +132,10 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
     }
 }
 
+pub(crate) fn container_entity(state: BlockStateId) -> Option<&'static str> {
+    opening_of(state).and_then(|opening| opening.entity)
+}
+
 fn facing_step(state: BlockStateId) -> (i32, i32, i32) {
     match state.property("facing") {
         Some("down") => (0, -1, 0),
@@ -193,6 +197,27 @@ fn blocked_above(state_above: Option<BlockStateId>) -> bool {
 }
 
 impl<L: ClientLink> Server<L> {
+    pub(crate) fn ensure_container_entity(&mut self, pos: BlockPos, state: BlockStateId) {
+        let Some(entity) = container_entity(state) else {
+            return;
+        };
+        let present = self
+            .world
+            .chunks
+            .get(pos.chunk())
+            .is_some_and(|chunk| chunk.block_entity(pos).is_some());
+        if present {
+            return;
+        }
+        if let Some(chunk) = self.world.chunks.chunk_mut(pos.chunk()) {
+            chunk.set_block_entity(BlockEntity {
+                pos,
+                kind: Identifier::minecraft(entity),
+                data: Compound::new(),
+            });
+        }
+    }
+
     fn half_items(&self, pos: BlockPos, size: usize) -> Vec<Slot> {
         self.world
             .chunks
