@@ -150,7 +150,7 @@ impl Decisions {
     }
 
     pub(crate) fn remember(&mut self, event: u64, settled: SettledMove) {
-        if !settled.silent.is_empty() {
+        if settled.applied.is_some() || !settled.silent.is_empty() {
             self.settled.insert(event, settled);
         }
     }
@@ -300,10 +300,10 @@ mod tests {
         assert!(matches!(decisions.decide(3, 4, true, 3), Verdict::Ignored));
         assert!(matches!(decisions.decide(1, 4, false, 3), Verdict::Ignored));
         assert!(matches!(decisions.decide(1, 4, true, 21), Verdict::TooLate));
-        assert!(matches!(decisions.decide(1, 5, true, 3), Verdict::TooLate));
+        assert!(matches!(decisions.decide(1, 5, true, 3), Verdict::Ignored));
         assert_eq!(
             rolled_back(decisions.decide(1, 4, true, 20)),
-            (vec![4], vec![])
+            (vec![4, 5], vec![])
         );
         assert!(matches!(decisions.decide(2, 4, true, 20), Verdict::Ignored));
         decisions.expire(21);

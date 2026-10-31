@@ -567,12 +567,22 @@ fn send_move(
     position: Option<Vec3>,
     rotation: Option<Rotation>,
 ) {
+    send_move_on(server, player, position, rotation, true);
+}
+
+fn send_move_on(
+    server: &mut Server<Link>,
+    player: &Player,
+    position: Option<Vec3>,
+    rotation: Option<Rotation>,
+    on_ground: bool,
+) {
     server.handle(Inbound::Input {
         player: player.id,
         input: PlayerInput::Move {
             position,
             rotation,
-            on_ground: true,
+            on_ground,
         },
     });
     server.deliver();
@@ -1329,4 +1339,82 @@ fn the_speed_check_measures_from_the_last_pending_move() {
     assert_eq!(teleported_to(&alice), [stride(11)]);
     wait_out_the_deadline(&mut server);
     assert_eq!(server.player_location(alice.id), Some(stride(11)));
+}
+
+#[test]
+fn a_rollback_reports_the_answered_moves_it_undoes() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    step(&mut server, &alice, east(2));
+    let events = asked(&guard);
+    assert_eq!(events.len(), 2);
+    answer(&mut server, 1, events[1], false);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    wait_out_the_deadline(&mut server);
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+
+    answer(&mut server, 1, events[1], true);
+    assert!(teleported_to(&alice).is_empty());
+    assert!(warnings(&guard).is_empty());
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+
+    answer(&mut server, 1, events[0], true);
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert!(warnings(&guard).is_empty());
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(events[0], &[1], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(events[1], &[1], Phase::Settled, false, east(1), east(2)),
+            heard_move(events[0], &[1], Phase::RolledBack, true, SPAWN, east(1)),
+            heard_move(events[1], &[1], Phase::RolledBack, true, east(1), east(2)),
+        ]
+    );
+}
+
+#[test]
+fn a_landing_after_a_pending_move_hurts_once() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let above = |y: f64| Vec3::new(0.5, y, 0.5);
+    send_move_on(&mut server, &alice, Some(above(74.0)), None, false);
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    for y in [70.0, 66.0] {
+        send_move_on(&mut server, &alice, Some(above(y)), None, false);
+        let event = *asked(&guard).last().expect("the guard is asked");
+        answer(&mut server, 1, event, false);
+    }
+    assert_eq!(server.player_location(alice.id), Some(above(66.0)));
+    alice.link.take();
+
+    send_move_on(&mut server, &alice, Some(SPAWN), None, true);
+    let landing = *asked(&guard).last().expect("the guard is asked");
+    send_move_on(
+        &mut server,
+        &alice,
+        None,
+        Some(Rotation::new(90.0, 0.0)),
+        true,
+    );
+    assert_eq!(server.player_health(alice.id), Some(20.0));
+    answer(&mut server, 1, landing, false);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert_eq!(server.player_health(alice.id), Some(13.0));
+    let hurt = alice
+        .link
+        .take()
+        .into_iter()
+        .filter(|event| matches!(event, ClientEvent::DamageEvent { .. }))
+        .count();
+    assert_eq!(hurt, 1);
 }
