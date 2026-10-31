@@ -118,6 +118,12 @@ macro_rules! item_kinds {
                 }
             }
 
+            pub const fn trim_material(self) -> Option<&'static str> {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::TRIM_MATERIAL,)*
+                }
+            }
+
             pub const fn crafts(self) -> &'static [$crate::Craft] {
                 match self {
                     $(Self::$kind => <$crate::items::$kind as $crate::Item>::CRAFTS,)*

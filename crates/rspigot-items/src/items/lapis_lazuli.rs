@@ -24,6 +24,7 @@ impl Item for LapisLazuli {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:lapis");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
             ingredients: &[ItemSet::Direct(&[ItemId(233)])],

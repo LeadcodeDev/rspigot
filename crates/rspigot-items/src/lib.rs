@@ -413,6 +413,7 @@ pub trait Item: 'static {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier];
     const CRAFTING_REMAINDER: Option<ItemId> = None;
     const COOKING_FUEL: Option<Fuel> = None;
+    const TRIM_MATERIAL: Option<&'static str> = None;
     const CRAFTS: &'static [Craft] = &[];
     type Behavior: ItemBehavior;
 }

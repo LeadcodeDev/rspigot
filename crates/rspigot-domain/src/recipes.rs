@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use rspigot_items::{CookingKind, Craft, ItemKind, ItemSet};
 
@@ -21,7 +22,19 @@ fn cooking_key(kind: CookingKind) -> &'static str {
     }
 }
 
-pub fn property_sets() -> Vec<(&'static str, Vec<u16>)> {
+pub fn property_sets() -> &'static [(&'static str, Vec<u16>)] {
+    static SETS: OnceLock<Vec<(&'static str, Vec<u16>)>> = OnceLock::new();
+    SETS.get_or_init(build)
+}
+
+pub fn contains(key: &str, item: u16) -> bool {
+    property_sets()
+        .iter()
+        .find(|(candidate, _)| *candidate == key)
+        .is_some_and(|(_, items)| items.binary_search(&item).is_ok())
+}
+
+fn build() -> Vec<(&'static str, Vec<u16>)> {
     let mut sets: BTreeMap<&'static str, BTreeSet<u16>> = [
         SMITHING_BASE,
         SMITHING_TEMPLATE,
@@ -77,17 +90,20 @@ mod tests {
 
     fn set(key: &str) -> Vec<u16> {
         property_sets()
-            .into_iter()
+            .iter()
             .find(|(candidate, _)| *candidate == key)
-            .map(|(_, items)| items)
+            .map(|(_, items)| items.clone())
             .unwrap()
     }
 
     #[test]
     fn every_set_the_client_asks_for_is_present() {
-        let keys: Vec<_> = property_sets().into_iter().map(|(key, _)| key).collect();
+        let keys: Vec<_> = property_sets().iter().map(|(key, _)| *key).collect();
         assert_eq!(keys.len(), 9);
         assert!(keys.contains(&BREWING_INPUT) && keys.contains(&BREWING_REAGENT));
+        assert!(contains(SMITHING_ADDITION, ItemKind::Diamond.id().0));
+        assert!(!contains(SMITHING_ADDITION, ItemKind::Stick.id().0));
+        assert!(!contains("minecraft:nope", ItemKind::Diamond.id().0));
     }
 
     #[test]
