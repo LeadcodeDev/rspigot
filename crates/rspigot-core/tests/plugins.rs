@@ -17,7 +17,7 @@ use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
-use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Vec3};
+use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Rotation, Vec3};
 use rspigot_nbt::Compound;
 
 #[derive(Clone, Default)]
@@ -178,6 +178,16 @@ fn observe(id: u32, event: EventKind) -> HandlerSpec {
         id,
         event,
         access: Access::Observe,
+        priority: Priority::Normal,
+        ignore_cancelled: false,
+    }
+}
+
+fn decide(id: u32) -> HandlerSpec {
+    HandlerSpec {
+        id,
+        event: EventKind::PlayerMove,
+        access: Access::Decide,
         priority: Priority::Normal,
         ignore_cancelled: false,
     }
@@ -543,4 +553,561 @@ fn messages_from_an_unknown_connection_are_ignored() {
     assert!(alice.link.take().is_empty());
     assert_eq!(heard(&old), [ToPlugin::Replaced]);
     assert!(heard(&new).is_empty());
+}
+
+const SPAWN: Vec3 = Vec3::new(0.5, 64.0, 0.5);
+
+fn east(blocks: u32) -> Vec3 {
+    Vec3::new(0.5 + f64::from(blocks), 64.0, 0.5)
+}
+
+fn send_move(
+    server: &mut Server<Link>,
+    player: &Player,
+    position: Option<Vec3>,
+    rotation: Option<Rotation>,
+) {
+    server.handle(Inbound::Input {
+        player: player.id,
+        input: PlayerInput::Move {
+            position,
+            rotation,
+            on_ground: true,
+        },
+    });
+    server.deliver();
+}
+
+fn step(server: &mut Server<Link>, player: &Player, to: Vec3) {
+    send_move(server, player, Some(to), None);
+}
+
+fn answer(server: &mut Server<Link>, connection: u64, event: u64, cancel: bool) {
+    order(server, connection, FromPlugin::Decision { event, cancel });
+}
+
+fn ticks(server: &mut Server<Link>, count: usize) {
+    for _ in 0..count {
+        server.tick();
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Heard {
+    id: u64,
+    handlers: Vec<u32>,
+    phase: Phase,
+    cancelled: bool,
+    from: Vec3,
+    to: Vec3,
+}
+
+fn moves(mailbox: &Mailbox) -> Vec<Heard> {
+    mailbox
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            ToPlugin::Event {
+                id,
+                handlers,
+                phase,
+                cancelled,
+                payload: EventPayload::PlayerMove { from, to, .. },
+            } => Some(Heard {
+                id,
+                handlers,
+                phase,
+                cancelled,
+                from,
+                to,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+fn heard_move(
+    id: u64,
+    handlers: &[u32],
+    phase: Phase,
+    cancelled: bool,
+    from: Vec3,
+    to: Vec3,
+) -> Heard {
+    Heard {
+        id,
+        handlers: handlers.to_vec(),
+        phase,
+        cancelled,
+        from,
+        to,
+    }
+}
+
+fn warnings(mailbox: &Mailbox) -> Vec<String> {
+    mailbox
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            ToPlugin::Warning(text) => Some(text),
+            _ => None,
+        })
+        .collect()
+}
+
+fn too_late(event: u64) -> String {
+    format!("cancel of event {event} arrived too late")
+}
+
+fn teleported_to(player: &Player) -> Vec<Vec3> {
+    player
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::Teleport { position, .. } => Some(position),
+            _ => None,
+        })
+        .collect()
+}
+
+fn confirm_teleports(server: &mut Server<Link>, player: &Player) -> Vec<(Vec3, Rotation)> {
+    let mut confirmed = Vec::new();
+    for event in player.link.take() {
+        if let ClientEvent::Teleport {
+            id,
+            position,
+            rotation,
+        } = event
+        {
+            server.handle(Inbound::Input {
+                player: player.id,
+                input: PlayerInput::TeleportConfirm(id),
+            });
+            confirmed.push((position, rotation));
+        }
+    }
+    confirmed
+}
+
+fn asked(mailbox: &Mailbox) -> Vec<u64> {
+    moves(mailbox)
+        .into_iter()
+        .filter(|heard| heard.phase == Phase::Decide)
+        .map(|heard| heard.id)
+        .collect()
+}
+
+#[test]
+fn a_move_without_deciders_applies_at_once() {
+    let mut server = server(PluginSettings::default());
+    let joins = connect_with(
+        &mut server,
+        1,
+        "joins",
+        vec![observe(1, EventKind::PlayerJoin)],
+    );
+    let alice = join(&mut server, "Alice");
+    let Some(ToPlugin::Event { id: joined, .. }) = heard(&joins).pop() else {
+        panic!("expected the join of Alice");
+    };
+    step(&mut server, &alice, east(1));
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    step(&mut server, &alice, east(2));
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    assert_eq!(
+        moves(&watch),
+        [heard_move(
+            joined + 1,
+            &[1],
+            Phase::Settled,
+            false,
+            east(1),
+            east(2)
+        )]
+    );
+    let Some(ToPlugin::Event {
+        payload: EventPayload::PlayerMove { player, .. },
+        ..
+    }) = heard(&watch).pop()
+    else {
+        panic!("expected a move event");
+    };
+    assert_eq!(player.id, alice.id);
+    assert_eq!(player.position, east(1));
+}
+
+#[test]
+fn a_cancelled_move_sends_the_player_back() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let judge = connect_with(&mut server, 2, "judge", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let heard = moves(&guard);
+    assert_eq!(heard.len(), 1);
+    assert_eq!(
+        heard[0],
+        heard_move(heard[0].id, &[1], Phase::Decide, false, SPAWN, east(1))
+    );
+    answer(&mut server, 1, heard[0].id, true);
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    answer(&mut server, 2, heard[0].id, true);
+    ticks(&mut server, 2);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert!(teleported_to(&alice).is_empty());
+    assert!(warnings(&guard).is_empty());
+    assert!(warnings(&judge).is_empty());
+}
+
+#[test]
+fn a_move_waits_for_its_deciders_then_applies() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let judge = connect_with(&mut server, 2, "judge", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    let event = asked(&judge)[0];
+    answer(&mut server, 1, event, false);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    answer(&mut server, 2, event, false);
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    assert!(teleported_to(&alice).is_empty());
+}
+
+#[test]
+fn a_silent_decider_lets_the_move_through_at_the_deadline() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    ticks(&mut server, 1);
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    assert!(teleported_to(&alice).is_empty());
+}
+
+#[test]
+fn a_late_cancel_rolls_the_move_back_and_tells_observers() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    ticks(&mut server, 1);
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    let event = asked(&guard)[0];
+    answer(&mut server, 1, event, true);
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(event, &[1], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(event, &[1], Phase::RolledBack, true, SPAWN, east(1)),
+        ]
+    );
+    assert!(warnings(&guard).is_empty());
+}
+
+#[test]
+fn a_cancel_after_the_window_only_warns() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    ticks(&mut server, 21);
+    let event = asked(&guard)[0];
+    answer(&mut server, 1, event, true);
+    assert_eq!(warnings(&guard), [too_late(event)]);
+    assert!(teleported_to(&alice).is_empty());
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+}
+
+#[test]
+fn ignore_cancelled_observers_only_hear_moves_that_happened() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let mut real_moves = observe(1, EventKind::PlayerMove);
+    real_moves.ignore_cancelled = true;
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![real_moves, observe(2, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+
+    step(&mut server, &alice, east(1));
+    let cancelled = asked(&guard)[0];
+    answer(&mut server, 1, cancelled, true);
+    assert_eq!(confirm_teleports(&mut server, &alice).len(), 1);
+
+    step(&mut server, &alice, east(1));
+    let allowed = asked(&guard)[1];
+    answer(&mut server, 1, allowed, false);
+
+    step(&mut server, &alice, east(2));
+    let rolled_back = asked(&guard)[2];
+    ticks(&mut server, 1);
+    answer(&mut server, 1, rolled_back, true);
+
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(cancelled, &[2], Phase::Settled, true, SPAWN, east(1)),
+            heard_move(allowed, &[1, 2], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(
+                rolled_back,
+                &[1, 2],
+                Phase::Settled,
+                false,
+                east(1),
+                east(2)
+            ),
+            heard_move(
+                rolled_back,
+                &[1, 2],
+                Phase::RolledBack,
+                true,
+                east(1),
+                east(2)
+            ),
+        ]
+    );
+}
+
+#[test]
+fn queued_moves_settle_in_order_at_the_deadline() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    for blocks in 1..=5 {
+        step(&mut server, &alice, east(blocks));
+    }
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    let questions = moves(&guard);
+    assert_eq!(questions.len(), 5);
+    for (blocks, question) in (1..=5).zip(&questions) {
+        assert_eq!(
+            *question,
+            heard_move(
+                question.id,
+                &[1],
+                Phase::Decide,
+                false,
+                east(blocks - 1),
+                east(blocks)
+            )
+        );
+    }
+    assert!(moves(&watch).is_empty());
+
+    ticks(&mut server, 1);
+    assert_eq!(server.player_location(alice.id), Some(east(5)));
+    assert!(teleported_to(&alice).is_empty());
+    let settled: Vec<Heard> = (1..=5)
+        .zip(&questions)
+        .map(|(blocks, question)| {
+            heard_move(
+                question.id,
+                &[1],
+                Phase::Settled,
+                false,
+                east(blocks - 1),
+                east(blocks),
+            )
+        })
+        .collect();
+    assert_eq!(moves(&watch), settled);
+}
+
+#[test]
+fn a_rollback_also_undoes_the_moves_after_it() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    for blocks in 1..=3 {
+        step(&mut server, &alice, east(blocks));
+        ticks(&mut server, 1);
+    }
+    assert_eq!(server.player_location(alice.id), Some(east(3)));
+    let events = asked(&guard);
+    assert_eq!(events.len(), 3);
+
+    answer(&mut server, 1, events[0], true);
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+
+    answer(&mut server, 1, events[2], true);
+    assert_eq!(warnings(&guard), [too_late(events[2])]);
+    assert!(teleported_to(&alice).is_empty());
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+}
+
+#[test]
+fn standing_still_and_turning_are_not_events() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+
+    send_move(&mut server, &alice, Some(SPAWN), None);
+    let turned = Rotation::new(90.0, 10.0);
+    send_move(&mut server, &alice, None, Some(turned));
+    assert!(heard(&guard).is_empty());
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+
+    send_move(&mut server, &alice, Some(Vec3::new(500.5, 64.0, 0.5)), None);
+    assert!(heard(&guard).is_empty());
+    assert_eq!(confirm_teleports(&mut server, &alice), [(SPAWN, turned)]);
+
+    step(&mut server, &alice, east(1));
+    step(&mut server, &alice, east(1));
+    assert_eq!(asked(&guard).len(), 1);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+}
+
+#[test]
+fn a_plugin_leaving_releases_the_moves_waiting_on_it() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let judge = connect_with(&mut server, 2, "judge", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    step(&mut server, &alice, east(2));
+    for event in asked(&judge) {
+        answer(&mut server, 2, event, false);
+    }
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    server.handle(Inbound::PluginDisconnected { connection: 1 });
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    assert!(teleported_to(&alice).is_empty());
+}
+
+#[test]
+fn a_player_leaving_drops_their_pending_moves() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    step(&mut server, &alice, east(1));
+    ticks(&mut server, 1);
+    step(&mut server, &alice, east(2));
+    server.handle(Inbound::Leave { player: alice.id });
+    ticks(&mut server, 2);
+    assert_eq!(server.players_online(), 0);
+    let events = asked(&guard);
+    assert_eq!(events.len(), 2);
+    for event in &events {
+        answer(&mut server, 1, *event, true);
+    }
+    assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
+    assert_eq!(
+        moves(&watch),
+        [heard_move(
+            events[0],
+            &[1],
+            Phase::Settled,
+            false,
+            SPAWN,
+            east(1)
+        )]
+    );
+}
+
+#[test]
+fn a_decision_from_a_replaced_connection_is_ignored() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let old = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    ticks(&mut server, 1);
+    step(&mut server, &alice, east(2));
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+
+    let new = connect_with(
+        &mut server,
+        2,
+        "guard",
+        vec![decide(1), observe(2, EventKind::PlayerMove)],
+    );
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    let released = asked(&old)[1];
+    assert_eq!(new.received()[0], ToPlugin::Accepted);
+    assert_eq!(
+        moves(&new),
+        [heard_move(
+            released,
+            &[2],
+            Phase::Settled,
+            false,
+            east(1),
+            east(2)
+        )]
+    );
+
+    for event in asked(&old) {
+        answer(&mut server, 1, event, true);
+    }
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    assert!(teleported_to(&alice).is_empty());
+    assert!(warnings(&old).is_empty());
+    assert_eq!(old.received().last(), Some(&ToPlugin::Replaced));
+    assert_eq!(heard(&new).len(), 1);
+}
+
+#[test]
+fn a_server_teleport_forgets_the_moves_in_flight() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    step(&mut server, &alice, east(1));
+    ticks(&mut server, 1);
+    step(&mut server, &alice, east(2));
+    let far = Vec3::new(40.5, 64.0, 0.5);
+    server.handle(Inbound::Console("tp Alice 40.5 64 0.5".to_owned()));
+    ticks(&mut server, 2);
+    assert_eq!(server.player_location(alice.id), Some(far));
+    let events = asked(&guard);
+    for event in &events {
+        answer(&mut server, 1, *event, true);
+    }
+    assert_eq!(server.player_location(alice.id), Some(far));
+    assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
 }

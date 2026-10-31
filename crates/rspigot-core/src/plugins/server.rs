@@ -1,11 +1,13 @@
 use rspigot_domain::player::PlayerId;
 use rspigot_domain::text::Component;
+use rspigot_domain::{Rotation, Vec3};
 
 use crate::events::ClientEvent;
 use crate::player::Player;
+use crate::plugins::decisions::{PendingMove, SettledMove, Verdict};
 use crate::plugins::{
-    Access, Answer, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerSnapshot, PlayerState,
-    ToPlugin,
+    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerSnapshot,
+    PlayerState, ToPlugin,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -48,7 +50,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         match message {
-            FromPlugin::Decision { .. } => {}
+            FromPlugin::Decision { event, cancel } => self.take_decision(connection, event, cancel),
             FromPlugin::SendMessage { player, text } => self.push(
                 Audience::One(player),
                 ClientEvent::system(Component::text(text)),
@@ -66,6 +68,159 @@ impl<L: ClientLink> Server<L> {
                     .send(connection, ToPlugin::Answer { request, answer });
             }
         }
+    }
+
+    pub(crate) fn decide_move(
+        &mut self,
+        id: PlayerId,
+        from: Vec3,
+        to: Vec3,
+        rotation: Option<Rotation>,
+        on_ground: bool,
+    ) {
+        let deciders =
+            self.plugins
+                .listeners(EventKind::PlayerMove, Access::Decide, &self.config.plugins);
+        if deciders.is_empty() {
+            let payload = if self.plugins.listens(EventKind::PlayerMove, Access::Observe) {
+                self.move_payload(id, from, to)
+            } else {
+                None
+            };
+            self.apply_move(id, Some(to), rotation, on_ground);
+            if let Some(payload) = payload {
+                let event = self.next_event_id();
+                self.notify_plugins(event, &payload, false, Phase::Settled);
+            }
+            return;
+        }
+        let Some(payload) = self.move_payload(id, from, to) else {
+            return;
+        };
+        let event = self.next_event_id();
+        let asked = recipients(deciders, false, Phase::Decide);
+        let waiting = asked.iter().map(|(connection, _)| *connection).collect();
+        for (connection, handlers) in asked {
+            self.plugins.send(
+                connection,
+                ToPlugin::Event {
+                    id: event,
+                    handlers,
+                    phase: Phase::Decide,
+                    cancelled: false,
+                    payload: payload.clone(),
+                },
+            );
+        }
+        let deadline = self.current_tick() + self.config.plugins.decision_ticks;
+        self.decisions.queue(
+            event,
+            PendingMove {
+                player: id,
+                from,
+                to,
+                rotation,
+                on_ground,
+                payload,
+                waiting,
+                cancelled: false,
+                deadline,
+            },
+        );
+    }
+
+    pub(crate) fn tick_plugins(&mut self) {
+        self.decisions.expire(self.current_tick());
+        self.settle_moves();
+    }
+
+    pub(crate) fn plugin_disconnected(&mut self, connection: u64) {
+        self.plugins.disconnect(connection);
+        self.release_departed_plugins();
+    }
+
+    pub(crate) fn release_departed_plugins(&mut self) {
+        let plugins = &self.plugins;
+        self.decisions
+            .release(|connection| plugins.is_current(connection));
+        self.settle_moves();
+    }
+
+    fn take_decision(&mut self, connection: u64, event: u64, cancel: bool) {
+        match self
+            .decisions
+            .decide(connection, event, cancel, self.current_tick())
+        {
+            Verdict::Counted => self.settle_moves(),
+            Verdict::Ignored => {}
+            Verdict::RolledBack(rolled) => {
+                self.send_back(rolled.player, rolled.from);
+                self.notify_plugins(event, &rolled.payload, true, Phase::RolledBack);
+            }
+            Verdict::TooLate => {
+                if self.plugins.issued(event) {
+                    self.plugins.send(
+                        connection,
+                        ToPlugin::Warning(format!("cancel of event {event} arrived too late")),
+                    );
+                }
+            }
+        }
+    }
+
+    fn settle_moves(&mut self) {
+        let tick = self.current_tick();
+        while let Some((event, settled)) = self.decisions.next_settled(tick) {
+            let applied = !settled.cancelled;
+            if applied {
+                self.apply_move(
+                    settled.player,
+                    Some(settled.to),
+                    settled.rotation,
+                    settled.on_ground,
+                );
+            } else {
+                self.decisions.drop_pending(settled.player);
+                self.send_back(settled.player, settled.from);
+            }
+            self.notify_plugins(event, &settled.payload, !applied, Phase::Settled);
+            if !settled.waiting.is_empty() {
+                self.decisions.remember(
+                    event,
+                    SettledMove {
+                        player: settled.player,
+                        from: settled.from,
+                        payload: settled.payload,
+                        silent: settled.waiting,
+                        applied,
+                        until: tick + self.config.plugins.late_cancel_ticks,
+                    },
+                );
+            }
+        }
+    }
+
+    fn send_back(&mut self, id: PlayerId, position: Vec3) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        if player.position != position {
+            self.teleport_player(id, position);
+            return;
+        }
+        let teleport = player.next_teleport_id();
+        player.link.send(ClientEvent::Teleport {
+            id: teleport,
+            position,
+            rotation: player.rotation,
+        });
+    }
+
+    fn move_payload(&self, id: PlayerId, from: Vec3, to: Vec3) -> Option<EventPayload> {
+        self.snapshot_of(id).map(|mut player| {
+            player.position = from;
+            EventPayload::PlayerMove { player, from, to }
+        })
     }
 
     pub(crate) fn tell_plugins_of_join(&mut self, id: PlayerId) {

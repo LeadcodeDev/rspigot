@@ -24,7 +24,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::plugins::{PluginIntro, Registry, ToPlugin};
+use crate::plugins::{Decisions, PluginIntro, Registry, ToPlugin};
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
@@ -101,6 +101,7 @@ pub struct Server<L> {
     pub(crate) rng: StdRng,
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
+    pub(crate) decisions: Decisions,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -163,6 +164,7 @@ impl<L: ClientLink> Server<L> {
             rng: StdRng::from_os_rng(),
             spawning,
             plugins: Registry::default(),
+            decisions: Decisions::default(),
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -263,9 +265,7 @@ impl<L: ClientLink> Server<L> {
                 connection,
                 message,
             } => self.plugin_message(connection, message),
-            Inbound::PluginDisconnected { connection } => {
-                self.plugins.disconnect(connection);
-            }
+            Inbound::PluginDisconnected { connection } => self.plugin_disconnected(connection),
             Inbound::Shutdown => self.running = false,
         }
     }
@@ -282,6 +282,7 @@ impl<L: ClientLink> Server<L> {
             old.send(ToPlugin::Replaced);
         }
         self.plugins.send(connection, ToPlugin::Accepted);
+        self.release_departed_plugins();
     }
 
     pub(crate) fn current_tick(&self) -> u64 {
@@ -577,6 +578,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn remove_player(&mut self, id: PlayerId, announce: bool) {
         self.close_open_menu(id, false);
         self.tell_plugins_of_leave(id);
+        self.decisions.forget(id);
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };
@@ -642,6 +644,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_furnaces();
         self.tick_campfires();
         self.tick_inventories();
+        self.tick_plugins();
         self.tick_open_menus();
         self.tick_falling_blocks();
         self.update_tracking();
