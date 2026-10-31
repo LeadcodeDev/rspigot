@@ -3,6 +3,7 @@ mod console;
 mod files;
 mod logging;
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -124,6 +125,8 @@ fn main() -> anyhow::Result<()> {
     let status = StatusBoard::new(0);
     let game_config = files.game_config(admin);
     let network_config = files.network_config(files::read_favicon(&args.root))?;
+    let plugin_host = files.plugin_host_config(std::env::var("RSPIGOT_PLUGIN_TOKEN").ok())?;
+    plugin_host.validate()?;
     let verifier = Arc::new(MojangSessionVerifier::new(
         network_config.prevent_proxy_connections,
     ));
@@ -146,14 +149,27 @@ fn main() -> anyhow::Result<()> {
         .thread_name("netty-worker")
         .enable_all()
         .build()?;
-    let (stop_network, network_stopped) = tokio::sync::watch::channel(false);
+    let plugin_address = SocketAddr::from((plugin_host.host, plugin_host.port));
+    let plugin_listener = runtime
+        .block_on(tokio::net::TcpListener::bind(plugin_address))
+        .with_context(|| format!("binding the plugin port {plugin_address}"))?;
+    let (stop, stopped) = tokio::sync::watch::channel(false);
     let network = runtime.spawn(rspigot_network::run(
         network_config,
         verifier,
         status,
         inbound.clone(),
-        network_stopped,
+        stopped.clone(),
     ));
+    let plugins = runtime.spawn({
+        let serve =
+            rspigot_plugins::serve(plugin_listener, plugin_host.token, inbound.clone(), stopped);
+        async move {
+            if let Err(error) = serve.await {
+                tracing::error!("The plugin host stopped: {error}");
+            }
+        }
+    });
     let signal_inbox = inbound.clone();
     runtime.spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
@@ -166,9 +182,13 @@ fn main() -> anyhow::Result<()> {
         started.elapsed().as_secs_f64()
     );
     let level = server.run(&game_inbox);
-    let _ = stop_network.send(true);
+    let _ = stop.send(true);
     runtime.block_on(async {
-        let _ = tokio::time::timeout(Duration::from_secs(5), network).await;
+        let adapters = async {
+            let _ = network.await;
+            let _ = plugins.await;
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(5), adapters).await;
     });
     rspigot_anvil::write_level_data(&world_root, &level)?;
     tracing::info!("Server stopped");

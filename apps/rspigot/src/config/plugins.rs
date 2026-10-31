@@ -1,0 +1,168 @@
+use std::net::IpAddr;
+
+use anyhow::Context;
+use rspigot_core::config::{PluginSettings, PriorityOverride};
+use rspigot_core::plugins::{EventKind, Priority};
+use rspigot_plugins::PluginHostConfig;
+
+use super::yaml::YamlConfig;
+
+pub const PLUGINS_DEFAULTS: &str = r#"host: 127.0.0.1
+port: 25580
+token: ''
+decision-ticks: 1
+late-cancel-ticks: 20
+order: []
+priorities: {}
+"#;
+
+pub fn settings(file: &YamlConfig) -> PluginSettings {
+    PluginSettings {
+        decision_ticks: file.int("decision-ticks", 1).clamp(1, 20) as u64,
+        late_cancel_ticks: file.int("late-cancel-ticks", 20).clamp(0, 100) as u64,
+        order: file.strings("order"),
+        overrides: file
+            .entries("priorities")
+            .iter()
+            .filter_map(|(key, value)| priority_override(key, value))
+            .collect(),
+    }
+}
+
+pub fn host_config(
+    file: &YamlConfig,
+    environment_token: Option<String>,
+) -> anyhow::Result<PluginHostConfig> {
+    let host = file.string("host", "127.0.0.1");
+    let token = environment_token
+        .filter(|token| !token.is_empty())
+        .or_else(|| Some(file.string("token", "")).filter(|token| !token.is_empty()));
+    Ok(PluginHostConfig {
+        host: host
+            .parse::<IpAddr>()
+            .with_context(|| format!("plugins.yml: host `{host}` is not an IP address"))?,
+        port: file.int("port", 25580).clamp(1, 65535) as u16,
+        token,
+    })
+}
+
+fn priority_override(key: &str, value: &str) -> Option<PriorityOverride> {
+    let Some(priority) = priority(value) else {
+        tracing::warn!("plugins.yml: `{key}` has an unknown priority `{value}`");
+        return None;
+    };
+    let (plugin, event) = match key.rsplit_once('.') {
+        None => (key, None),
+        Some((plugin, event)) => match event_kind(event) {
+            Some(event) => (plugin, Some(event)),
+            None => {
+                tracing::warn!("plugins.yml: `{key}` names an unknown event `{event}`");
+                return None;
+            }
+        },
+    };
+    Some(PriorityOverride {
+        plugin: plugin.to_owned(),
+        event,
+        priority,
+    })
+}
+
+fn priority(name: &str) -> Option<Priority> {
+    Some(match name {
+        "lowest" => Priority::Lowest,
+        "low" => Priority::Low,
+        "normal" => Priority::Normal,
+        "high" => Priority::High,
+        "highest" => Priority::Highest,
+        _ => return None,
+    })
+}
+
+fn event_kind(name: &str) -> Option<EventKind> {
+    Some(match name {
+        "player_join" => EventKind::PlayerJoin,
+        "player_leave" => EventKind::PlayerLeave,
+        "player_move" => EventKind::PlayerMove,
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(text: &str) -> YamlConfig {
+        YamlConfig::from_str(text).unwrap()
+    }
+
+    fn token(config: &YamlConfig, environment: Option<&str>) -> Option<String> {
+        host_config(config, environment.map(str::to_owned))
+            .unwrap()
+            .token
+    }
+
+    #[test]
+    fn defaults_listen_on_loopback_25580() {
+        let defaults = file(PLUGINS_DEFAULTS);
+        let host = host_config(&defaults, None).unwrap();
+        assert_eq!(
+            host,
+            PluginHostConfig {
+                host: IpAddr::from([127, 0, 0, 1]),
+                port: 25580,
+                token: None,
+            }
+        );
+        assert!(host.validate().is_ok());
+        assert_eq!(settings(&defaults), PluginSettings::default());
+    }
+
+    #[test]
+    fn priorities_parse_per_plugin_and_per_event() {
+        let config = file(
+            "order: [guard, welcome]\npriorities:\n  welcome: high\n  welcome.player_move: lowest\n  guard.player_join: highest\n  guard.player_leave: low\n  guard.player_fly: high\n  ghost: urgent\n",
+        );
+        let settings = settings(&config);
+        assert_eq!(settings.order, vec!["guard", "welcome"]);
+        let rule = |plugin: &str, event, priority| PriorityOverride {
+            plugin: plugin.to_owned(),
+            event,
+            priority,
+        };
+        assert_eq!(
+            settings.overrides,
+            vec![
+                rule("welcome", None, Priority::High),
+                rule("welcome", Some(EventKind::PlayerMove), Priority::Lowest),
+                rule("guard", Some(EventKind::PlayerJoin), Priority::Highest),
+                rule("guard", Some(EventKind::PlayerLeave), Priority::Low),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_environment_token_wins_over_the_file() {
+        let config = file("host: 0.0.0.0\ntoken: from-file\n");
+        assert_eq!(
+            token(&config, Some("from-env")).as_deref(),
+            Some("from-env")
+        );
+        assert_eq!(token(&config, Some("")).as_deref(), Some("from-file"));
+        assert_eq!(token(&config, None).as_deref(), Some("from-file"));
+        let tokenless = file(PLUGINS_DEFAULTS);
+        assert_eq!(
+            token(&tokenless, Some("from-env")).as_deref(),
+            Some("from-env")
+        );
+        assert_eq!(token(&tokenless, Some("")), None);
+    }
+
+    #[test]
+    fn decision_windows_are_clamped() {
+        let low = settings(&file("decision-ticks: 0\nlate-cancel-ticks: -5\n"));
+        assert_eq!((low.decision_ticks, low.late_cancel_ticks), (1, 0));
+        let high = settings(&file("decision-ticks: 400\nlate-cancel-ticks: 1000\n"));
+        assert_eq!((high.decision_ticks, high.late_cancel_ticks), (20, 100));
+    }
+}

@@ -1421,6 +1421,7 @@ dependencies = [
  "rspigot-data",
  "rspigot-domain",
  "rspigot-network",
+ "rspigot-plugins",
  "rspigot-worldgen",
  "serde_json",
  "serde_yaml_ng",
@@ -1582,6 +1583,23 @@ dependencies = [
  "prost",
  "tonic",
  "tonic-prost",
+]
+
+[[package]]
+name = "rspigot-plugins"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "rspigot-core",
+ "rspigot-domain",
+ "rspigot-plugin-protocol",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-health",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1996,6 +2014,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2070,6 +2089,19 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "tonic-health"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc97d645691d64d96db1afe386d0d2918ac84ab56e2c91e153f22f6349a378cd"
+dependencies = [
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
 ]
 
 [[package]]
