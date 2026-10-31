@@ -31,7 +31,11 @@ impl Item for ChiseledSulfur {
             cells: &[Some(ItemSet::Direct(&[ItemId(28)])), Some(ItemSet::Direct(&[ItemId(28)]))],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(26)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:chiseled_sulfur_from_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(26)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

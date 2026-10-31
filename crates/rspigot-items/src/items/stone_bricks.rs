@@ -36,7 +36,11 @@ impl Item for StoneBricks {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:stone_bricks_from_stone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

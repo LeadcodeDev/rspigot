@@ -487,6 +487,7 @@ impl<L: ClientLink> Server<L> {
         });
         link.send(ClientEvent::Abilities(player.abilities()));
         link.send(ClientEvent::HeldSlot(player.inventory.selected_hotbar));
+        link.send(ClientEvent::RecipeSync);
         link.send(ClientEvent::OperatorLevel {
             entity: player.entity_id,
             level: if player.operator { 4 } else { 0 },

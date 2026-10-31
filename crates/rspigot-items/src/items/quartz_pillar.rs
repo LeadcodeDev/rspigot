@@ -31,7 +31,11 @@ impl Item for QuartzPillar {
             cells: &[Some(ItemSet::Direct(&[ItemId(557)])), Some(ItemSet::Direct(&[ItemId(557)]))],
             product: Product::of(2),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(557)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:quartz_pillar_from_quartz_block_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(557)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

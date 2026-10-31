@@ -38,7 +38,11 @@ impl Item for GraniteWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(2)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:granite_wall_from_granite_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(2)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

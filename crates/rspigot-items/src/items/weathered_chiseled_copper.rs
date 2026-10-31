@@ -31,8 +31,16 @@ impl Item for WeatheredChiseledCopper {
             cells: &[Some(ItemSet::Direct(&[ItemId(157)])), Some(ItemSet::Direct(&[ItemId(157)]))],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(122)]), count: 4 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(141)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:weathered_chiseled_copper_from_weathered_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(122)]),
+            count: 4,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:weathered_chiseled_copper_from_weathered_cut_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(141)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

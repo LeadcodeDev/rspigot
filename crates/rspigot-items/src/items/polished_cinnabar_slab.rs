@@ -35,8 +35,16 @@ impl Item for PolishedCinnabarSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(40)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(44)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:polished_cinnabar_slab_from_cinnabar_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(40)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:polished_cinnabar_slab_from_polished_cinnabar_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(44)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

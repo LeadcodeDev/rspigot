@@ -31,8 +31,16 @@ impl Item for OxidizedChiseledCopper {
             cells: &[Some(ItemSet::Direct(&[ItemId(158)])), Some(ItemSet::Direct(&[ItemId(158)]))],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(123)]), count: 4 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(142)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_chiseled_copper_from_oxidized_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(123)]),
+            count: 4,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_chiseled_copper_from_oxidized_cut_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(142)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

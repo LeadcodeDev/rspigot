@@ -41,7 +41,11 @@ impl Item for SulfurStairs {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(26)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:sulfur_stairs_from_sulfur_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(26)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

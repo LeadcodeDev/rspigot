@@ -31,8 +31,16 @@ impl Item for ChiseledStoneBricks {
             cells: &[Some(ItemSet::Direct(&[ItemId(362)])), Some(ItemSet::Direct(&[ItemId(362)]))],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(449)]), count: 1 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:chiseled_stone_bricks_from_stone_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(449)]),
+            count: 1,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:chiseled_stone_bricks_from_stone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

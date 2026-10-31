@@ -39,8 +39,16 @@ impl Item for WaxedCutCopperSlab {
             ingredients: &[ItemSet::Direct(&[ItemId(155)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(124)]), count: 8 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(143)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_cut_copper_slab_from_waxed_copper_block_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(124)]),
+            count: 8,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_cut_copper_slab_from_waxed_cut_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(143)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

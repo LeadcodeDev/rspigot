@@ -41,7 +41,11 @@ impl Item for OxidizedCopperGrate {
             ],
             product: Product::of(4),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(123)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_copper_grate_from_oxidized_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(123)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

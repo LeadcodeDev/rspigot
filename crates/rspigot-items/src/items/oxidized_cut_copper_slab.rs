@@ -35,8 +35,16 @@ impl Item for OxidizedCutCopperSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(123)]), count: 8 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(142)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_cut_copper_slab_from_oxidized_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(123)]),
+            count: 8,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:oxidized_cut_copper_slab_from_oxidized_cut_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(142)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

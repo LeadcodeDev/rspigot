@@ -324,6 +324,7 @@ pub enum Craft {
         cooking_time: u16,
     },
     Stonecutting {
+        id: &'static str,
         ingredient: ItemSet,
         count: u8,
     },

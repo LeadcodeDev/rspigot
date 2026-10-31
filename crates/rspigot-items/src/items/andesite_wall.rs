@@ -38,7 +38,11 @@ impl Item for AndesiteWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(6)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:andesite_wall_from_andesite_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(6)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

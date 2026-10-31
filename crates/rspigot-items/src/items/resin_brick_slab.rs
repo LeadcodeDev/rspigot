@@ -35,7 +35,11 @@ impl Item for ResinBrickSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(488)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:resin_brick_slab_from_resin_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(488)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

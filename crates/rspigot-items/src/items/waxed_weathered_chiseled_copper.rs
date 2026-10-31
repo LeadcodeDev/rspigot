@@ -35,8 +35,16 @@ impl Item for WaxedWeatheredChiseledCopper {
             ingredients: &[ItemSet::Direct(&[ItemId(133)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(126)]), count: 4 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(145)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(126)]),
+            count: 4,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_weathered_chiseled_copper_from_waxed_weathered_cut_copper_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(145)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

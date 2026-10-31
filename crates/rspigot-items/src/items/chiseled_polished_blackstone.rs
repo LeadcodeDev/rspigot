@@ -34,8 +34,16 @@ impl Item for ChiseledPolishedBlackstone {
             ],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1537)]), count: 1 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(1541)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:chiseled_polished_blackstone_from_blackstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1537)]),
+            count: 1,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:chiseled_polished_blackstone_from_polished_blackstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(1541)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

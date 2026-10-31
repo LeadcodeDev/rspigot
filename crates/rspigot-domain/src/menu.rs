@@ -86,6 +86,7 @@ pub enum MenuEffect {
     },
     ResultUpdated,
     FurnaceOutputTaken,
+    StonecutterTaken,
     SlotResent(usize),
     FullResync,
     PlacedBack {

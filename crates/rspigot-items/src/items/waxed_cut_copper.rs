@@ -40,7 +40,11 @@ impl Item for WaxedCutCopper {
             ingredients: &[ItemSet::Direct(&[ItemId(139)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(124)]), count: 4 },
+        Craft::Stonecutting {
+            id: "minecraft:waxed_cut_copper_from_waxed_copper_block_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(124)]),
+            count: 4,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

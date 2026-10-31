@@ -38,9 +38,21 @@ impl Item for CinnabarBrickWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(48)]), count: 1 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(40)]), count: 1 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(44)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:cinnabar_brick_wall_from_cinnabar_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(48)]),
+            count: 1,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:cinnabar_brick_wall_from_cinnabar_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(40)]),
+            count: 1,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:cinnabar_brick_wall_from_polished_cinnabar_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(44)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

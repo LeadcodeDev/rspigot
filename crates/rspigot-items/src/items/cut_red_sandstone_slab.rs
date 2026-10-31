@@ -35,8 +35,16 @@ impl Item for CutRedSandstoneSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(646)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(644)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:cut_red_sandstone_slab_from_cut_red_sandstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(646)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:cut_red_sandstone_slab_from_red_sandstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(644)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

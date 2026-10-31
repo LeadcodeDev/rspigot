@@ -35,8 +35,16 @@ impl Item for EndStoneBrickSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(510)]), count: 2 },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(509)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:end_stone_brick_slab_from_end_stone_bricks_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(510)]),
+            count: 2,
+        },
+        Craft::Stonecutting {
+            id: "minecraft:end_stone_brick_slab_from_end_stone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(509)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

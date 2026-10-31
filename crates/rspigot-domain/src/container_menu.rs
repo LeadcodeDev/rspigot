@@ -1,4 +1,4 @@
-use rspigot_items::{CookingKind, ItemKind};
+use rspigot_items::{CookingKind, ItemId, ItemKind};
 
 use crate::crafting;
 use crate::entity::reward::max_damage;
@@ -10,6 +10,7 @@ use crate::item::{
 use crate::menu::{
     ClickInput, Clicker, HashedSlot, MenuEffect, OUTSIDE, RemoteUpdate, place_back_or_drop,
 };
+use crate::stonecutting;
 
 const CONTAINER_MAX_STACK: u32 = 99;
 const OFFHAND_BUTTON: i32 = 40;
@@ -17,6 +18,8 @@ const MAIN_START: usize = 9;
 const MAIN_SLOTS: usize = 27;
 const HOTBAR_SLOTS: usize = 9;
 const SHULKER_BOXES_TAG: &str = "minecraft:shulker_boxes";
+const CUTTER_INPUT: usize = 0;
+const CUTTER_RESULT: usize = 1;
 const CRAFTING_RESULT: usize = 0;
 const CRAFTING_GRID: std::ops::RangeInclusive<usize> = 1..=9;
 
@@ -137,6 +140,7 @@ impl MenuKind {
             Self::Anvil => vec![(0, inputs, false)],
             Self::Grindstone if filled(0) && filled(1) => swap(),
             Self::Grindstone => vec![(0, 2, false)],
+            Self::Stonecutter if stonecutting::accepts(stack.item) => vec![(0, 1, false)],
             Self::CartographyTable if is_map(stack) => vec![(0, 1, false)],
             Self::CartographyTable if is_map_material(stack) => vec![(1, 2, false)],
             Self::Loom if is_banner(stack) => vec![(0, 1, false)],
@@ -340,6 +344,13 @@ pub struct ContainerMenu {
     quick_craft: QuickCraft,
     remote: Vec<RemoteSlot>,
     remote_carried: RemoteSlot,
+    cutter: Cutter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Cutter {
+    selected: i32,
+    input: Option<ItemId>,
 }
 
 struct Session<'a> {
@@ -347,8 +358,43 @@ struct Session<'a> {
     container: &'a mut Vec<Slot>,
     player: &'a mut Inventory,
     carried: &'a mut Slot,
+    cutter: &'a mut Cutter,
     infinite: bool,
     effects: Vec<MenuEffect>,
+}
+
+fn refresh_cutter(container: &mut [Slot], cutter: &mut Cutter) {
+    let input = container
+        .get(CUTTER_INPUT)
+        .cloned()
+        .flatten()
+        .map(|s| s.item);
+    if input != cutter.input {
+        cutter.input = input;
+        cutter.selected = -1;
+        if let Some(result) = container.get_mut(CUTTER_RESULT) {
+            *result = None;
+        }
+    }
+}
+
+fn set_cutter_result(container: &mut [Slot], cutter: &Cutter) {
+    let cuts = cutter
+        .input
+        .map(stonecutting::recipes_for)
+        .unwrap_or_default();
+    let result = usize::try_from(cutter.selected)
+        .ok()
+        .and_then(|index| cuts.get(index))
+        .and_then(|cut| {
+            Some(ItemStack::new(
+                cut.result.id(),
+                std::num::NonZeroU8::new(cut.count)?,
+            ))
+        });
+    if let Some(slot) = container.get_mut(CUTTER_RESULT) {
+        *slot = result;
+    }
 }
 
 fn quick_craft_place_count(slots: usize, kind: i32, stack: &ItemStack) -> u32 {
@@ -396,6 +442,9 @@ impl Session<'_> {
                 }
                 if self.kind == MenuKind::Crafting && CRAFTING_GRID.contains(&index) {
                     self.refresh_result();
+                }
+                if self.kind == MenuKind::Stonecutter && index == CUTTER_INPUT {
+                    self.refresh_cutter();
                 }
             }
             Some(Cell::Player(index)) => {
@@ -455,7 +504,22 @@ impl Session<'_> {
         }
     }
 
+    fn refresh_cutter(&mut self) {
+        refresh_cutter(self.container, self.cutter);
+    }
+
     fn took(&mut self, slot: usize, taken: &Slot) {
+        if self.kind == MenuKind::Stonecutter && slot == CUTTER_RESULT && taken.is_some() {
+            if let Some(input) = self.container[CUTTER_INPUT].take() {
+                self.container[CUTTER_INPUT] = with_count(&input, u32::from(input.count.get()) - 1);
+            }
+            self.refresh_cutter();
+            set_cutter_result(self.container, self.cutter);
+            if self.effects.last() != Some(&MenuEffect::StonecutterTaken) {
+                self.effects.push(MenuEffect::StonecutterTaken);
+            }
+            return;
+        }
         if self.kind.is_furnace() && slot == furnace::RESULT_SLOT && taken.is_some() {
             if self.effects.last() != Some(&MenuEffect::FurnaceOutputTaken) {
                 self.effects.push(MenuEffect::FurnaceOutputTaken);
@@ -712,7 +776,9 @@ impl Session<'_> {
         if count(&stack) == u32::from(copy.count.get()) {
             return None;
         }
-        if self.kind == MenuKind::Crafting && slot == CRAFTING_RESULT {
+        if (self.kind == MenuKind::Crafting && slot == CRAFTING_RESULT)
+            || (self.kind == MenuKind::Stonecutter && slot == CUTTER_RESULT)
+        {
             self.took(slot, &Some(copy.clone()));
             self.drop_stack(stack, false, true);
         } else if self.kind.is_furnace() && slot == furnace::RESULT_SLOT {
@@ -902,6 +968,7 @@ impl ContainerMenu {
             quick_craft: QuickCraft::default(),
             remote: vec![RemoteSlot::Known(None); kind.slot_count()],
             remote_carried: RemoteSlot::Known(None),
+            cutter: Cutter::default(),
         }
     }
 
@@ -928,6 +995,7 @@ impl ContainerMenu {
             container,
             player,
             carried: &mut self.carried,
+            cutter: &mut self.cutter,
             infinite: clicker.infinite_materials,
             effects: Vec::new(),
         };
@@ -938,6 +1006,34 @@ impl ContainerMenu {
             input,
         );
         session.effects
+    }
+
+    pub fn data(&self) -> Vec<i16> {
+        match self.kind {
+            MenuKind::Stonecutter => vec![i16::try_from(self.cutter.selected).unwrap_or(-1)],
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn press(&mut self, container: &mut Vec<Slot>, button: i32) -> bool {
+        if self.kind != MenuKind::Stonecutter {
+            return false;
+        }
+        container.resize(self.kind.container_size(), None);
+        refresh_cutter(container, &mut self.cutter);
+        let cuts = self
+            .cutter
+            .input
+            .map(stonecutting::recipes_for)
+            .unwrap_or_default();
+        if self.cutter.selected == button {
+            return false;
+        }
+        if usize::try_from(button).is_ok_and(|index| index < cuts.len()) {
+            self.cutter.selected = button;
+            set_cutter_result(container, &self.cutter);
+        }
+        true
     }
 
     pub fn close(&mut self, player: &mut Inventory) -> Vec<MenuEffect> {
@@ -2501,17 +2597,302 @@ mod tests {
     }
 
     #[test]
-    fn the_stonecutter_input_takes_any_item_and_shift_click_swaps_main_and_hotbar() {
+    fn the_stonecutter_input_takes_any_item_and_shift_click_swaps_what_it_cannot_cut() {
         let kind = MenuKind::Stonecutter;
         assert!(accepts_at(kind, 0, stack("minecraft:stone", 1)));
         assert!(accepts_at(kind, 0, stack("minecraft:stick", 1)));
         let (mut container, mut player) = (vec![None; 2], Inventory::default());
-        player.set(MAIN_START, Some(stack("minecraft:stone", 5)));
+        player.set(MAIN_START, Some(stack("minecraft:dirt", 5)));
         shift_click(kind, &mut container, &mut player, 2);
         assert!(container.iter().all(Option::is_none));
         assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(5));
         shift_click(kind, &mut container, &mut player, 29);
         assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(5));
+    }
+
+    fn cutter() -> (ContainerMenu, Vec<Slot>, Inventory) {
+        workstation(MenuKind::Stonecutter)
+    }
+
+    fn load_cutter(
+        menu: &mut ContainerMenu,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        item: ItemStack,
+    ) {
+        player.set(MAIN_START, Some(item));
+        click(menu, container, player, 2, 0, ClickInput::Pickup);
+        click(menu, container, player, 0, 0, ClickInput::Pickup);
+    }
+
+    #[test]
+    fn shift_click_sends_what_can_be_cut_to_the_input_and_never_elsewhere() {
+        let (mut menu, mut container, mut player) = cutter();
+        player.set(MAIN_START, Some(stack("minecraft:stone", 5)));
+        shift(&mut menu, &mut container, &mut player, 2);
+        assert_eq!(container[0], Some(stack("minecraft:stone", 5)));
+        player.set(MAIN_START, Some(stack("minecraft:cobblestone", 1)));
+        shift(&mut menu, &mut container, &mut player, 2);
+        assert_eq!(container[0], Some(stack("minecraft:stone", 5)));
+        assert!(player.get(MAIN_START).is_some());
+    }
+
+    #[test]
+    fn choosing_a_recipe_puts_its_result_in_the_output_slot() {
+        let (mut menu, mut container, mut player) = cutter();
+        assert_eq!(menu.data(), vec![0]);
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        assert_eq!(menu.data(), vec![-1]);
+        assert_eq!(container[1], None);
+        assert!(menu.press(&mut container, 0));
+        assert_eq!(
+            container[1],
+            Some(stack("minecraft:chiseled_stone_bricks", 1))
+        );
+        assert_eq!(menu.data(), vec![0]);
+        assert!(menu.press(&mut container, 5));
+        assert_eq!(container[1], Some(stack("minecraft:stone_brick_slab", 2)));
+        assert_eq!(menu.data(), vec![5]);
+    }
+
+    #[test]
+    fn choosing_the_same_recipe_again_or_one_that_does_not_exist_changes_nothing() {
+        let (mut menu, mut container, mut player) = cutter();
+        assert!(menu.press(&mut container, 0) || container[1].is_none());
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        menu.press(&mut container, 2);
+        assert!(!menu.press(&mut container, 2));
+        let result = container[1].clone();
+        assert!(menu.press(&mut container, 11));
+        assert!(menu.press(&mut container, -1));
+        assert!(menu.press(&mut container, 100));
+        assert_eq!(container[1], result);
+        assert_eq!(menu.data(), vec![2]);
+    }
+
+    #[test]
+    fn nothing_can_be_chosen_without_an_input() {
+        let (mut menu, mut container, _player) = cutter();
+        assert!(!menu.press(&mut container, 0));
+        assert!(menu.press(&mut container, 1));
+        assert_eq!(container[1], None);
+        assert_eq!(menu.data(), vec![0]);
+        let mut other = ContainerMenu::new(MenuKind::Generic { rows: 3 });
+        assert!(!other.press(&mut vec![None; 27], 0));
+    }
+
+    #[test]
+    fn the_choice_is_forgotten_when_the_input_changes_kind_but_not_when_it_changes_count() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        menu.press(&mut container, 3);
+        player.set(MAIN_START, Some(stack("minecraft:stone", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.data(), vec![3]);
+        assert!(container[1].is_some());
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.data(), vec![-1]);
+        assert_eq!(container[1], None);
+        player.set(MAIN_START, Some(stack("minecraft:cobblestone", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.data(), vec![-1]);
+    }
+
+    #[test]
+    fn taking_the_result_uses_exactly_one_input_whatever_the_count() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        menu.press(&mut container, 10);
+        assert_eq!(container[1], Some(stack("minecraft:stone_stairs", 1)));
+        menu.press(&mut container, 9);
+        assert_eq!(container[1], Some(stack("minecraft:stone_slab", 2)));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(effects, vec![MenuEffect::StonecutterTaken]);
+        assert_eq!(menu.carried(), &Some(stack("minecraft:stone_slab", 2)));
+        assert_eq!(container[0], Some(stack("minecraft:stone", 2)));
+        assert_eq!(container[1], Some(stack("minecraft:stone_slab", 2)));
+        assert_eq!(menu.data(), vec![9]);
+    }
+
+    #[test]
+    fn taking_the_last_input_empties_the_output_and_the_choice() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 1),
+        );
+        menu.press(&mut container, 0);
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], None);
+        assert_eq!(container[1], None);
+        assert_eq!(menu.data(), vec![-1]);
+        assert_eq!(
+            menu.carried(),
+            &Some(stack("minecraft:chiseled_stone_bricks", 1))
+        );
+    }
+
+    #[test]
+    fn shift_click_on_the_result_cuts_until_the_stack_is_gone() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        menu.press(&mut container, 9);
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(container[0], None);
+        assert_eq!(container[1], None);
+        let slabs: u32 = (9..45)
+            .filter_map(|slot| player.get(slot))
+            .map(|stack| u32::from(stack.count.get()))
+            .sum();
+        assert_eq!(slabs, 6);
+    }
+
+    #[test]
+    fn what_does_not_fit_of_a_shift_clicked_cut_is_dropped_and_the_input_is_still_used() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 1),
+        );
+        menu.press(&mut container, 9);
+        for slot in 9..45 {
+            player.set(slot, Some(stack("minecraft:dirt", 64)));
+        }
+        player.set(20, Some(stack("minecraft:stone_slab", 63)));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert!(effects.contains(&MenuEffect::Drop {
+            stack: stack("minecraft:stone_slab", 1),
+            thrower: false,
+            predicted: true,
+        }));
+        assert_eq!(container[0], None);
+    }
+
+    #[test]
+    fn the_output_slot_takes_nothing_by_hand_and_nothing_in_parts() {
+        let (mut menu, mut container, mut player) = cutter();
+        load_cutter(
+            &mut menu,
+            &mut container,
+            &mut player,
+            stack("minecraft:stone", 3),
+        );
+        menu.press(&mut container, 9);
+        menu.carried = Some(stack("minecraft:stone_slab", 63));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:stone_slab", 63)));
+        assert_eq!(container[0], Some(stack("minecraft:stone", 3)));
+        menu.carried = Some(stack("minecraft:dirt", 1));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:dirt", 1)));
     }
 
     #[test]

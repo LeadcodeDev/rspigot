@@ -19,6 +19,7 @@ use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 use crate::{beacon, campfire, cooking, lectern};
 
+const STONECUTTER_TAKE_RESULT: &str = "minecraft:ui.stonecutter.take_result";
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
 const ITEMS: &str = "Items";
@@ -652,6 +653,7 @@ impl<L: ClientLink> Server<L> {
                 .iter()
                 .any(|effect| matches!(effect, MenuEffect::FullResync));
         let output_taken = effects.contains(&MenuEffect::FurnaceOutputTaken);
+        let cut = effects.contains(&MenuEffect::StonecutterTaken);
         let drops: Vec<MenuEffect> = effects
             .into_iter()
             .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
@@ -675,8 +677,18 @@ impl<L: ClientLink> Server<L> {
             }
         }
         self.apply_menu_effects(id, drops);
+        if cut {
+            self.play_sound(
+                None,
+                backing.pos.center(),
+                STONECUTTER_TAKE_RESULT,
+                SoundSource::Blocks,
+                1.0,
+                1.0,
+            );
+        }
         self.sync_open_menu(id, resync);
-        self.sync_furnace_data();
+        self.sync_menu_data();
         self.sync_viewers(backing.pos, Some(id));
         self.sync_inventory(id);
         true
@@ -805,34 +817,34 @@ impl<L: ClientLink> Server<L> {
         self.sync_open_menu(id, false);
     }
 
-    pub(crate) fn sync_furnace_data(&mut self) {
+    pub(crate) fn sync_menu_data(&mut self) {
         let viewers: Vec<PlayerId> = self
             .players
             .iter()
             .filter(|(_, player)| {
-                player
-                    .open_menu
-                    .as_ref()
-                    .is_some_and(|open| open.menu.kind().is_furnace())
+                player.open_menu.as_ref().is_some_and(|open| {
+                    open.menu.kind().is_furnace() || open.menu.kind() == MenuKind::Stonecutter
+                })
             })
             .map(|(id, _)| *id)
             .collect();
         for id in viewers {
-            let Some(pos) = self
+            let Some((pos, furnace)) = self
                 .players
                 .get(&id)
                 .and_then(|player| player.open_menu.as_ref())
-                .map(|open| open.backing.pos)
+                .map(|open| (open.backing.pos, open.menu.kind().is_furnace()))
             else {
                 continue;
             };
-            let current = self.furnace_data(pos);
+            let furnace_data = furnace.then(|| self.furnace_data(pos));
             let Some(player) = self.players.get_mut(&id) else {
                 continue;
             };
             let Some(open) = player.open_menu.as_mut() else {
                 continue;
             };
+            let current = furnace_data.unwrap_or_else(|| open.menu.data());
             for (index, value) in current.iter().enumerate() {
                 if open.data.get(index) != Some(value) {
                     open.data.resize(current.len(), 0);
@@ -847,9 +859,31 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn press_menu_button(&mut self, id: PlayerId, window: i32, button: i32) -> bool {
+        let Some(player) = self.players.get_mut(&id) else {
+            return false;
+        };
+        if player.game_mode == GameMode::Spectator {
+            return false;
+        }
+        let Some(open) = player
+            .open_menu
+            .as_mut()
+            .filter(|open| open.window == window && open.menu.kind() == MenuKind::Stonecutter)
+        else {
+            return false;
+        };
+        let mut items = open.local.clone();
+        open.menu.press(&mut items, button);
+        open.local = items;
+        self.sync_open_menu(id, false);
+        self.sync_menu_data();
+        true
+    }
+
     pub(crate) fn tick_open_menus(&mut self) {
         self.recheck_beacon_levels();
-        self.sync_furnace_data();
+        self.sync_menu_data();
         let ids: Vec<PlayerId> = self
             .players
             .iter()

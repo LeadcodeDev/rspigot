@@ -35,7 +35,11 @@ impl Item for SmoothSandstoneSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(374)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:smooth_sandstone_slab_from_smooth_sandstone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(374)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

@@ -38,7 +38,11 @@ impl Item for MossyCobblestoneWall {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(393)]), count: 1 },
+        Craft::Stonecutting {
+            id: "minecraft:mossy_cobblestone_wall_from_mossy_cobblestone_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(393)]),
+            count: 1,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

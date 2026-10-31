@@ -35,7 +35,11 @@ impl Item for MagentaConcreteSlab {
             ],
             product: Product::of(6),
         },
-        Craft::Stonecutting { ingredient: ItemSet::Direct(&[ItemId(691)]), count: 2 },
+        Craft::Stonecutting {
+            id: "minecraft:magenta_concrete_slab_from_magenta_concrete_stonecutting",
+            ingredient: ItemSet::Direct(&[ItemId(691)]),
+            count: 2,
+        },
     ];
     type Behavior = crate::family::BlockItem;
 }

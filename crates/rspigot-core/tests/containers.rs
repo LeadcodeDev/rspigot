@@ -2688,3 +2688,89 @@ fn breaking_a_campfire_drops_the_food_on_it() {
     world.break_at(CHEST);
     assert!(items_spawned(&world.alice) >= before + 2);
 }
+
+const CUTTER_HOTBAR_0: i16 = 29;
+
+impl World {
+    fn open_stonecutter_with(&mut self, count: u8) {
+        self.place_storage("stonecutter");
+        self.console(&format!("give Alice minecraft:stone {count}"));
+        self.open_chest();
+        self.click(WINDOW, CUTTER_HOTBAR_0, 0, ClickInput::Pickup);
+        self.click(WINDOW, 0, 0, ClickInput::Pickup);
+    }
+}
+
+#[test]
+fn the_client_is_told_every_recipe_it_needs_when_it_joins() {
+    let world = world();
+    assert!(
+        world
+            .alice
+            .log
+            .iter()
+            .any(|event| matches!(event, ClientEvent::RecipeSync))
+    );
+}
+
+#[test]
+fn choosing_a_cut_shows_its_result_and_taking_it_uses_one_stone() {
+    let mut world = world();
+    world.open_stonecutter_with(3);
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(-1));
+
+    world.press(WINDOW, 9);
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 1),
+        Some(Some((item("minecraft:stone_slab"), 2)))
+    );
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(9));
+
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 0),
+        Some(Some((item("minecraft:stone"), 2)))
+    );
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 1),
+        Some(Some((item("minecraft:stone_slab"), 2)))
+    );
+    assert_eq!(
+        sounds_heard(&world.alice, "minecraft:ui.stonecutter.take_result"),
+        1
+    );
+}
+
+#[test]
+fn a_button_for_another_window_or_a_missing_recipe_does_nothing() {
+    let mut world = world();
+    world.open_stonecutter_with(3);
+    world.press(WINDOW + 1, 9);
+    world.press(WINDOW, 99);
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), None);
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(-1));
+}
+
+#[test]
+fn shift_click_on_the_result_cuts_the_whole_stack() {
+    let mut world = world();
+    world.open_stonecutter_with(3);
+    world.press(WINDOW, 9);
+    world.click(WINDOW, 1, 0, ClickInput::QuickMove);
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), Some(None));
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(-1));
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 37),
+        Some(Some((item("minecraft:stone_slab"), 6)))
+    );
+}
+
+#[test]
+fn a_spectator_cannot_choose_a_cut() {
+    let mut world = world();
+    world.open_stonecutter_with(3);
+    world.console("gamemode spectator Alice");
+    world.press(WINDOW, 9);
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), None);
+}
