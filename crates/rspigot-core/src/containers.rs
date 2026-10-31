@@ -35,7 +35,7 @@ pub(crate) enum Lid {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Backing {
     pub pos: BlockPos,
-    pub entity: &'static str,
+    pub entity: Option<&'static str>,
     pub block: BlockKind,
     pub lid: Lid,
 }
@@ -46,6 +46,7 @@ pub(crate) struct OpenMenu {
     pub menu: ContainerMenu,
     pub backing: Backing,
     pub state_id: i32,
+    pub local: Vec<Slot>,
 }
 
 impl OpenMenu {
@@ -57,7 +58,7 @@ impl OpenMenu {
 
 struct Opening {
     kind: MenuKind,
-    entity: &'static str,
+    entity: Option<&'static str>,
     title: &'static str,
     block: BlockKind,
     lid: Lid,
@@ -65,13 +66,22 @@ struct Opening {
 
 fn opening_of(state: BlockStateId) -> Option<Opening> {
     let block = state.kind()?;
-    let storage = |kind, entity, title, lid| {
+    let storage = |kind, entity: &'static str, title, lid| {
+        Some(Opening {
+            kind,
+            entity: Some(entity),
+            title,
+            block,
+            lid,
+        })
+    };
+    let station = |kind, entity: Option<&'static str>, title| {
         Some(Opening {
             kind,
             entity,
             title,
             block,
-            lid,
+            lid: Lid::None,
         })
     };
     let rows = MenuKind::Generic { rows: 3 };
@@ -92,6 +102,14 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
             "container.dropper",
             Lid::None,
         ),
+        BlockKind::CraftingTable => station(MenuKind::Crafting, None, "container.crafting"),
+        BlockKind::Furnace => station(MenuKind::Furnace, Some("furnace"), "container.furnace"),
+        BlockKind::BlastFurnace => station(
+            MenuKind::BlastFurnace,
+            Some("blast_furnace"),
+            "container.blast_furnace",
+        ),
+        BlockKind::Smoker => station(MenuKind::Smoker, Some("smoker"), "container.smoker"),
         _ if has_tag(state, "minecraft:shulker_boxes") => storage(
             MenuKind::ShulkerBox,
             "shulker_box",
@@ -171,7 +189,21 @@ impl<L: ClientLink> Server<L> {
             .map_or_else(|| vec![None; size], |entity| read_items(&entity.data, size))
     }
 
+    fn open_items(&self, open: &OpenMenu) -> Vec<Slot> {
+        let size = open.menu.kind().container_size();
+        if open.backing.entity.is_some() {
+            self.container_items(open.backing, size)
+        } else {
+            let mut local = open.local.clone();
+            local.resize(size, None);
+            local
+        }
+    }
+
     fn store_container(&mut self, backing: Backing, items: &[Slot]) {
+        let Some(entity) = backing.entity else {
+            return;
+        };
         let Some(chunk) = self.world.chunks.chunk_mut(backing.pos.chunk()) else {
             return;
         };
@@ -181,7 +213,7 @@ impl<L: ClientLink> Server<L> {
         write_items(&mut data, items);
         chunk.set_block_entity(BlockEntity {
             pos: backing.pos,
-            kind: Identifier::minecraft(backing.entity),
+            kind: Identifier::minecraft(entity),
             data,
         });
     }
@@ -211,7 +243,12 @@ impl<L: ClientLink> Server<L> {
             lid: opening.lid,
         };
         self.close_open_menu(id, true);
-        let items = self.container_items(backing, opening.kind.container_size());
+        let size = opening.kind.container_size();
+        let items = if opening.entity.is_some() {
+            self.container_items(backing, size)
+        } else {
+            vec![None; size]
+        };
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -222,6 +259,11 @@ impl<L: ClientLink> Server<L> {
             menu: ContainerMenu::new(opening.kind),
             backing,
             state_id: 0,
+            local: if opening.entity.is_some() {
+                Vec::new()
+            } else {
+                items.clone()
+            },
         };
         let (slots, carried) = open.menu.sync_all(&items, &player.inventory);
         let state_id = open.next_state();
@@ -236,6 +278,13 @@ impl<L: ClientLink> Server<L> {
             slots,
             carried,
         });
+        for property in 0..opening.kind.data_count() {
+            player.link.send(ClientEvent::ContainerData {
+                window,
+                id: property as i16,
+                value: 0,
+            });
+        }
         player.open_menu = Some(open);
         let count = self.viewer_count(pos);
         self.viewers_changed(backing, count, true);
@@ -243,16 +292,15 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn viewer_count(&self, pos: BlockPos) -> u8 {
-        let count = self
-            .players
-            .values()
-            .filter(|player| {
-                player
-                    .open_menu
-                    .as_ref()
-                    .is_some_and(|open| open.backing.pos == pos)
-            })
-            .count();
+        let count =
+            self.players
+                .values()
+                .filter(|player| {
+                    player.open_menu.as_ref().is_some_and(|open| {
+                        open.backing.pos == pos && open.backing.entity.is_some()
+                    })
+                })
+                .count();
         u8::try_from(count).unwrap_or(u8::MAX)
     }
 
@@ -337,7 +385,7 @@ impl<L: ClientLink> Server<L> {
             infinite_materials: player.game_mode == GameMode::Creative,
         };
         let full_resync = click.state_id != open.state_id;
-        let mut items = self.container_items(backing, open.menu.kind().container_size());
+        let mut items = self.open_items(open);
         let Some(player) = self.players.get_mut(&id) else {
             return true;
         };
@@ -369,7 +417,15 @@ impl<L: ClientLink> Server<L> {
             .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
             .collect();
         if !spectator {
-            self.store_container(backing, &items);
+            if backing.entity.is_some() {
+                self.store_container(backing, &items);
+            } else if let Some(open) = self
+                .players
+                .get_mut(&id)
+                .and_then(|player| player.open_menu.as_mut())
+            {
+                open.local = items;
+            }
         }
         self.apply_menu_effects(id, drops);
         self.sync_open_menu(id, resync);
@@ -385,8 +441,7 @@ impl<L: ClientLink> Server<L> {
         let Some(open) = player.open_menu.as_ref() else {
             return;
         };
-        let backing = open.backing;
-        let items = self.container_items(backing, open.menu.kind().container_size());
+        let items = self.open_items(open);
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -427,10 +482,9 @@ impl<L: ClientLink> Server<L> {
             .iter()
             .filter(|(id, player)| {
                 Some(**id) != except
-                    && player
-                        .open_menu
-                        .as_ref()
-                        .is_some_and(|open| open.backing.pos == pos)
+                    && player.open_menu.as_ref().is_some_and(|open| {
+                        open.backing.pos == pos && open.backing.entity.is_some()
+                    })
             })
             .map(|(id, _)| *id)
             .collect();
@@ -447,7 +501,12 @@ impl<L: ClientLink> Server<L> {
             return false;
         };
         let before = Self::equipment_of(player);
-        let effects = open.menu.close(&mut player.inventory);
+        let effects = if open.backing.entity.is_some() {
+            open.menu.close(&mut player.inventory)
+        } else {
+            open.menu
+                .close_transient(&mut open.local, &mut player.inventory)
+        };
         if notify_client {
             player.link.send(ClientEvent::ContainerClose(open.window));
         }
@@ -556,7 +615,7 @@ mod tests {
     #[test]
     fn storage_blocks_map_to_their_menu_and_title() {
         let menu = |block: BlockKind| {
-            opening_of(block.default_state()).map(|o| (o.kind, o.entity, o.title))
+            opening_of(block.default_state()).map(|o| (o.kind, o.entity.unwrap_or(""), o.title))
         };
         assert_eq!(
             menu(BlockKind::Chest),
@@ -600,7 +659,7 @@ mod tests {
             let opening =
                 opening_of(block.default_state()).unwrap_or_else(|| panic!("{}", block.name()));
             assert_eq!(opening.kind, MenuKind::ShulkerBox, "{}", block.name());
-            assert_eq!(opening.entity, "shulker_box", "{}", block.name());
+            assert_eq!(opening.entity, Some("shulker_box"), "{}", block.name());
         }
     }
 

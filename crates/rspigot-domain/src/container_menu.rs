@@ -19,6 +19,10 @@ pub enum MenuKind {
     Generic3x3,
     Hopper,
     ShulkerBox,
+    Crafting,
+    Furnace,
+    BlastFurnace,
+    Smoker,
 }
 
 impl MenuKind {
@@ -28,6 +32,10 @@ impl MenuKind {
             Self::Generic3x3 => 6,
             Self::ShulkerBox => 20,
             Self::Hopper => 16,
+            Self::Crafting => 12,
+            Self::Furnace => 14,
+            Self::BlastFurnace => 10,
+            Self::Smoker => 22,
         }
     }
 
@@ -37,7 +45,50 @@ impl MenuKind {
             Self::Generic3x3 => 9,
             Self::Hopper => 5,
             Self::ShulkerBox => 27,
+            Self::Crafting => 10,
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => 3,
         }
+    }
+
+    pub fn data_count(self) -> usize {
+        match self {
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => 4,
+            _ => 0,
+        }
+    }
+
+    pub fn is_furnace(self) -> bool {
+        matches!(self, Self::Furnace | Self::BlastFurnace | Self::Smoker)
+    }
+
+    fn quick_move_plan(self, slot: usize) -> Vec<(usize, usize, bool)> {
+        let total = self.slot_count();
+        match self {
+            Self::Crafting => match slot {
+                0 => vec![(10, 46, true)],
+                1..=9 => vec![(10, 46, false)],
+                10..=36 => vec![(1, 10, false), (37, 46, false)],
+                _ => vec![(1, 10, false), (10, 37, false)],
+            },
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => match slot {
+                2 => vec![(3, total, true)],
+                0 | 1 => vec![(3, total, false)],
+                3..=29 => vec![(30, total, false)],
+                _ => vec![(3, 30, false)],
+            },
+            _ => {
+                let size = self.container_size();
+                if slot < size {
+                    vec![(size, total, true)]
+                } else {
+                    vec![(0, size, false)]
+                }
+            }
+        }
+    }
+
+    fn clears_on_close(self, slot: usize) -> bool {
+        matches!(self, Self::Crafting) && (1..=9).contains(&slot)
     }
 
     pub fn slot_count(self) -> usize {
@@ -47,6 +98,8 @@ impl MenuKind {
     fn accepts(self, slot: usize, stack: &ItemStack) -> bool {
         match self {
             Self::ShulkerBox if slot < self.container_size() => !is_shulker_box(stack),
+            Self::Crafting => slot != 0,
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => slot != 2,
             _ => true,
         }
     }
@@ -403,13 +456,13 @@ impl Session<'_> {
     fn quick_move_stack(&mut self, slot: usize) -> Slot {
         let copy = self.item(slot)?;
         let mut stack = Some(copy.clone());
-        let size = self.kind.container_size();
-        let total = self.kind.slot_count();
-        let moved = if slot < size {
-            self.move_to(&mut stack, size, total, true)
-        } else {
-            self.move_to(&mut stack, 0, size, false)
-        };
+        let mut moved = false;
+        for (start, end, reverse) in self.kind.quick_move_plan(slot) {
+            if self.move_to(&mut stack, start, end, reverse) {
+                moved = true;
+                break;
+            }
+        }
         if !moved {
             return None;
         }
@@ -644,6 +697,22 @@ impl ContainerMenu {
         effects
     }
 
+    pub fn close_transient(
+        &mut self,
+        container: &mut [Slot],
+        player: &mut Inventory,
+    ) -> Vec<MenuEffect> {
+        let mut effects = self.close(player);
+        for (slot, entry) in container.iter_mut().enumerate() {
+            if self.kind.clears_on_close(slot)
+                && let Some(stack) = entry.take()
+            {
+                place_back_or_drop(player, stack, &mut effects);
+            }
+        }
+        effects
+    }
+
     pub fn receive_remote(&mut self, slot: i16, hash: HashedSlot) -> bool {
         match usize::try_from(slot)
             .ok()
@@ -759,6 +828,205 @@ mod tests {
             MenuKind::ShulkerBox.protocol_id(),
             registry("minecraft:shulker_box")
         );
+        assert_eq!(
+            MenuKind::Crafting.protocol_id(),
+            registry("minecraft:crafting")
+        );
+        assert_eq!(
+            MenuKind::Furnace.protocol_id(),
+            registry("minecraft:furnace")
+        );
+        assert_eq!(
+            MenuKind::BlastFurnace.protocol_id(),
+            registry("minecraft:blast_furnace")
+        );
+        assert_eq!(MenuKind::Smoker.protocol_id(), registry("minecraft:smoker"));
+    }
+
+    fn workstation(kind: MenuKind) -> (ContainerMenu, Vec<Slot>, Inventory) {
+        (
+            ContainerMenu::new(kind),
+            vec![None; kind.container_size()],
+            Inventory::default(),
+        )
+    }
+
+    #[test]
+    fn the_crafting_menu_has_a_result_slot_that_takes_nothing() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Crafting);
+        assert_eq!(MenuKind::Crafting.slot_count(), 46);
+        player.set(MAIN_START, Some(stack("minecraft:stick", 4)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert!(container[0].is_none());
+        assert!(menu.carried().is_some());
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[5].as_ref().map(|s| s.count.get()), Some(4));
+    }
+
+    #[test]
+    fn shift_click_in_the_crafting_menu_fills_the_grid_then_the_hotbar() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Crafting);
+        player.set(MAIN_START, Some(stack("minecraft:stick", 2)));
+        player.set(HOTBAR_START, Some(stack("minecraft:stone", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(container[1].as_ref().map(|s| s.count.get()), Some(2));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            37,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(container[2].as_ref().map(|s| s.count.get()), Some(3));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert!(container[1].is_none());
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(2));
+    }
+
+    #[test]
+    fn closing_the_crafting_menu_gives_the_grid_and_the_stack_in_hand_back() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Crafting);
+        container[3] = Some(stack("minecraft:diamond", 2));
+        container[0] = Some(stack("minecraft:stick", 1));
+        player.set(MAIN_START, Some(stack("minecraft:stone", 5)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        let effects = menu.close_transient(&mut container, &mut player);
+        assert!(container[3].is_none());
+        assert!(container[0].is_some(), "the result slot is not cleared");
+        assert_eq!(effects.len(), 2);
+        let held: u32 = (0..46)
+            .filter_map(|slot| player.get(slot))
+            .map(|s| u32::from(s.count.get()))
+            .sum();
+        assert_eq!(held, 7);
+    }
+
+    #[test]
+    fn the_furnace_result_slot_refuses_items_and_shift_click_swaps_main_and_hotbar() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+        assert_eq!(MenuKind::Furnace.slot_count(), 39);
+        assert_eq!(MenuKind::Furnace.data_count(), 4);
+        player.set(MAIN_START, Some(stack("minecraft:iron_ore", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        assert!(container[2].is_none());
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(3));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            30,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(3));
+    }
+
+    #[test]
+    fn the_furnace_slots_accept_items_by_hand_and_give_them_back_with_shift() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Smoker);
+        player.set(MAIN_START, Some(stack("minecraft:beef", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0].as_ref().map(|s| s.count.get()), Some(2));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert!(container[0].is_none());
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(2));
     }
 
     #[test]

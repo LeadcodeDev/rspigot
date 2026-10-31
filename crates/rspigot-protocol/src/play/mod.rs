@@ -27,8 +27,8 @@ pub mod clientbound {
         TeleportEntity, UpdateAttributes,
     };
     pub use super::inventory::{
-        ContainerClose, ContainerSetContent, ContainerSetSlot, OpenScreen, RecipeBookSettings,
-        SetCursorItem, SetPlayerInventory, UpdateRecipes,
+        ContainerClose, ContainerSetContent, ContainerSetData, ContainerSetSlot, OpenScreen,
+        RecipeBookSettings, SetCursorItem, SetPlayerInventory, UpdateRecipes,
     };
     pub use super::metadata::SetEntityData;
     pub use super::player::{
@@ -98,6 +98,7 @@ mod tests {
             (<SectionBlocksUpdate as Packet>::ID, 86),
             (<BlockEntityData as Packet>::ID, 6),
             (<ContainerSetContent as Packet>::ID, 18),
+            (<ContainerSetData as Packet>::ID, 19),
             (<ContainerSetSlot as Packet>::ID, 20),
             (<SetCursorItem as Packet>::ID, 98),
             (<SetPlayerInventory as Packet>::ID, 110),
