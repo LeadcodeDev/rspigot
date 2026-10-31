@@ -841,7 +841,7 @@ fn two_players_have_separate_crafting_grids() {
 }
 
 #[test]
-fn the_crafting_result_slot_takes_nothing() {
+fn the_crafting_result_slot_refuses_what_is_put_on_it() {
     let mut world = world();
     world.place_storage("crafting_table");
     world.give("stone");
@@ -854,6 +854,80 @@ fn the_crafting_result_slot_takes_nothing() {
     world.open_chest();
     let slots = content(&world.alice, 2).expect("second window");
     assert_eq!(slots[0], None);
+}
+
+fn inventory_slot(player: &Player, slot: usize) -> Option<(u16, u8)> {
+    player
+        .log
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            ClientEvent::InventorySlot {
+                slot: index, stack, ..
+            } if usize::try_from(*index) == Ok(slot) => Some(stack.clone()),
+            ClientEvent::InventoryContent { slots, .. } => slots.get(slot).cloned(),
+            _ => None,
+        })
+        .flatten()
+        .map(|stack| (stack.item.0, stack.count.get()))
+}
+
+const PLAYER_GRID_HOTBAR_0: i16 = 36;
+
+#[test]
+fn a_recipe_in_the_crafting_table_shows_its_result_and_crafting_uses_the_ingredients() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("oak_log");
+    world.open_chest();
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 0),
+        Some(Some((item("minecraft:oak_planks"), 4)))
+    );
+    world.click(WINDOW, 0, 0, ClickInput::QuickMove);
+
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), Some(None));
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 45),
+        Some(Some((item("minecraft:oak_planks"), 4)))
+    );
+}
+
+#[test]
+fn a_recipe_with_no_match_leaves_the_result_slot_empty() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("dirt");
+    world.open_chest();
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), None);
+}
+
+#[test]
+fn the_player_crafting_grid_crafts_too() {
+    let mut world = world();
+    world.give("oak_log");
+    world.click(0, PLAYER_GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(0, 1, 0, ClickInput::Pickup);
+
+    assert_eq!(
+        inventory_slot(&world.alice, 0),
+        Some((item("minecraft:oak_planks"), 4))
+    );
+    world.click(0, 0, 0, ClickInput::QuickMove);
+
+    assert_eq!(inventory_slot(&world.alice, 1), None);
+    assert_eq!(inventory_slot(&world.alice, 0), None);
+    assert_eq!(
+        inventory_slot(&world.alice, 44),
+        Some((item("minecraft:oak_planks"), 4))
+    );
 }
 
 #[test]

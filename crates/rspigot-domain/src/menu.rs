@@ -1,5 +1,6 @@
 use rspigot_items::EquipmentSlot;
 
+use crate::crafting;
 use crate::item::{
     HOTBAR_START, Inventory, ItemStack, OFFHAND_SLOT, PLAYER_INVENTORY_SIZE, Slot, count,
     max_stack, menu_slot, same_item, same_item_same_components, split, stacks_match, with_count,
@@ -83,7 +84,7 @@ pub enum MenuEffect {
         thrower: bool,
         predicted: bool,
     },
-    ResultReset,
+    ResultUpdated,
     SlotResent(usize),
     FullResync,
     PlacedBack {
@@ -206,16 +207,46 @@ impl Session<'_> {
     fn set(&mut self, slot: usize, stack: Slot) {
         self.put(slot, stack);
         if GRID.contains(&slot) {
-            self.effects.push(MenuEffect::ResultReset);
+            self.refresh_result();
         }
     }
 
     fn remove(&mut self, slot: usize, amount: u32) -> Slot {
         let removed = self.inventory.remove(slot, amount);
         if removed.is_some() && GRID.contains(&slot) {
-            self.effects.push(MenuEffect::ResultReset);
+            self.refresh_result();
         }
         removed
+    }
+
+    fn grid(&self) -> [Slot; 4] {
+        std::array::from_fn(|offset| self.item(GRID.start() + offset))
+    }
+
+    fn refresh_result(&mut self) {
+        let result = crafting::result(2, 2, &self.grid());
+        self.put(RESULT_SLOT, result);
+        if self.effects.last() != Some(&MenuEffect::ResultUpdated) {
+            self.effects.push(MenuEffect::ResultUpdated);
+        }
+    }
+
+    fn took(&mut self, slot: usize, taken: &Slot) {
+        if slot != RESULT_SLOT || taken.is_none() {
+            return;
+        }
+        let mut cells = self.grid();
+        let leftovers = crafting::take_result(2, 2, &mut cells);
+        for (offset, cell) in cells.into_iter().enumerate() {
+            self.put(GRID.start() + offset, cell);
+        }
+        for leftover in leftovers {
+            let mut rest = Some(leftover);
+            if !self.inventory.add(&mut rest, self.infinite) {
+                self.drop(rest, false, false);
+            }
+        }
+        self.refresh_result();
     }
 
     fn may_place(&self, slot: usize, stack: &Slot) -> bool {
@@ -437,7 +468,8 @@ impl Session<'_> {
                         count(&in_slot).div_ceil(2)
                     };
                     if let Some(taken) = self.try_remove(target, amount, u32::MAX) {
-                        *self.carried = Some(taken);
+                        *self.carried = Some(taken.clone());
+                        self.took(target, &Some(taken));
                     }
                 }
                 Some(held) if self.may_place(target, &carried) => {
@@ -452,7 +484,9 @@ impl Session<'_> {
                 Some(held) if same_item_same_components(existing, held) => {
                     let room = max_stack(held).saturating_sub(count(&carried));
                     if let Some(taken) = self.try_remove(target, count(&in_slot), room) {
-                        *self.carried = with_count(held, count(&carried) + count(&Some(taken)));
+                        *self.carried =
+                            with_count(held, count(&carried) + count(&Some(taken.clone())));
+                        self.took(target, &Some(taken));
                     }
                 }
                 Some(_) => {}
@@ -499,6 +533,7 @@ impl Session<'_> {
         }
         if slot == RESULT_SLOT {
             self.put(slot, None);
+            self.took(slot, &Some(copy.clone()));
             self.drop(stack, false, true);
         }
         Some(copy)
@@ -563,6 +598,7 @@ impl Session<'_> {
             (None, Some(_)) => {
                 self.put(hotbar, in_slot.clone());
                 self.set(target, None);
+                self.took(target, &in_slot);
             }
             (Some(stack), None) => {
                 if self.may_place(target, &held) {
@@ -624,10 +660,12 @@ impl Session<'_> {
             count(&self.item(target))
         };
         let mut dropped = self.try_remove(target, amount, u32::MAX);
+        self.took(target, &dropped);
         self.drop(dropped.clone(), true, true);
         if button == 1 {
             while dropped.is_some() && same_item(&self.item(target), &dropped) {
                 dropped = self.try_remove(target, amount, u32::MAX);
+                self.took(target, &dropped);
                 if !self.drop(dropped.clone(), true, true) {
                     break;
                 }
@@ -976,29 +1014,191 @@ mod tests {
     }
 
     #[test]
-    fn crafting_grid_is_storage_that_resets_the_result_on_every_change() {
-        let mut inv = inventory(&[(36, stack(ItemKind::Stone, 3))]);
+    fn crafting_grid_is_storage_that_updates_the_result_on_every_change() {
+        let mut inv = inventory(&[(36, stack(ItemKind::Dirt, 3))]);
         let mut menu = InventoryMenu::default();
         click(&mut menu, &mut inv, 36, 0, ClickInput::Pickup);
         assert_eq!(
             click(&mut menu, &mut inv, 2, 1, ClickInput::Pickup),
-            vec![MenuEffect::ResultReset]
+            vec![MenuEffect::ResultUpdated]
         );
-        assert_eq!(inv.get(2), Some(&stack(ItemKind::Stone, 1)));
+        assert_eq!(inv.get(2), Some(&stack(ItemKind::Dirt, 1)));
         assert!(click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup).is_empty());
         assert_eq!(inv.get(RESULT_SLOT), None);
         menu.carried = None;
         assert_eq!(
             click(&mut menu, &mut inv, 2, 0, ClickInput::Pickup),
-            vec![MenuEffect::ResultReset, MenuEffect::ResultReset]
+            vec![MenuEffect::ResultUpdated]
         );
-        assert_eq!(menu.carried(), &Some(stack(ItemKind::Stone, 1)));
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::Dirt, 1)));
         click(&mut menu, &mut inv, 3, 0, ClickInput::Pickup);
         assert_eq!(
             click(&mut menu, &mut inv, 3, 0, ClickInput::QuickMove),
-            vec![MenuEffect::ResultReset]
+            vec![MenuEffect::ResultUpdated]
         );
-        assert_eq!(inv.get(9), Some(&stack(ItemKind::Stone, 1)));
+        assert_eq!(inv.get(9), Some(&stack(ItemKind::Dirt, 1)));
+    }
+
+    fn crafting(slots: &[(usize, ItemStack)]) -> (InventoryMenu, Inventory) {
+        let mut inv = inventory(slots);
+        let mut menu = InventoryMenu::default();
+        for (slot, stack) in slots {
+            if GRID.contains(slot) {
+                menu.set_by_player(&mut inv, *slot, Some(stack.clone()));
+            }
+        }
+        menu.sync_all(&inv);
+        (menu, inv)
+    }
+
+    #[test]
+    fn a_recipe_in_the_grid_shows_its_result() {
+        let (_, inv) = crafting(&[(1, stack(ItemKind::OakLog, 2))]);
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+        let (_, inv) = crafting(&[(1, stack(ItemKind::Dirt, 2))]);
+        assert_eq!(inv.get(RESULT_SLOT), None);
+    }
+
+    #[test]
+    fn placing_an_ingredient_by_hand_shows_the_result() {
+        let mut inv = inventory(&[(36, stack(ItemKind::OakLog, 3))]);
+        let mut menu = InventoryMenu::default();
+        click(&mut menu, &mut inv, 36, 0, ClickInput::Pickup);
+        let effects = click(&mut menu, &mut inv, 4, 0, ClickInput::Pickup);
+        assert_eq!(effects, vec![MenuEffect::ResultUpdated]);
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+        click(&mut menu, &mut inv, 4, 0, ClickInput::Pickup);
+        assert_eq!(inv.get(RESULT_SLOT), None);
+    }
+
+    #[test]
+    fn taking_the_result_by_hand_uses_up_one_craft_and_shows_the_next() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 2))]);
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::OakPlanks, 4)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::OakPlanks, 8)));
+        assert_eq!(inv.get(1), None);
+        assert_eq!(inv.get(RESULT_SLOT), None);
+    }
+
+    #[test]
+    fn the_result_only_stacks_onto_a_matching_hand_and_never_takes_part_of_it() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 2))]);
+        menu.carried = Some(stack(ItemKind::OakPlanks, 62));
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::OakPlanks, 62)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 2)));
+        menu.carried = Some(stack(ItemKind::OakPlanks, 60));
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::OakPlanks, 64)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+        menu.carried = Some(stack(ItemKind::Dirt, 1));
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::Dirt, 1)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+    }
+
+    #[test]
+    fn a_right_click_takes_half_the_result_but_still_uses_a_whole_craft() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 2))]);
+        click(&mut menu, &mut inv, 0, 1, ClickInput::Pickup);
+        assert_eq!(menu.carried(), &Some(stack(ItemKind::OakPlanks, 2)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+    }
+
+    #[test]
+    fn shift_click_on_the_result_crafts_until_the_grid_runs_out() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 3))]);
+        click(&mut menu, &mut inv, 0, 0, ClickInput::QuickMove);
+        assert_eq!(inv.get(1), None);
+        assert_eq!(inv.get(RESULT_SLOT), None);
+        let planks: u32 = (9..45).map(|slot| count(&inv.get(slot).cloned())).sum();
+        assert_eq!(planks, 12);
+    }
+
+    #[test]
+    fn shift_click_on_the_result_stops_when_the_inventory_is_full() {
+        let mut filled: Vec<(usize, ItemStack)> = (9..45)
+            .map(|slot| (slot, stack(ItemKind::Dirt, 64)))
+            .collect();
+        filled.push((1, stack(ItemKind::OakLog, 5)));
+        let (mut menu, mut inv) = crafting(&filled);
+        let effects = click(&mut menu, &mut inv, 0, 0, ClickInput::QuickMove);
+        assert!(effects.iter().all(|e| *e == MenuEffect::ResultUpdated) || effects.is_empty());
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 5)));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+    }
+
+    #[test]
+    fn a_number_key_moves_the_result_to_the_hotbar_only_when_the_slot_is_empty() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 2))]);
+        click(&mut menu, &mut inv, 0, 2, ClickInput::Swap);
+        assert_eq!(inv.get(38), Some(&stack(ItemKind::OakPlanks, 4)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+        click(&mut menu, &mut inv, 0, 2, ClickInput::Swap);
+        assert_eq!(inv.get(38), Some(&stack(ItemKind::OakPlanks, 4)));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 1)));
+    }
+
+    #[test]
+    fn dropping_the_result_throws_what_was_taken_and_uses_a_craft() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::OakLog, 3))]);
+        let effects = click(&mut menu, &mut inv, 0, 0, ClickInput::Throw);
+        assert!(effects.contains(&thrown(stack(ItemKind::OakPlanks, 1))));
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::OakLog, 2)));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
+        let effects = click(&mut menu, &mut inv, 0, 1, ClickInput::Throw);
+        let thrown_planks: u32 = effects
+            .iter()
+            .filter_map(|effect| match effect {
+                MenuEffect::Drop { stack, .. } => Some(u32::from(stack.count.get())),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(thrown_planks, 8);
+        assert_eq!(inv.get(1), None);
+        assert_eq!(inv.get(RESULT_SLOT), None);
+    }
+
+    #[test]
+    fn a_crafting_remainder_goes_back_to_the_inventory() {
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::HoneyBottle, 2))]);
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::Sugar, 3)));
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::HoneyBottle, 1)));
+        assert_eq!(inv.get(36), Some(&stack(ItemKind::GlassBottle, 1)));
+        let (mut menu, mut inv) = crafting(&[(1, stack(ItemKind::HoneyBottle, 1))]);
+        click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert_eq!(inv.get(1), Some(&stack(ItemKind::GlassBottle, 1)));
+    }
+
+    #[test]
+    fn a_remainder_with_no_room_is_dropped() {
+        let mut filled: Vec<(usize, ItemStack)> = (9..45)
+            .map(|slot| (slot, stack(ItemKind::Dirt, 64)))
+            .collect();
+        filled.push((1, stack(ItemKind::HoneyBottle, 2)));
+        let (mut menu, mut inv) = crafting(&filled);
+        let effects = click(&mut menu, &mut inv, 0, 0, ClickInput::Pickup);
+        assert!(effects.contains(&MenuEffect::Drop {
+            stack: stack(ItemKind::GlassBottle, 1),
+            thrower: false,
+            predicted: false,
+        }));
+    }
+
+    #[test]
+    fn a_crafting_grid_change_in_creative_also_updates_the_result() {
+        let mut inv = Inventory::default();
+        let mut menu = InventoryMenu::default();
+        let effects = menu.set_by_player(&mut inv, 2, Some(stack(ItemKind::OakLog, 1)));
+        assert!(effects.contains(&MenuEffect::ResultUpdated));
+        assert_eq!(inv.get(RESULT_SLOT), Some(&stack(ItemKind::OakPlanks, 4)));
     }
 
     #[test]
@@ -1108,7 +1308,7 @@ mod tests {
         let effects = drag(&mut menu, &mut inv, 1, &[1, 9], SURVIVAL);
         assert_eq!(
             effects,
-            vec![MenuEffect::ResultReset, MenuEffect::FullResync]
+            vec![MenuEffect::ResultUpdated, MenuEffect::FullResync]
         );
         assert_eq!(inv.get(1), Some(&stack(ItemKind::Stone, 1)));
         assert_eq!(inv.get(9), Some(&stack(ItemKind::Stone, 1)));
