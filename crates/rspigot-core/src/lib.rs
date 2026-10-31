@@ -6,6 +6,7 @@ mod combat;
 pub mod commands;
 pub mod config;
 pub mod console;
+mod containers;
 mod context;
 mod drops;
 mod durability;

@@ -55,6 +55,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_container_click(&mut self, id: PlayerId, click: ContainerClick) {
+        if self.handle_open_menu_click(id, &click) {
+            return;
+        }
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -112,7 +115,10 @@ impl<L: ClientLink> Server<L> {
         self.broadcast_equipment_changes(id, before);
     }
 
-    pub(crate) fn handle_container_close(&mut self, id: PlayerId) {
+    pub(crate) fn handle_container_close(&mut self, id: PlayerId, window: i32) {
+        if self.handle_open_menu_close(id, window) {
+            return;
+        }
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -139,7 +145,7 @@ impl<L: ClientLink> Server<L> {
         self.broadcast_equipment_changes(id, before);
     }
 
-    fn apply_menu_effects(&mut self, id: PlayerId, effects: Vec<MenuEffect>) {
+    pub(crate) fn apply_menu_effects(&mut self, id: PlayerId, effects: Vec<MenuEffect>) {
         for effect in effects {
             match effect {
                 MenuEffect::Drop {
