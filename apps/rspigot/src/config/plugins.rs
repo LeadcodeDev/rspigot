@@ -17,7 +17,7 @@ priorities: {}
 "#;
 
 pub fn settings(file: &YamlConfig) -> PluginSettings {
-    PluginSettings {
+    let settings = PluginSettings {
         decision_ticks: file.int("decision-ticks", 1).clamp(1, 20) as u64,
         late_cancel_ticks: file.int("late-cancel-ticks", 20).clamp(0, 100) as u64,
         order: file.strings("order"),
@@ -26,7 +26,19 @@ pub fn settings(file: &YamlConfig) -> PluginSettings {
             .iter()
             .filter_map(|(key, value)| priority_override(key, value))
             .collect(),
+    };
+    if refuses_every_late_cancel(&settings) {
+        tracing::warn!(
+            "plugins.yml: late-cancel-ticks ({}) is not above decision-ticks ({}), so every late cancel will be refused",
+            settings.late_cancel_ticks,
+            settings.decision_ticks
+        );
     }
+    settings
+}
+
+fn refuses_every_late_cancel(settings: &PluginSettings) -> bool {
+    settings.late_cancel_ticks <= settings.decision_ticks
 }
 
 pub fn host_config(
@@ -156,6 +168,25 @@ mod tests {
             Some("from-env")
         );
         assert_eq!(token(&tokenless, Some("")), None);
+    }
+
+    #[test]
+    fn a_late_cancel_window_that_ends_by_the_deadline_is_empty() {
+        let empty = |decision_ticks, late_cancel_ticks| {
+            refuses_every_late_cancel(&PluginSettings {
+                decision_ticks,
+                late_cancel_ticks,
+                ..PluginSettings::default()
+            })
+        };
+        assert!(empty(20, 20));
+        assert!(empty(5, 0));
+        assert!(empty(1, 1));
+        assert!(!empty(20, 21));
+        assert!(!empty(1, 2));
+        assert!(!refuses_every_late_cancel(&settings(&file(
+            PLUGINS_DEFAULTS
+        ))));
     }
 
     #[test]

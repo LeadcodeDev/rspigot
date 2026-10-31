@@ -29,8 +29,21 @@ pub enum PluginHostError {
     TokenRequired,
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("gRPC transport error: {0}")]
-    Transport(#[from] tonic::transport::Error),
+    #[error("gRPC transport error: {}", causes(.0))]
+    Transport(tonic::transport::Error),
+}
+
+fn causes(error: &tonic::transport::Error) -> String {
+    let mut causes: Vec<String> =
+        std::iter::successors(std::error::Error::source(error), |cause| cause.source())
+            .map(ToString::to_string)
+            .collect();
+    causes.dedup();
+    if causes.is_empty() {
+        error.to_string()
+    } else {
+        causes.join(": ")
+    }
 }
 
 pub async fn run<L: ClientLink>(
@@ -76,7 +89,8 @@ async fn serve_with<L: ClientLink>(
                 .set_service_status("", ServingStatus::NotServing)
                 .await;
         })
-        .await?;
+        .await
+        .map_err(PluginHostError::Transport)?;
     Ok(())
 }
 
@@ -135,5 +149,25 @@ mod tests {
         assert_eq!(refused.message(), "no introduction");
         assert!(started.elapsed() >= wait);
         assert!(inbox.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn a_transport_error_shows_its_causes() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let error = Endpoint::from_shared(format!("http://{address}"))
+            .unwrap()
+            .connect()
+            .await
+            .unwrap_err();
+        let message = PluginHostError::Transport(error).to_string();
+        assert!(message.starts_with("gRPC transport error: "), "{message}");
+        assert!(message.contains("refused"), "{message}");
+        let causes: Vec<&str> = message.split(": ").collect();
+        assert!(
+            causes.windows(2).all(|pair| pair[0] != pair[1]),
+            "{message}"
+        );
     }
 }
