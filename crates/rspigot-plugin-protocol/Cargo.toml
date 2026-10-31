@@ -1,0 +1,14 @@
+[package]
+name = "rspigot-plugin-protocol"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prost = "0.14"
+tonic = "0.14"
+tonic-prost = "0.14"
+
+[lints]
+workspace = true

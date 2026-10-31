@@ -1,0 +1,11 @@
+[package]
+name = "plugin-protocol-gen"
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+publish = false
+
+[dependencies]
+tonic-prost-build = "0.14"
+
+[workspace]
