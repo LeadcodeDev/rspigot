@@ -3,8 +3,8 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use rspigot_plugin::{
-    Access, Call, Error, EventKind, GameMode, HandlerSpec, Listeners, Outcome, Player, PlayerJoin,
-    PlayerMove, PlayerState, Plugin, Position, Priority, run_with,
+    Error, GameMode, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position, listeners,
+    run_with,
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
@@ -163,11 +163,14 @@ struct Joined {
     online: Result<Vec<Player>, Error>,
 }
 
+#[derive(Plugin)]
+#[plugin(name = "guard", version = "1.2.3")]
 struct Guard {
     marks: mpsc::UnboundedSender<Mark>,
     joins: mpsc::UnboundedSender<Joined>,
 }
 
+#[listeners]
 impl Guard {
     async fn on_player_join(&self, event: &PlayerJoin) {
         event
@@ -182,6 +185,7 @@ impl Guard {
         });
     }
 
+    #[priority(High)]
     async fn on_player_move(&self, event: &mut PlayerMove) {
         let _ = self.marks.send(Mark::Decided {
             handler: 2,
@@ -192,6 +196,8 @@ impl Guard {
         }
     }
 
+    #[priority(Lowest)]
+    #[ignore_cancelled]
     async fn on_player_move_seen(&self, event: &PlayerMove) {
         let _ = self.marks.send(Mark::Watched {
             event: event.id(),
@@ -200,99 +206,12 @@ impl Guard {
         });
     }
 
+    #[priority(Low)]
     async fn on_player_move_late(&self, event: &mut PlayerMove) {
         let _ = self.marks.send(Mark::Decided {
             handler: 4,
             event: event.id(),
         });
-    }
-}
-
-impl Listeners for Guard {
-    fn handlers() -> Vec<HandlerSpec> {
-        vec![
-            spec(
-                1,
-                EventKind::PlayerJoin,
-                Access::Observe,
-                Priority::Normal,
-                false,
-            ),
-            spec(
-                2,
-                EventKind::PlayerMove,
-                Access::Decide,
-                Priority::High,
-                false,
-            ),
-            spec(
-                3,
-                EventKind::PlayerMove,
-                Access::Observe,
-                Priority::Lowest,
-                true,
-            ),
-            spec(
-                4,
-                EventKind::PlayerMove,
-                Access::Decide,
-                Priority::Low,
-                false,
-            ),
-        ]
-    }
-
-    async fn dispatch(&self, call: Call) -> Outcome {
-        match call {
-            Call::PlayerJoin { handler: 1, event } => {
-                self.on_player_join(&event).await;
-                Outcome::Observed
-            }
-            Call::PlayerMove {
-                handler: 2,
-                mut event,
-            } => {
-                self.on_player_move(&mut event).await;
-                Outcome::Decided {
-                    cancel: event.is_cancelled(),
-                }
-            }
-            Call::PlayerMove { handler: 3, event } => {
-                self.on_player_move_seen(&event).await;
-                Outcome::Observed
-            }
-            Call::PlayerMove {
-                handler: 4,
-                mut event,
-            } => {
-                self.on_player_move_late(&mut event).await;
-                Outcome::Decided {
-                    cancel: event.is_cancelled(),
-                }
-            }
-            _ => Outcome::Observed,
-        }
-    }
-}
-
-impl Plugin for Guard {
-    const NAME: &'static str = "guard";
-    const VERSION: &'static str = "1.2.3";
-}
-
-fn spec(
-    id: u32,
-    event: EventKind,
-    access: Access,
-    priority: Priority,
-    ignore_cancelled: bool,
-) -> HandlerSpec {
-    HandlerSpec {
-        id,
-        event,
-        access,
-        priority,
-        ignore_cancelled,
     }
 }
 
