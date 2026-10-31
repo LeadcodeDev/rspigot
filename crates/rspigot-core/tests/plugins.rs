@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crossbeam_channel::{RecvTimeoutError, Sender, bounded, unbounded};
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::{
@@ -193,13 +194,13 @@ fn decide(id: u32) -> HandlerSpec {
     }
 }
 
-fn connect_with(
+fn plug(
     server: &mut Server<Link>,
     connection: u64,
     name: &str,
     handlers: Vec<HandlerSpec>,
-) -> Mailbox {
-    let mailbox = Mailbox::default();
+    outbox: Box<dyn PluginOutbox>,
+) {
     server.handle(Inbound::PluginConnected {
         connection,
         intro: PluginIntro {
@@ -207,8 +208,24 @@ fn connect_with(
             version: "1.0.0".to_owned(),
             handlers,
         },
-        outbox: Box::new(mailbox.clone()),
+        outbox,
     });
+}
+
+fn connect_with(
+    server: &mut Server<Link>,
+    connection: u64,
+    name: &str,
+    handlers: Vec<HandlerSpec>,
+) -> Mailbox {
+    let mailbox = Mailbox::default();
+    plug(
+        server,
+        connection,
+        name,
+        handlers,
+        Box::new(mailbox.clone()),
+    );
     mailbox
 }
 
@@ -1417,4 +1434,113 @@ fn a_landing_after_a_pending_move_hurts_once() {
         .filter(|event| matches!(event, ClientEvent::DamageEvent { .. }))
         .count();
     assert_eq!(hurt, 1);
+}
+
+struct CancelThenStall {
+    connection: u64,
+    inbound: Sender<Inbound<Link>>,
+    stall: Duration,
+}
+
+impl PluginOutbox for CancelThenStall {
+    fn send(&self, message: ToPlugin) {
+        if let ToPlugin::Event {
+            id,
+            phase: Phase::Decide,
+            ..
+        } = message
+        {
+            let _ = self.inbound.send(Inbound::PluginMessage {
+                connection: self.connection,
+                message: FromPlugin::Decision {
+                    event: id,
+                    cancel: true,
+                },
+            });
+            std::thread::sleep(self.stall);
+        }
+    }
+}
+
+struct StopOnceSettled {
+    mailbox: Mailbox,
+    inbound: Sender<Inbound<Link>>,
+}
+
+impl PluginOutbox for StopOnceSettled {
+    fn send(&self, message: ToPlugin) {
+        let settled = matches!(
+            message,
+            ToPlugin::Event {
+                phase: Phase::Settled | Phase::RolledBack,
+                ..
+            }
+        );
+        self.mailbox.send(message);
+        if settled {
+            let _ = self.inbound.send(Inbound::Shutdown);
+        }
+    }
+}
+
+#[test]
+fn a_cancel_sent_at_once_stays_on_time_when_the_server_falls_behind() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let (inbound, receiver) = unbounded();
+    plug(
+        &mut server,
+        1,
+        "guard",
+        vec![decide(1)],
+        Box::new(CancelThenStall {
+            connection: 1,
+            inbound: inbound.clone(),
+            stall: Duration::from_millis(300),
+        }),
+    );
+    let watch = Mailbox::default();
+    plug(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+        Box::new(StopOnceSettled {
+            mailbox: watch.clone(),
+            inbound: inbound.clone(),
+        }),
+    );
+    inbound
+        .send(Inbound::Input {
+            player: alice.id,
+            input: PlayerInput::Move {
+                position: Some(east(1)),
+                rotation: None,
+                on_ground: true,
+            },
+        })
+        .expect("the server listens");
+    let (finished, stop) = bounded::<()>(0);
+    let watchdog = std::thread::spawn(move || {
+        if stop.recv_timeout(Duration::from_secs(10)) == Err(RecvTimeoutError::Timeout) {
+            let _ = inbound.send(Inbound::Shutdown);
+        }
+    });
+
+    server.run(&receiver);
+    drop(finished);
+    let _ = watchdog.join();
+
+    let heard = moves(&watch);
+    assert_eq!(
+        heard,
+        [heard_move(
+            heard.first().map_or(0, |heard| heard.id),
+            &[1],
+            Phase::Settled,
+            true,
+            SPAWN,
+            east(1)
+        )]
+    );
 }

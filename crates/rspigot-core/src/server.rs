@@ -212,6 +212,16 @@ impl<L: ClientLink> Server<L> {
         while self.running {
             let now = Instant::now();
             if now >= next_tick {
+                let mut waiting = queued(inbound);
+                while self.running
+                    && let Some(message) = waiting.next()
+                {
+                    self.handle(message);
+                    self.deliver();
+                }
+                if !self.running {
+                    break;
+                }
                 self.tick();
                 next_tick += tick_length;
                 let behind = Instant::now().saturating_duration_since(next_tick);
@@ -811,5 +821,31 @@ impl<L: ClientLink> Server<L> {
             stats.average_load_time().as_secs_f64() * 1000.0
         );
         self.world.level
+    }
+}
+
+fn queued<T>(inbound: &Receiver<T>) -> impl Iterator<Item = T> {
+    let waiting = inbound.len();
+    inbound.try_iter().take(waiting)
+}
+
+#[cfg(test)]
+mod tests {
+    use crossbeam_channel::unbounded;
+
+    use super::queued;
+
+    #[test]
+    fn queued_takes_the_waiting_messages_in_order_and_no_more() {
+        let (sender, receiver) = unbounded();
+        for message in 1..=3 {
+            sender.send(message).expect("open");
+        }
+        let mut batch = queued(&receiver);
+        assert_eq!(batch.next(), Some(1));
+        sender.send(4).expect("open");
+        assert_eq!(batch.collect::<Vec<_>>(), [2, 3]);
+        assert_eq!(queued(&receiver).collect::<Vec<_>>(), [4]);
+        assert_eq!(queued(&receiver).count(), 0);
     }
 }
