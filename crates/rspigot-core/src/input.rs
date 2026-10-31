@@ -401,6 +401,7 @@ impl<L: ClientLink> Server<L> {
                     ClientEvent::BlockUpdate { pos, state },
                 );
                 self.fix_chest_pairs(pos, old, state);
+                self.ensure_container_entity(pos, state);
                 true
             }
             _ => false,
