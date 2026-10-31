@@ -465,6 +465,10 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
+        if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        }
         if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;

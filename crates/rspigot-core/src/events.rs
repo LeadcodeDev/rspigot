@@ -357,6 +357,11 @@ pub enum ClientEvent {
         pos: BlockPos,
         state: BlockStateId,
     },
+    BlockEntityUpdate {
+        pos: BlockPos,
+        kind: &'static str,
+        data: rspigot_nbt::Compound,
+    },
     BlockEvent {
         pos: BlockPos,
         action: u8,

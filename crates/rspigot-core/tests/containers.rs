@@ -2561,3 +2561,130 @@ fn adding_more_of_the_same_input_keeps_the_progress() {
         .unwrap();
     assert!(progress >= 95, "{progress}");
 }
+
+fn campfire_items(player: &Player) -> Option<Vec<(u16, u8)>> {
+    player.log.iter().rev().find_map(|event| match event {
+        ClientEvent::BlockEntityUpdate { pos, kind, data }
+            if *pos == CHEST && *kind == "campfire" =>
+        {
+            Some(
+                data.get_list("Items")
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|entry| {
+                        let entry = entry.as_compound()?;
+                        let name = entry.get_str("id")?;
+                        Some((item(name), u8::try_from(entry.get_i32("count")?).ok()?))
+                    })
+                    .collect(),
+            )
+        }
+        _ => None,
+    })
+}
+
+fn items_spawned(player: &Player) -> usize {
+    player
+        .log
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                ClientEvent::SpawnEntity {
+                    kind: rspigot_core::events::EntityKind::Item,
+                    ..
+                }
+            )
+        })
+        .count()
+}
+
+impl World {
+    fn campfire_with(&mut self, food: &str, count: u8) {
+        self.place_storage("campfire");
+        self.console(&format!("give Alice minecraft:{food} {count}"));
+        self.select(0);
+        self.use_on(CHEST, Direction::Up);
+    }
+
+    fn held_count(&self) -> Option<u8> {
+        inventory_slot(&self.alice, 36).map(|(_, count)| count)
+    }
+}
+
+#[test]
+fn food_placed_on_a_campfire_is_shown_and_taken_one_at_a_time() {
+    let mut world = world();
+    world.campfire_with("beef", 3);
+    assert_eq!(
+        campfire_items(&world.alice),
+        Some(vec![(item("minecraft:beef"), 1)])
+    );
+    assert_eq!(world.held_count(), Some(2));
+    world.use_on(CHEST, Direction::Up);
+    assert_eq!(
+        campfire_items(&world.alice).map(|items| items.len()),
+        Some(2)
+    );
+    assert_eq!(world.held_count(), Some(1));
+}
+
+#[test]
+fn a_full_campfire_keeps_the_food_in_the_hand() {
+    let mut world = world();
+    world.campfire_with("beef", 6);
+    for _ in 0..3 {
+        world.use_on(CHEST, Direction::Up);
+    }
+    assert_eq!(
+        campfire_items(&world.alice).map(|items| items.len()),
+        Some(4)
+    );
+    assert_eq!(world.held_count(), Some(2));
+    world.use_on(CHEST, Direction::Up);
+    assert_eq!(world.held_count(), Some(2));
+}
+
+#[test]
+fn a_creative_player_keeps_the_food_he_places() {
+    let mut world = world();
+    world.console("gamemode creative Alice");
+    world.place_storage("campfire");
+    world.console("give Alice minecraft:beef 3");
+    world.select(1);
+    world.use_on(CHEST, Direction::Up);
+    assert_eq!(
+        campfire_items(&world.alice).map(|items| items.len()),
+        Some(1)
+    );
+    assert_eq!(
+        inventory_slot(&world.alice, 37),
+        Some((item("minecraft:beef"), 3))
+    );
+}
+
+#[test]
+fn food_cooks_for_600_ticks_then_drops_as_the_cooked_item() {
+    let mut world = world();
+    world.campfire_with("beef", 1);
+    let before = items_spawned(&world.alice);
+    world.wait(590);
+    assert_eq!(items_spawned(&world.alice), before);
+    assert_eq!(
+        campfire_items(&world.alice).map(|items| items.len()),
+        Some(1)
+    );
+    world.wait(20);
+    assert_eq!(items_spawned(&world.alice), before + 1);
+    assert_eq!(campfire_items(&world.alice), Some(Vec::new()));
+}
+
+#[test]
+fn breaking_a_campfire_drops_the_food_on_it() {
+    let mut world = world();
+    world.campfire_with("beef", 2);
+    world.use_on(CHEST, Direction::Up);
+    let before = items_spawned(&world.alice);
+    world.break_at(CHEST);
+    assert!(items_spawned(&world.alice) >= before + 2);
+}

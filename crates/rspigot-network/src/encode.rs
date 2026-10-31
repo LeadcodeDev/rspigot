@@ -911,6 +911,25 @@ impl Encoder {
                     state: i32::from(state.0),
                 },
             ),
+            ClientEvent::BlockEntityUpdate { pos, kind, data } => {
+                let id = rspigot_data::registries::static_index(
+                    "minecraft:block_entity_type",
+                    &format!("minecraft:{kind}"),
+                )
+                .and_then(|id| i32::try_from(id).ok());
+                if let Some(id) = id {
+                    Self::queue(
+                        writer,
+                        &cb::BlockEntityData {
+                            pos: position(*pos),
+                            kind: id,
+                            data: rspigot_nbt::Tag::Compound(data.clone()),
+                        },
+                    )
+                } else {
+                    Ok(())
+                }
+            }
             ClientEvent::BlockEvent {
                 pos,
                 action,
@@ -2113,6 +2132,32 @@ mod tests {
             encode(pickup),
             vec![(id::TAKE_ITEM_ENTITY, vec![0xAC, 0x02, 2, 1])]
         );
+    }
+
+    #[test]
+    fn block_entity_update_golden_bytes() {
+        let tag = rspigot_nbt::Compound::new().with("Items", rspigot_nbt::Tag::List(Vec::new()));
+        let event = ClientEvent::BlockEntityUpdate {
+            pos: BlockPos::new(1, 64, 2),
+            kind: "campfire",
+            data: tag.clone(),
+        };
+        let campfire = rspigot_data::registries::static_index(
+            "minecraft:block_entity_type",
+            "minecraft:campfire",
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        position(BlockPos::new(1, 64, 2)).encode(&mut expected);
+        write_var(i32::try_from(campfire).unwrap(), &mut expected);
+        rspigot_nbt::write_network(&mut expected, &rspigot_nbt::Tag::Compound(tag));
+        assert_eq!(encode(event), vec![(id::BLOCK_ENTITY_DATA, expected)]);
+        let unknown = ClientEvent::BlockEntityUpdate {
+            pos: BlockPos::new(0, 0, 0),
+            kind: "nope",
+            data: rspigot_nbt::Compound::new(),
+        };
+        assert_eq!(encode(unknown), Vec::new());
     }
 
     #[test]

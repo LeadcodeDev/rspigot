@@ -17,7 +17,7 @@ use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
-use crate::{beacon, cooking, lectern};
+use crate::{beacon, campfire, cooking, lectern};
 
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
@@ -182,6 +182,9 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
 }
 
 pub(crate) fn container_entity(state: BlockStateId) -> Option<&'static str> {
+    if campfire::is_campfire(state) {
+        return Some("campfire");
+    }
     if lectern::is_lectern(state) {
         return Some("lectern");
     }
@@ -311,6 +314,9 @@ impl<L: ClientLink> Server<L> {
     ) -> Vec<ItemStack> {
         if old.kind() == new.kind() {
             return Vec::new();
+        }
+        if campfire::is_campfire(old) {
+            return self.campfire_items_lost_by(pos, old, new);
         }
         let Some(opening) = opening_of(old).filter(|opening| opening.entity.is_some()) else {
             return Vec::new();
