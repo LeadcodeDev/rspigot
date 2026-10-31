@@ -46,12 +46,12 @@ impl Registry {
         self.connected.remove(&connection).is_some()
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn is_current(&self, connection: u64) -> bool {
         self.connected.contains_key(&connection)
     }
 
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn listeners(
         &self,
         event: EventKind,
@@ -239,6 +239,57 @@ mod tests {
                 &NAMES
             ),
             ["a", "c", "b"]
+        );
+    }
+
+    #[test]
+    fn several_listed_plugins_follow_the_order_they_are_listed_in() {
+        let mut registry = Registry::default();
+        connect(&mut registry, 1, mover("a", Priority::Normal));
+        connect(&mut registry, 2, mover("z", Priority::Normal));
+        let names = ["a", "z"];
+        let listed = PluginSettings {
+            order: vec!["z".to_owned(), "a".to_owned()],
+            ..PluginSettings::default()
+        };
+        assert_eq!(
+            sequence(
+                &registry,
+                EventKind::PlayerMove,
+                Access::Observe,
+                &listed,
+                &names
+            ),
+            ["z", "a"]
+        );
+        assert_eq!(
+            sequence(
+                &registry,
+                EventKind::PlayerMove,
+                Access::Observe,
+                &PluginSettings::default(),
+                &names
+            ),
+            ["a", "z"]
+        );
+    }
+
+    #[test]
+    fn handlers_of_one_plugin_at_equal_priority_settle_by_id() {
+        let mut registry = Registry::default();
+        let handlers = vec![
+            handler(5, EventKind::PlayerMove, Access::Observe, Priority::Normal),
+            handler(2, EventKind::PlayerMove, Access::Observe, Priority::Normal),
+        ];
+        connect(&mut registry, 1, intro("welcome", handlers));
+        let settled = registry.listeners(
+            EventKind::PlayerMove,
+            Access::Observe,
+            &PluginSettings::default(),
+        );
+        assert_eq!(
+            settled.iter().map(|(c, h)| (*c, h.id)).collect::<Vec<_>>(),
+            [(1, 2), (1, 5)]
         );
     }
 
