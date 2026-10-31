@@ -709,3 +709,125 @@ fn a_hopper_has_no_lid_and_makes_no_sound() {
             .any(|event| matches!(event, ClientEvent::Sound { .. }))
     );
 }
+
+fn data_events(player: &Player, window: i32) -> Vec<(i16, i16)> {
+    player
+        .log
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::ContainerData {
+                window: at,
+                id,
+                value,
+            } if *at == window => Some((*id, *value)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn open_as_bob(world: &mut World) {
+    world.open_chest_as_bob();
+}
+
+const GRID_HOTBAR_0: i16 = 37;
+
+#[test]
+fn the_crafting_table_opens_a_grid_menu_with_a_result_slot() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 12)));
+    let slots = content(&world.alice, WINDOW).expect("content");
+    assert_eq!(slots.len(), 46);
+}
+
+#[test]
+fn the_crafting_grid_comes_back_when_the_window_closes_and_is_not_kept() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("stone");
+    world.open_chest();
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+
+    let back = world.alice.log.iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::PlayerInventorySlot { stack: Some(stack), .. }
+                if stack.item.0 == item("minecraft:stone")
+        )
+    });
+    assert!(back, "the grid item returns to the inventory");
+    world.open_chest();
+    let slots = content(&world.alice, 2).expect("second window");
+    assert!(slots[..10].iter().all(Option::is_none));
+}
+
+#[test]
+fn two_players_have_separate_crafting_grids() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("stone");
+    world.open_chest();
+    open_as_bob(&mut world);
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+
+    assert_eq!(slot_update(&world.bob, WINDOW, 1), None);
+    let bob_slots = content(&world.bob, WINDOW).expect("bob content");
+    assert!(bob_slots[..10].iter().all(Option::is_none));
+}
+
+#[test]
+fn the_crafting_result_slot_takes_nothing() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("stone");
+    world.open_chest();
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), None);
+    world.close(WINDOW);
+    world.open_chest();
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[0], None);
+}
+
+#[test]
+fn each_furnace_opens_with_its_own_menu_and_four_data_slots() {
+    for (item, menu) in [("furnace", 14), ("blast_furnace", 10), ("smoker", 22)] {
+        let mut world = world();
+        world.place_storage(item);
+        world.open_chest();
+
+        assert_eq!(opened(&world.alice), Some((WINDOW, menu)), "{item}");
+        let slots = content(&world.alice, WINDOW).unwrap_or_else(|| panic!("{item} content"));
+        assert_eq!(slots.len(), 39, "{item}");
+        assert_eq!(
+            data_events(&world.alice, WINDOW),
+            vec![(0, 0), (1, 0), (2, 0), (3, 0)],
+            "{item}"
+        );
+    }
+}
+
+#[test]
+fn furnace_items_are_kept_and_the_result_slot_refuses_them() {
+    let mut world = world();
+    world.place_storage("furnace");
+    world.give("iron_ore");
+    world.open_chest();
+    let main_slot = 3 + 27;
+    world.click(WINDOW, main_slot, 0, ClickInput::Pickup);
+    world.click(WINDOW, 2, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.open_chest();
+
+    let slots = content(&world.alice, 2).expect("second window");
+    assert_eq!(slots[0], Some((item("minecraft:iron_ore"), 1)));
+    assert_eq!(slots[2], None);
+}

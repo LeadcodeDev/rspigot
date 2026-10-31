@@ -1108,6 +1108,14 @@ impl Encoder {
                     item: stack(item),
                 },
             ),
+            ClientEvent::ContainerData { window, id, value } => Self::queue(
+                writer,
+                &cb::ContainerSetData {
+                    container_id: *window,
+                    id: *id,
+                    value: *value,
+                },
+            ),
             ClientEvent::ContainerClose(window) => Self::queue(
                 writer,
                 &cb::ContainerClose {
@@ -1699,6 +1707,18 @@ mod tests {
         assert_eq!(packets.len(), 1);
         assert_eq!(packets[0].0, id::BLOCK_EVENT);
         assert_eq!(&packets[0].1[8..], &[1, 2, 130, 1]);
+    }
+
+    #[test]
+    fn container_data_carries_the_window_the_property_and_the_value() {
+        assert_eq!(
+            encode(ClientEvent::ContainerData {
+                window: 2,
+                id: 3,
+                value: 200
+            }),
+            vec![(id::CONTAINER_SET_DATA, vec![2, 0, 3, 0, 200])]
+        );
     }
 
     #[test]

@@ -16,6 +16,15 @@ wire_struct! {
 }
 
 wire_struct! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ContainerSetData = id::CONTAINER_SET_DATA {
+        pub container_id: i32 as Var,
+        pub id: i16,
+        pub value: i16,
+    }
+}
+
+wire_struct! {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct ContainerSetSlot = id::CONTAINER_SET_SLOT {
         pub container_id: i32 as Var,

@@ -451,6 +451,11 @@ pub enum ClientEvent {
         slot: i16,
         stack: Slot,
     },
+    ContainerData {
+        window: i32,
+        id: i16,
+        value: i16,
+    },
     ContainerClose(i32),
     InventorySlot {
         state_id: i32,
