@@ -1,7 +1,8 @@
-use rspigot_items::ItemKind;
+use rspigot_items::{CookingKind, ItemKind};
 
 use crate::crafting;
 use crate::entity::reward::max_damage;
+use crate::furnace;
 use crate::item::{
     HOTBAR_START, Inventory, ItemStack, Slot, count, max_stack, menu_slot, same_item,
     same_item_same_components, split, stacks_match, with_count,
@@ -96,7 +97,16 @@ impl MenuKind {
     }
 
     pub fn is_furnace(self) -> bool {
-        matches!(self, Self::Furnace | Self::BlastFurnace | Self::Smoker)
+        self.cooking().is_some()
+    }
+
+    pub fn cooking(self) -> Option<CookingKind> {
+        match self {
+            Self::Furnace => Some(CookingKind::Smelting),
+            Self::BlastFurnace => Some(CookingKind::Blasting),
+            Self::Smoker => Some(CookingKind::Smoking),
+            _ => None,
+        }
     }
 
     fn station_plan(
@@ -164,12 +174,17 @@ impl MenuKind {
                 10..=36 => vec![(1, 10, false), (37, 46, false)],
                 _ => vec![(1, 10, false), (10, 37, false)],
             },
-            Self::Furnace | Self::BlastFurnace | Self::Smoker => match slot {
-                2 => vec![(3, total, true)],
-                0 | 1 => vec![(3, total, false)],
-                3..=29 => vec![(30, total, false)],
-                _ => vec![(3, 30, false)],
-            },
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => {
+                let cooking = self.cooking().unwrap_or(CookingKind::Smelting);
+                match slot {
+                    2 => vec![(3, total, true)],
+                    0 | 1 => vec![(3, total, false)],
+                    _ if furnace::can_smelt(cooking, stack) => vec![(0, 1, false)],
+                    _ if furnace::is_fuel(stack) => vec![(1, 2, false)],
+                    3..=29 => vec![(30, total, false)],
+                    _ => vec![(3, 30, false)],
+                }
+            }
             _ => {
                 let size = self.container_size();
                 if slot < size {
@@ -214,7 +229,11 @@ impl MenuKind {
             Self::Loom if slot == 2 => is_loom_pattern(stack),
             Self::ShulkerBox if slot < self.container_size() => !is_shulker_box(stack),
             Self::Crafting => slot != 0,
-            Self::Furnace | Self::BlastFurnace | Self::Smoker => slot != 2,
+            Self::Furnace | Self::BlastFurnace | Self::Smoker => match slot {
+                1 => furnace::is_fuel(stack) || furnace::is_empty_bucket(stack),
+                2 => false,
+                _ => true,
+            },
             _ => true,
         }
     }
@@ -406,6 +425,9 @@ impl Session<'_> {
         if self.kind == MenuKind::Beacon && slot == 0 {
             return 1;
         }
+        if self.kind.is_furnace() && slot == furnace::FUEL_SLOT && furnace::is_empty_bucket(stack) {
+            return 1;
+        }
         CONTAINER_MAX_STACK.min(max_stack(stack))
     }
 
@@ -434,6 +456,12 @@ impl Session<'_> {
     }
 
     fn took(&mut self, slot: usize, taken: &Slot) {
+        if self.kind.is_furnace() && slot == furnace::RESULT_SLOT && taken.is_some() {
+            if self.effects.last() != Some(&MenuEffect::FurnaceOutputTaken) {
+                self.effects.push(MenuEffect::FurnaceOutputTaken);
+            }
+            return;
+        }
         if self.kind != MenuKind::Crafting || slot != CRAFTING_RESULT || taken.is_none() {
             return;
         }
@@ -687,6 +715,8 @@ impl Session<'_> {
         if self.kind == MenuKind::Crafting && slot == CRAFTING_RESULT {
             self.took(slot, &Some(copy.clone()));
             self.drop_stack(stack, false, true);
+        } else if self.kind.is_furnace() && slot == furnace::RESULT_SLOT {
+            self.took(slot, &Some(copy.clone()));
         }
         Some(copy)
     }
@@ -1587,7 +1617,7 @@ mod tests {
         let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
         assert_eq!(MenuKind::Furnace.slot_count(), 39);
         assert_eq!(MenuKind::Furnace.data_count(), 4);
-        player.set(MAIN_START, Some(stack("minecraft:iron_ore", 3)));
+        player.set(MAIN_START, Some(stack("minecraft:dirt", 3)));
         click(
             &mut menu,
             &mut container,
@@ -1631,6 +1661,167 @@ mod tests {
             ClickInput::QuickMove,
         );
         assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(3));
+    }
+
+    fn shift(
+        menu: &mut ContainerMenu,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        slot: i16,
+    ) -> Vec<MenuEffect> {
+        click(menu, container, player, slot, 0, ClickInput::QuickMove)
+    }
+
+    #[test]
+    fn shift_click_sends_cookable_items_to_the_input_and_fuel_to_the_fuel_slot() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+        player.set(MAIN_START, Some(stack("minecraft:raw_iron", 3)));
+        player.set(MAIN_START + 1, Some(stack("minecraft:coal", 2)));
+        shift(&mut menu, &mut container, &mut player, 3);
+        shift(&mut menu, &mut container, &mut player, 4);
+        assert_eq!(container[0], Some(stack("minecraft:raw_iron", 3)));
+        assert_eq!(container[1], Some(stack("minecraft:coal", 2)));
+        assert!(player.get(MAIN_START).is_none() && player.get(MAIN_START + 1).is_none());
+    }
+
+    #[test]
+    fn each_furnace_only_takes_what_it_can_cook_from_shift_click() {
+        let cases = [
+            (MenuKind::Furnace, "minecraft:beef", true),
+            (MenuKind::BlastFurnace, "minecraft:beef", false),
+            (MenuKind::BlastFurnace, "minecraft:raw_iron", true),
+            (MenuKind::Smoker, "minecraft:raw_iron", false),
+            (MenuKind::Smoker, "minecraft:beef", true),
+        ];
+        for (kind, item, accepted) in cases {
+            let (mut menu, mut container, mut player) = workstation(kind);
+            player.set(MAIN_START, Some(stack(item, 1)));
+            shift(&mut menu, &mut container, &mut player, 3);
+            assert_eq!(container[0].is_some(), accepted, "{kind:?} {item}");
+            assert_eq!(
+                player.get(HOTBAR_START).is_some(),
+                !accepted,
+                "{kind:?} {item}"
+            );
+        }
+    }
+
+    #[test]
+    fn shift_click_never_falls_through_to_another_slot() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+        container[0] = Some(stack("minecraft:beef", 1));
+        player.set(MAIN_START, Some(stack("minecraft:raw_iron", 1)));
+        shift(&mut menu, &mut container, &mut player, 3);
+        assert_eq!(container[0], Some(stack("minecraft:beef", 1)));
+        assert_eq!(container[1], None);
+        assert!(player.get(MAIN_START).is_some());
+        container[1] = Some(stack("minecraft:stick", 64));
+        player.set(MAIN_START, Some(stack("minecraft:coal", 1)));
+        shift(&mut menu, &mut container, &mut player, 3);
+        assert_eq!(container[1], Some(stack("minecraft:stick", 64)));
+        assert!(player.get(MAIN_START).is_some());
+    }
+
+    #[test]
+    fn the_fuel_slot_takes_fuel_and_empty_buckets_one_at_a_time() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+        for (item, accepted) in [
+            ("minecraft:coal", true),
+            ("minecraft:bucket", true),
+            ("minecraft:water_bucket", false),
+            ("minecraft:dirt", false),
+        ] {
+            container[1] = None;
+            menu.carried = Some(stack(item, 2));
+            click(
+                &mut menu,
+                &mut container,
+                &mut player,
+                1,
+                0,
+                ClickInput::Pickup,
+            );
+            assert_eq!(container[1].is_some(), accepted, "{item}");
+        }
+        container[1] = None;
+        menu.carried = Some(stack("minecraft:bucket", 4));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[1], Some(stack("minecraft:bucket", 1)));
+        assert_eq!(menu.carried(), &Some(stack("minecraft:bucket", 3)));
+        container[1] = None;
+        menu.carried = Some(stack("minecraft:coal", 100));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[1], Some(stack("minecraft:coal", 64)));
+    }
+
+    #[test]
+    fn taking_from_the_output_slot_reports_it_whichever_way_it_is_taken() {
+        let taken = |input: ClickInput, slot: i16, button: i8| {
+            let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+            container[2] = Some(stack("minecraft:iron_ingot", 5));
+            click(&mut menu, &mut container, &mut player, slot, button, input)
+                .into_iter()
+                .filter(|effect| *effect == MenuEffect::FurnaceOutputTaken)
+                .count()
+        };
+        assert_eq!(taken(ClickInput::Pickup, 2, 0), 1);
+        assert_eq!(taken(ClickInput::Pickup, 2, 1), 1);
+        assert_eq!(taken(ClickInput::QuickMove, 2, 0), 1);
+        assert_eq!(taken(ClickInput::Swap, 2, 3), 1);
+        assert_eq!(taken(ClickInput::Throw, 2, 1), 1);
+        assert_eq!(taken(ClickInput::Pickup, 0, 0), 0);
+        assert_eq!(taken(ClickInput::Pickup, 20, 0), 0);
+    }
+
+    #[test]
+    fn an_empty_output_slot_reports_nothing_and_a_partial_take_is_refused() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        assert!(effects.is_empty());
+        container[2] = Some(stack("minecraft:iron_ingot", 5));
+        menu.carried = Some(stack("minecraft:iron_ingot", 62));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        assert!(effects.is_empty());
+        assert_eq!(container[2], Some(stack("minecraft:iron_ingot", 5)));
+        menu.carried = Some(stack("minecraft:iron_ingot", 59));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(effects, vec![MenuEffect::FurnaceOutputTaken]);
+        assert_eq!(menu.carried(), &Some(stack("minecraft:iron_ingot", 64)));
     }
 
     #[test]

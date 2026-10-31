@@ -85,6 +85,7 @@ pub enum MenuEffect {
         predicted: bool,
     },
     ResultUpdated,
+    FurnaceOutputTaken,
     SlotResent(usize),
     FullResync,
     PlacedBack {

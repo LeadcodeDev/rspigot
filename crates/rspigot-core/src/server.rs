@@ -605,6 +605,7 @@ impl<L: ClientLink> Server<L> {
         self.collect_items();
         self.collect_arrows();
         self.collect_orbs();
+        self.tick_furnaces();
         self.tick_inventories();
         self.tick_open_menus();
         self.tick_falling_blocks();

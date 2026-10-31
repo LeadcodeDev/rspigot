@@ -2350,3 +2350,214 @@ fn a_placed_beacon_has_its_block_entity_for_a_late_joiner() {
 
     assert!(carries_a_block_entity(&carol, CHEST, "minecraft:beacon"));
 }
+
+const FURNACE_HOTBAR_0: i16 = 30;
+
+impl World {
+    fn wait(&mut self, ticks: usize) {
+        self.server.deliver();
+        run_ticks(
+            &mut self.server,
+            &mut [&mut self.alice, &mut self.bob],
+            ticks,
+        );
+    }
+
+    fn open_and_fill_furnace(&mut self, block: &str, input: &str, fuel: &str) {
+        self.place_storage(block);
+        self.give(input);
+        self.give(fuel);
+        self.open_chest();
+        self.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+        self.click(WINDOW, 0, 0, ClickInput::Pickup);
+        self.click(WINDOW, FURNACE_HOTBAR_0 + 1, 0, ClickInput::Pickup);
+        self.click(WINDOW, 1, 0, ClickInput::Pickup);
+    }
+
+    fn furnace_is_lit(&self) -> bool {
+        last_update(&self.alice, CHEST).is_some_and(|state| state.property("lit") == Some("true"))
+    }
+}
+
+fn output_of_furnace(world: &World) -> Option<Option<(u16, u8)>> {
+    slot_update(&world.alice, WINDOW, 2)
+}
+
+#[test]
+fn a_furnace_cooks_an_item_with_its_fuel_and_lights_up() {
+    let mut world = world();
+    world.open_and_fill_furnace("furnace", "potato", "coal");
+    assert_eq!(output_of_furnace(&world), None);
+
+    world.wait(190);
+    assert_eq!(output_of_furnace(&world), None);
+    assert!(world.furnace_is_lit());
+
+    world.wait(20);
+    assert_eq!(
+        output_of_furnace(&world),
+        Some(Some((item("minecraft:baked_potato"), 1)))
+    );
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert!(world.furnace_is_lit());
+}
+
+#[test]
+fn a_blast_furnace_cooks_in_half_the_time() {
+    let mut world = world();
+    world.open_and_fill_furnace("blast_furnace", "raw_iron", "coal");
+    world.wait(90);
+    assert_eq!(output_of_furnace(&world), None);
+    world.wait(20);
+    assert_eq!(
+        output_of_furnace(&world),
+        Some(Some((item("minecraft:iron_ingot"), 1)))
+    );
+}
+
+#[test]
+fn a_smoker_refuses_what_is_not_food_and_a_furnace_without_fuel_stays_cold() {
+    let mut world = world();
+    world.open_and_fill_furnace("smoker", "raw_iron", "coal");
+    world.wait(220);
+    assert_eq!(output_of_furnace(&world), None);
+    assert!(!world.furnace_is_lit());
+
+    let mut cold = self::world();
+    cold.place_storage("furnace");
+    cold.give("potato");
+    cold.open_chest();
+    cold.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    cold.click(WINDOW, 0, 0, ClickInput::Pickup);
+    cold.wait(60);
+    assert!(!cold.furnace_is_lit());
+    assert_eq!(output_of_furnace(&cold), None);
+}
+
+#[test]
+fn the_menu_counts_down_the_fire_and_the_cooking_progress() {
+    let mut world = world();
+    world.open_and_fill_furnace("furnace", "potato", "coal");
+    world.wait(20);
+    let last = |id: i16| {
+        data_events(&world.alice, WINDOW)
+            .into_iter()
+            .rev()
+            .find_map(|(index, value)| (index == id).then_some(value))
+    };
+    let lit = last(0).expect("lit time");
+    assert!((1570..1600).contains(&lit), "{lit}");
+    assert_eq!(last(1), Some(1600));
+    let progress = last(2).expect("progress");
+    assert!((10..30).contains(&progress), "{progress}");
+    assert_eq!(last(3), Some(200));
+}
+
+fn experience_of_everyone(world: &World) -> i32 {
+    [world.alice.id, world.bob.id]
+        .into_iter()
+        .map(|id| world.server.player_experience(id).unwrap().2)
+        .sum()
+}
+
+#[test]
+fn taking_the_output_pays_the_experience_it_earned() {
+    let mut world = world();
+    world.open_and_fill_furnace("blast_furnace", "raw_gold", "coal");
+    world.wait(110);
+    assert_eq!(
+        output_of_furnace(&world),
+        Some(Some((item("minecraft:gold_ingot"), 1)))
+    );
+    let before = experience_of_everyone(&world);
+    world.click(WINDOW, 2, 0, ClickInput::Pickup);
+    world.wait(40);
+    let after = experience_of_everyone(&world);
+    assert_eq!(after - before, 1);
+}
+
+#[test]
+fn the_experience_is_paid_once_per_item_cooked() {
+    let mut world = world();
+    world.place_storage("blast_furnace");
+    world.console("give Alice minecraft:raw_gold 2");
+    world.give("coal");
+    world.open_chest();
+    world.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.click(WINDOW, FURNACE_HOTBAR_0 + 1, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+    world.wait(105);
+    let experience = experience_of_everyone;
+    let start = experience(&world);
+    world.click(WINDOW, 2, 0, ClickInput::Pickup);
+    world.wait(40);
+    let first = experience(&world);
+    assert_eq!(first - start, 1);
+    world.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    world.wait(100);
+    world.click(WINDOW, 2, 0, ClickInput::Pickup);
+    world.wait(40);
+    assert_eq!(experience(&world) - first, 1);
+}
+
+#[test]
+fn breaking_a_furnace_drops_its_items_and_pops_the_experience_it_kept() {
+    let mut world = world();
+    world.open_and_fill_furnace("blast_furnace", "raw_gold", "coal");
+    world.wait(110);
+    world.close(WINDOW);
+    let before = experience_of_everyone(&world);
+    world.break_at(CHEST);
+    world.wait(40);
+    let after = experience_of_everyone(&world);
+    assert_eq!(after - before, 1);
+    let dropped = world.alice.log.iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::SpawnEntity {
+                kind: rspigot_core::events::EntityKind::Item,
+                ..
+            }
+        )
+    });
+    assert!(dropped);
+}
+
+#[test]
+fn replacing_the_input_restarts_the_cooking() {
+    let mut world = world();
+    world.open_and_fill_furnace("furnace", "potato", "coal");
+    world.wait(100);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.wait(2);
+    let reset = data_events(&world.alice, WINDOW)
+        .into_iter()
+        .rev()
+        .find_map(|(index, value)| (index == 2).then_some(value));
+    assert_eq!(reset, Some(0));
+}
+
+#[test]
+fn adding_more_of_the_same_input_keeps_the_progress() {
+    let mut world = world();
+    world.place_storage("furnace");
+    world.console("give Alice minecraft:potato 2");
+    world.give("coal");
+    world.open_chest();
+    world.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 1, ClickInput::Pickup);
+    world.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, FURNACE_HOTBAR_0 + 1, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+    world.wait(100);
+    world.click(WINDOW, FURNACE_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.wait(2);
+    let progress = data_events(&world.alice, WINDOW)
+        .into_iter()
+        .rev()
+        .find_map(|(index, value)| (index == 2).then_some(value))
+        .unwrap();
+    assert!(progress >= 95, "{progress}");
+}
