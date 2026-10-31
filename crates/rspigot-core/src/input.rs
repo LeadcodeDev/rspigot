@@ -178,7 +178,7 @@ impl<L: ClientLink> Server<L> {
                 sneaking,
             } => self.handle_interact(id, target, hand, sneaking),
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
-            PlayerInput::ContainerClose(_) => self.handle_container_close(id),
+            PlayerInput::ContainerClose(window) => self.handle_container_close(id, window),
         }
     }
 
@@ -430,6 +430,15 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         if !sneaking && self.use_block(pos, clicked, sneaking) {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        }
+        let holding = stack.is_some()
+            || self
+                .players
+                .get(&id)
+                .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
+        if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }

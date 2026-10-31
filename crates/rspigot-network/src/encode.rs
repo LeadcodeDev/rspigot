@@ -1054,6 +1054,52 @@ impl Encoder {
                     item: stack(item),
                 },
             ),
+            ClientEvent::OpenScreen {
+                window,
+                menu,
+                title,
+            } => Self::queue(
+                writer,
+                &cb::OpenScreen {
+                    container_id: *window,
+                    menu: *menu,
+                    title: text(title),
+                },
+            ),
+            ClientEvent::ContainerContent {
+                window,
+                state_id,
+                slots,
+                carried,
+            } => Self::queue(
+                writer,
+                &cb::ContainerSetContent {
+                    container_id: *window,
+                    state_id: *state_id,
+                    items: slots.iter().map(stack).collect(),
+                    carried: stack(carried),
+                },
+            ),
+            ClientEvent::ContainerSlot {
+                window,
+                state_id,
+                slot,
+                stack: item,
+            } => Self::queue(
+                writer,
+                &cb::ContainerSetSlot {
+                    container_id: *window,
+                    state_id: *state_id,
+                    slot: *slot,
+                    item: stack(item),
+                },
+            ),
+            ClientEvent::ContainerClose(window) => Self::queue(
+                writer,
+                &cb::ContainerClose {
+                    container_id: *window,
+                },
+            ),
             ClientEvent::CursorItem(item) => {
                 Self::queue(writer, &cb::SetCursorItem { item: stack(item) })
             }
@@ -1626,6 +1672,44 @@ mod tests {
             }),
             vec![(id::CONTAINER_SET_SLOT, vec![0, 8, 0, 0, 0])]
         );
+    }
+
+    #[test]
+    fn container_windows_carry_their_id() {
+        assert_eq!(
+            encode(ClientEvent::ContainerContent {
+                window: 3,
+                state_id: 7,
+                slots: vec![None, stone(64)],
+                carried: None,
+            }),
+            vec![(id::CONTAINER_SET_CONTENT, vec![3, 7, 2, 0, 64, 1, 0, 0, 0])]
+        );
+        assert_eq!(
+            encode(ClientEvent::ContainerSlot {
+                window: 3,
+                state_id: 8,
+                slot: 26,
+                stack: None,
+            }),
+            vec![(id::CONTAINER_SET_SLOT, vec![3, 8, 0, 26, 0])]
+        );
+        assert_eq!(
+            encode(ClientEvent::ContainerClose(3)),
+            vec![(id::CONTAINER_CLOSE, vec![3])]
+        );
+    }
+
+    #[test]
+    fn opening_a_screen_starts_with_the_window_and_the_menu_type() {
+        let packets = encode(ClientEvent::OpenScreen {
+            window: 5,
+            menu: 2,
+            title: rspigot_domain::text::Component::translatable("container.chest", Vec::new()),
+        });
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].0, id::OPEN_SCREEN);
+        assert_eq!(&packets[0].1[..2], &[5, 2]);
     }
 
     #[test]

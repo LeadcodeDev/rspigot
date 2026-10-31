@@ -802,7 +802,11 @@ impl InventoryMenu {
     }
 }
 
-fn place_back_or_drop(inventory: &mut Inventory, stack: ItemStack, effects: &mut Vec<MenuEffect>) {
+pub(crate) fn place_back_or_drop(
+    inventory: &mut Inventory,
+    stack: ItemStack,
+    effects: &mut Vec<MenuEffect>,
+) {
     let outcome = inventory.place_back(stack);
     for (slot, stack) in outcome.placed {
         effects.push(MenuEffect::PlacedBack { slot, stack });

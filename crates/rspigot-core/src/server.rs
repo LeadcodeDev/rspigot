@@ -414,6 +414,8 @@ impl<L: ClientLink> Server<L> {
             known_movement: Vec3::ZERO,
             moved_this_tick: false,
             using_item: None,
+            open_menu: None,
+            window_counter: 0,
         };
         if let Some(save) = &saved {
             save.restore(&mut player, self.world.spawn, self.world.level.spawn_angle);
@@ -539,6 +541,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn remove_player(&mut self, id: PlayerId, announce: bool) {
+        self.close_open_menu(id, false);
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };
@@ -602,6 +605,7 @@ impl<L: ClientLink> Server<L> {
         self.collect_arrows();
         self.collect_orbs();
         self.tick_inventories();
+        self.tick_open_menus();
         self.tick_falling_blocks();
         self.update_tracking();
         self.sync_vitals();

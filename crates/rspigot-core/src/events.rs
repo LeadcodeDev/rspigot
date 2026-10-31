@@ -428,6 +428,24 @@ pub enum ClientEvent {
         slots: Vec<Slot>,
         carried: Slot,
     },
+    OpenScreen {
+        window: i32,
+        menu: i32,
+        title: Component,
+    },
+    ContainerContent {
+        window: i32,
+        state_id: i32,
+        slots: Vec<Slot>,
+        carried: Slot,
+    },
+    ContainerSlot {
+        window: i32,
+        state_id: i32,
+        slot: i16,
+        stack: Slot,
+    },
+    ContainerClose(i32),
     InventorySlot {
         state_id: i32,
         slot: i16,
