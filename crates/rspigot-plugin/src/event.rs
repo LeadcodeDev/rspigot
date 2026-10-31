@@ -82,8 +82,8 @@ impl Received {
             }),
             event::Payload::PlayerMove(moved) => Self::Move(PlayerMove {
                 player: Player::from_wire(moved.player, link)?,
-                from: Position::from_wire(moved.from),
-                to: Position::from_wire(moved.to),
+                from: Position::from_wire(moved.from, "from")?,
+                to: Position::from_wire(moved.to, "to")?,
                 id,
                 cancelled,
                 rolled_back,

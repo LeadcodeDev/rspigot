@@ -1,6 +1,7 @@
 use tonic::Status;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("`{0}` is not a valid rspigot URL")]
     Url(String),
@@ -10,6 +11,8 @@ pub enum Error {
     Replaced,
     #[error("not connected to rspigot")]
     Disconnected,
+    #[error("rspigot did not answer in time")]
+    Timeout,
     #[error("rspigot does not know it")]
     NotFound,
     #[error("rspigot sent {0}")]

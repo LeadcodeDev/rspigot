@@ -13,8 +13,9 @@ pub struct Position {
 }
 
 impl Position {
-    pub(crate) fn from_wire(vec: Option<v1::Vec3>) -> Self {
-        vec.map_or_else(Self::default, |vec| Self {
+    pub(crate) fn from_wire(vec: Option<v1::Vec3>, field: &str) -> Result<Self, Error> {
+        let vec = vec.ok_or_else(|| Error::Malformed(format!("a message without `{field}`")))?;
+        Ok(Self {
             x: vec.x,
             y: vec.y,
             z: vec.z,
@@ -71,7 +72,7 @@ impl Player {
             name: snapshot.name,
             entity_id: snapshot.entity_id,
             world: snapshot.world,
-            position: Position::from_wire(snapshot.position),
+            position: Position::from_wire(snapshot.position, "position")?,
             link: link.clone(),
         })
     }

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::Duration;
 
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
@@ -11,7 +12,7 @@ use tonic::{Code, Status, Streaming};
 
 use crate::Error;
 use crate::event::Received;
-use crate::link::{Link, Outbound, message};
+use crate::link::{ANSWER_TIMEOUT, Link, Outbound, message};
 use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin};
 
 const DEFAULT_URL: &str = "http://127.0.0.1:25580";
@@ -23,7 +24,7 @@ const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 
 struct Queued {
     event: v1::Event,
-    reply: Outbound,
+    reply: mpsc::WeakUnboundedSender<v1::FromPlugin>,
 }
 
 type Queue = mpsc::UnboundedSender<Queued>;
@@ -111,13 +112,8 @@ async fn connect(
         Ok(response) => response.into_inner(),
         Err(status) => return ended(status),
     };
-    match hears.message().await {
-        Ok(Some(v1::ToPlugin {
-            body: Some(to_plugin::Body::Accepted(_)),
-        })) => {}
-        Ok(Some(_)) => return Ended::Lost("rspigot spoke before accepting the plugin".to_owned()),
-        Ok(None) => return Ended::Lost("rspigot closed the stream".to_owned()),
-        Err(status) => return ended(status),
+    if let Err(ended) = accepted(hears.message()).await {
+        return ended;
     }
     backoff.reset();
     tracing::info!("Connected to rspigot as {} {}", hello.name, hello.version);
@@ -130,13 +126,32 @@ async fn connect(
     }
 }
 
+async fn accepted(
+    first: impl Future<Output = Result<Option<v1::ToPlugin>, Status>>,
+) -> Result<(), Ended> {
+    match tokio::time::timeout(ANSWER_TIMEOUT, first).await {
+        Ok(Ok(Some(v1::ToPlugin {
+            body: Some(to_plugin::Body::Accepted(_)),
+        }))) => Ok(()),
+        Ok(Ok(Some(_))) => Err(Ended::Lost(
+            "rspigot spoke before accepting the plugin".to_owned(),
+        )),
+        Ok(Ok(None)) => Err(Ended::Lost("rspigot closed the stream".to_owned())),
+        Ok(Err(status)) => Err(ended(status)),
+        Err(_) => Err(Ended::Lost(
+            "rspigot did not accept the plugin in time".to_owned(),
+        )),
+    }
+}
+
 async fn read(
     mut hears: Streaming<v1::ToPlugin>,
     link: Link,
     outbound: Outbound,
     queue: Queue,
 ) -> Ended {
-    let _attached = link.attach(outbound.clone());
+    let reply = outbound.downgrade();
+    let _attached = link.attach(outbound);
     loop {
         let body = match hears.message().await {
             Ok(Some(message)) => message.body,
@@ -147,7 +162,7 @@ async fn read(
             Some(to_plugin::Body::Event(event)) => {
                 let queued = Queued {
                     event,
-                    reply: outbound.clone(),
+                    reply: reply.clone(),
                 };
                 if queue.send(queued).is_err() {
                     return Ended::Lost("the plugin stopped handling events".to_owned());
@@ -178,32 +193,42 @@ async fn handle_events<P: Listeners>(
     link: &Link,
     mut queued: mpsc::UnboundedReceiver<Queued>,
 ) {
-    while let Some(Queued { event, reply }) = queued.recv().await {
-        handle(plugin, link, event, &reply).await;
+    while let Some(next) = queued.recv().await {
+        handle(plugin, link, next).await;
     }
 }
 
-async fn handle<P: Listeners>(plugin: &P, link: &Link, mut event: v1::Event, reply: &Outbound) {
+async fn handle<P: Listeners>(plugin: &P, link: &Link, queued: Queued) {
+    let Queued { mut event, reply } = queued;
     let id = event.id;
-    let deciding = event.phase() == v1::Phase::Decide;
     let handlers = std::mem::take(&mut event.handlers);
-    let received = match Received::from_wire(event, link) {
-        Ok(received) => received,
+    if event.phase() != v1::Phase::Decide {
+        match Received::from_wire(event, link) {
+            Ok(received) => observe(plugin, &received, &handlers).await,
+            Err(error) => tracing::warn!("Skipped event {id}: {error}"),
+        }
+        return;
+    }
+    let Some(reply) = reply.upgrade() else {
+        tracing::debug!("Dropped event {id}: its connection is gone");
+        return;
+    };
+    let cancel = match Received::from_wire(event, link) {
+        Ok(received) => decide(plugin, &received, &handlers).await,
         Err(error) => {
-            tracing::warn!("Skipped event {id}: {error}");
-            return;
+            tracing::warn!("Let event {id} through: {error}");
+            false
         }
     };
-    if deciding {
-        let cancel = decide(plugin, &received, &handlers).await;
-        let _ = reply.send(message(from_plugin::Body::Decision(v1::Decision {
-            event: id,
-            cancel,
-        })));
-    } else {
-        for &handler in &handlers {
-            plugin.dispatch(received.call(handler)).await;
-        }
+    let _ = reply.send(message(from_plugin::Body::Decision(v1::Decision {
+        event: id,
+        cancel,
+    })));
+}
+
+async fn observe<P: Listeners>(plugin: &P, received: &Received, handlers: &[u32]) {
+    for &handler in handlers {
+        plugin.dispatch(received.call(handler)).await;
     }
 }
 
@@ -238,7 +263,19 @@ impl Backoff {
 
 #[cfg(test)]
 mod tests {
+    use tokio::time::Instant;
+
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn no_acceptance_within_ten_seconds_is_a_lost_connection() {
+        let started = Instant::now();
+
+        let accepted = accepted(std::future::pending()).await;
+
+        assert!(matches!(accepted, Err(Ended::Lost(_))));
+        assert!(started.elapsed() >= ANSWER_TIMEOUT);
+    }
 
     #[test]
     fn the_retry_delay_doubles_up_to_thirty_seconds_and_starts_over_once_accepted() {

@@ -494,6 +494,28 @@ async fn a_deciding_handler_answers_its_event() {
     assert_eq!(session.hear().await, decision(7, true));
     session.say(event(8, &[2, 4], v1::Phase::Decide, false, moving_to(65.0)));
     assert_eq!(session.hear().await, decision(8, false));
+    let nowhere = event::Payload::PlayerMove(v1::PlayerMove {
+        player: Some(steve()),
+        from: None,
+        to: None,
+    });
+    session.say(event(9, &[2, 4], v1::Phase::Decide, false, nowhere));
+    assert_eq!(session.hear().await, decision(9, false));
+    let stranger = event::Payload::PlayerMove(v1::PlayerMove {
+        player: Some(snapshot("not a uuid", "Steve", 12)),
+        from: Some(v1::Vec3 {
+            x: 1.0,
+            y: 64.0,
+            z: -3.5,
+        }),
+        to: Some(v1::Vec3 {
+            x: 1.0,
+            y: 200.0,
+            z: -3.5,
+        }),
+    });
+    session.say(event(10, &[2, 4], v1::Phase::Decide, false, stranger));
+    assert_eq!(session.hear().await, decision(10, false));
 
     assert_eq!(
         plugin.marks(),
@@ -718,4 +740,36 @@ async fn a_lost_connection_is_retried() {
     let mut third = knock.accept();
     third.say(event(3, &[2], v1::Phase::Decide, false, moving_to(200.0)));
     assert_eq!(third.hear().await, decision(3, true));
+}
+
+#[tokio::test]
+async fn an_old_event_is_not_decided_after_a_reconnect() {
+    let mut host = Host::start().await;
+    let mut plugin = launch(&host, None);
+    let mut first = host.knock().await.accept();
+
+    first.say(event(1, &[1], v1::Phase::Settled, false, joining(steve())));
+    assert_eq!(first.hear().await, message(STEVE, "Welcome, Steve!"));
+    let from_plugin::Body::ResolvePlayer(_) = first.hear().await else {
+        panic!("expected a question about Steve");
+    };
+    first.say(event(2, &[2], v1::Phase::Decide, false, moving_to(200.0)));
+    let Session {
+        says,
+        hears: _still_open,
+    } = first;
+    drop(says);
+
+    let joined = plugin.joined().await;
+    assert!(matches!(joined.state, Err(Error::Disconnected)));
+    let mut second = host.knock().await.accept();
+    second.say(event(3, &[2], v1::Phase::Decide, false, moving_to(65.0)));
+    assert_eq!(second.hear().await, decision(3, false));
+    assert_eq!(
+        plugin.marks(),
+        [Mark::Decided {
+            handler: 2,
+            event: 3
+        }]
+    );
 }

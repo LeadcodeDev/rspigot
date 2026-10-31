@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use rspigot_plugin_protocol::v1::{self, answer, from_plugin};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::Error;
+
+pub(crate) const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) type Outbound = mpsc::UnboundedSender<v1::FromPlugin>;
 
@@ -31,7 +34,10 @@ pub(crate) struct Attached(Link);
 impl Drop for Attached {
     fn drop(&mut self) {
         let gone = self.0.lock().take();
-        drop(gone);
+        if let Some(Connection { outbound, waiting }) = gone {
+            drop(outbound);
+            drop(waiting);
+        }
     }
 }
 
@@ -54,17 +60,22 @@ impl Link {
         &self,
         question: impl FnOnce(u64) -> from_plugin::Body,
     ) -> Result<answer::Body, Error> {
-        let answered = self.post(question)?;
-        answered
-            .await
-            .map_err(|_| Error::Disconnected)?
-            .ok_or_else(|| Error::Malformed("an empty answer".to_owned()))
+        let (request, answered) = self.post(question)?;
+        match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
+            Ok(Ok(Some(body))) => Ok(body),
+            Ok(Ok(None)) => Err(Error::Malformed("an empty answer".to_owned())),
+            Ok(Err(_)) => Err(Error::Disconnected),
+            Err(_) => {
+                self.forget(request);
+                Err(Error::Timeout)
+            }
+        }
     }
 
     fn post(
         &self,
         question: impl FnOnce(u64) -> from_plugin::Body,
-    ) -> Result<oneshot::Receiver<Option<answer::Body>>, Error> {
+    ) -> Result<(u64, oneshot::Receiver<Option<answer::Body>>), Error> {
         let mut current = self.lock();
         let connection = current.as_mut().ok_or(Error::Disconnected)?;
         let request = self.0.last_request.fetch_add(1, Ordering::Relaxed) + 1;
@@ -74,7 +85,13 @@ impl Link {
             .map_err(|_| Error::Disconnected)?;
         let (waiting, answered) = oneshot::channel();
         connection.waiting.insert(request, waiting);
-        Ok(answered)
+        Ok((request, answered))
+    }
+
+    fn forget(&self, request: u64) {
+        if let Some(connection) = self.lock().as_mut() {
+            connection.waiting.remove(&request);
+        }
     }
 
     pub(crate) fn answer(&self, answer: v1::Answer) {
@@ -105,4 +122,31 @@ impl fmt::Debug for Link {
 
 pub(crate) const fn message(body: from_plugin::Body) -> v1::FromPlugin {
     v1::FromPlugin { body: Some(body) }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::time::Instant;
+
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn an_unanswered_question_gives_up_after_ten_seconds() {
+        assert_eq!(ANSWER_TIMEOUT, Duration::from_secs(10));
+        let link = Link::default();
+        let (outbound, mut sent) = mpsc::unbounded_channel();
+        let _attached = link.attach(outbound);
+        let started = Instant::now();
+
+        let asked = link
+            .ask(|request| from_plugin::Body::FetchPlayers(v1::FetchPlayers { request }))
+            .await;
+
+        assert!(matches!(asked, Err(Error::Timeout)), "got {asked:?}");
+        assert!(started.elapsed() >= ANSWER_TIMEOUT);
+        assert!(sent.try_recv().is_ok());
+        assert!(link.lock().as_ref().unwrap().waiting.is_empty());
+    }
 }
