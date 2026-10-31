@@ -1,6 +1,7 @@
 pub mod admin;
 mod block_tools;
 mod bow;
+mod chests;
 pub mod chunks;
 mod combat;
 pub mod commands;
