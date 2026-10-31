@@ -58,6 +58,7 @@ impl Item for LeatherLeggings {
             product: Product::of(1),
         },
         Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
+        Craft::RepairItem,
     ];
     type Behavior = crate::family::Plain;
 }

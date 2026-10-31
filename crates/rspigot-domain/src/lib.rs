@@ -6,6 +6,7 @@ pub mod container_menu;
 pub mod crafting;
 pub mod damage;
 pub mod difficulty;
+pub mod dye;
 pub mod effect;
 pub mod entity;
 pub mod experience;

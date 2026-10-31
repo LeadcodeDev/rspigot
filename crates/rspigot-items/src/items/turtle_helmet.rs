@@ -39,19 +39,22 @@ impl Item for TurtleHelmet {
             slot: SlotGroup::Head,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 2,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(1002)])),
-            Some(ItemSet::Direct(&[ItemId(1002)])),
-            Some(ItemSet::Direct(&[ItemId(1002)])),
-            Some(ItemSet::Direct(&[ItemId(1002)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1002)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
+        Craft::Shaped {
+            width: 3,
+            height: 2,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1002)])),
+                Some(ItemSet::Direct(&[ItemId(1002)])),
+                Some(ItemSet::Direct(&[ItemId(1002)])),
+                Some(ItemSet::Direct(&[ItemId(1002)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1002)])),
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

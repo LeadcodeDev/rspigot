@@ -39,22 +39,25 @@ impl Item for DiamondLeggings {
             slot: SlotGroup::Legs,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1012)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1012)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

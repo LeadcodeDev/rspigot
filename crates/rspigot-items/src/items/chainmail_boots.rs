@@ -1,7 +1,7 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
     SlotGroup, Tool, tags,
 };
 
@@ -39,5 +39,6 @@ impl Item for ChainmailBoots {
             slot: SlotGroup::Feet,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
     type Behavior = crate::family::Plain;
 }

@@ -37,7 +37,7 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
             left,
             right,
         } => vec![back, front, left, right],
-        Craft::BannerDuplicate => vec![],
+        Craft::BannerDuplicate | Craft::RepairItem => vec![],
         Craft::ShieldDecoration { banner } => vec![banner],
         Craft::MapExtending { map, material } => vec![map, material],
         Craft::FireworkStarFade { dye } => vec![dye],
@@ -72,8 +72,14 @@ fn count_of(predicate: impl Fn(&Craft) -> bool) -> usize {
 }
 
 #[test]
-fn every_crafting_table_recipe_but_repair_is_declared_on_an_item() {
-    assert_eq!(all_crafts().len(), 1265 + 16);
+fn every_crafting_table_recipe_is_declared_on_an_item() {
+    let damageable = ItemKind::ALL
+        .into_iter()
+        .filter(|kind| kind.max_damage().is_some())
+        .count();
+    assert_eq!(damageable, 84);
+    assert_eq!(all_crafts().len(), 1265 + 16 + damageable);
+    assert_eq!(count_of(|c| matches!(c, Craft::RepairItem)), damageable);
     assert_eq!(count_of(|c| matches!(c, Craft::Shaped { .. })), 827);
     assert_eq!(count_of(|c| matches!(c, Craft::Shapeless { .. })), 375);
     assert_eq!(count_of(|c| matches!(c, Craft::Transmute { .. })), 33 + 16);
@@ -116,6 +122,7 @@ fn a_shaped_craft_keeps_its_pattern() {
             cells,
             product,
         },
+        Craft::RepairItem,
     ] = IronPickaxe::CRAFTS
     else {
         panic!("{:?}", IronPickaxe::CRAFTS);
@@ -184,11 +191,11 @@ fn shaped_patterns_are_trimmed_to_their_bounding_box() {
 
 #[test]
 fn an_asymmetric_pattern_is_flagged() {
-    let hoe = all_crafts()
-        .into_iter()
-        .find(|(kind, _)| *kind == ItemKind::WoodenHoe)
-        .unwrap()
-        .1;
+    let hoe = ItemKind::WoodenHoe
+        .crafts()
+        .iter()
+        .find(|craft| matches!(craft, Craft::Shaped { .. }))
+        .unwrap();
     let Craft::Shaped {
         width,
         height,

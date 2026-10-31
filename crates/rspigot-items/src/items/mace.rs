@@ -44,12 +44,15 @@ impl Item for Mace {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 1,
-        height: 2,
-        symmetrical: true,
-        cells: &[Some(ItemSet::Direct(&[ItemId(116)])), Some(ItemSet::Direct(&[ItemId(1373)]))],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 1,
+            height: 2,
+            symmetrical: true,
+            cells: &[Some(ItemSet::Direct(&[ItemId(116)])), Some(ItemSet::Direct(&[ItemId(1373)]))],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

@@ -60,16 +60,19 @@ impl Item for StoneSword {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 1,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
-            Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
+        Craft::Shaped {
+            width: 1,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

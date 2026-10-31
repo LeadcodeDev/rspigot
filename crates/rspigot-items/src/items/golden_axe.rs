@@ -55,19 +55,22 @@ impl Item for GoldenAxe {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 2,
-        height: 3,
-        symmetrical: false,
-        cells: &[
-            Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
-            Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
-            Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 2,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_GOLD_TOOL_MATERIALS)),
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

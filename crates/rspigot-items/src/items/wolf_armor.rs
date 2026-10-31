@@ -40,6 +40,7 @@ impl Item for WolfArmor {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
         Craft::Shaped {
             width: 3,
             height: 3,

@@ -898,6 +898,40 @@ fn a_recipe_in_the_crafting_table_shows_its_result_and_crafting_uses_the_ingredi
 }
 
 #[test]
+fn dyeing_leather_armor_shows_the_dyed_result_to_the_client() {
+    let mut world = world();
+    world.place_storage("crafting_table");
+    world.give("leather_boots");
+    world.give("red_dye");
+    world.open_chest();
+    world.click(WINDOW, GRID_HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 1, 0, ClickInput::Pickup);
+    world.click(WINDOW, GRID_HOTBAR_0 + 1, 0, ClickInput::Pickup);
+    world.click(WINDOW, 2, 0, ClickInput::Pickup);
+
+    let result = world
+        .alice
+        .log
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            ClientEvent::ContainerSlot {
+                window: WINDOW,
+                slot: 0,
+                stack: Some(stack),
+                ..
+            } => Some(stack.clone()),
+            _ => None,
+        })
+        .expect("a result was sent");
+    assert_eq!(result.item.0, item("minecraft:leather_boots"));
+    assert_eq!(
+        result.components.get_i32("minecraft:dyed_color"),
+        Some(0xB02E26)
+    );
+}
+
+#[test]
 fn a_recipe_with_no_match_leaves_the_result_slot_empty() {
     let mut world = world();
     world.place_storage("crafting_table");

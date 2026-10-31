@@ -23,16 +23,19 @@ impl Item for Brush {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 1,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(1063)])),
-            Some(ItemSet::Direct(&[ItemId(1020)])),
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 1,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1063)])),
+                Some(ItemSet::Direct(&[ItemId(1020)])),
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

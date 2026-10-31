@@ -681,9 +681,9 @@ class Crafts:
     def __init__(self, dump, item_names):
         self.tags = {tag["name"]: tag["items"] for tag in dump["all_item_tags"]}
         self.ids = {name: index for index, name in enumerate(item_names)}
+        self.damageable = [item["id"] for item in dump["items"] if item["max_damage"] is not None]
         self.used = set()
         self.by_item = {}
-        self.skipped = 0
 
     def item(self, name, where):
         name = name if ":" in name else NAMESPACE + name
@@ -862,6 +862,9 @@ class Crafts:
             return self.shapeless(recipe, where)
         if kind == "crafting_transmute":
             return self.transmute(recipe, where)
+        if kind == "crafting_special_repairitem":
+            expect_keys(recipe, {"type"}, where)
+            return [(owner, Atom("Craft::RepairItem")) for owner in self.damageable]
         result = recipe["result"]
         if kind == "crafting_dye":
             expect_keys(recipe, {"type", "group", "dye", "target", "result"}, where)
@@ -946,17 +949,14 @@ class Crafts:
             if not kind.startswith("minecraft:") or kind[len("minecraft:") :] not in CRAFTING_TYPES:
                 continue
             total += 1
-            if kind == "minecraft:crafting_special_repairitem":
-                self.skipped += 1
-                continue
             outcome = self.single(recipe, "recipe " + path)
             pairs = outcome if isinstance(outcome, list) else [outcome]
             expanded += len(pairs) - 1
             for owner, node in pairs:
                 self.by_item.setdefault(owner, []).append(node)
         declared = sum(len(nodes) for nodes in self.by_item.values())
-        if declared != total - self.skipped + expanded:
-            fail("declared %d crafts, expected %d" % (declared, total - self.skipped + expanded))
+        if declared != total + expanded:
+            fail("declared %d crafts, expected %d" % (declared, total + expanded))
         return total
 
 
@@ -1177,8 +1177,8 @@ def main():
         )
     )
     print(
-        "crafting recipes %d declared on %d items, %d left out, %d tags"
-        % (recipes, len(crafts.by_item), crafts.skipped, len(crafts.used))
+        "crafting recipes %d declared on %d items, %d tags"
+        % (recipes, len(crafts.by_item), len(crafts.used))
     )
     if args.stats:
         per_class = {}

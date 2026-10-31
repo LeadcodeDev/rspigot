@@ -55,22 +55,25 @@ impl Item for StonePickaxe {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: true,
-        cells: &[
-            Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
-            Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
-            Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_STONE_TOOL_MATERIALS)),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

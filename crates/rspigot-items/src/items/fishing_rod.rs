@@ -23,22 +23,25 @@ impl Item for FishingRod {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 3,
-        height: 3,
-        symmetrical: false,
-        cells: &[
-            None,
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            Some(ItemSet::Direct(&[ItemId(1062)])),
-            Some(ItemSet::Direct(&[ItemId(1060)])),
-            None,
-            Some(ItemSet::Direct(&[ItemId(1062)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                Some(ItemSet::Direct(&[ItemId(1062)])),
+                Some(ItemSet::Direct(&[ItemId(1060)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1062)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::RepairItem,
+    ];
     type Behavior = crate::family::Plain;
 }

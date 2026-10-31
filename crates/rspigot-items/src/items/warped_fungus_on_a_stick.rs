@@ -23,17 +23,20 @@ impl Item for WarpedFungusOnAStick {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
-        width: 2,
-        height: 2,
-        symmetrical: false,
-        cells: &[
-            Some(ItemSet::Direct(&[ItemId(1186)])),
-            None,
-            None,
-            Some(ItemSet::Direct(&[ItemId(321)])),
-        ],
-        product: Product::of(1),
-    }];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::RepairItem,
+        Craft::Shaped {
+            width: 2,
+            height: 2,
+            symmetrical: false,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1186)])),
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(321)])),
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }
