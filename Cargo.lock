@@ -1577,6 +1577,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspigot-plugin"
+version = "0.1.0"
+dependencies = [
+ "rspigot-plugin-protocol",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rspigot-plugin-protocol"
 version = "0.1.0"
 dependencies = [
