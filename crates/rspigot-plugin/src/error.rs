@@ -6,6 +6,8 @@ pub enum Error {
     Url(String),
     #[error("rspigot refused the plugin: {}", .0.message())]
     Refused(Status),
+    #[error("replaced by a newer connection under the same plugin name")]
+    Replaced,
     #[error("not connected to rspigot")]
     Disconnected,
     #[error("rspigot does not know it")]

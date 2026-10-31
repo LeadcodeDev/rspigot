@@ -30,6 +30,7 @@ type Queue = mpsc::UnboundedSender<Queued>;
 
 enum Ended {
     Refused(Status),
+    Replaced,
     Lost(String),
 }
 
@@ -78,6 +79,7 @@ async fn keep_connected(url: String, hello: v1::Hello, link: &Link, queue: Queue
     loop {
         let reason = match connect(&endpoint, &hello, link, &queue, &mut backoff).await {
             Ended::Refused(status) => return Error::Refused(status),
+            Ended::Replaced => return Error::Replaced,
             Ended::Lost(reason) => reason,
         };
         let delay = backoff.delay();
@@ -155,9 +157,7 @@ async fn read(
             Some(to_plugin::Body::Warning(warning)) => {
                 tracing::warn!("rspigot: {}", warning.message);
             }
-            Some(to_plugin::Body::Replaced(_)) => {
-                tracing::warn!("Replaced by a newer connection under the same plugin name");
-            }
+            Some(to_plugin::Body::Replaced(_)) => return Ended::Replaced,
             Some(to_plugin::Body::Accepted(_)) | None => {}
         }
     }
@@ -168,6 +168,7 @@ fn ended(status: Status) -> Ended {
         Code::Unauthenticated | Code::InvalidArgument | Code::FailedPrecondition => {
             Ended::Refused(status)
         }
+        Code::AlreadyExists => Ended::Replaced,
         code => Ended::Lost(format!("{code:?}: {}", status.message())),
     }
 }

@@ -655,6 +655,28 @@ async fn a_refused_introduction_stops_the_plugin() {
 }
 
 #[tokio::test]
+async fn a_replaced_plugin_stops() {
+    let replaced = || Some(Status::already_exists("replaced by a newer connection"));
+    for (told, ending) in [(true, replaced()), (true, None), (false, replaced())] {
+        let mut host = Host::start().await;
+        let plugin = launch(&host, None);
+        let session = host.knock().await.accept();
+
+        if told {
+            session.say(to_plugin::Body::Replaced(v1::Replaced {}));
+        }
+        match ending {
+            Some(status) => session.end(status),
+            None => drop(session),
+        }
+
+        let ended = within(plugin.ended).await.unwrap();
+        assert!(matches!(ended, Err(Error::Replaced)), "got {ended:?}");
+        assert!(host.knocks.try_recv().is_err());
+    }
+}
+
+#[tokio::test]
 async fn a_lost_connection_is_retried() {
     let mut host = Host::start().await;
     let mut plugin = launch(&host, None);
@@ -686,11 +708,10 @@ async fn a_lost_connection_is_retried() {
     steve.send_message("back again");
     assert_eq!(second.hear().await, message(STEVE, "back again"));
 
-    second.say(to_plugin::Body::Replaced(v1::Replaced {}));
-    second.end(Status::already_exists("replaced by a newer connection"));
-    let replaced = Instant::now();
+    second.end(Status::unavailable("the server is stopping"));
+    let stopped = Instant::now();
     let knock = host.knock().await;
-    let waited = replaced.elapsed();
+    let waited = stopped.elapsed();
     assert!(waited >= Duration::from_millis(900));
     assert!(waited < Duration::from_secs(2));
     assert_eq!(knock.hello, hello);
