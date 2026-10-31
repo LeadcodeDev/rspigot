@@ -1,0 +1,5 @@
+error: handlers take `&self`; keep state in fields behind a `Mutex` or atomics
+ --> tests/ui/mut_self.rs:8:29
+  |
+8 |     async fn on_player_join(&mut self, event: &PlayerJoin) {
+  |                             ^^^^^^^^^

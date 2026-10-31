@@ -1,0 +1,5 @@
+error: #[listeners] goes on the plugin's own impl block (`impl MyPlugin { ... }`), not on a trait impl
+  --> tests/ui/trait_impl.rs:11:6
+   |
+11 | impl Handlers for Guard {
+   |      ^^^^^^^^
