@@ -42,6 +42,47 @@ impl<L: ClientLink> Server<L> {
         self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack);
     }
 
+    pub(crate) fn spawn_item_from_face(
+        &mut self,
+        pos: BlockPos,
+        step: (i32, i32, i32),
+        stack: ItemStack,
+    ) {
+        let (dx, dy, dz) = step;
+        let half_height = ITEM_HEIGHT / 2.0;
+        let mut between = |low: f64, high: f64| low + self.rng.random::<f64>() * (high - low);
+        let spread = |step: i32, between: &mut dyn FnMut(f64, f64) -> f64, reach: f64| {
+            if step == 0 {
+                between(-0.25, 0.25)
+            } else {
+                f64::from(step) * (0.5 + reach)
+            }
+        };
+        let position = Vec3::new(
+            f64::from(pos.x) + 0.5 + spread(dx, &mut between, ITEM_HALF_WIDTH),
+            f64::from(pos.y) + 0.5 + spread(dy, &mut between, half_height) - half_height,
+            f64::from(pos.z) + 0.5 + spread(dz, &mut between, ITEM_HALF_WIDTH),
+        );
+        let velocity = Vec3::new(
+            if dx == 0 {
+                between(-0.1, 0.1)
+            } else {
+                f64::from(dx) * 0.1
+            },
+            if dy == 0 {
+                between(0.0, 0.1)
+            } else {
+                f64::from(dy) * 0.1 + 0.1
+            },
+            if dz == 0 {
+                between(-0.1, 0.1)
+            } else {
+                f64::from(dz) * 0.1
+            },
+        );
+        self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack);
+    }
+
     pub(crate) fn spawn_item_entity(
         &mut self,
         position: Vec3,

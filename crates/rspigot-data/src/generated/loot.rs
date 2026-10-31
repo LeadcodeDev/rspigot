@@ -1,7 +1,7 @@
 use crate::loot::{BlockPredicate, BonusFormula, Condition, DamageSourcePredicate, EnchantmentPredicate, Entry, EntryKind, EntityFlags, EntityPredicate, EntitySubPredicate, EntityTarget, FloatProvider, Function, FunctionKind, IntProvider, IntRange, ItemPredicate, LevelBasedValue, Leaf, LootTable, Output, Pool, TagPredicate};
 use crate::tags::HolderSet;
 
-pub(crate) static TABLES: [(&str, LootTable); 1335] = [
+pub(crate) static TABLES: [(&str, LootTable); 1336] = [
     (
         "minecraft:blocks/acacia_button",
         LootTable {
@@ -37266,6 +37266,33 @@ pub(crate) static TABLES: [(&str, LootTable); 1335] = [
                         weight: 1,
                         quality: 0,
                         output: Output::Item(254),
+                    }),
+                }],
+            }],
+            modifier: &[],
+        },
+    ),
+    (
+        "minecraft:till/rooted_dirt",
+        LootTable {
+            pools: &[Pool {
+                rolls: IntProvider::Constant(1),
+                bonus_rolls: 0.0,
+                condition: None,
+                modifier: &[],
+                entries: &[Entry {
+                    condition: None,
+                    modifier: &[Function {
+                        condition: None,
+                        kind: FunctionKind::SetCount {
+                            count: IntProvider::Constant(1),
+                            add: false,
+                        },
+                    }],
+                    kind: EntryKind::Leaf(Leaf {
+                        weight: 1,
+                        quality: 0,
+                        output: Output::Item(337),
                     }),
                 }],
             }],

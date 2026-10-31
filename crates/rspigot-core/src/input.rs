@@ -8,6 +8,7 @@ use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
 
 use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 
+use crate::block_tools::ToolUse;
 use crate::events::{
     Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
@@ -432,8 +433,16 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
+        let usage = ToolUse {
+            hand,
+            pos,
+            face,
+            clicked,
+            sneaking,
+            game_mode,
+        };
         if let Some(held) = &stack
-            && self.use_axe_on_block(id, hand, pos, clicked, held, sneaking, game_mode)
+            && self.use_tool_on_block(id, held, &usage)
         {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
