@@ -19,6 +19,7 @@ use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 use crate::{beacon, campfire, cooking, lectern};
 
+const SMITHING_TABLE_USE: &str = "minecraft:block.smithing_table.use";
 const STONECUTTER_TAKE_RESULT: &str = "minecraft:ui.stonecutter.take_result";
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
@@ -654,6 +655,7 @@ impl<L: ClientLink> Server<L> {
                 .any(|effect| matches!(effect, MenuEffect::FullResync));
         let output_taken = effects.contains(&MenuEffect::FurnaceOutputTaken);
         let cut = effects.contains(&MenuEffect::StonecutterTaken);
+        let smithed = effects.contains(&MenuEffect::SmithingTaken);
         let drops: Vec<MenuEffect> = effects
             .into_iter()
             .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
@@ -685,6 +687,17 @@ impl<L: ClientLink> Server<L> {
                 SoundSource::Blocks,
                 1.0,
                 1.0,
+            );
+        }
+        if smithed {
+            let pitch = 0.9 + self.rng.random::<f32>() * 0.1;
+            self.play_sound(
+                None,
+                backing.pos.center(),
+                SMITHING_TABLE_USE,
+                SoundSource::Blocks,
+                1.0,
+                pitch,
             );
         }
         self.sync_open_menu(id, resync);
@@ -823,7 +836,8 @@ impl<L: ClientLink> Server<L> {
             .iter()
             .filter(|(_, player)| {
                 player.open_menu.as_ref().is_some_and(|open| {
-                    open.menu.kind().is_furnace() || open.menu.kind() == MenuKind::Stonecutter
+                    open.menu.kind().is_furnace()
+                        || matches!(open.menu.kind(), MenuKind::Stonecutter | MenuKind::Smithing)
                 })
             })
             .map(|(id, _)| *id)

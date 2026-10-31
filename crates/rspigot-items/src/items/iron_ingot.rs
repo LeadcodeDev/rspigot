@@ -24,6 +24,7 @@ impl Item for IronIngot {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:iron");
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
             id: "minecraft:iron_ingot_from_blasting_deepslate_iron_ore",

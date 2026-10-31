@@ -1549,7 +1549,7 @@ fn the_items_put_in_a_station_come_back_when_its_window_closes() {
     let stations = [
         ("anvil", "iron_pickaxe", 30),
         ("grindstone", "iron_pickaxe", 30),
-        ("smithing_table", "iron_pickaxe", 31),
+        ("smithing_table", "netherite_upgrade_smithing_template", 31),
         ("loom", "white_banner", 31),
         ("stonecutter", "stone", 29),
     ];
@@ -2773,4 +2773,106 @@ fn a_spectator_cannot_choose_a_cut() {
     world.console("gamemode spectator Alice");
     world.press(WINDOW, 9);
     assert_eq!(slot_update(&world.alice, WINDOW, 1), None);
+}
+
+const SMITHING_HOTBAR_0: i16 = 31;
+
+impl World {
+    fn open_smithing_with(&mut self, items: &[(&str, u8)]) {
+        self.place_storage("smithing_table");
+        for (name, count) in items {
+            self.console(&format!("give Alice minecraft:{name} {count}"));
+        }
+        self.open_chest();
+        for (index, _) in items.iter().enumerate() {
+            let hotbar = SMITHING_HOTBAR_0 + i16::try_from(index).unwrap();
+            self.click(WINDOW, hotbar, 0, ClickInput::Pickup);
+            self.click(WINDOW, i16::try_from(index).unwrap(), 0, ClickInput::Pickup);
+        }
+    }
+}
+
+#[test]
+fn a_smithing_table_upgrades_diamond_gear_to_netherite() {
+    let mut world = world();
+    world.open_smithing_with(&[
+        ("netherite_upgrade_smithing_template", 1),
+        ("diamond_sword", 1),
+        ("netherite_ingot", 2),
+    ]);
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 3),
+        Some(Some((item("minecraft:netherite_sword"), 1)))
+    );
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(0));
+
+    world.click(WINDOW, 3, 0, ClickInput::Pickup);
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), Some(None));
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 2),
+        Some(Some((item("minecraft:netherite_ingot"), 1)))
+    );
+    assert_eq!(slot_update(&world.alice, WINDOW, 3), Some(None));
+    assert_eq!(
+        sounds_heard(&world.alice, "minecraft:block.smithing_table.use"),
+        1
+    );
+}
+
+#[test]
+fn a_trim_is_applied_with_its_pattern_and_material() {
+    let mut world = world();
+    world.open_smithing_with(&[
+        ("bolt_armor_trim_smithing_template", 1),
+        ("iron_chestplate", 1),
+        ("copper_ingot", 1),
+    ]);
+    let result = world
+        .alice
+        .log
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            ClientEvent::ContainerSlot {
+                window: WINDOW,
+                slot: 3,
+                stack: Some(stack),
+                ..
+            } => Some(stack.clone()),
+            _ => None,
+        })
+        .expect("a trimmed chestplate");
+    assert_eq!(result.item.0, item("minecraft:iron_chestplate"));
+    let trim = result.components.get_compound("minecraft:trim").unwrap();
+    assert_eq!(trim.get_str("material"), Some("minecraft:copper"));
+    assert_eq!(trim.get_str("pattern"), Some("minecraft:bolt"));
+}
+
+#[test]
+fn inputs_that_do_not_fit_together_raise_the_error_flag() {
+    let mut world = world();
+    world.open_smithing_with(&[
+        ("netherite_upgrade_smithing_template", 1),
+        ("diamond_sword", 1),
+        ("copper_ingot", 1),
+    ]);
+    assert_eq!(slot_update(&world.alice, WINDOW, 3), None);
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(1));
+}
+
+#[test]
+fn the_smithing_slots_refuse_what_no_recipe_uses() {
+    let mut world = world();
+    world.place_storage("smithing_table");
+    world.give("stick");
+    world.open_chest();
+    for slot in 0..3 {
+        world.click(WINDOW, SMITHING_HOTBAR_0, 0, ClickInput::Pickup);
+        world.click(WINDOW, slot, 0, ClickInput::Pickup);
+        world.click(WINDOW, SMITHING_HOTBAR_0, 0, ClickInput::Pickup);
+    }
+    for slot in 0..3 {
+        assert_eq!(slot_update(&world.alice, WINDOW, slot), None, "{slot}");
+    }
 }

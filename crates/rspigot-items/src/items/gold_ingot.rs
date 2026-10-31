@@ -24,6 +24,7 @@ impl Item for GoldIngot {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:gold");
     const CRAFTS: &'static [Craft] = &[
         Craft::Cooking {
             id: "minecraft:gold_ingot_from_blasting_deepslate_gold_ore",

@@ -202,6 +202,19 @@ fn fuels_burn_for_the_same_number_of_items_in_every_furnace() {
 }
 
 #[test]
+fn eleven_items_provide_a_trim_material() {
+    let provided: Vec<(&str, &str)> = ItemKind::ALL
+        .into_iter()
+        .filter_map(|kind| kind.trim_material().map(|material| (kind.name(), material)))
+        .collect();
+    assert_eq!(provided.len(), 11);
+    assert!(provided.contains(&("minecraft:copper_ingot", "minecraft:copper")));
+    assert!(provided.contains(&("minecraft:resin_brick", "minecraft:resin")));
+    assert!(provided.contains(&("minecraft:lapis_lazuli", "minecraft:lapis")));
+    assert_eq!(ItemKind::Stick.trim_material(), None);
+}
+
+#[test]
 fn stonecutting_and_smithing_recipes_are_declared_too() {
     let counts: Vec<u8> = all_crafts()
         .into_iter()

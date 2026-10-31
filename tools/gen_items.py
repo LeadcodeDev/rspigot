@@ -522,6 +522,10 @@ def read_fuels(items, components_dir, datapack):
         report = load_json(os.path.join(components_dir, item["path"] + ".json"))
         fuel = report["components"].get("minecraft:cooking_fuel")
         item["cooking_fuel"] = None
+        trim = report["components"].get("minecraft:provides_trim_material")
+        if trim is not None and not (isinstance(trim, str) and ID_PATTERN.match(trim)):
+            fail("%s has an unsupported trim material %r" % (item["name"], trim))
+        item["trim_material"] = trim
         if fuel is None:
             continue
         if set(fuel) != {"burn_time", "speed_multiplier"} or fuel["speed_multiplier"] != DEFAULT_SPEED:
@@ -1121,6 +1125,8 @@ def item_file(item, behavior, crafts):
     body.extend(modifier_lines(item["attribute_modifiers"], name, used))
     if item["crafting_remainder"] is not None:
         body.append("    const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(%d));" % item["crafting_remainder"]["item"])
+    if item["trim_material"] is not None:
+        body.append("    const TRIM_MATERIAL: Option<&'static str> = Some(%s);" % rust_string(item["trim_material"]))
     if item["cooking_fuel"] is not None:
         normal, fast = item["cooking_fuel"]
         body.extend(

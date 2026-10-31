@@ -24,6 +24,7 @@ pub mod player;
 pub mod pos;
 pub mod random;
 pub mod recipes;
+pub mod smithing;
 pub mod spawn;
 pub mod stonecutting;
 pub mod text;

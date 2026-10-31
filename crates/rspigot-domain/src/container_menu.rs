@@ -10,6 +10,8 @@ use crate::item::{
 use crate::menu::{
     ClickInput, Clicker, HashedSlot, MenuEffect, OUTSIDE, RemoteUpdate, place_back_or_drop,
 };
+use crate::recipes;
+use crate::smithing;
 use crate::stonecutting;
 
 const CONTAINER_MAX_STACK: u32 = 99;
@@ -141,6 +143,13 @@ impl MenuKind {
             Self::Grindstone if filled(0) && filled(1) => swap(),
             Self::Grindstone => vec![(0, 2, false)],
             Self::Stonecutter if stonecutting::accepts(stack.item) => vec![(0, 1, false)],
+            Self::Smithing
+                if (0..inputs).any(|index| {
+                    container.get(index).is_some_and(Option::is_none) && self.accepts(index, stack)
+                }) =>
+            {
+                vec![(0, inputs, false)]
+            }
             Self::CartographyTable if is_map(stack) => vec![(0, 1, false)],
             Self::CartographyTable if is_map_material(stack) => vec![(1, 2, false)],
             Self::Loom if is_banner(stack) => vec![(0, 1, false)],
@@ -224,6 +233,12 @@ impl MenuKind {
             return false;
         }
         match self {
+            Self::Smithing => match slot {
+                smithing::TEMPLATE => recipes::contains(recipes::SMITHING_TEMPLATE, stack.item.0),
+                smithing::BASE => recipes::contains(recipes::SMITHING_BASE, stack.item.0),
+                smithing::ADDITION => recipes::contains(recipes::SMITHING_ADDITION, stack.item.0),
+                _ => true,
+            },
             Self::Beacon if slot == 0 => in_item_tag(stack, "minecraft:beacon_payment_items"),
             Self::Grindstone if slot < 2 => is_damageable(stack) || has_enchantments(stack),
             Self::CartographyTable if slot == 0 => is_map(stack),
@@ -351,6 +366,7 @@ pub struct ContainerMenu {
 struct Cutter {
     selected: i32,
     input: Option<ItemId>,
+    error: bool,
 }
 
 struct Session<'a> {
@@ -446,6 +462,9 @@ impl Session<'_> {
                 if self.kind == MenuKind::Stonecutter && index == CUTTER_INPUT {
                     self.refresh_cutter();
                 }
+                if self.kind == MenuKind::Smithing {
+                    self.refresh_smithing(index != smithing::RESULT);
+                }
             }
             Some(Cell::Player(index)) => {
                 self.player.set(index, stack);
@@ -508,7 +527,34 @@ impl Session<'_> {
         refresh_cutter(self.container, self.cutter);
     }
 
+    fn refresh_smithing(&mut self, inputs_changed: bool) {
+        if inputs_changed {
+            let result = smithing::result(
+                &self.container[smithing::TEMPLATE],
+                &self.container[smithing::BASE],
+                &self.container[smithing::ADDITION],
+            );
+            self.container[smithing::RESULT] = result;
+        }
+        self.cutter.error = self.container[..smithing::INPUTS]
+            .iter()
+            .all(Option::is_some)
+            && self.container[smithing::RESULT].is_none();
+    }
+
     fn took(&mut self, slot: usize, taken: &Slot) {
+        if self.kind == MenuKind::Smithing && slot == smithing::RESULT && taken.is_some() {
+            for index in 0..smithing::INPUTS {
+                if let Some(input) = self.container[index].take() {
+                    self.container[index] = with_count(&input, u32::from(input.count.get()) - 1);
+                }
+            }
+            self.refresh_smithing(true);
+            if self.effects.last() != Some(&MenuEffect::SmithingTaken) {
+                self.effects.push(MenuEffect::SmithingTaken);
+            }
+            return;
+        }
         if self.kind == MenuKind::Stonecutter && slot == CUTTER_RESULT && taken.is_some() {
             if let Some(input) = self.container[CUTTER_INPUT].take() {
                 self.container[CUTTER_INPUT] = with_count(&input, u32::from(input.count.get()) - 1);
@@ -781,7 +827,9 @@ impl Session<'_> {
         {
             self.took(slot, &Some(copy.clone()));
             self.drop_stack(stack, false, true);
-        } else if self.kind.is_furnace() && slot == furnace::RESULT_SLOT {
+        } else if (self.kind.is_furnace() && slot == furnace::RESULT_SLOT)
+            || (self.kind == MenuKind::Smithing && slot == smithing::RESULT)
+        {
             self.took(slot, &Some(copy.clone()));
         }
         Some(copy)
@@ -1011,6 +1059,7 @@ impl ContainerMenu {
     pub fn data(&self) -> Vec<i16> {
         match self.kind {
             MenuKind::Stonecutter => vec![i16::try_from(self.cutter.selected).unwrap_or(-1)],
+            MenuKind::Smithing => vec![i16::from(self.cutter.error)],
             _ => Vec::new(),
         }
     }
@@ -2494,30 +2543,20 @@ mod tests {
     }
 
     #[test]
-    fn the_smithing_inputs_take_any_item_and_shift_click_only_swaps_main_and_hotbar() {
+    fn the_smithing_slots_take_only_what_a_smithing_recipe_uses() {
         let kind = MenuKind::Smithing;
-        let (mut menu, mut container, mut player) = workstation(kind);
-        for slot in 0..3 {
-            assert!(
-                place_in(
-                    kind,
-                    &mut container,
-                    &mut player,
-                    &mut menu,
-                    slot,
-                    stack("minecraft:stone", 1)
-                ),
-                "{slot}"
-            );
-        }
-        let (mut container, mut player) = (vec![None; 4], Inventory::default());
-        player.set(MAIN_START, Some(stack("minecraft:netherite_ingot", 1)));
-        shift_click(kind, &mut container, &mut player, 4);
-        assert!(container.iter().all(Option::is_none));
-        assert!(player.get(MAIN_START).is_none());
-        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(1));
-        shift_click(kind, &mut container, &mut player, 31);
-        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(1));
+        let template = "minecraft:netherite_upgrade_smithing_template";
+        let trim = "minecraft:bolt_armor_trim_smithing_template";
+        assert!(accepts_at(kind, 0, stack(template, 1)));
+        assert!(accepts_at(kind, 0, stack(trim, 1)));
+        assert!(!accepts_at(kind, 0, stack("minecraft:diamond_sword", 1)));
+        assert!(accepts_at(kind, 1, stack("minecraft:diamond_sword", 1)));
+        assert!(accepts_at(kind, 1, stack("minecraft:iron_helmet", 1)));
+        assert!(!accepts_at(kind, 1, stack("minecraft:netherite_ingot", 1)));
+        assert!(accepts_at(kind, 2, stack("minecraft:netherite_ingot", 1)));
+        assert!(accepts_at(kind, 2, stack("minecraft:copper_ingot", 1)));
+        assert!(!accepts_at(kind, 2, stack("minecraft:stick", 1)));
+        assert!(!accepts_at(kind, 3, stack("minecraft:netherite_ingot", 1)));
     }
 
     #[test]
@@ -2893,6 +2932,231 @@ mod tests {
             ClickInput::Pickup,
         );
         assert_eq!(menu.carried(), &Some(stack("minecraft:dirt", 1)));
+    }
+
+    fn smithing() -> (ContainerMenu, Vec<Slot>, Inventory) {
+        workstation(MenuKind::Smithing)
+    }
+
+    fn put_into(
+        menu: &mut ContainerMenu,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        slot: i16,
+        item: ItemStack,
+    ) {
+        player.set(MAIN_START, Some(item));
+        click(menu, container, player, 4, 0, ClickInput::Pickup);
+        click(menu, container, player, slot, 0, ClickInput::Pickup);
+    }
+
+    fn upgrade_inputs(
+        menu: &mut ContainerMenu,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        templates: u8,
+    ) {
+        put_into(
+            menu,
+            container,
+            player,
+            0,
+            stack("minecraft:netherite_upgrade_smithing_template", templates),
+        );
+        put_into(
+            menu,
+            container,
+            player,
+            1,
+            stack("minecraft:diamond_sword", 1),
+        );
+        put_into(
+            menu,
+            container,
+            player,
+            2,
+            stack("minecraft:netherite_ingot", 3),
+        );
+    }
+
+    #[test]
+    fn three_matching_inputs_show_the_smithed_item() {
+        let (mut menu, mut container, mut player) = smithing();
+        assert_eq!(menu.data(), vec![0]);
+        upgrade_inputs(&mut menu, &mut container, &mut player, 1);
+        assert_eq!(container[3], Some(stack("minecraft:netherite_sword", 1)));
+        assert_eq!(menu.data(), vec![0]);
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[3], None);
+        assert_eq!(menu.data(), vec![0]);
+    }
+
+    #[test]
+    fn three_inputs_that_make_nothing_raise_the_error_flag() {
+        let (mut menu, mut container, mut player) = smithing();
+        let mut helmet = stack("minecraft:iron_helmet", 1);
+        helmet.components.insert(
+            "minecraft:trim",
+            Compound::new()
+                .with("material", "minecraft:copper")
+                .with("pattern", "minecraft:bolt"),
+        );
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            stack("minecraft:bolt_armor_trim_smithing_template", 1),
+        );
+        put_into(&mut menu, &mut container, &mut player, 1, helmet);
+        assert_eq!(menu.data(), vec![0]);
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            stack("minecraft:copper_ingot", 1),
+        );
+        assert_eq!(container[3], None);
+        assert_eq!(menu.data(), vec![1]);
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            stack("minecraft:gold_ingot", 1),
+        );
+        assert!(container[3].is_some());
+        assert_eq!(menu.data(), vec![0]);
+    }
+
+    #[test]
+    fn taking_the_result_uses_one_of_each_input_the_template_included() {
+        let (mut menu, mut container, mut player) = smithing();
+        upgrade_inputs(&mut menu, &mut container, &mut player, 1);
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(effects, vec![MenuEffect::SmithingTaken]);
+        assert_eq!(menu.carried(), &Some(stack("minecraft:netherite_sword", 1)));
+        assert_eq!(container[0], None);
+        assert_eq!(container[1], None);
+        assert_eq!(container[2], Some(stack("minecraft:netherite_ingot", 2)));
+        assert_eq!(container[3], None);
+        assert_eq!(menu.data(), vec![0]);
+    }
+
+    #[test]
+    fn the_result_is_made_again_while_every_input_remains() {
+        let (mut menu, mut container, mut player) = smithing();
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            stack("minecraft:netherite_upgrade_smithing_template", 2),
+        );
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            stack("minecraft:diamond_sword", 1),
+        );
+        put_into(
+            &mut menu,
+            &mut container,
+            &mut player,
+            2,
+            stack("minecraft:netherite_ingot", 3),
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            3,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(
+            container[0],
+            Some(stack("minecraft:netherite_upgrade_smithing_template", 1))
+        );
+        assert_eq!(container[1], None);
+        assert_eq!(container[3], None);
+    }
+
+    #[test]
+    fn shift_click_sends_each_input_to_the_slot_it_belongs_to() {
+        let (mut menu, mut container, mut player) = smithing();
+        for (offset, name) in [
+            "minecraft:netherite_ingot",
+            "minecraft:diamond_sword",
+            "minecraft:netherite_upgrade_smithing_template",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            player.set(MAIN_START + offset, Some(stack(name, 1)));
+        }
+        for slot in [4, 5, 6] {
+            shift(&mut menu, &mut container, &mut player, slot);
+        }
+        assert_eq!(
+            container[0],
+            Some(stack("minecraft:netherite_upgrade_smithing_template", 1))
+        );
+        assert_eq!(container[1], Some(stack("minecraft:diamond_sword", 1)));
+        assert_eq!(container[2], Some(stack("minecraft:netherite_ingot", 1)));
+        assert_eq!(container[3], Some(stack("minecraft:netherite_sword", 1)));
+    }
+
+    #[test]
+    fn shift_click_does_not_fall_through_when_the_slot_is_busy_or_the_item_unrelated() {
+        let (mut menu, mut container, mut player) = smithing();
+        container[0] = Some(stack("minecraft:netherite_upgrade_smithing_template", 1));
+        player.set(
+            MAIN_START,
+            Some(stack("minecraft:bolt_armor_trim_smithing_template", 1)),
+        );
+        shift(&mut menu, &mut container, &mut player, 4);
+        assert_eq!(
+            container[0],
+            Some(stack("minecraft:netherite_upgrade_smithing_template", 1))
+        );
+        assert!(player.get(HOTBAR_START).is_some());
+        player.set(MAIN_START + 1, Some(stack("minecraft:dirt", 2)));
+        shift(&mut menu, &mut container, &mut player, 5);
+        assert!(container[1].is_none());
+        assert_eq!(player.get(HOTBAR_START + 1).map(|s| s.count.get()), Some(2));
+        shift(&mut menu, &mut container, &mut player, 32);
+        assert_eq!(player.get(MAIN_START).map(|s| s.count.get()), Some(2));
+    }
+
+    #[test]
+    fn shift_click_on_the_result_takes_it_and_uses_the_inputs() {
+        let (mut menu, mut container, mut player) = smithing();
+        upgrade_inputs(&mut menu, &mut container, &mut player, 1);
+        let effects = shift(&mut menu, &mut container, &mut player, 3);
+        assert_eq!(effects, vec![MenuEffect::SmithingTaken]);
+        assert_eq!(
+            player.get(HOTBAR_START + 8),
+            Some(&stack("minecraft:netherite_sword", 1))
+        );
+        assert_eq!(container[0], None);
+        assert_eq!(container[2], Some(stack("minecraft:netherite_ingot", 2)));
     }
 
     #[test]

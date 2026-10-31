@@ -120,10 +120,10 @@ fn difficulty(d: DomainDifficulty) -> WireDifficulty {
 pub fn update_recipes() -> cb::UpdateRecipes {
     cb::UpdateRecipes {
         property_sets: rspigot_domain::recipes::property_sets()
-            .into_iter()
+            .iter()
             .map(|(key, items)| RecipePropertySet {
-                key: key.to_owned(),
-                items: items.into_iter().map(i32::from).collect(),
+                key: (*key).to_owned(),
+                items: items.iter().copied().map(i32::from).collect(),
             })
             .collect(),
         stonecutter: rspigot_domain::stonecutting::recipes()
@@ -250,6 +250,16 @@ fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValu
             optional_absent(&mut data);
             write_var(0, &mut data);
             optional_absent(&mut data);
+        }
+        "minecraft:trim" => {
+            let trim = value.as_compound()?;
+            for (key, registry) in [
+                ("material", "minecraft:trim_material"),
+                ("pattern", "minecraft:trim_pattern"),
+            ] {
+                let id = rspigot_data::registries::synced_index(registry, trim.get_str(key)?)?;
+                write_var(i32::try_from(id).ok()?.checked_add(1)?, &mut data);
+            }
         }
         "minecraft:dyed_color" => {
             data.extend_from_slice(&i32::try_from(value.as_i64()?).ok()?.to_be_bytes());
@@ -2113,6 +2123,30 @@ mod tests {
         assert_eq!(component_bytes("minecraft:fireworks", fireworks), expected);
         let bare = rspigot_nbt::Compound::new().with("flight_duration", rspigot_nbt::Tag::Byte(3));
         assert_eq!(component_bytes("minecraft:fireworks", bare), vec![3, 0]);
+    }
+
+    #[test]
+    fn the_trim_component_names_its_material_then_its_pattern_by_registry_id() {
+        let trim = rspigot_nbt::Compound::new()
+            .with("material", "minecraft:copper")
+            .with("pattern", "minecraft:bolt");
+        let material =
+            rspigot_data::registries::synced_index("minecraft:trim_material", "minecraft:copper")
+                .unwrap();
+        let pattern =
+            rspigot_data::registries::synced_index("minecraft:trim_pattern", "minecraft:bolt")
+                .unwrap();
+        assert_eq!(
+            component_bytes("minecraft:trim", trim),
+            vec![
+                u8::try_from(material + 1).unwrap(),
+                u8::try_from(pattern + 1).unwrap()
+            ]
+        );
+        let unknown = rspigot_nbt::Compound::new()
+            .with("material", "minecraft:nope")
+            .with("pattern", "minecraft:bolt");
+        assert!(component_value("minecraft:trim", &rspigot_nbt::Tag::Compound(unknown)).is_none());
     }
 
     #[test]

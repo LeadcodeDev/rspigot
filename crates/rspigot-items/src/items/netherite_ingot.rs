@@ -23,6 +23,7 @@ impl Item for NetheriteIngot {
     const DAMAGE_RESISTANT: Option<&'static str> = Some("minecraft:is_fire");
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:netherite");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
             ingredients: &[
