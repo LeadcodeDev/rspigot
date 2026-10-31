@@ -1,0 +1,17 @@
+[package]
+name = "rspigot-plugin-macros"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[lints]
+workspace = true

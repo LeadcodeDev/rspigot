@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rspigot-plugin-macros = { workspace = true }
 rspigot-plugin-protocol = { workspace = true }
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
@@ -16,6 +17,7 @@ uuid = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "test-util"] }
+trybuild = "1"
 
 [lints]
 workspace = true

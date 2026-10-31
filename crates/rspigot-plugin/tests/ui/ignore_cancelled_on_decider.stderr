@@ -1,0 +1,5 @@
+error: `#[ignore_cancelled]` only applies to observing handlers (`&Event`)
+ --> tests/ui/ignore_cancelled_on_decider.rs:8:5
+  |
+8 |     #[ignore_cancelled]
+  |     ^^^^^^^^^^^^^^^^^^^

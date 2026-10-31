@@ -25,6 +25,7 @@ rspigot-worldgen = { path = "crates/rspigot-worldgen" }
 rspigot-auth = { path = "crates/rspigot-auth" }
 rspigot-plugin-protocol = { path = "crates/rspigot-plugin-protocol" }
 rspigot-plugin = { path = "crates/rspigot-plugin" }
+rspigot-plugin-macros = { path = "crates/rspigot-plugin-macros" }
 rspigot-plugins = { path = "crates/rspigot-plugins" }
 
 [workspace.lints.rust]
