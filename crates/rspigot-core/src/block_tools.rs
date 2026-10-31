@@ -32,14 +32,14 @@ pub(crate) fn transformed_state(old: BlockStateId, rule: &Rule) -> Option<BlockS
     Some(state)
 }
 
-pub(crate) fn axe_transform(old: BlockStateId) -> Option<(BlockStateId, &'static str)> {
+pub(crate) fn axe_transform(old: BlockStateId) -> Option<(BlockStateId, &'static str, u8)> {
     let kind = old.kind()?;
     axe()
         .iter()
         .filter(|group| is_plain(group))
         .find_map(|group| {
             let rule = group.rule_for(kind.name())?;
-            Some((transformed_state(old, rule)?, group.sound))
+            Some((transformed_state(old, rule)?, group.sound, group.damage))
         })
 }
 
@@ -68,11 +68,12 @@ impl<L: ClientLink> Server<L> {
         if shield_raised || !self.within_reach(id, pos) || self.is_protected(id, pos) {
             return false;
         }
-        let Some((state, sound)) = axe_transform(clicked) else {
+        let Some((state, sound, damage)) = axe_transform(clicked) else {
             return false;
         };
         self.set_block(pos, state);
         self.play_sound(Some(id), pos.center(), sound, SoundSource::Blocks, 1.0, 1.0);
+        self.hurt_and_break(id, hand, i32::from(damage));
         true
     }
 }
@@ -97,7 +98,7 @@ mod tests {
     #[test]
     fn stripping_keeps_the_axis_of_the_log() {
         for axis in ["x", "y", "z"] {
-            let (state, sound) = axe_transform(with_axis("oak_log", axis)).expect("strippable");
+            let (state, sound, _) = axe_transform(with_axis("oak_log", axis)).expect("strippable");
             assert_eq!(state.kind(), Some(kind("stripped_oak_log")));
             assert_eq!(state.property("axis"), Some(axis));
             assert_eq!(sound, "minecraft:item.axe.strip");
@@ -107,7 +108,7 @@ mod tests {
     #[test]
     fn every_strippable_block_becomes_its_stripped_variant() {
         for rule in axe()[0].rules {
-            let (state, _) = axe_transform(with_axis(rule.from, "z")).expect(rule.from);
+            let (state, _, _) = axe_transform(with_axis(rule.from, "z")).expect(rule.from);
             assert_eq!(state.kind(), BlockKind::from_name(rule.to), "{}", rule.from);
             assert_eq!(state.property("axis"), Some("z"), "{}", rule.from);
         }
