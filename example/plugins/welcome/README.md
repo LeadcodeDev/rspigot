@@ -14,6 +14,6 @@ and the plugin in another:
 cargo run -p welcome
 ```
 
-With the defaults both sides use `127.0.0.1:25580`. The plugin prints nothing; type `plugins` in the server console, it shows `Plugins (1): welcome`. Join with a client: the message shows and every step snaps back. Stop the plugin with Ctrl-C and players move again.
+With the defaults both sides use `127.0.0.1:25580`. The plugin logs `Connected to rspigot as welcome 0.1.0` once the server accepts it, and `Not connected to rspigot at <url> (<reason>), retrying in <n> s` while it cannot reach it. In the server console, `plugins` shows `Plugins (1): welcome`. Join with a client: the message shows and every step snaps back. Stop the plugin with Ctrl-C and players move again.
 
 To reach another server, set `RSPIGOT_URL` (for example `RSPIGOT_URL=http://10.0.0.5:25580`). If the server has a token, set `RSPIGOT_TOKEN` to it.

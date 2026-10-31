@@ -2508,6 +2508,7 @@ dependencies = [
  "rspigot-plugin",
  "rspigot-plugins",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

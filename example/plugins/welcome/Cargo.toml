@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 rspigot-plugin = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 [dev-dependencies]
 rspigot-core = { workspace = true }

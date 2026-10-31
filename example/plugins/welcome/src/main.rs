@@ -17,5 +17,6 @@ impl Welcome {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    tracing_subscriber::fmt().init();
     rspigot_plugin::run(Welcome).await
 }
