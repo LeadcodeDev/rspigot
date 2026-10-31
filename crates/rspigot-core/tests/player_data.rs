@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::{GameConfig, LevelData};
-use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::events::{
+    ClickInput, ClientEvent, ContainerClick, Direction, Hand, HashedSlot, Inbound, PlayerInput,
+};
 use rspigot_core::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, StoreError,
 };
@@ -357,4 +359,120 @@ fn online_players_are_saved_on_the_autosave_tick() {
     let position = saved.get_list("Pos").expect("Pos");
     assert_eq!(position[0].as_f64(), Some(100.5));
     assert_eq!(server.players_online(), 1);
+}
+
+fn window_of(events: &[ClientEvent]) -> Option<i32> {
+    events.iter().rev().find_map(|event| match event {
+        ClientEvent::OpenScreen { window, .. } => Some(*window),
+        _ => None,
+    })
+}
+
+fn ender_slot(events: &[ClientEvent], window: i32, slot: usize) -> Option<(u16, u8)> {
+    events.iter().rev().find_map(|event| match event {
+        ClientEvent::ContainerContent {
+            window: at, slots, ..
+        } if *at == window => slots
+            .get(slot)
+            .and_then(Option::as_ref)
+            .map(|stack| (stack.item.0, stack.count.get())),
+        _ => None,
+    })
+}
+
+fn use_block(server: &mut Server<Link>, id: PlayerId, pos: BlockPos, sequence: i32) {
+    server.handle(Inbound::Input {
+        player: id,
+        input: PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos,
+            face: Direction::Up,
+            cursor: Vec3::new(0.5, 1.0, 0.5),
+            inside_block: false,
+            sequence,
+        },
+    });
+    server.deliver();
+}
+
+fn click(server: &mut Server<Link>, id: PlayerId, window: i32, state: i32, slot: i16) {
+    server.handle(Inbound::Input {
+        player: id,
+        input: PlayerInput::ContainerClick(ContainerClick {
+            container: window,
+            state_id: state,
+            slot,
+            button: 0,
+            input: ClickInput::Pickup,
+            changed: Vec::new(),
+            carried: HashedSlot::default(),
+        }),
+    });
+    server.deliver();
+}
+
+fn state_of(events: &[ClientEvent], window: i32) -> i32 {
+    events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            ClientEvent::ContainerContent {
+                window: at,
+                state_id,
+                ..
+            }
+            | ClientEvent::ContainerSlot {
+                window: at,
+                state_id,
+                ..
+            } if *at == window => Some(*state_id),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
+#[test]
+fn ender_chest_items_survive_leaving_and_rejoining() {
+    let players = Arc::new(Players::default());
+    let mut server = server(&players, 6000);
+    let (alice, link, mut events) = join(&mut server, "Alice");
+    console(&mut server, "give Alice minecraft:ender_chest");
+    console(&mut server, "give Alice minecraft:stone");
+    let chest = BlockPos::new(2, 64, 2);
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::HeldSlot(0),
+    });
+    use_block(&mut server, alice, BlockPos::new(2, 63, 2), 1);
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::HeldSlot(8),
+    });
+    use_block(&mut server, alice, chest, 2);
+    run_ticks(&mut server, alice, &link, 2, &mut events);
+    let window = window_of(&events).expect("the ender chest opened");
+
+    let state = state_of(&events, window);
+    click(&mut server, alice, window, state, 55);
+    click(&mut server, alice, window, state, 4);
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::ContainerClose(window),
+    });
+    server.handle(Inbound::Leave { player: alice });
+    server.deliver();
+    assert!(players.wait_saved(alice).is_some());
+
+    let (alice, link, mut events) = join(&mut server, "Alice");
+    server.handle(Inbound::Input {
+        player: alice,
+        input: PlayerInput::HeldSlot(8),
+    });
+    use_block(&mut server, alice, chest, 3);
+    run_ticks(&mut server, alice, &link, 2, &mut events);
+    let window = window_of(&events).expect("the ender chest opened again");
+
+    let stone = rspigot_items::ItemKind::from_name("minecraft:stone").map(|kind| kind.id().0);
+    let kept = ender_slot(&events, window, 4);
+    assert_eq!(kept.map(|(item, _)| item), stone);
 }

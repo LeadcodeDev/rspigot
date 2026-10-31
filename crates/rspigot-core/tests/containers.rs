@@ -1034,3 +1034,86 @@ fn a_crafting_table_has_no_block_entity() {
         "minecraft:crafting_table"
     ));
 }
+
+fn ender_title(player: &Player) -> bool {
+    player.log.iter().any(|event| {
+        matches!(event, ClientEvent::OpenScreen { title, .. }
+            if format!("{title:?}").contains("container.enderchest"))
+    })
+}
+
+#[test]
+fn an_ender_chest_opens_a_27_slot_window_with_its_own_title() {
+    let mut world = world();
+    world.place_storage("ender_chest");
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 2)));
+    assert_eq!(content(&world.alice, WINDOW).expect("content").len(), 63);
+    assert!(ender_title(&world.alice));
+}
+
+#[test]
+fn the_ender_chest_items_belong_to_the_player_and_not_to_the_block() {
+    let mut world = world();
+    world.place_storage("ender_chest");
+    world.give("stone");
+    world.open_chest();
+    world.click(WINDOW, HOTBAR_0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 4, 0, ClickInput::Pickup);
+    world.close(WINDOW);
+    world.open_chest_as_bob();
+
+    let bob = content(&world.bob, WINDOW).expect("bob content");
+    assert!(bob[..27].iter().all(Option::is_none));
+    world.open_chest();
+    let alice = content(&world.alice, 2).expect("alice content");
+    assert_eq!(alice[4], Some((item("minecraft:stone"), 1)));
+}
+
+#[test]
+fn the_ender_chest_lid_and_sound_follow_its_viewers() {
+    let mut world = world();
+    world.place_storage("ender_chest");
+    world.open_chest();
+    assert_eq!(lid_events(&world.bob), vec![1]);
+    assert_eq!(
+        sounds_heard(&world.bob, "minecraft:block.ender_chest.open"),
+        1
+    );
+
+    world.close(WINDOW);
+    assert_eq!(lid_events(&world.bob), vec![1, 0]);
+    assert_eq!(
+        sounds_heard(&world.bob, "minecraft:block.ender_chest.close"),
+        1
+    );
+}
+
+#[test]
+fn a_solid_block_above_an_ender_chest_keeps_it_shut() {
+    let mut world = world();
+    world.place_storage("ender_chest");
+    world.give("stone");
+    world.select(0);
+    world.sneak(true);
+    world.use_on(CHEST, Direction::Up);
+    world.sneak(false);
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), None);
+}
+
+#[test]
+fn an_ender_chest_placed_but_never_opened_is_in_the_chunk_of_a_late_joiner() {
+    let mut world = world();
+    world.place_storage("ender_chest");
+    let mut carol = join(&mut world.server, "Carol");
+    run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+    assert!(carries_a_block_entity(
+        &carol,
+        CHEST,
+        "minecraft:ender_chest"
+    ));
+}

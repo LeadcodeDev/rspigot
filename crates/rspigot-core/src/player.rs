@@ -43,6 +43,7 @@ pub struct Player<L> {
     pub using_item: Option<UsingItem>,
     pub(crate) open_menu: Option<OpenMenu>,
     pub(crate) window_counter: u8,
+    pub ender_items: Vec<rspigot_domain::item::Slot>,
 }
 
 impl<L> Player<L> {

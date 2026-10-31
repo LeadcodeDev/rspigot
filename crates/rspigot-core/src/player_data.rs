@@ -4,11 +4,12 @@ use rspigot_domain::entity::save::{
 };
 use rspigot_domain::experience::PlayerExperience;
 use rspigot_domain::food::{FoodData, MAX_FOOD};
-use rspigot_domain::item::{Inventory, menu_slot};
+use rspigot_domain::item::{Inventory, Slot, menu_slot};
 use rspigot_domain::player::GameMode;
 use rspigot_domain::{Rotation, Vec3};
 use rspigot_nbt::{Compound, Tag};
 
+use crate::containers::{read_items_at, write_items_at};
 use crate::player::Player;
 
 pub const DIMENSION: &str = "minecraft:overworld";
@@ -23,6 +24,8 @@ const EQUIPMENT: [(usize, &str); 5] = [
 ];
 const MAX_COORDINATE: f64 = 3.0e7;
 const MAX_HEALTH: f32 = 20.0;
+const ENDER_SLOTS: usize = 27;
+const ENDER_ITEMS: &str = "EnderItems";
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PlayerDataError {
@@ -48,6 +51,7 @@ pub struct PlayerSave {
     pub fall_distance: f64,
     pub on_ground: bool,
     pub flying: bool,
+    pub ender_items: Vec<Slot>,
 }
 
 impl PlayerSave {
@@ -68,6 +72,7 @@ impl PlayerSave {
             fall_distance: vitals.fall_distance,
             on_ground: player.on_ground,
             flying: player.flying,
+            ender_items: player.ender_items.clone(),
         }
     }
 
@@ -81,6 +86,8 @@ impl PlayerSave {
         }
         player.previous_game_mode = self.previous_game_mode;
         player.inventory = self.inventory.clone();
+        player.ender_items = self.ender_items.clone();
+        player.ender_items.resize(ENDER_SLOTS, None);
         player.vitals.experience = self.experience;
         if self.is_dead() {
             player.position = spawn;
@@ -169,6 +176,7 @@ impl PlayerSave {
         if !equipment.is_empty() {
             out.insert("equipment", equipment);
         }
+        write_items_at(&mut out, ENDER_ITEMS, &self.ender_items);
         out
     }
 
@@ -240,6 +248,7 @@ impl PlayerSave {
                 .get_compound("abilities")
                 .and_then(|abilities| abilities.get_bool("flying"))
                 .unwrap_or(false),
+            ender_items: read_items_at(data, ENDER_ITEMS, ENDER_SLOTS),
         })
     }
 }
@@ -324,6 +333,12 @@ mod tests {
             fall_distance: 2.5,
             on_ground: true,
             flying: true,
+            ender_items: {
+                let mut ender = vec![None; ENDER_SLOTS];
+                ender[3] = Some(stack("minecraft:diamond", 5));
+                ender[26] = Some(stack("minecraft:emerald", 1));
+                ender
+            },
         }
     }
 
@@ -332,6 +347,33 @@ mod tests {
         let save = sample();
         let decoded = PlayerSave::from_nbt(&save.to_nbt()).expect("decodes");
         assert_eq!(decoded, save);
+    }
+
+    #[test]
+    fn the_ender_chest_items_are_saved_under_ender_items() {
+        let nbt = sample().to_nbt();
+        let slots: Vec<i64> = nbt
+            .get_list("EnderItems")
+            .expect("EnderItems")
+            .iter()
+            .filter_map(Tag::as_compound)
+            .filter_map(|entry| entry.get_i64("Slot"))
+            .collect();
+        assert_eq!(slots, vec![3, 26]);
+        let decoded = PlayerSave::from_nbt(&nbt).expect("decodes");
+        assert_eq!(
+            decoded.ender_items[3].as_ref().map(|s| s.count.get()),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn a_save_without_ender_items_has_an_empty_ender_chest() {
+        let mut nbt = sample().to_nbt();
+        nbt.remove("EnderItems");
+        let decoded = PlayerSave::from_nbt(&nbt).expect("decodes");
+        assert_eq!(decoded.ender_items.len(), ENDER_SLOTS);
+        assert!(decoded.ender_items.iter().all(Option::is_none));
     }
 
     #[test]
