@@ -33,6 +33,9 @@ The server refuses to start if `host` is not a loopback address and no token is 
 
 A handler that takes `&Event` observes: the server does not wait for it and tells it the settled outcome. A handler that takes `&mut Event` decides: it may call `event.cancel()`, and the server holds the move until a decider cancels, all of them answer or `decision-ticks` pass. A cancel that misses that deadline, from a decider that had not answered yet, sends the player back if it arrives within `late-cancel-ticks`; after that it is ignored and the plugin gets a warning.
 
+Handlers take `&self`, so plugin state lives in fields behind a `Mutex` or atomics.
+`rspigot-plugin` is not published: depend on it with a path or git dependency on `crates/rspigot-plugin`.
+
 A plugin handles its events one at a time, in the order they arrive. Any `.await` in a handler, observers included, delays the plugin's later decisions: a cancel that misses the deadline no longer prevents the move, at best it rolls it back.
 
 ## Probe

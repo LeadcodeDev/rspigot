@@ -248,6 +248,11 @@ impl Core {
             let now = Instant::now();
             assert!(now < given_up, "gave up waiting until {what}");
             if now >= self.next_tick {
+                let inbox = self.inbox.clone();
+                let waiting = inbox.len();
+                for message in inbox.try_iter().take(waiting) {
+                    self.handle(message);
+                }
                 self.server.tick();
                 self.next_tick += TICK;
                 continue;
@@ -293,9 +298,12 @@ fn a_plugin_greets_a_player_and_keeps_them_in_place() {
 
     alice.log.clear();
     step(&mut core.server, &alice, EAST);
-    core.run_until("Alice is sent back to the spawn", |_| {
+    let mut moved = false;
+    core.run_until("Alice is sent back to the spawn", |core| {
+        moved |= core.server.player_location(alice.id) == Some(EAST);
         alice.was_sent_to(SPAWN)
     });
+    assert!(!moved, "the move was applied, then rolled back");
     assert_eq!(core.server.player_location(alice.id), Some(SPAWN));
     confirm_teleports(&mut core.server, &alice);
 
