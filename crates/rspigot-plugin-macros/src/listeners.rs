@@ -6,6 +6,7 @@ use syn::{
 };
 
 const NOT_A_HANDLER: &str = "a #[listeners] block only holds handlers: `async fn name(&self, event: &Event)`; put helpers in another impl block";
+const MUT_SELF: &str = "handlers take `&self`; keep state in fields behind a `Mutex` or atomics";
 const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave` or `&PlayerMove` to observe it, or `&mut PlayerMove` to decide on it";
 const NOT_CANCELLABLE: &str = "`&mut` is only allowed for events that can be cancelled: PlayerMove";
 const IGNORE_CANCELLED_ON_DECIDER: &str =
@@ -176,6 +177,12 @@ fn event(sig: &Signature) -> Result<(Ident, bool), Error> {
         && sig.generics.where_clause.is_none()
         && sig.variadic.is_none()
         && matches!(sig.output, ReturnType::Default);
+    if plain
+        && let Some(FnArg::Receiver(receiver)) = sig.inputs.first()
+        && matches!(&*receiver.ty, Type::Reference(reference) if reference.mutability.is_some())
+    {
+        return Err(Error::new_spanned(receiver, MUT_SELF));
+    }
     let mut inputs = sig.inputs.iter();
     let (
         true,

@@ -1,0 +1,5 @@
+error[E0596]: cannot borrow data in a `&` reference as mutable
+ --> tests/ui/cancel_on_a_clone.rs:9:9
+  |
+9 |         event.clone().cancel();
+  |         ^^^^^^^^^^^^^ cannot borrow as mutable
