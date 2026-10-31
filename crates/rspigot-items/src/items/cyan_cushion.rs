@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct CyanCushion;
 
@@ -21,5 +23,41 @@ impl Item for CyanCushion {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 1,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(291)])),
+                Some(ItemSet::Direct(&[ItemId(291)])),
+                Some(ItemSet::Direct(&[ItemId(291)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1208)]),
+                ItemSet::Direct(&[
+                    ItemId(1170),
+                    ItemId(1171),
+                    ItemId(1172),
+                    ItemId(1173),
+                    ItemId(1174),
+                    ItemId(1175),
+                    ItemId(1176),
+                    ItemId(1177),
+                    ItemId(1178),
+                    ItemId(1180),
+                    ItemId(1181),
+                    ItemId(1182),
+                    ItemId(1183),
+                    ItemId(1184),
+                    ItemId(1185),
+                ]),
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

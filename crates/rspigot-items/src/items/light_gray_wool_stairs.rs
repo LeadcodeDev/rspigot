@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct LightGrayWoolStairs;
 
@@ -21,5 +23,47 @@ impl Item for LightGrayWoolStairs {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1207)]),
+                ItemSet::Direct(&[
+                    ItemId(266),
+                    ItemId(267),
+                    ItemId(268),
+                    ItemId(269),
+                    ItemId(270),
+                    ItemId(271),
+                    ItemId(272),
+                    ItemId(273),
+                    ItemId(275),
+                    ItemId(276),
+                    ItemId(277),
+                    ItemId(278),
+                    ItemId(279),
+                    ItemId(280),
+                    ItemId(281),
+                ]),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(258)])),
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(258)])),
+                Some(ItemSet::Direct(&[ItemId(258)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(258)])),
+                Some(ItemSet::Direct(&[ItemId(258)])),
+                Some(ItemSet::Direct(&[ItemId(258)])),
+            ],
+            product: Product::of(4),
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }

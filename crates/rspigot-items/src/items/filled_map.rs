@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags,
+};
 
 pub struct FilledMap;
 
@@ -21,5 +23,19 @@ impl Item for FilledMap {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Transmute {
+            input: ItemSet::Direct(&[ItemId(1238)]),
+            material: ItemSet::Direct(&[ItemId(1382)]),
+            min_material: 1,
+            max_material: 8,
+            add_material_count: true,
+            count: 1,
+        },
+        Craft::MapExtending {
+            map: ItemSet::Tag(&tags::ITEM_EXTENDABLE_MAPS),
+            material: ItemSet::Direct(&[ItemId(1145)]),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

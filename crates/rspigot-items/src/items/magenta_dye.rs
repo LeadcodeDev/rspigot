@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct MagentaDye;
 
@@ -21,5 +23,36 @@ impl Item for MagentaDye {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(304)])],
+            product: Product::of(1),
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1210)]),
+                ItemSet::Direct(&[ItemId(1213)]),
+                ItemSet::Direct(&[ItemId(1205)]),
+            ],
+            product: Product::of(3),
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1210)]),
+                ItemSet::Direct(&[ItemId(1213)]),
+                ItemSet::Direct(&[ItemId(1213)]),
+                ItemSet::Direct(&[ItemId(1199)]),
+            ],
+            product: Product::of(4),
+        },
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(600)])],
+            product: Product::of(2),
+        },
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(1209)]), ItemSet::Direct(&[ItemId(1205)])],
+            product: Product::of(2),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

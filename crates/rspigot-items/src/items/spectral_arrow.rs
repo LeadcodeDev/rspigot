@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct SpectralArrow;
 
@@ -21,5 +23,22 @@ impl Item for SpectralArrow {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 3,
+        height: 3,
+        symmetrical: true,
+        cells: &[
+            None,
+            Some(ItemSet::Direct(&[ItemId(1189)])),
+            None,
+            Some(ItemSet::Direct(&[ItemId(1189)])),
+            Some(ItemSet::Direct(&[ItemId(1009)])),
+            Some(ItemSet::Direct(&[ItemId(1189)])),
+            None,
+            Some(ItemSet::Direct(&[ItemId(1189)])),
+            None,
+        ],
+        product: Product::of(2),
+    }];
     type Behavior = crate::family::Plain;
 }

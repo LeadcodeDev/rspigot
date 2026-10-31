@@ -89,6 +89,8 @@ public final class ItemDump {
             writeBlockTags(json);
             json.name("item_tags");
             writeItemTags(json);
+            json.name("all_item_tags");
+            writeAllItemTags(json);
             json.endObject();
         }
         Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -194,6 +196,8 @@ public final class ItemDump {
             }
             json.name("use_remainder");
             writeRemainder(json, components.get(DataComponents.USE_REMAINDER));
+            json.name("crafting_remainder");
+            writeTemplate(json, item.getCraftingRemainder());
             json.name("attribute_modifiers");
             writeModifiers(json, components.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY));
             json.endObject();
@@ -322,11 +326,14 @@ public final class ItemDump {
     }
 
     private static void writeRemainder(JsonWriter json, UseRemainder remainder) throws IOException {
-        if (remainder == null) {
+        writeTemplate(json, remainder == null ? null : remainder.convertInto());
+    }
+
+    private static void writeTemplate(JsonWriter json, ItemStackTemplate template) throws IOException {
+        if (template == null) {
             json.nullValue();
             return;
         }
-        ItemStackTemplate template = remainder.convertInto();
         json.beginObject();
         json.name("item").value(BuiltInRegistries.ITEM.getId(template.item().value()));
         json.name("count").value(template.count());
@@ -375,6 +382,28 @@ public final class ItemDump {
             HolderSet.Named<Item> set = BuiltInRegistries.ITEM.get(entry.getValue()).orElseThrow(() -> new IllegalStateException("unbound item tag " + entry.getKey()));
             List<Integer> ids = new ArrayList<>();
             for (Holder<Item> holder : set) {
+                ids.add(BuiltInRegistries.ITEM.getId(holder.value()));
+            }
+            ids.sort(null);
+            json.beginObject();
+            json.name("name").value(entry.getKey());
+            json.name("items").beginArray();
+            for (int id : ids) {
+                json.value(id);
+            }
+            json.endArray();
+            json.endObject();
+        }
+        json.endArray();
+    }
+
+    private static void writeAllItemTags(JsonWriter json) throws IOException {
+        Map<String, HolderSet.Named<Item>> tags = new TreeMap<>();
+        BuiltInRegistries.ITEM.getTags().forEach(set -> tags.put(set.key().location().toString(), set));
+        json.beginArray();
+        for (Map.Entry<String, HolderSet.Named<Item>> entry : tags.entrySet()) {
+            List<Integer> ids = new ArrayList<>();
+            for (Holder<Item> holder : entry.getValue()) {
                 ids.add(BuiltInRegistries.ITEM.getId(holder.value()));
             }
             ids.sort(null);

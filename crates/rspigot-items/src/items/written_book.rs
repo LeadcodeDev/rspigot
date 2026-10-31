@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags,
+};
 
 pub struct WrittenBook;
 
@@ -21,5 +23,9 @@ impl Item for WrittenBook {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::BookCloning {
+        source: ItemSet::Direct(&[ItemId(1372)]),
+        material: ItemSet::Tag(&tags::ITEM_BOOK_CLONING_TARGET),
+    }];
     type Behavior = crate::family::Plain;
 }

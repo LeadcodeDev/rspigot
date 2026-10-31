@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct OrangeConcretePowder;
 
@@ -21,5 +23,19 @@ impl Item for OrangeConcretePowder {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        ingredients: &[
+            ItemSet::Direct(&[ItemId(1200)]),
+            ItemSet::Direct(&[ItemId(88)]),
+            ItemSet::Direct(&[ItemId(88)]),
+            ItemSet::Direct(&[ItemId(88)]),
+            ItemSet::Direct(&[ItemId(88)]),
+            ItemSet::Direct(&[ItemId(92)]),
+            ItemSet::Direct(&[ItemId(92)]),
+            ItemSet::Direct(&[ItemId(92)]),
+            ItemSet::Direct(&[ItemId(92)]),
+        ],
+        product: Product::of(8),
+    }];
     type Behavior = crate::family::BlockItem;
 }

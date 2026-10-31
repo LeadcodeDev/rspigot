@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct MagentaCarpet;
 
@@ -21,5 +23,37 @@ impl Item for MagentaCarpet {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1201)]),
+                ItemSet::Direct(&[
+                    ItemId(580),
+                    ItemId(581),
+                    ItemId(583),
+                    ItemId(584),
+                    ItemId(585),
+                    ItemId(586),
+                    ItemId(587),
+                    ItemId(588),
+                    ItemId(589),
+                    ItemId(590),
+                    ItemId(591),
+                    ItemId(592),
+                    ItemId(593),
+                    ItemId(594),
+                    ItemId(595),
+                ]),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Shaped {
+            width: 2,
+            height: 1,
+            symmetrical: true,
+            cells: &[Some(ItemSet::Direct(&[ItemId(252)])), Some(ItemSet::Direct(&[ItemId(252)]))],
+            product: Product::of(3),
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }

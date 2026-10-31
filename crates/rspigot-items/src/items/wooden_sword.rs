@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
-    Rarity, SlotGroup, Tool, ToolRule, tags,
+    AttributeModifier, BlockSet, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet,
+    ModifierOperation, Product, Rarity, SlotGroup, Tool, ToolRule, tags,
 };
 
 pub struct WoodenSword;
@@ -60,5 +60,16 @@ impl Item for WoodenSword {
             slot: SlotGroup::Mainhand,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 1,
+        height: 3,
+        symmetrical: true,
+        cells: &[
+            Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+            Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+        ],
+        product: Product::of(1),
+    }];
     type Behavior = crate::family::Plain;
 }

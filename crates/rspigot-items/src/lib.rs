@@ -194,6 +194,105 @@ impl ItemSet {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StewEffect {
+    pub effect: &'static str,
+    pub duration: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProductComponent {
+    SuspiciousStewEffects(&'static [StewEffect]),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Product {
+    pub count: u8,
+    pub components: &'static [ProductComponent],
+}
+
+impl Product {
+    pub const fn of(count: u8) -> Self {
+        Self {
+            count,
+            components: &[],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FireworkShapes {
+    pub burst: ItemSet,
+    pub creeper: ItemSet,
+    pub large_ball: ItemSet,
+    pub star: ItemSet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Craft {
+    Shaped {
+        width: u8,
+        height: u8,
+        symmetrical: bool,
+        cells: &'static [Option<ItemSet>],
+        product: Product,
+    },
+    Shapeless {
+        ingredients: &'static [ItemSet],
+        product: Product,
+    },
+    Transmute {
+        input: ItemSet,
+        material: ItemSet,
+        min_material: u8,
+        max_material: u8,
+        add_material_count: bool,
+        count: u8,
+    },
+    Dye {
+        dye: ItemSet,
+    },
+    Imbue {
+        source: ItemSet,
+        material: ItemSet,
+        count: u8,
+    },
+    DecoratedPot {
+        back: ItemSet,
+        front: ItemSet,
+        left: ItemSet,
+        right: ItemSet,
+    },
+    BannerDuplicate,
+    ShieldDecoration {
+        banner: ItemSet,
+    },
+    MapExtending {
+        map: ItemSet,
+        material: ItemSet,
+    },
+    FireworkStarFade {
+        dye: ItemSet,
+    },
+    FireworkStar {
+        dye: ItemSet,
+        fuel: ItemSet,
+        trail: ItemSet,
+        twinkle: ItemSet,
+        shapes: FireworkShapes,
+    },
+    FireworkRocket {
+        shell: ItemSet,
+        star: ItemSet,
+        fuel: ItemSet,
+        count: u8,
+    },
+    BookCloning {
+        source: ItemSet,
+        material: ItemSet,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ToolRule {
     pub blocks: BlockSet,
@@ -252,6 +351,8 @@ pub trait Item: 'static {
     const DAMAGE_RESISTANT: Option<&'static str>;
     const USE_REMAINDER: Option<ItemId>;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier];
+    const CRAFTING_REMAINDER: Option<ItemId> = None;
+    const CRAFTS: &'static [Craft] = &[];
     type Behavior: ItemBehavior;
 }
 

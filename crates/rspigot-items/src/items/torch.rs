@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct Torch;
 
@@ -21,5 +23,15 @@ impl Item for Torch {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 1,
+        height: 2,
+        symmetrical: true,
+        cells: &[
+            Some(ItemSet::Direct(&[ItemId(1010), ItemId(1011)])),
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+        ],
+        product: Product::of(4),
+    }];
     type Behavior = crate::family::BlockItem;
 }

@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, ProductComponent,
+    Rarity, StewEffect, Tool, tags,
+};
 
 pub struct SuspiciousStew;
 
@@ -25,5 +28,262 @@ impl Item for SuspiciousStew {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = Some(ItemId(1006));
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(304)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:fire_resistance",
+                    duration: 60,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(305)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:blindness",
+                    duration: 220,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(303)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:saturation",
+                    duration: 7,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(301)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:nausea",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(311)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:jump_boost",
+                    duration: 100,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(298)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:saturation",
+                    duration: 7,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(299)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:saturation",
+                    duration: 7,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(312)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:poison",
+                    duration: 220,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(300)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:blindness",
+                    duration: 220,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(307)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:weakness",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(310)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:regeneration",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(309)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:weakness",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(302)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:night_vision",
+                    duration: 100,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(306)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:weakness",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(314)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:night_vision",
+                    duration: 100,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(308)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:weakness",
+                    duration: 140,
+                }])],
+            },
+        },
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1006)]),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+                ItemSet::Direct(&[ItemId(313)]),
+            ],
+            product: Product {
+                count: 1,
+                components: &[ProductComponent::SuspiciousStewEffects(&[StewEffect {
+                    effect: "minecraft:wither",
+                    duration: 140,
+                }])],
+            },
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

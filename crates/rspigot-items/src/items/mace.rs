@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
-    SlotGroup, Tool,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Product, Rarity, SlotGroup, Tool,
 };
 
 pub struct Mace;
@@ -44,5 +44,12 @@ impl Item for Mace {
             slot: SlotGroup::Mainhand,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 1,
+        height: 2,
+        symmetrical: true,
+        cells: &[Some(ItemSet::Direct(&[ItemId(116)])), Some(ItemSet::Direct(&[ItemId(1373)]))],
+        product: Product::of(1),
+    }];
     type Behavior = crate::family::Plain;
 }

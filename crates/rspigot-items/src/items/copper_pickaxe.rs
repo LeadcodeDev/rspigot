@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, BlockSet, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
-    Rarity, SlotGroup, Tool, ToolRule, tags,
+    AttributeModifier, BlockSet, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet,
+    ModifierOperation, Product, Rarity, SlotGroup, Tool, ToolRule, tags,
 };
 
 pub struct CopperPickaxe;
@@ -55,5 +55,22 @@ impl Item for CopperPickaxe {
             slot: SlotGroup::Mainhand,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 3,
+        height: 3,
+        symmetrical: true,
+        cells: &[
+            Some(ItemSet::Tag(&tags::ITEM_COPPER_TOOL_MATERIALS)),
+            Some(ItemSet::Tag(&tags::ITEM_COPPER_TOOL_MATERIALS)),
+            Some(ItemSet::Tag(&tags::ITEM_COPPER_TOOL_MATERIALS)),
+            None,
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+            None,
+            None,
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+            None,
+        ],
+        product: Product::of(1),
+    }];
     type Behavior = crate::family::Plain;
 }

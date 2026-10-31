@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct NetheriteIngot;
 
@@ -21,5 +23,24 @@ impl Item for NetheriteIngot {
     const DAMAGE_RESISTANT: Option<&'static str> = Some("minecraft:is_fire");
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shapeless {
+            ingredients: &[
+                ItemSet::Direct(&[ItemId(1024)]),
+                ItemSet::Direct(&[ItemId(1024)]),
+                ItemSet::Direct(&[ItemId(1024)]),
+                ItemSet::Direct(&[ItemId(1024)]),
+                ItemSet::Direct(&[ItemId(1022)]),
+                ItemSet::Direct(&[ItemId(1022)]),
+                ItemSet::Direct(&[ItemId(1022)]),
+                ItemSet::Direct(&[ItemId(1022)]),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(130)])],
+            product: Product::of(9),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }
