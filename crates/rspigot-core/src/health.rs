@@ -488,6 +488,7 @@ impl<L: ClientLink> Server<L> {
 
     fn die(&mut self, id: PlayerId) {
         self.close_open_menu(id, true);
+        self.decisions.forget(id);
         let show = self.config.rules.show_death_messages;
         let keep = self.config.rules.keep_inventory;
         let now = self.current_tick();

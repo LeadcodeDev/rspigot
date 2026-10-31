@@ -6,6 +6,13 @@ use rustc_hash::FxHashSet;
 
 use crate::plugins::EventPayload;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Held {
+    pub(crate) position: Option<Vec3>,
+    pub(crate) rotation: Option<Rotation>,
+    pub(crate) on_ground: bool,
+}
+
 pub(crate) struct PendingMove {
     pub(crate) player: PlayerId,
     pub(crate) from: Vec3,
@@ -16,6 +23,8 @@ pub(crate) struct PendingMove {
     pub(crate) waiting: Vec<u64>,
     pub(crate) cancelled: bool,
     pub(crate) deadline: u64,
+    pub(crate) until: u64,
+    pub(crate) held: Vec<Held>,
 }
 
 impl PendingMove {
@@ -27,16 +36,24 @@ impl PendingMove {
 pub(crate) struct SettledMove {
     pub(crate) player: PlayerId,
     pub(crate) from: Vec3,
-    pub(crate) payload: EventPayload,
     pub(crate) silent: Vec<u64>,
-    pub(crate) applied: bool,
     pub(crate) until: u64,
+    pub(crate) applied: Option<EventPayload>,
+}
+
+pub(crate) type Undone = Vec<(u64, EventPayload)>;
+
+pub(crate) struct Rollback {
+    pub(crate) player: PlayerId,
+    pub(crate) from: Vec3,
+    pub(crate) undone: Undone,
+    pub(crate) dropped: Undone,
 }
 
 pub(crate) enum Verdict {
     Counted,
     Ignored,
-    RolledBack(Box<SettledMove>),
+    RolledBack(Rollback),
     TooLate,
 }
 
@@ -57,6 +74,21 @@ impl Decisions {
 
     pub(crate) fn queue(&mut self, event: u64, pending: PendingMove) {
         self.pending.insert(event, pending);
+    }
+
+    pub(crate) fn hold(&mut self, player: PlayerId, held: Held) -> Result<(), Held> {
+        match self
+            .pending
+            .values_mut()
+            .rev()
+            .find(|pending| pending.player == player)
+        {
+            Some(last) => {
+                last.held.push(held);
+                Ok(())
+            }
+            None => Err(held),
+        }
     }
 
     pub(crate) fn decide(
@@ -81,18 +113,26 @@ impl Decisions {
         if !cancel {
             return Verdict::Ignored;
         }
-        match self.settled.get(&event) {
-            Some(settled) if settled.until > tick => {
-                if settled.applied && settled.silent.contains(&connection) {
-                    self.roll_back(event).map_or(Verdict::TooLate, |rolled| {
-                        Verdict::RolledBack(Box::new(rolled))
-                    })
-                } else {
-                    Verdict::Ignored
-                }
-            }
-            _ => Verdict::TooLate,
+        let Some(settled) = self.settled.get(&event).filter(|s| tick <= s.until) else {
+            return Verdict::TooLate;
+        };
+        if settled.applied.is_none() || !settled.silent.contains(&connection) {
+            return Verdict::Ignored;
         }
+        let (player, from) = (settled.player, settled.from);
+        let undone = self
+            .settled
+            .range_mut(event..)
+            .filter(|(_, later)| later.player == player)
+            .filter_map(|(id, later)| later.applied.take().map(|payload| (*id, payload)))
+            .collect();
+        let dropped = self.drop_pending(player);
+        Verdict::RolledBack(Rollback {
+            player,
+            from,
+            undone,
+            dropped,
+        })
     }
 
     pub(crate) fn release(&mut self, present: impl Fn(u64) -> bool) {
@@ -110,29 +150,44 @@ impl Decisions {
     }
 
     pub(crate) fn remember(&mut self, event: u64, settled: SettledMove) {
-        self.settled.insert(event, settled);
+        if !settled.silent.is_empty() {
+            self.settled.insert(event, settled);
+        }
     }
 
     pub(crate) fn expire(&mut self, tick: u64) {
-        self.settled.retain(|_, settled| settled.until > tick);
+        self.settled.retain(|_, settled| tick <= settled.until);
     }
 
-    pub(crate) fn drop_pending(&mut self, player: PlayerId) {
-        self.pending.retain(|_, pending| pending.player != player);
+    pub(crate) fn drop_pending(&mut self, player: PlayerId) -> Undone {
+        let events: Vec<u64> = self
+            .pending
+            .iter()
+            .filter(|(_, pending)| pending.player == player)
+            .map(|(event, _)| *event)
+            .collect();
+        let mut dropped = Vec::with_capacity(events.len());
+        for event in events {
+            if let Some(pending) = self.pending.remove(&event) {
+                self.remember(
+                    event,
+                    SettledMove {
+                        player,
+                        from: pending.from,
+                        silent: pending.waiting,
+                        until: pending.until,
+                        applied: None,
+                    },
+                );
+                dropped.push((event, pending.payload));
+            }
+        }
+        dropped
     }
 
     pub(crate) fn forget(&mut self, player: PlayerId) {
-        self.drop_pending(player);
+        self.pending.retain(|_, pending| pending.player != player);
         self.settled.retain(|_, settled| settled.player != player);
-    }
-
-    fn roll_back(&mut self, event: u64) -> Option<SettledMove> {
-        let rolled = self.settled.remove(&event)?;
-        let player = rolled.player;
-        self.settled
-            .retain(|later, settled| *later < event || settled.player != player);
-        self.drop_pending(player);
-        Some(rolled)
     }
 }
 
@@ -171,6 +226,8 @@ mod tests {
             waiting,
             cancelled: false,
             deadline: 5,
+            until: 20,
+            held: Vec::new(),
         }
     }
 
@@ -179,15 +236,25 @@ mod tests {
         SettledMove {
             player,
             from,
-            payload: payload(player, from, from),
             silent,
-            applied: true,
             until,
+            applied: Some(payload(player, from, from)),
         }
     }
 
     fn settled_ids(decisions: &mut Decisions, tick: u64) -> Vec<u64> {
         std::iter::from_fn(|| decisions.next_settled(tick).map(|(event, _)| event)).collect()
+    }
+
+    fn ids(undone: &Undone) -> Vec<u64> {
+        undone.iter().map(|(event, _)| *event).collect()
+    }
+
+    fn rolled_back(verdict: Verdict) -> (Vec<u64>, Vec<u64>) {
+        match verdict {
+            Verdict::RolledBack(rollback) => (ids(&rollback.undone), ids(&rollback.dropped)),
+            _ => panic!("expected a rollback"),
+        }
     }
 
     #[test]
@@ -206,28 +273,45 @@ mod tests {
     }
 
     #[test]
-    fn a_late_cancel_counts_only_from_a_connection_that_stayed_silent() {
+    fn a_packet_that_is_not_an_event_waits_behind_the_last_pending_move() {
         let alice = PlayerId::offline("Alice");
         let mut decisions = Decisions::default();
-        decisions.remember(4, settled(alice, vec![1], 20));
-        assert!(matches!(decisions.decide(2, 4, true, 3), Verdict::Ignored));
-        assert!(matches!(decisions.decide(1, 4, false, 3), Verdict::Ignored));
-        assert!(matches!(decisions.decide(1, 4, true, 20), Verdict::TooLate));
-        assert!(matches!(
-            decisions.decide(1, 4, true, 19),
-            Verdict::RolledBack(rolled) if rolled.player == alice
-        ));
-        assert!(matches!(decisions.decide(1, 4, true, 19), Verdict::TooLate));
-
-        let mut cancelled = settled(alice, vec![1], 20);
-        cancelled.applied = false;
-        decisions.remember(5, cancelled);
-        assert!(matches!(decisions.decide(1, 5, true, 3), Verdict::Ignored));
-        assert!(matches!(decisions.decide(1, 5, true, 20), Verdict::TooLate));
+        let turn = Held {
+            position: None,
+            rotation: Some(Rotation::new(90.0, 0.0)),
+            on_ground: true,
+        };
+        assert_eq!(decisions.hold(alice, turn), Err(turn));
+        decisions.queue(1, pending(alice, 1.0, Vec::new()));
+        decisions.queue(2, pending(alice, 2.0, Vec::new()));
+        assert_eq!(decisions.hold(alice, turn), Ok(()));
+        let settled: Vec<Vec<Held>> =
+            std::iter::from_fn(|| decisions.next_settled(0).map(|(_, settled)| settled.held))
+                .collect();
+        assert_eq!(settled, [Vec::new(), vec![turn]]);
     }
 
     #[test]
-    fn a_rollback_forgets_what_came_after_it_for_that_player_only() {
+    fn a_late_cancel_counts_only_from_a_connection_that_stayed_silent() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.remember(4, settled(alice, vec![1, 2], 20));
+        decisions.remember(5, settled(alice, Vec::new(), 20));
+        assert!(matches!(decisions.decide(3, 4, true, 3), Verdict::Ignored));
+        assert!(matches!(decisions.decide(1, 4, false, 3), Verdict::Ignored));
+        assert!(matches!(decisions.decide(1, 4, true, 21), Verdict::TooLate));
+        assert!(matches!(decisions.decide(1, 5, true, 3), Verdict::TooLate));
+        assert_eq!(
+            rolled_back(decisions.decide(1, 4, true, 20)),
+            (vec![4], vec![])
+        );
+        assert!(matches!(decisions.decide(2, 4, true, 20), Verdict::Ignored));
+        decisions.expire(21);
+        assert!(matches!(decisions.decide(2, 4, true, 21), Verdict::TooLate));
+    }
+
+    #[test]
+    fn a_rollback_undoes_what_came_after_it_for_that_player_only() {
         let alice = PlayerId::offline("Alice");
         let bob = PlayerId::offline("Bob");
         let mut decisions = Decisions::default();
@@ -237,20 +321,23 @@ mod tests {
         decisions.remember(4, settled(alice, vec![1], 20));
         decisions.queue(5, pending(alice, 1.0, vec![1]));
         decisions.queue(6, pending(bob, 1.0, vec![1]));
-        assert!(matches!(
-            decisions.decide(1, 2, true, 0),
-            Verdict::RolledBack(_)
-        ));
-        assert!(matches!(decisions.decide(1, 4, true, 0), Verdict::TooLate));
+        decisions.queue(7, pending(alice, 2.0, Vec::new()));
+        assert_eq!(
+            rolled_back(decisions.decide(1, 2, true, 0)),
+            (vec![2, 4], vec![5, 7])
+        );
+        assert!(matches!(decisions.decide(1, 4, true, 0), Verdict::Ignored));
+        assert!(matches!(decisions.decide(1, 5, true, 0), Verdict::Ignored));
+        assert!(matches!(decisions.decide(1, 7, true, 0), Verdict::TooLate));
         assert_eq!(decisions.reference(alice), None);
         assert!(decisions.reference(bob).is_some());
-        assert!(matches!(
-            decisions.decide(1, 3, true, 0),
-            Verdict::RolledBack(_)
-        ));
-        assert!(matches!(
-            decisions.decide(1, 1, true, 0),
-            Verdict::RolledBack(_)
-        ));
+        assert_eq!(
+            rolled_back(decisions.decide(1, 3, true, 0)),
+            (vec![3], vec![6])
+        );
+        assert_eq!(
+            rolled_back(decisions.decide(1, 1, true, 0)),
+            (vec![1], vec![])
+        );
     }
 }

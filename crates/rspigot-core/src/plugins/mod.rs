@@ -6,7 +6,7 @@ use rspigot_domain::Vec3;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rustc_hash::FxHashSet;
 
-pub(crate) use decisions::Decisions;
+pub(crate) use decisions::{Decisions, Held};
 pub(crate) use registry::Registry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
