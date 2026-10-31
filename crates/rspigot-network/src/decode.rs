@@ -242,6 +242,10 @@ pub fn decode(packet: ServerboundPlay) -> Decoded {
             carried: hashed(&p.carried),
         })),
         ServerboundPlay::ContainerClose(p) => input(PlayerInput::ContainerClose(p.container_id)),
+        ServerboundPlay::SetBeacon(p) => input(PlayerInput::SetBeacon {
+            primary: p.primary,
+            secondary: p.secondary,
+        }),
         ServerboundPlay::ContainerButtonClick(p) => input(PlayerInput::ContainerButtonClick {
             window: p.container_id,
             button: p.button_id,

@@ -33,6 +33,7 @@ pub enum MenuKind {
     CartographyTable,
     Loom,
     Lectern,
+    Beacon,
 }
 
 impl MenuKind {
@@ -53,6 +54,7 @@ impl MenuKind {
             Self::CartographyTable => 23,
             Self::Loom => 18,
             Self::Lectern => 17,
+            Self::Beacon => 9,
         }
     }
 
@@ -68,7 +70,7 @@ impl MenuKind {
             Self::Anvil => 3,
             Self::Smithing | Self::Loom => 4,
             Self::Stonecutter => 2,
-            Self::Lectern => 1,
+            Self::Lectern | Self::Beacon => 1,
         }
     }
 
@@ -76,6 +78,7 @@ impl MenuKind {
         match self {
             Self::Furnace | Self::BlastFurnace | Self::Smoker => 4,
             Self::Anvil | Self::Smithing | Self::Stonecutter | Self::Loom | Self::Lectern => 1,
+            Self::Beacon => 3,
             _ => 0,
         }
     }
@@ -141,6 +144,17 @@ impl MenuKind {
             return self.station_plan(inputs, slot, stack, container);
         }
         match self {
+            Self::Beacon => match slot {
+                0 => vec![(1, total, true)],
+                _ if container.first().is_some_and(Option::is_none)
+                    && self.accepts(0, stack)
+                    && stack.count.get() == 1 =>
+                {
+                    vec![(0, 1, false)]
+                }
+                1..=27 => vec![(28, total, false)],
+                _ => vec![(1, 28, false)],
+            },
             Self::Crafting => match slot {
                 0 => vec![(10, 46, true)],
                 1..=9 => vec![(10, 46, false)],
@@ -168,6 +182,9 @@ impl MenuKind {
         if let Some(inputs) = self.station_inputs() {
             return slot < inputs;
         }
+        if self == Self::Beacon {
+            return slot == 0;
+        }
         matches!(self, Self::Crafting) && (1..=9).contains(&slot)
     }
 
@@ -185,6 +202,7 @@ impl MenuKind {
             return false;
         }
         match self {
+            Self::Beacon if slot == 0 => in_item_tag(stack, "minecraft:beacon_payment_items"),
             Self::Grindstone if slot < 2 => is_damageable(stack) || has_enchantments(stack),
             Self::CartographyTable if slot == 0 => is_map(stack),
             Self::CartographyTable if slot == 1 => is_map_material(stack),
@@ -378,7 +396,10 @@ impl Session<'_> {
             .is_none_or(|stack| self.kind.accepts(slot, stack))
     }
 
-    fn slot_max_for(&self, stack: &ItemStack) -> u32 {
+    fn slot_max_for(&self, slot: usize, stack: &ItemStack) -> u32 {
+        if self.kind == MenuKind::Beacon && slot == 0 {
+            return 1;
+        }
         CONTAINER_MAX_STACK.min(max_stack(stack))
     }
 
@@ -394,7 +415,7 @@ impl Session<'_> {
             return stack;
         }
         let current = self.item(slot);
-        let room = i64::from(self.slot_max_for(&incoming)) - i64::from(count(&current));
+        let room = i64::from(self.slot_max_for(slot, &incoming)) - i64::from(count(&current));
         let placed = i64::from(increment.min(count(&stack))).min(room);
         let Ok(placed) = u32::try_from(placed) else {
             return stack;
@@ -524,7 +545,7 @@ impl Session<'_> {
                 continue;
             }
             let existing = count(&self.item(target));
-            let limit = max_stack(copy).min(self.slot_max_for(copy));
+            let limit = max_stack(copy).min(self.slot_max_for(target, copy));
             let placed = (quick_craft_place_count(spread, craft.kind, copy) + existing).min(limit);
             remaining -= i64::from(placed) - i64::from(existing);
             placements.push((target, with_count(copy, placed)));
@@ -581,7 +602,7 @@ impl Session<'_> {
                     if same_item_same_components(existing, held) {
                         let amount = if primary { count(&carried) } else { 1 };
                         *self.carried = self.safe_insert(target, carried, amount);
-                    } else if count(&carried) <= self.slot_max_for(held) {
+                    } else if count(&carried) <= self.slot_max_for(target, held) {
                         *self.carried = in_slot.clone();
                         self.put(target, carried);
                     }
@@ -636,7 +657,7 @@ impl Session<'_> {
                     continue;
                 }
                 let total = u32::from(existing.count.get()) + u32::from(incoming.count.get());
-                let limit = self.slot_max_for(&existing);
+                let limit = self.slot_max_for(target, &existing);
                 if total <= limit {
                     *stack = None;
                     self.put(target, with_count(&existing, total));
@@ -651,7 +672,7 @@ impl Session<'_> {
         if let Some(incoming) = stack.clone() {
             for &target in &order {
                 if self.item(target).is_none() && self.may_place(target, stack) {
-                    let limit = self.slot_max_for(&incoming);
+                    let limit = self.slot_max_for(target, &incoming);
                     let part = split(stack, u32::from(incoming.count.get()).min(limit));
                     self.put(target, part);
                     moved = true;
@@ -679,7 +700,7 @@ impl Session<'_> {
             }
             (Some(stack), None) => {
                 if self.may_place(target, &held) {
-                    let limit = self.slot_max_for(stack);
+                    let limit = self.slot_max_for(target, stack);
                     if count(&held) > limit {
                         let mut rest = held.clone();
                         let part = split(&mut rest, limit);
@@ -693,7 +714,7 @@ impl Session<'_> {
             }
             (Some(stack), Some(_)) => {
                 if self.may_place(target, &held) {
-                    let limit = self.slot_max_for(stack);
+                    let limit = self.slot_max_for(target, stack);
                     if count(&held) > limit {
                         let mut rest = held.clone();
                         let part = split(&mut rest, limit);
@@ -851,7 +872,15 @@ impl ContainerMenu {
             if self.kind.clears_on_close(slot)
                 && let Some(stack) = entry.take()
             {
-                place_back_or_drop(player, stack, &mut effects);
+                if self.kind == MenuKind::Beacon {
+                    effects.push(MenuEffect::Drop {
+                        stack,
+                        thrower: false,
+                        predicted: false,
+                    });
+                } else {
+                    place_back_or_drop(player, stack, &mut effects);
+                }
             }
         }
         effects
@@ -1970,6 +1999,124 @@ mod tests {
             ClickInput::QuickMove,
         );
         assert!(container[0].is_some());
+        assert!((0..46).all(|slot| player.get(slot).is_none()));
+    }
+
+    #[test]
+    fn the_beacon_menu_id_matches_the_registry() {
+        let index = rspigot_data::registries::static_index("minecraft:menu", "minecraft:beacon")
+            .expect("beacon");
+        assert_eq!(
+            MenuKind::Beacon.protocol_id(),
+            i32::try_from(index).expect("small id")
+        );
+    }
+
+    #[test]
+    fn the_beacon_menu_is_one_payment_slot_over_the_inventory_with_three_data_slots() {
+        assert_eq!(MenuKind::Beacon.container_size(), 1);
+        assert_eq!(MenuKind::Beacon.slot_count(), 37);
+        assert_eq!(MenuKind::Beacon.data_count(), 3);
+    }
+
+    #[test]
+    fn the_beacon_payment_slot_takes_only_payment_items() {
+        let kind = MenuKind::Beacon;
+        for name in [
+            "minecraft:iron_ingot",
+            "minecraft:gold_ingot",
+            "minecraft:emerald",
+            "minecraft:diamond",
+            "minecraft:netherite_ingot",
+        ] {
+            assert!(accepts_at(kind, 0, stack(name, 1)), "{name}");
+        }
+        for name in [
+            "minecraft:stick",
+            "minecraft:iron_block",
+            "minecraft:copper_ingot",
+        ] {
+            assert!(!accepts_at(kind, 0, stack(name, 1)), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_beacon_payment_slot_holds_a_single_item() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Beacon);
+        player.set(MAIN_START, Some(stack("minecraft:iron_ingot", 5)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            1,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0].as_ref().map(|s| s.count.get()), Some(1));
+        assert_eq!(menu.carried().as_ref().map(|s| s.count.get()), Some(4));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0].as_ref().map(|s| s.count.get()), Some(1));
+        assert_eq!(menu.carried().as_ref().map(|s| s.count.get()), Some(4));
+    }
+
+    #[test]
+    fn beacon_shift_click_fills_the_payment_slot_with_a_single_item_and_swaps_the_rest() {
+        let kind = MenuKind::Beacon;
+        let (mut container, mut player) = (vec![None; 1], Inventory::default());
+        player.set(MAIN_START, Some(stack("minecraft:iron_ingot", 2)));
+        player.set(MAIN_START + 1, Some(stack("minecraft:stick", 1)));
+        player.set(MAIN_START + 2, Some(stack("minecraft:gold_ingot", 1)));
+        player.set(MAIN_START + 3, Some(stack("minecraft:emerald", 1)));
+        shift_click(kind, &mut container, &mut player, 1);
+        assert!(container[0].is_none());
+        assert_eq!(player.get(HOTBAR_START).map(|s| s.count.get()), Some(2));
+        shift_click(kind, &mut container, &mut player, 2);
+        assert!(container[0].is_none());
+        shift_click(kind, &mut container, &mut player, 3);
+        assert_eq!(
+            container[0].as_ref().map(|s| s.item),
+            Some(stack("minecraft:gold_ingot", 1).item)
+        );
+        shift_click(kind, &mut container, &mut player, 4);
+        assert_eq!(
+            container[0].as_ref().map(|s| s.item),
+            Some(stack("minecraft:gold_ingot", 1).item)
+        );
+        assert!(player.get(MAIN_START + 3).is_none());
+        shift_click(kind, &mut container, &mut player, 0);
+        assert!(container[0].is_none());
+        assert!(player.get(HOTBAR_START + 8).is_some());
+    }
+
+    #[test]
+    fn closing_the_beacon_throws_the_payment_instead_of_giving_it_back() {
+        let (mut menu, mut container, mut player) = workstation(MenuKind::Beacon);
+        container[0] = Some(stack("minecraft:diamond", 1));
+        let effects = menu.close_transient(&mut container, &mut player);
+        assert!(container[0].is_none());
+        assert!(matches!(
+            effects.as_slice(),
+            [MenuEffect::Drop {
+                thrower: false,
+                predicted: false,
+                ..
+            }]
+        ));
         assert!((0..46).all(|slot| player.get(slot).is_none()));
     }
 }

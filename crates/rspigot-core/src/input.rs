@@ -183,6 +183,9 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::ContainerButtonClick { window, button } => {
                 self.handle_container_button(id, window, button);
             }
+            PlayerInput::SetBeacon { primary, secondary } => {
+                self.handle_set_beacon(id, primary, secondary);
+            }
         }
     }
 
