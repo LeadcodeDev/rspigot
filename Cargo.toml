@@ -23,6 +23,7 @@ rspigot-ai = { path = "crates/rspigot-ai" }
 rspigot-anvil = { path = "crates/rspigot-anvil" }
 rspigot-worldgen = { path = "crates/rspigot-worldgen" }
 rspigot-auth = { path = "crates/rspigot-auth" }
+rspigot-plugin-protocol = { path = "crates/rspigot-plugin-protocol" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

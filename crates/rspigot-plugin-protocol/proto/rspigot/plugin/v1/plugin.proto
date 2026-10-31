@@ -1,0 +1,44 @@
+syntax = "proto3";
+package rspigot.plugin.v1;
+
+service PluginHost {
+  rpc Connect(stream FromPlugin) returns (stream ToPlugin);
+}
+
+enum EventKind { EVENT_KIND_UNSPECIFIED = 0; EVENT_KIND_PLAYER_JOIN = 1; EVENT_KIND_PLAYER_LEAVE = 2; EVENT_KIND_PLAYER_MOVE = 3; }
+enum Access { ACCESS_UNSPECIFIED = 0; ACCESS_OBSERVE = 1; ACCESS_DECIDE = 2; }
+enum Priority { PRIORITY_UNSPECIFIED = 0; PRIORITY_LOWEST = 1; PRIORITY_LOW = 2; PRIORITY_NORMAL = 3; PRIORITY_HIGH = 4; PRIORITY_HIGHEST = 5; }
+enum GameMode { GAME_MODE_UNSPECIFIED = 0; GAME_MODE_SURVIVAL = 1; GAME_MODE_CREATIVE = 2; GAME_MODE_ADVENTURE = 3; GAME_MODE_SPECTATOR = 4; }
+enum Phase { PHASE_UNSPECIFIED = 0; PHASE_DECIDE = 1; PHASE_SETTLED = 2; PHASE_ROLLED_BACK = 3; }
+
+message Handler { uint32 id = 1; EventKind event = 2; Access access = 3; Priority priority = 4; bool ignore_cancelled = 5; }
+message Hello { uint32 protocol_version = 1; string name = 2; string version = 3; string token = 4; repeated Handler handlers = 5; }
+message Vec3 { double x = 1; double y = 2; double z = 3; }
+message PlayerSnapshot { string uuid = 1; string name = 2; int32 entity_id = 3; string world = 4; Vec3 position = 5; GameMode game_mode = 6; }
+message PlayerState { PlayerSnapshot player = 1; float health = 2; int32 food = 3; int32 level = 4; }
+message PlayerJoin { PlayerSnapshot player = 1; }
+message PlayerLeave { PlayerSnapshot player = 1; }
+message PlayerMove { PlayerSnapshot player = 1; Vec3 from = 2; Vec3 to = 3; }
+message Event {
+  uint64 id = 1;
+  repeated uint32 handlers = 2;
+  Phase phase = 3;
+  bool cancelled = 4;
+  oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; }
+}
+message Decision { uint64 event = 1; bool cancel = 2; }
+message SendMessage { string player = 1; string text = 2; }
+message ResolvePlayer { uint64 request = 1; string player = 2; }
+message FetchPlayers { uint64 request = 1; }
+message FromPlugin {
+  oneof body { Hello hello = 1; Decision decision = 2; SendMessage send_message = 3; ResolvePlayer resolve_player = 4; FetchPlayers fetch_players = 5; }
+}
+message Accepted {}
+message PlayerList { repeated PlayerSnapshot players = 1; }
+message NotFound {}
+message Answer { uint64 request = 1; oneof body { PlayerState player = 2; PlayerList players = 3; NotFound not_found = 4; } }
+message Warning { string message = 1; }
+message Replaced {}
+message ToPlugin {
+  oneof body { Accepted accepted = 1; Event event = 2; Answer answer = 3; Warning warning = 4; Replaced replaced = 5; }
+}

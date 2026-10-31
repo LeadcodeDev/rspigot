@@ -1,4 +1,5 @@
 /target
+/tools/plugin-protocol-gen/target
 /run
 *.jar
 .DS_Store
