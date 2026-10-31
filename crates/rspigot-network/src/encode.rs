@@ -142,6 +142,19 @@ fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValu
             write_var(0, &mut data);
             optional_absent(&mut data);
         }
+        "minecraft:suspicious_stew_effects" => {
+            let entries = value.as_list()?;
+            write_var(i32::try_from(entries.len()).ok()?, &mut data);
+            for entry in entries {
+                let entry = entry.as_compound()?;
+                let effect = rspigot_data::registries::static_index(
+                    "minecraft:mob_effect",
+                    entry.get_str("id")?,
+                )?;
+                write_var(i32::try_from(effect).ok()?, &mut data);
+                write_var(entry.get_i32("duration")?, &mut data);
+            }
+        }
         _ => return None,
     }
     Some(ComponentValue {
@@ -1857,6 +1870,34 @@ mod tests {
         let mut body = Vec::new();
         stack(&Some(bottle)).encode(&mut body);
         assert_eq!(body, vec![1, 0xF9, 0x0C, 1, 0, 65, 4]);
+        let mut stew = ItemStack::new(named("minecraft:suspicious_stew"), std::num::NonZeroU8::MIN);
+        stew.components.insert(
+            "minecraft:suspicious_stew_effects",
+            rspigot_nbt::Tag::List(vec![rspigot_nbt::Tag::Compound(
+                rspigot_nbt::Compound::new()
+                    .with("id", "minecraft:fire_resistance")
+                    .with("duration", 60),
+            )]),
+        );
+        let mut body = Vec::new();
+        stack(&Some(stew)).encode(&mut body);
+        let effect = rspigot_data::registries::static_index(
+            "minecraft:mob_effect",
+            "minecraft:fire_resistance",
+        )
+        .unwrap();
+        let component = component_type("minecraft:suspicious_stew_effects").unwrap();
+        assert_eq!(
+            body[body.len() - 6..],
+            [
+                1,
+                0,
+                u8::try_from(component).unwrap(),
+                1,
+                u8::try_from(effect).unwrap(),
+                60
+            ]
+        );
         let mut unknown = ItemStack::new(named("minecraft:stick"), std::num::NonZeroU8::MIN);
         unknown.components.insert("minecraft:custom_data", 1);
         let mut body = Vec::new();

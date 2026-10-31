@@ -1,5 +1,6 @@
 use rspigot_items::ItemKind;
 
+use crate::crafting;
 use crate::entity::reward::max_damage;
 use crate::item::{
     HOTBAR_START, Inventory, ItemStack, Slot, count, max_stack, menu_slot, same_item,
@@ -15,6 +16,8 @@ const MAIN_START: usize = 9;
 const MAIN_SLOTS: usize = 27;
 const HOTBAR_SLOTS: usize = 9;
 const SHULKER_BOXES_TAG: &str = "minecraft:shulker_boxes";
+const CRAFTING_RESULT: usize = 0;
+const CRAFTING_GRID: std::ops::RangeInclusive<usize> = 1..=9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuKind {
@@ -372,6 +375,9 @@ impl Session<'_> {
                 if let Some(entry) = self.container.get_mut(index) {
                     *entry = stack;
                 }
+                if self.kind == MenuKind::Crafting && CRAFTING_GRID.contains(&index) {
+                    self.refresh_result();
+                }
             }
             Some(Cell::Player(index)) => {
                 self.player.set(index, stack);
@@ -404,7 +410,47 @@ impl Session<'_> {
     }
 
     fn try_remove(&mut self, slot: usize, amount: u32, decrement: u32) -> Slot {
+        let current = self.item(slot);
+        if !self.may_place(slot, &current) && decrement < count(&current) {
+            return None;
+        }
         self.remove(slot, amount.min(decrement))
+    }
+
+    fn grid(&self) -> [Slot; 9] {
+        std::array::from_fn(|offset| {
+            self.container
+                .get(CRAFTING_GRID.start() + offset)
+                .cloned()
+                .flatten()
+        })
+    }
+
+    fn refresh_result(&mut self) {
+        let result = crafting::result(3, 3, &self.grid());
+        if let Some(entry) = self.container.get_mut(CRAFTING_RESULT) {
+            *entry = result;
+        }
+    }
+
+    fn took(&mut self, slot: usize, taken: &Slot) {
+        if self.kind != MenuKind::Crafting || slot != CRAFTING_RESULT || taken.is_none() {
+            return;
+        }
+        let mut cells = self.grid();
+        let leftovers = crafting::take_result(3, 3, &mut cells);
+        for (offset, cell) in cells.into_iter().enumerate() {
+            if let Some(entry) = self.container.get_mut(CRAFTING_GRID.start() + offset) {
+                *entry = cell;
+            }
+        }
+        for leftover in leftovers {
+            let mut rest = Some(leftover);
+            if !self.player.add(&mut rest, self.infinite) {
+                self.drop_stack(rest, false, false);
+            }
+        }
+        self.refresh_result();
     }
 
     fn safe_insert(&mut self, slot: usize, stack: Slot, increment: u32) -> Slot {
@@ -595,7 +641,8 @@ impl Session<'_> {
                         count(&in_slot).div_ceil(2)
                     };
                     if let Some(taken) = self.try_remove(target, amount, u32::MAX) {
-                        *self.carried = Some(taken);
+                        *self.carried = Some(taken.clone());
+                        self.took(target, &Some(taken));
                     }
                 }
                 Some(held) if self.may_place(target, &carried) => {
@@ -610,7 +657,9 @@ impl Session<'_> {
                 Some(held) if same_item_same_components(existing, held) => {
                     let room = max_stack(held).saturating_sub(count(&carried));
                     if let Some(taken) = self.try_remove(target, count(&in_slot), room) {
-                        *self.carried = with_count(held, count(&carried) + count(&Some(taken)));
+                        *self.carried =
+                            with_count(held, count(&carried) + count(&Some(taken.clone())));
+                        self.took(target, &Some(taken));
                     }
                 }
                 Some(_) => {}
@@ -634,6 +683,10 @@ impl Session<'_> {
         self.put(slot, stack.clone());
         if count(&stack) == u32::from(copy.count.get()) {
             return None;
+        }
+        if self.kind == MenuKind::Crafting && slot == CRAFTING_RESULT {
+            self.took(slot, &Some(copy.clone()));
+            self.drop_stack(stack, false, true);
         }
         Some(copy)
     }
@@ -697,6 +750,7 @@ impl Session<'_> {
             (None, Some(_)) => {
                 self.player.set(own, in_slot.clone());
                 self.put(target, None);
+                self.took(target, &in_slot);
             }
             (Some(stack), None) => {
                 if self.may_place(target, &held) {
@@ -758,10 +812,12 @@ impl Session<'_> {
             count(&self.item(target))
         };
         let mut dropped = self.try_remove(target, amount, u32::MAX);
+        self.took(target, &dropped);
         self.drop_stack(dropped.clone(), true, true);
         if button == 1 {
             while dropped.is_some() && same_item(&self.item(target), &dropped) {
                 dropped = self.try_remove(target, amount, u32::MAX);
+                self.took(target, &dropped);
                 if !self.drop_stack(dropped.clone(), true, true) {
                     break;
                 }
@@ -1056,6 +1112,414 @@ mod tests {
             ClickInput::Pickup,
         );
         assert_eq!(container[5].as_ref().map(|s| s.count.get()), Some(4));
+    }
+
+    fn table() -> (ContainerMenu, Vec<Slot>, Inventory) {
+        workstation(MenuKind::Crafting)
+    }
+
+    fn load(
+        menu: &mut ContainerMenu,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        slot: i16,
+        item: ItemStack,
+    ) {
+        player.set(MAIN_START, Some(item));
+        click(menu, container, player, 10, 0, ClickInput::Pickup);
+        click(menu, container, player, slot, 0, ClickInput::Pickup);
+    }
+
+    fn pile(player: &Inventory, name: &str) -> u32 {
+        let kind = ItemKind::from_name(name).unwrap();
+        (0..crate::item::PLAYER_INVENTORY_SIZE)
+            .filter_map(|slot| player.get(slot))
+            .filter(|stack| stack.item == kind.id())
+            .map(|stack| u32::from(stack.count.get()))
+            .sum()
+    }
+
+    #[test]
+    fn the_crafting_menu_shows_the_result_of_what_is_in_the_grid() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_log", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], None);
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            1,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], Some(stack("minecraft:oak_planks", 4)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], None);
+    }
+
+    #[test]
+    fn the_whole_three_by_three_grid_is_used_to_match_a_pattern() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_planks", 8)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        for slot in [1, 2, 3, 4, 6, 7, 8] {
+            click(
+                &mut menu,
+                &mut container,
+                &mut player,
+                slot,
+                1,
+                ClickInput::Pickup,
+            );
+        }
+        assert_ne!(container[0], Some(stack("minecraft:chest", 1)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            9,
+            1,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], Some(stack("minecraft:chest", 1)));
+    }
+
+    #[test]
+    fn taking_the_result_uses_a_craft_and_shows_the_next_one() {
+        let (mut menu, mut container, mut player) = table();
+        load(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            stack("minecraft:oak_log", 2),
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:oak_planks", 4)));
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 1)));
+        assert_eq!(container[0], Some(stack("minecraft:oak_planks", 4)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:oak_planks", 8)));
+        assert_eq!(container[5], None);
+        assert_eq!(container[0], None);
+    }
+
+    #[test]
+    fn shift_click_on_the_result_crafts_until_the_grid_runs_out() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_log", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(container[5], None);
+        assert_eq!(container[0], None);
+        assert_eq!(pile(&player, "minecraft:oak_planks"), 12);
+    }
+
+    #[test]
+    fn shift_click_on_the_result_stops_when_nothing_fits() {
+        let (mut menu, mut container, mut player) = table();
+        for slot in 9..45 {
+            player.set(slot, Some(stack("minecraft:dirt", 64)));
+        }
+        container[5] = Some(stack("minecraft:oak_log", 5));
+        container[0] = Some(stack("minecraft:oak_planks", 4));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert!(effects.is_empty());
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 5)));
+        assert_eq!(container[0], Some(stack("minecraft:oak_planks", 4)));
+    }
+
+    #[test]
+    fn what_the_inventory_cannot_hold_of_a_shift_clicked_result_is_dropped() {
+        let (mut menu, mut container, mut player) = table();
+        for slot in 9..45 {
+            player.set(slot, Some(stack("minecraft:dirt", 64)));
+        }
+        player.set(20, Some(stack("minecraft:oak_planks", 62)));
+        load(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            stack("minecraft:oak_log", 1),
+        );
+        player.set(MAIN_START, Some(stack("minecraft:dirt", 64)));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::QuickMove,
+        );
+        assert_eq!(player.get(20), Some(&stack("minecraft:oak_planks", 64)));
+        assert_eq!(
+            effects,
+            vec![MenuEffect::Drop {
+                stack: stack("minecraft:oak_planks", 2),
+                thrower: false,
+                predicted: true,
+            }]
+        );
+        assert_eq!(container[5], None);
+    }
+
+    #[test]
+    fn dropping_the_result_throws_what_was_taken_and_uses_a_craft() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_log", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Throw,
+        );
+        assert_eq!(
+            effects,
+            vec![MenuEffect::Drop {
+                stack: stack("minecraft:oak_planks", 1),
+                thrower: true,
+                predicted: true,
+            }]
+        );
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 2)));
+        assert_eq!(container[0], Some(stack("minecraft:oak_planks", 4)));
+    }
+
+    #[test]
+    fn a_number_key_takes_the_result_only_into_an_empty_hotbar_slot() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_log", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            2,
+            ClickInput::Swap,
+        );
+        assert_eq!(
+            player.get(HOTBAR_START + 2),
+            Some(&stack("minecraft:oak_planks", 4))
+        );
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 1)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            2,
+            ClickInput::Swap,
+        );
+        assert_eq!(
+            player.get(HOTBAR_START + 2),
+            Some(&stack("minecraft:oak_planks", 4))
+        );
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 1)));
+    }
+
+    #[test]
+    fn the_result_never_comes_out_in_parts() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:oak_log", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        menu.carried = Some(stack("minecraft:oak_planks", 62));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:oak_planks", 62)));
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 2)));
+        menu.carried = Some(stack("minecraft:oak_planks", 60));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(menu.carried(), &Some(stack("minecraft:oak_planks", 64)));
+        assert_eq!(container[5], Some(stack("minecraft:oak_log", 1)));
+    }
+
+    #[test]
+    fn a_crafting_remainder_goes_back_to_the_inventory_or_is_dropped() {
+        let (mut menu, mut container, mut player) = table();
+        player.set(MAIN_START, Some(stack("minecraft:honey_bottle", 2)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            10,
+            0,
+            ClickInput::Pickup,
+        );
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            5,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[0], Some(stack("minecraft:sugar", 3)));
+        click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert_eq!(container[5], Some(stack("minecraft:honey_bottle", 1)));
+        assert_eq!(pile(&player, "minecraft:glass_bottle"), 1);
+        for slot in 9..45 {
+            player.set(slot, Some(stack("minecraft:dirt", 64)));
+        }
+        menu.carried = None;
+        container[5] = Some(stack("minecraft:honey_bottle", 2));
+        container[0] = Some(stack("minecraft:sugar", 3));
+        let effects = click(
+            &mut menu,
+            &mut container,
+            &mut player,
+            0,
+            0,
+            ClickInput::Pickup,
+        );
+        assert!(effects.contains(&MenuEffect::Drop {
+            stack: stack("minecraft:glass_bottle", 1),
+            thrower: false,
+            predicted: false,
+        }));
     }
 
     #[test]
