@@ -790,6 +790,20 @@ impl Encoder {
                     state: i32::from(state.0),
                 },
             ),
+            ClientEvent::BlockEvent {
+                pos,
+                action,
+                data,
+                block,
+            } => Self::queue(
+                writer,
+                &cb::BlockEvent {
+                    pos: position(*pos),
+                    action: *action,
+                    data: *data,
+                    block: i32::from(*block),
+                },
+            ),
             ClientEvent::BlockChangedAck(sequence) => Self::queue(
                 writer,
                 &cb::BlockChangedAck {
@@ -1672,6 +1686,19 @@ mod tests {
             }),
             vec![(id::CONTAINER_SET_SLOT, vec![0, 8, 0, 0, 0])]
         );
+    }
+
+    #[test]
+    fn block_events_carry_the_action_the_data_and_the_block() {
+        let packets = encode(ClientEvent::BlockEvent {
+            pos: BlockPos::new(1, 64, 2),
+            action: 1,
+            data: 2,
+            block: 130,
+        });
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].0, id::BLOCK_EVENT);
+        assert_eq!(&packets[0].1[8..], &[1, 2, 130, 1]);
     }
 
     #[test]

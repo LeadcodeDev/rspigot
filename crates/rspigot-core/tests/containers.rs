@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use rspigot_blocks::BlockKind;
 use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::config::{GameConfig, LevelData};
 use rspigot_core::events::{
@@ -568,4 +569,143 @@ fn a_stale_state_id_resends_the_whole_window() {
         .filter(|event| matches!(event, ClientEvent::ContainerContent { .. }))
         .count();
     assert_eq!(after, before + 1);
+}
+
+fn lid_events(player: &Player) -> Vec<u8> {
+    player
+        .log
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::BlockEvent {
+                pos,
+                action: 1,
+                data,
+                ..
+            } if *pos == CHEST => Some(*data),
+            _ => None,
+        })
+        .collect()
+}
+
+fn sounds_heard(player: &Player, name: &str) -> usize {
+    player
+        .log
+        .iter()
+        .filter(|event| matches!(event, ClientEvent::Sound { sound, .. } if *sound == name))
+        .count()
+}
+
+impl World {
+    fn place_storage(&mut self, item: &str) {
+        self.give(item);
+        self.select(0);
+        self.use_on(FLOOR, Direction::Up);
+    }
+
+    fn close_as_bob(&mut self, window: i32) {
+        self.server.handle(Inbound::Input {
+            player: self.bob.id,
+            input: PlayerInput::ContainerClose(window),
+        });
+        self.settle();
+    }
+}
+
+#[test]
+fn each_storage_block_opens_its_own_menu() {
+    let blocks = [
+        ("trapped_chest", 2, 63),
+        ("barrel", 2, 63),
+        ("shulker_box", 20, 63),
+        ("blue_shulker_box", 20, 63),
+        ("hopper", 16, 41),
+        ("dispenser", 6, 45),
+        ("dropper", 6, 45),
+    ];
+    for (item, menu, slots) in blocks {
+        let mut world = world();
+        world.place_storage(item);
+        world.open_chest();
+
+        assert_eq!(opened(&world.alice), Some((WINDOW, menu)), "{item}");
+        let content = content(&world.alice, WINDOW).unwrap_or_else(|| panic!("{item} content"));
+        assert_eq!(content.len(), slots, "{item}");
+    }
+}
+
+#[test]
+fn the_chest_lid_follows_the_viewers_and_the_sound_the_first_and_last() {
+    let mut world = world();
+    world.place_chest();
+    world.open_chest();
+    assert_eq!(lid_events(&world.bob), vec![1]);
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.chest.open"), 1);
+
+    world.open_chest_as_bob();
+    assert_eq!(lid_events(&world.bob), vec![1, 2]);
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.chest.open"), 1);
+
+    world.close(WINDOW);
+    assert_eq!(lid_events(&world.bob), vec![1, 2, 1]);
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.chest.close"), 0);
+
+    world.close_as_bob(WINDOW);
+    assert_eq!(lid_events(&world.bob), vec![1, 2, 1, 0]);
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.chest.close"), 1);
+}
+
+#[test]
+fn a_barrel_shows_it_is_open_while_it_is_viewed() {
+    let open_state = |open: &str| {
+        BlockKind::Barrel
+            .default_state()
+            .with_property("open", open)
+            .expect("open property")
+    };
+    let mut world = world();
+    world.place_storage("barrel");
+    let shut = last_update(&world.alice, CHEST).expect("placed");
+    assert_eq!(shut.property("open"), Some("false"));
+
+    world.open_chest();
+    let viewed = last_update(&world.alice, CHEST).expect("updated");
+    assert_eq!(viewed.property("open"), Some("true"));
+    assert_eq!(viewed.kind(), open_state("true").kind());
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.barrel.open"), 1);
+
+    world.close(WINDOW);
+    let closed_again = last_update(&world.alice, CHEST).expect("updated");
+    assert_eq!(closed_again.property("open"), Some("false"));
+    assert_eq!(sounds_heard(&world.bob, "minecraft:block.barrel.close"), 1);
+}
+
+#[test]
+fn a_shulker_box_with_a_block_in_front_does_not_open() {
+    let mut world = world();
+    world.place_storage("shulker_box");
+    world.give("stone");
+    world.select(0);
+    world.sneak(true);
+    world.use_on(CHEST, Direction::Up);
+    world.sneak(false);
+    assert!(last_update(&world.alice, ABOVE).is_some());
+    world.open_chest();
+
+    assert_eq!(opened(&world.alice), None);
+}
+
+#[test]
+fn a_hopper_has_no_lid_and_makes_no_sound() {
+    let mut world = world();
+    world.place_storage("hopper");
+    world.open_chest();
+
+    assert!(lid_events(&world.bob).is_empty());
+    assert!(
+        !world
+            .bob
+            .log
+            .iter()
+            .any(|event| matches!(event, ClientEvent::Sound { .. }))
+    );
 }

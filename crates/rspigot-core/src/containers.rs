@@ -1,6 +1,8 @@
-use rspigot_blocks::BlockKind;
+use rand::Rng;
+use rspigot_blocks::{BlockKind, ShapeId};
 use rspigot_domain::chunk::BlockEntity;
 use rspigot_domain::container_menu::{ContainerMenu, MenuKind};
+use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::entity::save::{item_stack_from_nbt, item_stack_to_nbt};
 use rspigot_domain::item::Slot;
 use rspigot_domain::menu::{Clicker, MenuEffect, OUTSIDE, RemoteUpdate};
@@ -8,21 +10,34 @@ use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::spawn::placement::is_redstone_conductor;
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, Identifier};
+use rspigot_entities::SoundSource;
 use rspigot_nbt::{Compound, Tag};
 
 use crate::events::{ClientEvent, ContainerClick};
 use crate::ports::ClientLink;
-use crate::server::Server;
+use crate::server::{Audience, Server};
 
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
 const ITEMS: &str = "Items";
+const BLOCK_EVENT_RANGE: f64 = 64.0;
+const LID_ACTION: u8 = 1;
+const LID_VOLUME: f32 = 0.5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Lid {
+    None,
+    Chest,
+    Shulker,
+    Barrel,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Backing {
     pub pos: BlockPos,
     pub entity: &'static str,
     pub block: BlockKind,
+    pub lid: Lid,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,18 +60,71 @@ struct Opening {
     entity: &'static str,
     title: &'static str,
     block: BlockKind,
+    lid: Lid,
 }
 
 fn opening_of(state: BlockStateId) -> Option<Opening> {
     let block = state.kind()?;
-    match block {
-        BlockKind::Chest => Some(Opening {
-            kind: MenuKind::Generic { rows: 3 },
-            entity: "chest",
-            title: "container.chest",
+    let storage = |kind, entity, title, lid| {
+        Some(Opening {
+            kind,
+            entity,
+            title,
             block,
-        }),
+            lid,
+        })
+    };
+    let rows = MenuKind::Generic { rows: 3 };
+    match block {
+        BlockKind::Chest => storage(rows, "chest", "container.chest", Lid::Chest),
+        BlockKind::TrappedChest => storage(rows, "trapped_chest", "container.chest", Lid::Chest),
+        BlockKind::Barrel => storage(rows, "barrel", "container.barrel", Lid::Barrel),
+        BlockKind::Hopper => storage(MenuKind::Hopper, "hopper", "container.hopper", Lid::None),
+        BlockKind::Dispenser => storage(
+            MenuKind::Generic3x3,
+            "dispenser",
+            "container.dispenser",
+            Lid::None,
+        ),
+        BlockKind::Dropper => storage(
+            MenuKind::Generic3x3,
+            "dropper",
+            "container.dropper",
+            Lid::None,
+        ),
+        _ if has_tag(state, "minecraft:shulker_boxes") => storage(
+            MenuKind::ShulkerBox,
+            "shulker_box",
+            "container.shulkerBox",
+            Lid::Shulker,
+        ),
         _ => None,
+    }
+}
+
+fn facing_step(state: BlockStateId) -> (i32, i32, i32) {
+    match state.property("facing") {
+        Some("down") => (0, -1, 0),
+        Some("north") => (0, 0, -1),
+        Some("south") => (0, 0, 1),
+        Some("west") => (-1, 0, 0),
+        Some("east") => (1, 0, 0),
+        _ => (0, 1, 0),
+    }
+}
+
+fn lid_sounds(lid: Lid) -> Option<(&'static str, &'static str)> {
+    match lid {
+        Lid::Chest => Some(("minecraft:block.chest.open", "minecraft:block.chest.close")),
+        Lid::Shulker => Some((
+            "minecraft:block.shulker_box.open",
+            "minecraft:block.shulker_box.close",
+        )),
+        Lid::Barrel => Some((
+            "minecraft:block.barrel.open",
+            "minecraft:block.barrel.close",
+        )),
+        Lid::None => None,
     }
 }
 
@@ -127,14 +195,20 @@ impl<L: ClientLink> Server<L> {
         let Some(opening) = opening_of(state) else {
             return false;
         };
-        let above = self.world.chunks.block(pos.offset(0, 1, 0));
-        if blocked_above(above) {
+        let viewers = self.viewer_count(pos);
+        let shut = match opening.lid {
+            Lid::Chest => blocked_above(self.world.chunks.block(pos.offset(0, 1, 0))),
+            Lid::Shulker => viewers == 0 && self.shulker_is_obstructed(pos, state),
+            Lid::Barrel | Lid::None => false,
+        };
+        if shut {
             return true;
         }
         let backing = Backing {
             pos,
             entity: opening.entity,
             block: opening.block,
+            lid: opening.lid,
         };
         self.close_open_menu(id, true);
         let items = self.container_items(backing, opening.kind.container_size());
@@ -163,7 +237,84 @@ impl<L: ClientLink> Server<L> {
             carried,
         });
         player.open_menu = Some(open);
+        let count = self.viewer_count(pos);
+        self.viewers_changed(backing, count, true);
         true
+    }
+
+    fn viewer_count(&self, pos: BlockPos) -> u8 {
+        let count = self
+            .players
+            .values()
+            .filter(|player| {
+                player
+                    .open_menu
+                    .as_ref()
+                    .is_some_and(|open| open.backing.pos == pos)
+            })
+            .count();
+        u8::try_from(count).unwrap_or(u8::MAX)
+    }
+
+    fn shulker_is_obstructed(&self, pos: BlockPos, state: BlockStateId) -> bool {
+        let (dx, dy, dz) = facing_step(state);
+        self.world
+            .chunks
+            .block(pos.offset(dx, dy, dz))
+            .is_some_and(|neighbour| neighbour.collision_shape_id() != ShapeId::EMPTY)
+    }
+
+    fn viewers_changed(&mut self, backing: Backing, count: u8, opened: bool) {
+        let Some(state) = self.world.chunks.block(backing.pos) else {
+            return;
+        };
+        if state.kind() != Some(backing.block) {
+            return;
+        }
+        let first_or_last = if opened { count == 1 } else { count == 0 };
+        let center = backing.pos.center();
+        let mut position = center;
+        if backing.lid == Lid::Barrel {
+            let (dx, dy, dz) = facing_step(state);
+            position = center
+                + rspigot_domain::Vec3::new(
+                    f64::from(dx) / 2.0,
+                    f64::from(dy) / 2.0,
+                    f64::from(dz) / 2.0,
+                );
+            if first_or_last
+                && let Some(next) =
+                    state.with_property("open", if opened { "true" } else { "false" })
+            {
+                self.set_block(backing.pos, next);
+            }
+        } else if backing.lid != Lid::None {
+            self.push(
+                Audience::Nearby {
+                    position: center,
+                    range: BLOCK_EVENT_RANGE,
+                    except: None,
+                },
+                ClientEvent::BlockEvent {
+                    pos: backing.pos,
+                    action: LID_ACTION,
+                    data: count,
+                    block: backing.block.id().0,
+                },
+            );
+        }
+        if first_or_last && let Some((open, close)) = lid_sounds(backing.lid) {
+            let pitch = self.rng.random::<f32>() * 0.1 + 0.9;
+            let sound = if opened { open } else { close };
+            self.play_sound(
+                None,
+                position,
+                sound,
+                SoundSource::Blocks,
+                LID_VOLUME,
+                pitch,
+            );
+        }
     }
 
     pub(crate) fn handle_open_menu_click(&mut self, id: PlayerId, click: &ContainerClick) -> bool {
@@ -302,6 +453,8 @@ impl<L: ClientLink> Server<L> {
         }
         self.apply_menu_effects(id, effects);
         self.broadcast_equipment_changes(id, before);
+        let count = self.viewer_count(open.backing.pos);
+        self.viewers_changed(open.backing, count, false);
         true
     }
 
@@ -401,9 +554,64 @@ mod tests {
     }
 
     #[test]
-    fn only_chests_open_a_menu_for_now() {
-        assert!(opening_of(BlockKind::Chest.default_state()).is_some());
+    fn storage_blocks_map_to_their_menu_and_title() {
+        let menu = |block: BlockKind| {
+            opening_of(block.default_state()).map(|o| (o.kind, o.entity, o.title))
+        };
+        assert_eq!(
+            menu(BlockKind::Chest),
+            Some((MenuKind::Generic { rows: 3 }, "chest", "container.chest"))
+        );
+        assert_eq!(
+            menu(BlockKind::TrappedChest),
+            Some((
+                MenuKind::Generic { rows: 3 },
+                "trapped_chest",
+                "container.chest"
+            ))
+        );
+        assert_eq!(
+            menu(BlockKind::Barrel),
+            Some((MenuKind::Generic { rows: 3 }, "barrel", "container.barrel"))
+        );
+        assert_eq!(
+            menu(BlockKind::Hopper),
+            Some((MenuKind::Hopper, "hopper", "container.hopper"))
+        );
+        assert_eq!(
+            menu(BlockKind::Dispenser),
+            Some((MenuKind::Generic3x3, "dispenser", "container.dispenser"))
+        );
+        assert_eq!(
+            menu(BlockKind::Dropper),
+            Some((MenuKind::Generic3x3, "dropper", "container.dropper"))
+        );
         assert!(opening_of(BlockKind::Stone.default_state()).is_none());
+    }
+
+    #[test]
+    fn every_shulker_box_colour_opens_the_shulker_menu() {
+        let boxes: Vec<BlockKind> = BlockKind::ALL
+            .into_iter()
+            .filter(|block| block.name().ends_with("shulker_box"))
+            .collect();
+        assert_eq!(boxes.len(), 17);
+        for block in boxes {
+            let opening =
+                opening_of(block.default_state()).unwrap_or_else(|| panic!("{}", block.name()));
+            assert_eq!(opening.kind, MenuKind::ShulkerBox, "{}", block.name());
+            assert_eq!(opening.entity, "shulker_box", "{}", block.name());
+        }
+    }
+
+    #[test]
+    fn a_facing_property_gives_the_step_of_the_block() {
+        let state = BlockKind::Barrel
+            .default_state()
+            .with_property("facing", "east")
+            .expect("facing");
+        assert_eq!(facing_step(state), (1, 0, 0));
+        assert_eq!(facing_step(BlockKind::Stone.default_state()), (0, 1, 0));
     }
 
     #[test]
