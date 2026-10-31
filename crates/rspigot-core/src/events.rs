@@ -349,6 +349,12 @@ pub enum ClientEvent {
         pos: BlockPos,
         state: BlockStateId,
     },
+    BlockEvent {
+        pos: BlockPos,
+        action: u8,
+        data: u8,
+        block: u16,
+    },
     BlockChangedAck(i32),
     BlockDestruction {
         entity: EntityId,

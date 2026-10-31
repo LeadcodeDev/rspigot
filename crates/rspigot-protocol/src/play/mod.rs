@@ -38,10 +38,11 @@ pub mod clientbound {
         TabList, TickingState, TickingStep,
     };
     pub use super::world::{
-        BlockChangedAck, BlockDestruction, BlockEntityData, BlockUpdate, ChunkBatchFinished,
-        ChunkBatchStart, Explode, ExplosionParticle, GameEvent, GameRuleValues, InitializeBorder,
-        LevelEvent, LevelParticles, ParticleOptions, ParticleRandomization, SectionBlocksUpdate,
-        SetChunkCacheCenter, SetChunkCacheRadius, SetSimulationDistance, SetTime, Sound,
+        BlockChangedAck, BlockDestruction, BlockEntityData, BlockEvent, BlockUpdate,
+        ChunkBatchFinished, ChunkBatchStart, Explode, ExplosionParticle, GameEvent, GameRuleValues,
+        InitializeBorder, LevelEvent, LevelParticles, ParticleOptions, ParticleRandomization,
+        SectionBlocksUpdate, SetChunkCacheCenter, SetChunkCacheRadius, SetSimulationDistance,
+        SetTime, Sound,
     };
 }
 
@@ -91,6 +92,7 @@ mod tests {
             (<SetEquipment as Packet>::ID, 104),
             (<RemoveEntities as Packet>::ID, 78),
             (<BlockUpdate as Packet>::ID, 8),
+            (<BlockEvent as Packet>::ID, 7),
             (<BlockChangedAck as Packet>::ID, 4),
             (<BlockDestruction as Packet>::ID, 5),
             (<SectionBlocksUpdate as Packet>::ID, 86),

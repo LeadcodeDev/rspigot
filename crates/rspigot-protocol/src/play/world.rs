@@ -130,6 +130,16 @@ wire_struct! {
 
 wire_struct! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct BlockEvent = id::BLOCK_EVENT {
+        pub pos: Position,
+        pub action: u8,
+        pub data: u8,
+        pub block: i32 as Var,
+    }
+}
+
+wire_struct! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct BlockChangedAck = id::BLOCK_CHANGED_ACK {
         pub sequence: i32 as Var,
     }
