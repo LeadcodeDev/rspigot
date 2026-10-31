@@ -109,6 +109,33 @@ fn seed_lectern(chunk: &mut ChunkColumn) {
     });
 }
 
+const FULL_BEACON: BlockPos = BlockPos::new(-4, 64, 4);
+const SMALL_BEACON: BlockPos = BlockPos::new(4, 64, -4);
+
+fn seed_beacons(chunk: &mut ChunkColumn, pos: ChunkPos) {
+    let iron = BlockKind::IronBlock.default_state();
+    for (beacon, layers) in [(FULL_BEACON, 4), (SMALL_BEACON, 1)] {
+        for step in 1..=layers {
+            for dx in -step..=step {
+                for dz in -step..=step {
+                    let at = BlockPos::new(beacon.x + dx, beacon.y - step, beacon.z + dz);
+                    if at.chunk() == pos {
+                        chunk.set_block(at, iron);
+                    }
+                }
+            }
+        }
+        if beacon.chunk() == pos {
+            chunk.set_block(beacon, BlockKind::Beacon.default_state());
+            chunk.set_block_entity(BlockEntity {
+                pos: beacon,
+                kind: Identifier::minecraft("beacon"),
+                data: Compound::new(),
+            });
+        }
+    }
+}
+
 struct Floor;
 
 impl ChunkGenerator for Floor {
@@ -127,6 +154,7 @@ impl ChunkGenerator for Floor {
         if LECTERN.chunk() == pos {
             seed_lectern(&mut chunk);
         }
+        seed_beacons(&mut chunk, pos);
         chunk
     }
 
@@ -1909,4 +1937,308 @@ fn breaking_an_empty_lectern_pops_nothing() {
 
     assert!(on_the_ground(&world, "minecraft:written_book").is_empty());
     assert!(on_the_ground(&world, "minecraft:writable_book").is_empty());
+}
+
+fn effect_id(name: &str) -> i32 {
+    i32::from(
+        rspigot_domain::effect::EffectId::from_name(name)
+            .expect(name)
+            .0,
+    )
+}
+
+fn last_data(player: &Player, window: i32, id: i16) -> Option<i16> {
+    data_events(player, window)
+        .into_iter()
+        .rev()
+        .find(|(at, _)| *at == id)
+        .map(|(_, value)| value)
+}
+
+impl World {
+    fn set_beacon(&mut self, primary: Option<&str>, secondary: Option<&str>) {
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::SetBeacon {
+                primary: primary.map(effect_id),
+                secondary: secondary.map(effect_id),
+            },
+        });
+        self.settle();
+    }
+
+    fn pay_beacon(&mut self, beacon: BlockPos) {
+        self.give("iron_ingot");
+        self.open_at(beacon);
+        self.click(WINDOW, 28, 0, ClickInput::Pickup);
+        self.click(WINDOW, 0, 0, ClickInput::Pickup);
+    }
+}
+
+#[test]
+fn a_beacon_opens_with_a_payment_slot_its_levels_and_no_power_chosen() {
+    let mut world = world();
+    world.open_at(FULL_BEACON);
+
+    assert_eq!(opened(&world.alice), Some((WINDOW, 9)));
+    assert!(titled(&world.alice, "container.beacon"));
+    assert_eq!(content(&world.alice, WINDOW).expect("content").len(), 37);
+    assert_eq!(
+        data_events(&world.alice, WINDOW),
+        vec![(0, 4), (1, 0), (2, 0)]
+    );
+}
+
+#[test]
+fn the_levels_follow_the_pyramid_under_the_beacon() {
+    let mut world = world();
+    world.open_at(SMALL_BEACON);
+
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(1));
+}
+
+#[test]
+fn the_payment_slot_takes_one_payment_item_at_a_time() {
+    let mut world = world();
+    world.console("give Alice minecraft:iron_ingot 5");
+    world.give("stick");
+    world.open_at(FULL_BEACON);
+    world.click(WINDOW, 28, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 0),
+        Some(Some((item("minecraft:iron_ingot"), 1)))
+    );
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.click(WINDOW, 29, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    assert_ne!(
+        slot_update(&world.alice, WINDOW, 0),
+        Some(Some((item("minecraft:stick"), 1)))
+    );
+}
+
+#[test]
+fn choosing_the_powers_uses_up_the_payment_and_keeps_the_choice() {
+    let mut world = world();
+    world.pay_beacon(FULL_BEACON);
+    world.set_beacon(Some("minecraft:speed"), Some("minecraft:regeneration"));
+
+    assert_eq!(
+        last_data(&world.alice, WINDOW, 1),
+        Some(effect_id("minecraft:speed") as i16 + 1)
+    );
+    assert_eq!(
+        last_data(&world.alice, WINDOW, 2),
+        Some(effect_id("minecraft:regeneration") as i16 + 1)
+    );
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    world.close(WINDOW);
+    world.open_at(FULL_BEACON);
+    assert_eq!(
+        data_events(&world.alice, 2),
+        vec![
+            (0, 4),
+            (1, effect_id("minecraft:speed") as i16 + 1),
+            (2, effect_id("minecraft:regeneration") as i16 + 1),
+        ]
+    );
+    assert!(on_the_ground(&world, "minecraft:iron_ingot").is_empty());
+}
+
+#[test]
+fn the_secondary_power_may_repeat_the_primary_one() {
+    let mut world = world();
+    world.pay_beacon(FULL_BEACON);
+    world.set_beacon(Some("minecraft:haste"), Some("minecraft:haste"));
+
+    assert_eq!(
+        last_data(&world.alice, WINDOW, 2),
+        Some(effect_id("minecraft:haste") as i16 + 1)
+    );
+}
+
+#[test]
+fn a_choice_the_pyramid_is_too_small_for_is_refused_and_keeps_the_payment() {
+    let refused: [(Option<&str>, Option<&str>); 4] = [
+        (Some("minecraft:strength"), None),
+        (Some("minecraft:resistance"), None),
+        (Some("minecraft:speed"), Some("minecraft:speed")),
+        (Some("minecraft:speed"), Some("minecraft:regeneration")),
+    ];
+    for (primary, secondary) in refused {
+        let mut world = world();
+        world.pay_beacon(SMALL_BEACON);
+        world.set_beacon(primary, secondary);
+
+        assert_eq!(
+            last_data(&world.alice, WINDOW, 1),
+            Some(0),
+            "{primary:?} {secondary:?}"
+        );
+        assert_eq!(
+            slot_update(&world.alice, WINDOW, 0),
+            Some(Some((item("minecraft:iron_ingot"), 1))),
+            "{primary:?} {secondary:?}"
+        );
+    }
+}
+
+#[test]
+fn a_small_pyramid_accepts_a_first_tier_power() {
+    let mut world = world();
+    world.pay_beacon(SMALL_BEACON);
+    world.set_beacon(Some("minecraft:haste"), None);
+
+    assert_eq!(
+        last_data(&world.alice, WINDOW, 1),
+        Some(effect_id("minecraft:haste") as i16 + 1)
+    );
+    assert_eq!(last_data(&world.alice, WINDOW, 2), Some(0));
+}
+
+#[test]
+fn the_beacon_refuses_choices_that_break_its_rules() {
+    let refused: [(Option<&str>, Option<&str>); 4] = [
+        (Some("minecraft:regeneration"), None),
+        (Some("minecraft:speed"), Some("minecraft:haste")),
+        (Some("minecraft:poison"), None),
+        (Some("minecraft:speed"), Some("minecraft:poison")),
+    ];
+    for (primary, secondary) in refused {
+        let mut world = world();
+        world.pay_beacon(FULL_BEACON);
+        world.set_beacon(primary, secondary);
+
+        assert_eq!(
+            last_data(&world.alice, WINDOW, 1),
+            Some(0),
+            "{primary:?} {secondary:?}"
+        );
+        assert_eq!(
+            last_data(&world.alice, WINDOW, 2),
+            Some(0),
+            "{primary:?} {secondary:?}"
+        );
+        assert!(slot_update(&world.alice, WINDOW, 0).is_some_and(|slot| slot.is_some()));
+    }
+}
+
+#[test]
+fn an_effect_id_that_does_not_exist_is_refused() {
+    for (primary, secondary) in [(Some(9999), None), (Some(-1), None), (None, Some(9999))] {
+        let mut world = world();
+        world.pay_beacon(FULL_BEACON);
+        world.server.handle(Inbound::Input {
+            player: world.alice.id,
+            input: PlayerInput::SetBeacon { primary, secondary },
+        });
+        world.settle();
+
+        assert_eq!(
+            last_data(&world.alice, WINDOW, 1),
+            Some(0),
+            "{primary:?} {secondary:?}"
+        );
+        assert!(slot_update(&world.alice, WINDOW, 0).is_some_and(|slot| slot.is_some()));
+    }
+}
+
+#[test]
+fn nothing_is_chosen_without_a_payment() {
+    let mut world = world();
+    world.open_at(FULL_BEACON);
+    world.set_beacon(Some("minecraft:speed"), None);
+
+    assert_eq!(last_data(&world.alice, WINDOW, 1), Some(0));
+}
+
+#[test]
+fn a_beacon_choice_without_an_open_beacon_does_nothing() {
+    let mut world = world();
+    world.set_beacon(Some("minecraft:speed"), None);
+    world.place_chest();
+    world.open_chest();
+    world.set_beacon(Some("minecraft:speed"), None);
+
+    let sent_data = world
+        .alice
+        .log
+        .iter()
+        .any(|event| matches!(event, ClientEvent::ContainerData { .. }));
+    assert!(!sent_data);
+}
+
+#[test]
+fn closing_the_beacon_throws_the_payment_on_the_ground() {
+    let mut world = world();
+    world.pay_beacon(FULL_BEACON);
+    let before = world.alice.log.len();
+    world.close(WINDOW);
+
+    assert_eq!(on_the_ground(&world, "minecraft:iron_ingot"), vec![1]);
+    let ingot = item("minecraft:iron_ingot");
+    let given_back = world.alice.log[before..].iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::InventorySlot { stack: Some(stack), .. }
+            | ClientEvent::PlayerInventorySlot { stack: Some(stack), .. }
+                if stack.item.0 == ingot
+        )
+    });
+    assert!(!given_back);
+}
+
+#[test]
+fn another_reader_sees_the_powers_that_were_chosen() {
+    let mut world = world();
+    world.open_at(FULL_BEACON);
+    world.server.handle(Inbound::Input {
+        player: world.bob.id,
+        input: PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos: FULL_BEACON,
+            face: Direction::Up,
+            cursor: Vec3::new(0.5, 1.0, 0.5),
+            inside_block: false,
+            sequence: 9,
+        },
+    });
+    world.settle();
+    world.give("iron_ingot");
+    world.click(WINDOW, 28, 0, ClickInput::Pickup);
+    world.click(WINDOW, 0, 0, ClickInput::Pickup);
+    world.set_beacon(Some("minecraft:speed"), None);
+
+    assert_eq!(
+        last_data(&world.bob, WINDOW, 1),
+        Some(effect_id("minecraft:speed") as i16 + 1)
+    );
+}
+
+#[test]
+fn the_levels_are_checked_again_every_eighty_ticks_while_the_window_is_open() {
+    let mut world = world();
+    world.open_at(FULL_BEACON);
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(4));
+    world.console("tp Alice -4 64 6");
+    world.break_at(BlockPos::new(-4, 63, 4));
+    run_ticks(
+        &mut world.server,
+        &mut [&mut world.alice, &mut world.bob],
+        85,
+    );
+
+    assert_eq!(last_data(&world.alice, WINDOW, 0), Some(0));
+}
+
+#[test]
+fn a_placed_beacon_has_its_block_entity_for_a_late_joiner() {
+    let mut world = world();
+    world.place_storage("beacon");
+    let mut carol = join(&mut world.server, "Carol");
+    run_ticks(&mut world.server, &mut [&mut carol], 30);
+
+    assert!(carries_a_block_entity(&carol, CHEST, "minecraft:beacon"));
 }

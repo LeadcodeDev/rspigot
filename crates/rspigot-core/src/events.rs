@@ -154,6 +154,10 @@ pub enum PlayerInput {
         window: i32,
         button: i32,
     },
+    SetBeacon {
+        primary: Option<i32>,
+        secondary: Option<i32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

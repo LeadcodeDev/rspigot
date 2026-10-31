@@ -9,7 +9,6 @@ use rspigot_entities::SoundSource;
 use rspigot_nbt::Compound;
 
 use crate::chests::Dir;
-use crate::events::ClientEvent;
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -89,23 +88,6 @@ impl<L: ClientLink> Server<L> {
         });
     }
 
-    fn show_page(&mut self, pos: BlockPos, page: i32) {
-        let value = i16::try_from(page).unwrap_or(i16::MAX);
-        for player in self.players.values() {
-            if let Some(open) = player
-                .open_menu
-                .as_ref()
-                .filter(|open| open.backing.pos == pos)
-            {
-                player.link.send(ClientEvent::ContainerData {
-                    window: open.window,
-                    id: PAGE_DATA,
-                    value,
-                });
-            }
-        }
-    }
-
     fn turn_to_page(&mut self, pos: BlockPos, requested: i32) {
         let Some(book) = self.lectern_book(pos) else {
             return;
@@ -115,7 +97,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         self.store_lectern(pos, Some(&book), page);
-        self.show_page(pos, page);
+        self.send_menu_data(pos, PAGE_DATA, i16::try_from(page).unwrap_or(i16::MAX));
     }
 
     fn take_book(&mut self, id: PlayerId, pos: BlockPos) -> bool {

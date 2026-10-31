@@ -15,9 +15,9 @@ use rspigot_nbt::{Compound, Tag};
 
 use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
-use crate::lectern;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
+use crate::{beacon, lectern};
 
 const WINDOWS: i32 = 100;
 const MAX_VIEW_DISTANCE_SQUARED: f64 = 64.0;
@@ -150,6 +150,7 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
             "container.cartography_table",
         ),
         BlockKind::Loom => station(MenuKind::Loom, None, "container.loom"),
+        BlockKind::Beacon => station(MenuKind::Beacon, None, "container.beacon"),
         BlockKind::Lectern if lectern::has_book(state) => Some(Opening {
             kind: MenuKind::Lectern,
             entity: Some("lectern"),
@@ -182,6 +183,9 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
 pub(crate) fn container_entity(state: BlockStateId) -> Option<&'static str> {
     if lectern::is_lectern(state) {
         return Some("lectern");
+    }
+    if beacon::is_beacon(state) {
+        return Some("beacon");
     }
     opening_of(state).and_then(|opening| {
         if opening.ender {
@@ -458,10 +462,10 @@ impl<L: ClientLink> Server<L> {
         } else {
             vec![None; size]
         };
-        let initial_data = if opening.kind == MenuKind::Lectern {
-            i16::try_from(self.lectern_page(pos)).unwrap_or(0)
-        } else {
-            0
+        let initial_data = match opening.kind {
+            MenuKind::Lectern => vec![i16::try_from(self.lectern_page(pos)).unwrap_or(0)],
+            MenuKind::Beacon => self.beacon_menu_data(pos),
+            kind => vec![0; kind.data_count()],
         };
         let Some(player) = self.players.get_mut(&id) else {
             return false;
@@ -492,11 +496,11 @@ impl<L: ClientLink> Server<L> {
             slots,
             carried,
         });
-        for property in 0..opening.kind.data_count() {
+        for (property, value) in initial_data.into_iter().enumerate() {
             player.link.send(ClientEvent::ContainerData {
                 window,
                 id: property as i16,
-                value: initial_data,
+                value,
             });
         }
         player.open_menu = Some(open);
@@ -755,7 +759,36 @@ impl<L: ClientLink> Server<L> {
         matches
     }
 
+    pub(crate) fn send_menu_data(&self, pos: BlockPos, id: i16, value: i16) {
+        for player in self.players.values() {
+            if let Some(open) = player
+                .open_menu
+                .as_ref()
+                .filter(|open| open.backing.pos == pos)
+            {
+                player.link.send(ClientEvent::ContainerData {
+                    window: open.window,
+                    id,
+                    value,
+                });
+            }
+        }
+    }
+
+    pub(crate) fn use_up_payment(&mut self, id: PlayerId) {
+        if let Some(slot) = self
+            .players
+            .get_mut(&id)
+            .and_then(|player| player.open_menu.as_mut())
+            .and_then(|open| open.local.first_mut())
+        {
+            *slot = None;
+        }
+        self.sync_open_menu(id, false);
+    }
+
     pub(crate) fn tick_open_menus(&mut self) {
+        self.recheck_beacon_levels();
         let ids: Vec<PlayerId> = self
             .players
             .iter()
