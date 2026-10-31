@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
-    SlotGroup, Tool, tags,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Product, Rarity, SlotGroup, Tool, tags,
 };
 
 pub struct LeatherHelmet;
@@ -38,6 +38,23 @@ impl Item for LeatherHelmet {
             operation: ModifierOperation::AddValue,
             slot: SlotGroup::Head,
         },
+    ];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 2,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1133)])),
+                Some(ItemSet::Direct(&[ItemId(1133)])),
+                Some(ItemSet::Direct(&[ItemId(1133)])),
+                Some(ItemSet::Direct(&[ItemId(1133)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1133)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
     ];
     type Behavior = crate::family::Plain;
 }

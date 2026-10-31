@@ -11,6 +11,7 @@ REPORTS = RE_ROOT + "/datagen/generated/reports"
 DEFAULT_DUMP = REPORTS + "/items.json"
 DEFAULT_REGISTRIES = REPORTS + "/registries.json"
 DEFAULT_COMPONENTS = REPORTS + "/minecraft/components/item"
+DEFAULT_DATAPACK = RE_ROOT + "/server/data/minecraft"
 CRATE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "crates", "rspigot-items")
 )
@@ -32,7 +33,8 @@ RESERVED_STRUCTS = {
     "Item", "ItemId", "ItemKind", "ItemBehavior", "ItemSet", "ItemTag", "BlockSet", "BlockTag",
     "BlockId", "BlockKind", "Tool", "ToolRule", "Food", "Rarity", "EquipmentSlot", "Plain",
     "BlockItem", "Self", "Option", "Some", "None", "Result", "Ok", "Err", "Vec", "Box",
-    "AttributeModifier", "ModifierOperation", "SlotGroup",
+    "AttributeModifier", "ModifierOperation", "SlotGroup", "Craft", "Product", "ProductComponent",
+    "StewEffect", "FireworkShapes",
 }
 
 RUST_KEYWORDS = {
@@ -361,6 +363,16 @@ def validate(dump, registries, components_dir):
         for entry in tag["items"]:
             integer(entry, 0, len(item_names) - 1, tag["name"])
         item_tags[tag["name"]] = set(tag["items"])
+    for tag in dump["all_item_tags"]:
+        tag_constant("ITEM", tag["name"])
+        if tag["items"] != sorted(set(tag["items"])):
+            fail("item tag %s is not sorted" % tag["name"])
+        for entry in tag["items"]:
+            integer(entry, 0, len(item_names) - 1, tag["name"])
+    all_item_tags = {tag["name"]: tag["items"] for tag in dump["all_item_tags"]}
+    for tag in dump["item_tags"]:
+        if all_item_tags.get(tag["name"]) != tag["items"]:
+            fail("item tag %s differs from the full tag dump" % tag["name"])
     structs = set()
     placed = {}
     for index, item in enumerate(items):
@@ -444,11 +456,12 @@ def validate(dump, registries, components_dir):
                 fail("%s has unknown modifier operation %r" % (name, modifier["operation"]))
             if modifier["slot"] not in SLOT_GROUPS:
                 fail("%s has unknown modifier slot %r" % (name, modifier["slot"]))
-        remainder = item["use_remainder"]
-        if remainder is not None:
-            integer(remainder["item"], 0, len(item_names) - 1, name + " use remainder")
-            if remainder["count"] != 1 or remainder["patch_empty"] is not True:
-                fail("%s use remainder is not a plain single item" % name)
+        for key in ("use_remainder", "crafting_remainder"):
+            remainder = item[key]
+            if remainder is not None:
+                integer(remainder["item"], 0, len(item_names) - 1, name + " " + key)
+                if remainder["count"] != 1 or remainder["patch_empty"] is not True:
+                    fail("%s %s is not a plain single item" % (name, key))
         report = load_json(os.path.join(components_dir, path + ".json"))
         check_report(item, report, block_ids, item_ids)
         item["weapon_damage"] = weapon_damage(report["components"].get("minecraft:weapon"), name)
@@ -563,7 +576,391 @@ def modifier_lines(modifiers, name, used):
     return lines
 
 
-def item_file(item, behavior):
+class Atom:
+    def __init__(self, text):
+        self.text = text
+
+
+class Group:
+    def __init__(self, open_, items, close, spaced=False):
+        self.open = open_
+        self.items = items
+        self.close = close
+        self.spaced = spaced
+
+
+class Prefix:
+    def __init__(self, text, node):
+        self.text = text
+        self.node = node
+
+
+def flat(node):
+    if isinstance(node, Atom):
+        return node.text
+    if isinstance(node, Prefix):
+        return node.text + flat(node.node)
+    inner = ", ".join(flat(item) for item in node.items)
+    if node.spaced and inner:
+        inner = " " + inner + " "
+    return node.open + inner + node.close
+
+
+def render(node, indent, prefix="", suffix=""):
+    text = indent + prefix + flat(node) + suffix
+    if len(text) <= WIDTH or isinstance(node, Atom) or (isinstance(node, Group) and not node.items):
+        return [text]
+    if isinstance(node, Prefix):
+        return render(node.node, indent, prefix + node.text, suffix)
+    if len(node.items) == 1 and not node.spaced:
+        return render(node.items[0], indent, prefix + node.open, node.close + suffix)
+    lines = [indent + prefix + node.open]
+    for item in node.items:
+        lines.extend(render(item, indent + "    ", "", ","))
+    lines.append(indent + node.close + suffix)
+    return lines
+
+
+def struct_node(name, fields):
+    return Group(name + " {", [Prefix(key + ": ", value) for key, value in fields], "}", True)
+
+
+def call_node(name, args):
+    return Group(name + "(", args, ")")
+
+
+def slice_node(items):
+    return Group("&[", items, "]")
+
+
+def number(value):
+    return Atom(str(value))
+
+
+def flag(value):
+    return Atom("true" if value else "false")
+
+
+CRAFTING_TYPES = {
+    "crafting_shaped",
+    "crafting_shapeless",
+    "crafting_transmute",
+    "crafting_dye",
+    "crafting_imbue",
+    "crafting_decorated_pot",
+    "crafting_special_bannerduplicate",
+    "crafting_special_shielddecoration",
+    "crafting_special_repairitem",
+    "crafting_special_mapextending",
+    "crafting_special_firework_star_fade",
+    "crafting_special_firework_star",
+    "crafting_special_firework_rocket",
+    "crafting_special_bookcloning",
+}
+STEW_EFFECTS = "minecraft:suspicious_stew_effects"
+FIREWORK_SHAPES = ["burst", "creeper", "large_ball", "star"]
+
+
+def recipe_paths(root):
+    paths = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for filename in filenames:
+            if filename.endswith(".json"):
+                relative = os.path.relpath(os.path.join(dirpath, filename), root)
+                paths.append(relative[: -len(".json")].replace(os.sep, "/"))
+    return sorted(paths)
+
+
+def expect_keys(value, allowed, where):
+    if not isinstance(value, dict) or set(value) - set(allowed):
+        fail("unsupported keys in %s: %s" % (where, json.dumps(value)))
+
+
+class Crafts:
+    def __init__(self, dump, item_names):
+        self.tags = {tag["name"]: tag["items"] for tag in dump["all_item_tags"]}
+        self.ids = {name: index for index, name in enumerate(item_names)}
+        self.used = set()
+        self.by_item = {}
+        self.skipped = 0
+
+    def item(self, name, where):
+        name = name if ":" in name else NAMESPACE + name
+        if name not in self.ids:
+            fail("unknown item %s in %s" % (name, where))
+        return self.ids[name]
+
+    def ingredient(self, value, where, track=True):
+        if isinstance(value, str) and value.startswith("#"):
+            tag = value[1:] if ":" in value else NAMESPACE + value[1:]
+            if tag not in self.tags:
+                fail("unknown item tag %s in %s" % (tag, where))
+            if track:
+                self.used.add(tag)
+            return Atom("ItemSet::Tag(&tags::%s)" % tag_constant("ITEM", tag)), set(self.tags[tag])
+        values = [value] if isinstance(value, str) else value
+        valid = isinstance(values, list) and values and all(
+            isinstance(entry, str) and not entry.startswith("#") for entry in values
+        )
+        if not valid:
+            fail("unsupported ingredient %s in %s" % (json.dumps(value), where))
+        ids = sorted({self.item(entry, where) for entry in values})
+        node = call_node("ItemSet::Direct", [slice_node([call_node("ItemId", [number(i)]) for i in ids])])
+        return node, set(ids)
+
+    def node(self, value, where):
+        return self.ingredient(value, where)[0]
+
+    def product(self, result, where):
+        expect_keys(result, {"id", "count", "components"}, where)
+        count = integer(result.get("count", 1), 1, 99, where + " count")
+        components = []
+        for key, value in result.get("components", {}).items():
+            if key != STEW_EFFECTS:
+                fail("unsupported result component %s in %s" % (key, where))
+            effects = []
+            for effect in value:
+                expect_keys(effect, {"id", "duration"}, where)
+                effects.append(
+                    struct_node(
+                        "StewEffect",
+                        [
+                            ("effect", Atom(rust_string(effect["id"]))),
+                            ("duration", number(integer(effect["duration"], 0, 2**31 - 1, where + " duration"))),
+                        ],
+                    )
+                )
+            components.append(call_node("ProductComponent::SuspiciousStewEffects", [slice_node(effects)]))
+        if not components:
+            return call_node("Product::of", [number(count)])
+        return struct_node("Product", [("count", number(count)), ("components", slice_node(components))])
+
+    def result_item(self, recipe, where, fallback=None):
+        result = recipe["result"]
+        if "id" in result:
+            return self.item(result["id"], where)
+        if fallback is None or len(fallback) != 1:
+            fail("%s has no result item to declare it on" % where)
+        return next(iter(fallback))
+
+    def same_item(self, recipe, key, owner, where):
+        if self.item(recipe[key], where) != owner:
+            fail("%s %s is not the result item" % (where, key))
+
+    def shaped(self, recipe, where):
+        expect_keys(recipe, {"type", "category", "group", "key", "pattern", "result", "show_notification"}, where)
+        pattern = recipe["pattern"]
+        keys = recipe["key"]
+        if not pattern or any(not isinstance(row, str) or not row for row in pattern):
+            fail("empty pattern row in " + where)
+        if len({len(row) for row in pattern}) != 1:
+            fail("ragged pattern in " + where)
+        if any(len(key) != 1 or key == " " for key in keys):
+            fail("unsupported key character in " + where)
+        columns = [index for row in pattern for index, cell in enumerate(row) if cell != " "]
+        rows = [index for index, row in enumerate(pattern) if row.strip(" ")]
+        if not columns:
+            fail("empty pattern in " + where)
+        left, right, top, bottom = min(columns), max(columns), min(rows), max(rows)
+        trimmed = [row[left : right + 1] for row in pattern[top : bottom + 1]]
+        width, height = len(trimmed[0]), len(trimmed)
+        if width > 3 or height > 3:
+            fail("pattern larger than the grid in " + where)
+        unused = set(keys) - {cell for row in trimmed for cell in row}
+        if unused:
+            fail("unused key %s in %s" % (sorted(unused), where))
+        built = {}
+        cells = []
+        for row in trimmed:
+            for cell in row:
+                if cell == " ":
+                    cells.append(Atom("None"))
+                    continue
+                if cell not in keys:
+                    fail("pattern uses undefined key %r in %s" % (cell, where))
+                if cell not in built:
+                    built[cell] = self.node(keys[cell], where)
+                cells.append(call_node("Some", [built[cell]]))
+        texts = [flat(cell) for cell in cells]
+        symmetrical = all(
+            texts[y * width + x] == texts[y * width + width - 1 - x] for y in range(height) for x in range(width // 2)
+        )
+        owner = self.result_item(recipe, where)
+        node = struct_node(
+            "Craft::Shaped",
+            [
+                ("width", number(width)),
+                ("height", number(height)),
+                ("symmetrical", flag(symmetrical)),
+                ("cells", slice_node(cells)),
+                ("product", self.product(recipe["result"], where)),
+            ],
+        )
+        return owner, node
+
+    def shapeless(self, recipe, where):
+        expect_keys(recipe, {"type", "category", "group", "ingredients", "result"}, where)
+        ingredients = recipe["ingredients"]
+        if not 1 <= len(ingredients) <= 9:
+            fail("%d ingredients in %s" % (len(ingredients), where))
+        node = struct_node(
+            "Craft::Shapeless",
+            [
+                ("ingredients", slice_node([self.node(entry, where) for entry in ingredients])),
+                ("product", self.product(recipe["result"], where)),
+            ],
+        )
+        return self.result_item(recipe, where), node
+
+    def transmute(self, recipe, where):
+        expect_keys(
+            recipe,
+            {"type", "category", "group", "input", "material", "material_count", "add_material_count_to_result", "result"},
+            where,
+        )
+        keeps_input = "id" not in recipe["result"]
+        input_node, input_ids = self.ingredient(recipe["input"], where, track=not keeps_input)
+        bounds = recipe.get("material_count", 1)
+        if isinstance(bounds, int):
+            low = high = bounds
+        else:
+            expect_keys(bounds, {"min", "max"}, where)
+            low, high = bounds.get("min", 1), bounds.get("max", 8)
+        integer(low, 1, 8, where + " min material")
+        integer(high, low, 8, where + " max material")
+        result = recipe["result"]
+        expect_keys(result, {"id", "count"}, where)
+        count = integer(result.get("count", 1), 1, 99, where + " count")
+        material = self.node(recipe["material"], where)
+
+        def craft(input_set):
+            return struct_node(
+                "Craft::Transmute",
+                [
+                    ("input", input_set),
+                    ("material", material),
+                    ("min_material", number(low)),
+                    ("max_material", number(high)),
+                    ("add_material_count", flag(recipe.get("add_material_count_to_result", False))),
+                    ("count", number(count)),
+                ],
+            )
+
+        if "id" in result:
+            return self.item(result["id"], where), craft(input_node)
+        return [
+            (owner, craft(call_node("ItemSet::Direct", [slice_node([call_node("ItemId", [number(owner)])])])))
+            for owner in sorted(input_ids)
+        ]
+
+    def single(self, recipe, where):
+        kind = recipe["type"][len("minecraft:") :]
+        if kind == "crafting_shaped":
+            return self.shaped(recipe, where)
+        if kind == "crafting_shapeless":
+            return self.shapeless(recipe, where)
+        if kind == "crafting_transmute":
+            return self.transmute(recipe, where)
+        result = recipe["result"]
+        if kind == "crafting_dye":
+            expect_keys(recipe, {"type", "group", "dye", "target", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            owner = self.item(result["id"], where)
+            self.same_item(recipe, "target", owner, where)
+            return owner, struct_node("Craft::Dye", [("dye", self.node(recipe["dye"], where))])
+        if kind == "crafting_imbue":
+            expect_keys(recipe, {"type", "source", "material", "result"}, where)
+            expect_keys(result, {"id", "count"}, where)
+            node = struct_node(
+                "Craft::Imbue",
+                [
+                    ("source", self.node(recipe["source"], where)),
+                    ("material", self.node(recipe["material"], where)),
+                    ("count", number(integer(result.get("count", 1), 1, 99, where + " count"))),
+                ],
+            )
+            return self.item(result["id"], where), node
+        if kind == "crafting_decorated_pot":
+            expect_keys(recipe, {"type", "back", "front", "left", "right", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            fields = [(side, self.node(recipe[side], where)) for side in ("back", "front", "left", "right")]
+            return self.item(result["id"], where), struct_node("Craft::DecoratedPot", fields)
+        if kind == "crafting_special_bannerduplicate":
+            expect_keys(recipe, {"type", "banner", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            owner = self.item(result["id"], where)
+            self.same_item(recipe, "banner", owner, where)
+            return owner, Atom("Craft::BannerDuplicate")
+        if kind == "crafting_special_shielddecoration":
+            expect_keys(recipe, {"type", "banner", "target", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            owner = self.item(result["id"], where)
+            self.same_item(recipe, "target", owner, where)
+            return owner, struct_node("Craft::ShieldDecoration", [("banner", self.node(recipe["banner"], where))])
+        if kind == "crafting_special_mapextending":
+            expect_keys(recipe, {"type", "map", "material", "result"}, where)
+            expect_keys(result, set(), where)
+            map_node, map_ids = self.ingredient(recipe["map"], where)
+            node = struct_node(
+                "Craft::MapExtending", [("map", map_node), ("material", self.node(recipe["material"], where))]
+            )
+            return self.result_item(recipe, where, map_ids), node
+        if kind == "crafting_special_firework_star_fade":
+            expect_keys(recipe, {"type", "dye", "target", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            owner = self.item(result["id"], where)
+            self.same_item(recipe, "target", owner, where)
+            return owner, struct_node("Craft::FireworkStarFade", [("dye", self.node(recipe["dye"], where))])
+        if kind == "crafting_special_firework_star":
+            expect_keys(recipe, {"type", "dye", "fuel", "shapes", "trail", "twinkle", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            if sorted(recipe["shapes"]) != sorted(FIREWORK_SHAPES):
+                fail("unexpected firework shapes in " + where)
+            shapes = struct_node(
+                "FireworkShapes", [(shape, self.node(recipe["shapes"][shape], where)) for shape in FIREWORK_SHAPES]
+            )
+            fields = [(key, self.node(recipe[key], where)) for key in ("dye", "fuel", "trail", "twinkle")]
+            return self.item(result["id"], where), struct_node("Craft::FireworkStar", fields + [("shapes", shapes)])
+        if kind == "crafting_special_firework_rocket":
+            expect_keys(recipe, {"type", "fuel", "shell", "star", "result"}, where)
+            expect_keys(result, {"id", "count"}, where)
+            fields = [(key, self.node(recipe[key], where)) for key in ("shell", "star", "fuel")]
+            count = integer(result.get("count", 1), 1, 99, where + " count")
+            node = struct_node("Craft::FireworkRocket", fields + [("count", number(count))])
+            return self.item(result["id"], where), node
+        if kind == "crafting_special_bookcloning":
+            expect_keys(recipe, {"type", "source", "material", "result"}, where)
+            expect_keys(result, {"id"}, where)
+            fields = [(key, self.node(recipe[key], where)) for key in ("source", "material")]
+            return self.item(result["id"], where), struct_node("Craft::BookCloning", fields)
+        fail("unhandled crafting recipe type %s in %s" % (kind, where))
+
+    def read(self, datapack):
+        root = os.path.join(datapack, "recipe")
+        total = 0
+        expanded = 0
+        for path in recipe_paths(root):
+            recipe = load_json(os.path.join(root, path + ".json"))
+            kind = recipe["type"]
+            if not kind.startswith("minecraft:") or kind[len("minecraft:") :] not in CRAFTING_TYPES:
+                continue
+            total += 1
+            if kind == "minecraft:crafting_special_repairitem":
+                self.skipped += 1
+                continue
+            outcome = self.single(recipe, "recipe " + path)
+            pairs = outcome if isinstance(outcome, list) else [outcome]
+            expanded += len(pairs) - 1
+            for owner, node in pairs:
+                self.by_item.setdefault(owner, []).append(node)
+        declared = sum(len(nodes) for nodes in self.by_item.values())
+        if declared != total - self.skipped + expanded:
+            fail("declared %d crafts, expected %d" % (declared, total - self.skipped + expanded))
+        return total
+
+
+def item_file(item, behavior, crafts):
     name = item["name"]
     used = set()
     body = [
@@ -590,10 +987,24 @@ def item_file(item, behavior):
     remainder = option(item["use_remainder"], lambda value: "ItemId(%d)" % value["item"])
     body.append("    const USE_REMAINDER: Option<ItemId> = %s;" % remainder)
     body.extend(modifier_lines(item["attribute_modifiers"], name, used))
+    if item["crafting_remainder"] is not None:
+        body.append("    const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(%d));" % item["crafting_remainder"]["item"])
+    craft_lines = []
+    if crafts:
+        craft_lines = render(Group("&[", crafts, "]"), "    ", "const CRAFTS: &'static [Craft] = ", ";")
+        body.extend(craft_lines)
+        if any("tags::" in line for line in craft_lines):
+            used.add("tags")
     body.append("    type Behavior = crate::family::%s;" % behavior)
     names = ["AttributeModifier", "EquipmentSlot", "Food", "Item", "ItemId", "ItemSet", "Rarity", "Tool"]
     names.extend(
         name for name in ("BlockSet", "ModifierOperation", "SlotGroup", "ToolRule") if name in used
+    )
+    craft_text = "\n".join(craft_lines)
+    names.extend(
+        name
+        for name in ("Craft", "FireworkShapes", "Product", "ProductComponent", "StewEffect")
+        if re.search(r"\b" + name + r"\b", craft_text)
     )
     if "tags" in used:
         names.append("tags")
@@ -615,7 +1026,7 @@ def item_file(item, behavior):
     return "\n".join(lines) + "\n"
 
 
-def tags_file(dump):
+def tags_file(dump, extra):
     lines = [
         "use rspigot_blocks::BlockId;",
         "",
@@ -629,7 +1040,11 @@ def tags_file(dump):
         lines.extend(wrap(["BlockId(%d)" % block for block in tag["blocks"]], "        "))
         lines.append("    ],")
         lines.append("};")
-    for tag in dump["item_tags"]:
+    item_tags = {tag["name"]: tag for tag in dump["item_tags"]}
+    for tag in dump["all_item_tags"]:
+        if tag["name"] in extra:
+            item_tags[tag["name"]] = tag
+    for tag in (item_tags[name] for name in sorted(item_tags)):
         lines.append("")
         lines.append("pub(crate) static %s: ItemTag = ItemTag {" % tag_constant("ITEM", tag["name"]))
         lines.append("    name: %s," % rust_string(tag["name"]))
@@ -699,6 +1114,7 @@ def main():
     parser.add_argument("--dump", default=DEFAULT_DUMP)
     parser.add_argument("--registries", default=DEFAULT_REGISTRIES)
     parser.add_argument("--components", default=DEFAULT_COMPONENTS)
+    parser.add_argument("--datapack", default=DEFAULT_DATAPACK)
     parser.add_argument("--families", default=DEFAULT_FAMILIES)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--check", action="store_true")
@@ -710,6 +1126,8 @@ def main():
     block_names = validate(dump, registries, args.components)
     items = dump["items"]
     by_class, by_item = read_families(args.families, items)
+    crafts = Crafts(dump, [item["name"] for item in items])
+    recipes = crafts.read(args.datapack)
 
     items_dir = os.path.join(args.out, "items")
     if not args.check:
@@ -724,11 +1142,12 @@ def main():
         families[behavior] = families.get(behavior, 0) + 1
         file_name = item["path"] + ".rs"
         expected_files.add(file_name)
-        write(os.path.join(items_dir, file_name), item_file(item, behavior), stats, args.check)
+        declared = crafts.by_item.get(item["id"], [])
+        write(os.path.join(items_dir, file_name), item_file(item, behavior, declared), stats, args.check)
     write(os.path.join(items_dir, "mod.rs"), mod_file(items), stats, args.check)
     kind = kind_file(items, len(block_names), dump["default_max_stack_size"])
     write(os.path.join(args.out, "kind.rs"), kind, stats, args.check)
-    write(os.path.join(args.out, "tags.rs"), tags_file(dump), stats, args.check)
+    write(os.path.join(args.out, "tags.rs"), tags_file(dump, crafts.used), stats, args.check)
     removed = 0
     if os.path.isdir(items_dir):
         for entry in sorted(os.listdir(items_dir)):
@@ -756,6 +1175,10 @@ def main():
             stats["written"],
             removed,
         )
+    )
+    print(
+        "crafting recipes %d declared on %d items, %d left out, %d tags"
+        % (recipes, len(crafts.by_item), crafts.skipped, len(crafts.used))
     )
     if args.stats:
         per_class = {}

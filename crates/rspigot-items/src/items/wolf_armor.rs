@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
-    SlotGroup, Tool, tags,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Product, Rarity, SlotGroup, Tool, tags,
 };
 
 pub struct WolfArmor;
@@ -38,6 +38,26 @@ impl Item for WolfArmor {
             operation: ModifierOperation::AddValue,
             slot: SlotGroup::Body,
         },
+    ];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: false,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+                None,
+                None,
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1003)])),
+            ],
+            product: Product::of(1),
+        },
+        Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
     ];
     type Behavior = crate::family::Plain;
 }

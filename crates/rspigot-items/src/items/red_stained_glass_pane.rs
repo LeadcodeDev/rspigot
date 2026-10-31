@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct RedStainedGlassPane;
 
@@ -21,5 +23,38 @@ impl Item for RedStainedGlassPane {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 2,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(619)])),
+                Some(ItemSet::Direct(&[ItemId(619)])),
+                Some(ItemSet::Direct(&[ItemId(619)])),
+                Some(ItemSet::Direct(&[ItemId(619)])),
+                Some(ItemSet::Direct(&[ItemId(619)])),
+                Some(ItemSet::Direct(&[ItemId(619)])),
+            ],
+            product: Product::of(16),
+        },
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(1213)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+                Some(ItemSet::Direct(&[ItemId(482)])),
+            ],
+            product: Product::of(8),
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }

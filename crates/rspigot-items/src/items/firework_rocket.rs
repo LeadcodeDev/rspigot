@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct FireworkRocket;
 
@@ -21,5 +23,17 @@ impl Item for FireworkRocket {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::FireworkRocket {
+            shell: ItemSet::Direct(&[ItemId(1145)]),
+            star: ItemSet::Direct(&[ItemId(1394)]),
+            fuel: ItemSet::Direct(&[ItemId(1064)]),
+            count: 3,
+        },
+        Craft::Shapeless {
+            ingredients: &[ItemSet::Direct(&[ItemId(1064)]), ItemSet::Direct(&[ItemId(1145)])],
+            product: Product::of(3),
+        },
+    ];
     type Behavior = crate::family::Plain;
 }

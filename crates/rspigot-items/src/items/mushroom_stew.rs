@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    tags,
+};
 
 pub struct MushroomStew;
 
@@ -25,5 +28,13 @@ impl Item for MushroomStew {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = Some(ItemId(1006));
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        ingredients: &[
+            ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+            ItemSet::Tag(&tags::ITEM_MUSHROOMS),
+            ItemSet::Direct(&[ItemId(1006)]),
+        ],
+        product: Product::of(1),
+    }];
     type Behavior = crate::family::Plain;
 }

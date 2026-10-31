@@ -310,6 +310,66 @@ pub(crate) static BLOCK_SWORD_INSTANTLY_MINES: BlockTag = BlockTag {
     ],
 };
 
+pub(crate) static ITEM_ACACIA_LOGS: ItemTag = ItemTag {
+    name: "minecraft:acacia_logs",
+    items: &[
+        ItemId(167), ItemId(182), ItemId(194), ItemId(207),
+    ],
+};
+
+pub(crate) static ITEM_BAMBOO_BLOCKS: ItemTag = ItemTag {
+    name: "minecraft:bamboo_blocks",
+    items: &[
+        ItemId(177), ItemId(202),
+    ],
+};
+
+pub(crate) static ITEM_BANNERS: ItemTag = ItemTag {
+    name: "minecraft:banners",
+    items: &[
+        ItemId(1417), ItemId(1418), ItemId(1419), ItemId(1420), ItemId(1421), ItemId(1422),
+        ItemId(1423), ItemId(1424), ItemId(1425), ItemId(1426), ItemId(1427), ItemId(1428),
+        ItemId(1429), ItemId(1430), ItemId(1431), ItemId(1432),
+    ],
+};
+
+pub(crate) static ITEM_BIRCH_LOGS: ItemTag = ItemTag {
+    name: "minecraft:birch_logs",
+    items: &[
+        ItemId(165), ItemId(180), ItemId(192), ItemId(205),
+    ],
+};
+
+pub(crate) static ITEM_BOOK_CLONING_TARGET: ItemTag = ItemTag {
+    name: "minecraft:book_cloning_target",
+    items: &[
+        ItemId(1371),
+    ],
+};
+
+pub(crate) static ITEM_BUNDLES: ItemTag = ItemTag {
+    name: "minecraft:bundles",
+    items: &[
+        ItemId(1153), ItemId(1154), ItemId(1155), ItemId(1156), ItemId(1157), ItemId(1158),
+        ItemId(1159), ItemId(1160), ItemId(1161), ItemId(1162), ItemId(1163), ItemId(1164),
+        ItemId(1165), ItemId(1166), ItemId(1167), ItemId(1168), ItemId(1169),
+    ],
+};
+
+pub(crate) static ITEM_CHERRY_LOGS: ItemTag = ItemTag {
+    name: "minecraft:cherry_logs",
+    items: &[
+        ItemId(168), ItemId(183), ItemId(195), ItemId(208),
+    ],
+};
+
+pub(crate) static ITEM_COALS: ItemTag = ItemTag {
+    name: "minecraft:coals",
+    items: &[
+        ItemId(1010), ItemId(1011),
+    ],
+};
+
 pub(crate) static ITEM_COPPER_TOOL_MATERIALS: ItemTag = ItemTag {
     name: "minecraft:copper_tool_materials",
     items: &[
@@ -317,10 +377,57 @@ pub(crate) static ITEM_COPPER_TOOL_MATERIALS: ItemTag = ItemTag {
     ],
 };
 
+pub(crate) static ITEM_CRIMSON_STEMS: ItemTag = ItemTag {
+    name: "minecraft:crimson_stems",
+    items: &[
+        ItemId(175), ItemId(188), ItemId(200), ItemId(213),
+    ],
+};
+
+pub(crate) static ITEM_DARK_OAK_LOGS: ItemTag = ItemTag {
+    name: "minecraft:dark_oak_logs",
+    items: &[
+        ItemId(170), ItemId(184), ItemId(196), ItemId(210),
+    ],
+};
+
+pub(crate) static ITEM_DECORATED_POT_INGREDIENTS: ItemTag = ItemTag {
+    name: "minecraft:decorated_pot_ingredients",
+    items: &[
+        ItemId(1142), ItemId(1598), ItemId(1599), ItemId(1600), ItemId(1601), ItemId(1602),
+        ItemId(1603), ItemId(1604), ItemId(1605), ItemId(1606), ItemId(1607), ItemId(1608),
+        ItemId(1609), ItemId(1610), ItemId(1611), ItemId(1612), ItemId(1613), ItemId(1614),
+        ItemId(1615), ItemId(1616), ItemId(1617), ItemId(1618), ItemId(1619), ItemId(1620),
+    ],
+};
+
 pub(crate) static ITEM_DIAMOND_TOOL_MATERIALS: ItemTag = ItemTag {
     name: "minecraft:diamond_tool_materials",
     items: &[
         ItemId(1012),
+    ],
+};
+
+pub(crate) static ITEM_DYES: ItemTag = ItemTag {
+    name: "minecraft:dyes",
+    items: &[
+        ItemId(1199), ItemId(1200), ItemId(1201), ItemId(1202), ItemId(1203), ItemId(1204),
+        ItemId(1205), ItemId(1206), ItemId(1207), ItemId(1208), ItemId(1209), ItemId(1210),
+        ItemId(1211), ItemId(1212), ItemId(1213), ItemId(1214),
+    ],
+};
+
+pub(crate) static ITEM_EGGS: ItemTag = ItemTag {
+    name: "minecraft:eggs",
+    items: &[
+        ItemId(1148), ItemId(1149), ItemId(1150),
+    ],
+};
+
+pub(crate) static ITEM_EXTENDABLE_MAPS: ItemTag = ItemTag {
+    name: "minecraft:extendable_maps",
+    items: &[
+        ItemId(1238),
     ],
 };
 
@@ -338,10 +445,80 @@ pub(crate) static ITEM_IRON_TOOL_MATERIALS: ItemTag = ItemTag {
     ],
 };
 
+pub(crate) static ITEM_JUNGLE_LOGS: ItemTag = ItemTag {
+    name: "minecraft:jungle_logs",
+    items: &[
+        ItemId(166), ItemId(181), ItemId(193), ItemId(206),
+    ],
+};
+
+pub(crate) static ITEM_LOGS: ItemTag = ItemTag {
+    name: "minecraft:logs",
+    items: &[
+        ItemId(163), ItemId(164), ItemId(165), ItemId(166), ItemId(167), ItemId(168), ItemId(169),
+        ItemId(170), ItemId(171), ItemId(172), ItemId(175), ItemId(176), ItemId(178), ItemId(179),
+        ItemId(180), ItemId(181), ItemId(182), ItemId(183), ItemId(184), ItemId(185), ItemId(186),
+        ItemId(187), ItemId(188), ItemId(189), ItemId(190), ItemId(191), ItemId(192), ItemId(193),
+        ItemId(194), ItemId(195), ItemId(196), ItemId(197), ItemId(198), ItemId(199), ItemId(200),
+        ItemId(201), ItemId(203), ItemId(204), ItemId(205), ItemId(206), ItemId(207), ItemId(208),
+        ItemId(209), ItemId(210), ItemId(211), ItemId(212), ItemId(213), ItemId(214),
+    ],
+};
+
+pub(crate) static ITEM_MANGROVE_LOGS: ItemTag = ItemTag {
+    name: "minecraft:mangrove_logs",
+    items: &[
+        ItemId(171), ItemId(186), ItemId(198), ItemId(211),
+    ],
+};
+
+pub(crate) static ITEM_METAL_NUGGETS: ItemTag = ItemTag {
+    name: "minecraft:metal_nuggets",
+    items: &[
+        ItemId(1268), ItemId(1456), ItemId(1457),
+    ],
+};
+
+pub(crate) static ITEM_MUSHROOMS: ItemTag = ItemTag {
+    name: "minecraft:mushrooms",
+    items: &[
+        ItemId(317), ItemId(318), ItemId(319),
+    ],
+};
+
 pub(crate) static ITEM_NETHERITE_TOOL_MATERIALS: ItemTag = ItemTag {
     name: "minecraft:netherite_tool_materials",
     items: &[
         ItemId(1023),
+    ],
+};
+
+pub(crate) static ITEM_OAK_LOGS: ItemTag = ItemTag {
+    name: "minecraft:oak_logs",
+    items: &[
+        ItemId(163), ItemId(178), ItemId(190), ItemId(203),
+    ],
+};
+
+pub(crate) static ITEM_PALE_OAK_LOGS: ItemTag = ItemTag {
+    name: "minecraft:pale_oak_logs",
+    items: &[
+        ItemId(169), ItemId(185), ItemId(197), ItemId(209),
+    ],
+};
+
+pub(crate) static ITEM_PLANKS: ItemTag = ItemTag {
+    name: "minecraft:planks",
+    items: &[
+        ItemId(63), ItemId(64), ItemId(65), ItemId(66), ItemId(67), ItemId(68), ItemId(69),
+        ItemId(70), ItemId(71), ItemId(72), ItemId(73), ItemId(74), ItemId(75),
+    ],
+};
+
+pub(crate) static ITEM_POPLAR_LOGS: ItemTag = ItemTag {
+    name: "minecraft:poplar_logs",
+    items: &[
+        ItemId(172), ItemId(187), ItemId(199), ItemId(212),
     ],
 };
 
@@ -408,10 +585,63 @@ pub(crate) static ITEM_REPAIRS_WOLF_ARMOR: ItemTag = ItemTag {
     ],
 };
 
+pub(crate) static ITEM_SHULKER_BOXES: ItemTag = ItemTag {
+    name: "minecraft:shulker_boxes",
+    items: &[
+        ItemId(656), ItemId(657), ItemId(658), ItemId(659), ItemId(660), ItemId(661), ItemId(662),
+        ItemId(663), ItemId(664), ItemId(665), ItemId(666), ItemId(667), ItemId(668), ItemId(669),
+        ItemId(670), ItemId(671), ItemId(672),
+    ],
+};
+
+pub(crate) static ITEM_SKULLS: ItemTag = ItemTag {
+    name: "minecraft:skulls",
+    items: &[
+        ItemId(1384), ItemId(1385), ItemId(1386), ItemId(1387), ItemId(1388), ItemId(1389),
+        ItemId(1390),
+    ],
+};
+
+pub(crate) static ITEM_SOUL_FIRE_BASE_BLOCKS: ItemTag = ItemTag {
+    name: "minecraft:soul_fire_base_blocks",
+    items: &[
+        ItemId(434), ItemId(435),
+    ],
+};
+
+pub(crate) static ITEM_SPRUCE_LOGS: ItemTag = ItemTag {
+    name: "minecraft:spruce_logs",
+    items: &[
+        ItemId(164), ItemId(179), ItemId(191), ItemId(204),
+    ],
+};
+
+pub(crate) static ITEM_STONE_CRAFTING_MATERIALS: ItemTag = ItemTag {
+    name: "minecraft:stone_crafting_materials",
+    items: &[
+        ItemId(9), ItemId(62), ItemId(1537),
+    ],
+};
+
 pub(crate) static ITEM_STONE_TOOL_MATERIALS: ItemTag = ItemTag {
     name: "minecraft:stone_tool_materials",
     items: &[
         ItemId(9), ItemId(62), ItemId(1537),
+    ],
+};
+
+pub(crate) static ITEM_WARPED_STEMS: ItemTag = ItemTag {
+    name: "minecraft:warped_stems",
+    items: &[
+        ItemId(176), ItemId(189), ItemId(201), ItemId(214),
+    ],
+};
+
+pub(crate) static ITEM_WOODEN_SLABS: ItemTag = ItemTag {
+    name: "minecraft:wooden_slabs",
+    items: &[
+        ItemId(341), ItemId(342), ItemId(343), ItemId(344), ItemId(345), ItemId(346), ItemId(347),
+        ItemId(348), ItemId(349), ItemId(350), ItemId(351), ItemId(353), ItemId(354),
     ],
 };
 
@@ -420,5 +650,14 @@ pub(crate) static ITEM_WOODEN_TOOL_MATERIALS: ItemTag = ItemTag {
     items: &[
         ItemId(63), ItemId(64), ItemId(65), ItemId(66), ItemId(67), ItemId(68), ItemId(69),
         ItemId(70), ItemId(71), ItemId(72), ItemId(73), ItemId(74), ItemId(75),
+    ],
+};
+
+pub(crate) static ITEM_WOOL: ItemTag = ItemTag {
+    name: "minecraft:wool",
+    items: &[
+        ItemId(250), ItemId(251), ItemId(252), ItemId(253), ItemId(254), ItemId(255), ItemId(256),
+        ItemId(257), ItemId(258), ItemId(259), ItemId(260), ItemId(261), ItemId(262), ItemId(263),
+        ItemId(264), ItemId(265),
     ],
 };

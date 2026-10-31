@@ -21,5 +21,6 @@ impl Item for WaterBucket {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(1128));
     type Behavior = crate::family::Plain;
 }

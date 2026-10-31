@@ -106,6 +106,18 @@ macro_rules! item_kinds {
                 }
             }
 
+            pub const fn crafting_remainder(self) -> Option<$crate::ItemId> {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::CRAFTING_REMAINDER,)*
+                }
+            }
+
+            pub const fn crafts(self) -> &'static [$crate::Craft] {
+                match self {
+                    $(Self::$kind => <$crate::items::$kind as $crate::Item>::CRAFTS,)*
+                }
+            }
+
             pub const fn attribute_modifiers(self) -> &'static [$crate::AttributeModifier] {
                 match self {
                     $(Self::$kind => <$crate::items::$kind as $crate::Item>::ATTRIBUTE_MODIFIERS,)*

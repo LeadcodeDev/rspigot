@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct FireCharge;
 
@@ -21,5 +23,13 @@ impl Item for FireCharge {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        ingredients: &[
+            ItemSet::Direct(&[ItemId(1064)]),
+            ItemSet::Direct(&[ItemId(1274)]),
+            ItemSet::Direct(&[ItemId(1010), ItemId(1011)]),
+        ],
+        product: Product::of(3),
+    }];
     type Behavior = crate::family::Plain;
 }

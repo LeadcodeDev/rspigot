@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags,
+};
 
 pub struct BlueShulkerBox;
 
@@ -21,5 +23,13 @@ impl Item for BlueShulkerBox {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Transmute {
+        input: ItemSet::Tag(&tags::ITEM_SHULKER_BOXES),
+        material: ItemSet::Direct(&[ItemId(1210)]),
+        min_material: 1,
+        max_material: 1,
+        add_material_count: false,
+        count: 1,
+    }];
     type Behavior = crate::family::BlockItem;
 }

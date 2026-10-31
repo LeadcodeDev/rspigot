@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool, tags};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    tags,
+};
 
 pub struct Shield;
 
@@ -21,5 +24,25 @@ impl Item for Shield {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                Some(ItemSet::Direct(&[ItemId(1018)])),
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                None,
+                Some(ItemSet::Tag(&tags::ITEM_WOODEN_TOOL_MATERIALS)),
+                None,
+            ],
+            product: Product::of(1),
+        },
+        Craft::ShieldDecoration { banner: ItemSet::Tag(&tags::ITEM_BANNERS) },
+    ];
     type Behavior = crate::family::Plain;
 }

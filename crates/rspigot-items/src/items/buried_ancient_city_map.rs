@@ -1,6 +1,6 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
 
 pub struct BuriedAncientCityMap;
 
@@ -21,5 +21,13 @@ impl Item for BuriedAncientCityMap {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Transmute {
+        input: ItemSet::Direct(&[ItemId(1250)]),
+        material: ItemSet::Direct(&[ItemId(1382)]),
+        min_material: 1,
+        max_material: 8,
+        add_material_count: true,
+        count: 1,
+    }];
     type Behavior = crate::family::Plain;
 }

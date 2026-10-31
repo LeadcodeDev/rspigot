@@ -1,8 +1,8 @@
 use rspigot_blocks::BlockId;
 
 use crate::{
-    AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation, Rarity,
-    SlotGroup, Tool, tags,
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, ModifierOperation,
+    Product, Rarity, SlotGroup, Tool, tags,
 };
 
 pub struct DiamondChestplate;
@@ -39,5 +39,22 @@ impl Item for DiamondChestplate {
             slot: SlotGroup::Chest,
         },
     ];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 3,
+        height: 3,
+        symmetrical: true,
+        cells: &[
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            None,
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+            Some(ItemSet::Direct(&[ItemId(1012)])),
+        ],
+        product: Product::of(1),
+    }];
     type Behavior = crate::family::Plain;
 }

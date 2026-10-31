@@ -1,6 +1,9 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+    tags,
+};
 
 pub struct DecoratedPot;
 
@@ -21,5 +24,30 @@ impl Item for DecoratedPot {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[
+        Craft::DecoratedPot {
+            back: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
+            front: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
+            left: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
+            right: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
+        },
+        Craft::Shaped {
+            width: 3,
+            height: 3,
+            symmetrical: true,
+            cells: &[
+                None,
+                Some(ItemSet::Direct(&[ItemId(1142)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1142)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1142)])),
+                None,
+                Some(ItemSet::Direct(&[ItemId(1142)])),
+                None,
+            ],
+            product: Product::of(1),
+        },
+    ];
     type Behavior = crate::family::BlockItem;
 }

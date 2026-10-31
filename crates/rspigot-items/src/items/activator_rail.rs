@@ -1,6 +1,8 @@
 use rspigot_blocks::BlockId;
 
-use crate::{AttributeModifier, EquipmentSlot, Food, Item, ItemId, ItemSet, Rarity, Tool};
+use crate::{
+    AttributeModifier, Craft, EquipmentSlot, Food, Item, ItemId, ItemSet, Product, Rarity, Tool,
+};
 
 pub struct ActivatorRail;
 
@@ -21,5 +23,22 @@ impl Item for ActivatorRail {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
+    const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        width: 3,
+        height: 3,
+        symmetrical: true,
+        cells: &[
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+            Some(ItemSet::Direct(&[ItemId(825)])),
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+            Some(ItemSet::Direct(&[ItemId(1060)])),
+            Some(ItemSet::Direct(&[ItemId(1018)])),
+        ],
+        product: Product::of(6),
+    }];
     type Behavior = crate::family::BlockItem;
 }
