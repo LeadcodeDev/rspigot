@@ -416,6 +416,7 @@ impl<L: ClientLink> Server<L> {
             using_item: None,
             open_menu: None,
             window_counter: 0,
+            ender_items: vec![None; 27],
         };
         if let Some(save) = &saved {
             save.restore(&mut player, self.world.spawn, self.world.level.spawn_angle);

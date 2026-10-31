@@ -29,6 +29,7 @@ const LID_VOLUME: f32 = 0.5;
 pub(crate) enum Lid {
     None,
     Chest,
+    Ender,
     Shulker,
     Barrel,
 }
@@ -38,6 +39,7 @@ pub(crate) struct Backing {
     pub pos: BlockPos,
     pub second: Option<BlockPos>,
     pub entity: Option<&'static str>,
+    pub ender: bool,
     pub block: BlockKind,
     pub lid: Lid,
 }
@@ -71,6 +73,7 @@ impl OpenMenu {
 struct Opening {
     kind: MenuKind,
     entity: Option<&'static str>,
+    ender: bool,
     title: &'static str,
     block: BlockKind,
     lid: Lid,
@@ -82,6 +85,7 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
         Some(Opening {
             kind,
             entity: Some(entity),
+            ender: false,
             title,
             block,
             lid,
@@ -91,6 +95,7 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
         Some(Opening {
             kind,
             entity,
+            ender: false,
             title,
             block,
             lid: Lid::None,
@@ -99,6 +104,14 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
     let rows = MenuKind::Generic { rows: 3 };
     match block {
         BlockKind::Chest => storage(rows, "chest", "container.chest", Lid::Chest),
+        BlockKind::EnderChest => Some(Opening {
+            kind: rows,
+            entity: None,
+            ender: true,
+            title: "container.enderchest",
+            block,
+            lid: Lid::Ender,
+        }),
         BlockKind::TrappedChest => storage(rows, "trapped_chest", "container.chest", Lid::Chest),
         BlockKind::Barrel => storage(rows, "barrel", "container.barrel", Lid::Barrel),
         BlockKind::Hopper => storage(MenuKind::Hopper, "hopper", "container.hopper", Lid::None),
@@ -133,7 +146,13 @@ fn opening_of(state: BlockStateId) -> Option<Opening> {
 }
 
 pub(crate) fn container_entity(state: BlockStateId) -> Option<&'static str> {
-    opening_of(state).and_then(|opening| opening.entity)
+    opening_of(state).and_then(|opening| {
+        if opening.ender {
+            Some("ender_chest")
+        } else {
+            opening.entity
+        }
+    })
 }
 
 fn facing_step(state: BlockStateId) -> (i32, i32, i32) {
@@ -150,6 +169,10 @@ fn facing_step(state: BlockStateId) -> (i32, i32, i32) {
 fn lid_sounds(lid: Lid) -> Option<(&'static str, &'static str)> {
     match lid {
         Lid::Chest => Some(("minecraft:block.chest.open", "minecraft:block.chest.close")),
+        Lid::Ender => Some((
+            "minecraft:block.ender_chest.open",
+            "minecraft:block.ender_chest.close",
+        )),
         Lid::Shulker => Some((
             "minecraft:block.shulker_box.open",
             "minecraft:block.shulker_box.close",
@@ -163,8 +186,12 @@ fn lid_sounds(lid: Lid) -> Option<(&'static str, &'static str)> {
 }
 
 pub(crate) fn read_items(data: &Compound, size: usize) -> Vec<Slot> {
+    read_items_at(data, ITEMS, size)
+}
+
+pub(crate) fn read_items_at(data: &Compound, key: &str, size: usize) -> Vec<Slot> {
     let mut items = vec![None; size];
-    for entry in data.get_list(ITEMS).unwrap_or_default() {
+    for entry in data.get_list(key).unwrap_or_default() {
         let Some(entry) = entry.as_compound() else {
             continue;
         };
@@ -180,6 +207,10 @@ pub(crate) fn read_items(data: &Compound, size: usize) -> Vec<Slot> {
 }
 
 pub(crate) fn write_items(data: &mut Compound, items: &[Slot]) {
+    write_items_at(data, ITEMS, items);
+}
+
+pub(crate) fn write_items_at(data: &mut Compound, key: &str, items: &[Slot]) {
     let list = items
         .iter()
         .enumerate()
@@ -189,7 +220,7 @@ pub(crate) fn write_items(data: &mut Compound, items: &[Slot]) {
             Some(Tag::Compound(entry))
         })
         .collect();
-    data.insert(ITEMS, Tag::List(list));
+    data.insert(key, Tag::List(list));
 }
 
 fn blocked_above(state_above: Option<BlockStateId>) -> bool {
@@ -289,7 +320,7 @@ impl<L: ClientLink> Server<L> {
         };
         let viewers = self.viewer_count(pos);
         let shut = match opening.lid {
-            Lid::Chest => blocked_above(self.world.chunks.block(pos.offset(0, 1, 0))),
+            Lid::Chest | Lid::Ender => blocked_above(self.world.chunks.block(pos.offset(0, 1, 0))),
             Lid::Shulker => viewers == 0 && self.shulker_is_obstructed(pos, state),
             Lid::Barrel | Lid::None => false,
         };
@@ -310,6 +341,7 @@ impl<L: ClientLink> Server<L> {
             pos: first,
             second,
             entity: opening.entity,
+            ender: opening.ender,
             block: opening.block,
             lid: opening.lid,
         };
@@ -317,6 +349,13 @@ impl<L: ClientLink> Server<L> {
         let size = opening.kind.container_size();
         let items = if opening.entity.is_some() {
             self.container_items(backing, size)
+        } else if opening.ender {
+            let mut own = self
+                .players
+                .get(&id)
+                .map_or_else(Vec::new, |player| player.ender_items.clone());
+            own.resize(size, None);
+            own
         } else {
             vec![None; size]
         };
@@ -363,15 +402,16 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn viewer_count(&self, pos: BlockPos) -> u8 {
-        let count =
-            self.players
-                .values()
-                .filter(|player| {
-                    player.open_menu.as_ref().is_some_and(|open| {
-                        open.backing.includes(pos) && open.backing.entity.is_some()
-                    })
+        let count = self
+            .players
+            .values()
+            .filter(|player| {
+                player.open_menu.as_ref().is_some_and(|open| {
+                    open.backing.includes(pos)
+                        && (open.backing.entity.is_some() || open.backing.ender)
                 })
-                .count();
+            })
+            .count();
         u8::try_from(count).unwrap_or(u8::MAX)
     }
 
@@ -499,12 +539,13 @@ impl<L: ClientLink> Server<L> {
         if !spectator {
             if backing.entity.is_some() {
                 self.store_container(backing, &items);
-            } else if let Some(open) = self
-                .players
-                .get_mut(&id)
-                .and_then(|player| player.open_menu.as_mut())
-            {
-                open.local = items;
+            } else if let Some(player) = self.players.get_mut(&id) {
+                if backing.ender {
+                    player.ender_items = items.clone();
+                }
+                if let Some(open) = player.open_menu.as_mut() {
+                    open.local = items;
+                }
             }
         }
         self.apply_menu_effects(id, drops);
@@ -581,7 +622,7 @@ impl<L: ClientLink> Server<L> {
             return false;
         };
         let before = Self::equipment_of(player);
-        let effects = if open.backing.entity.is_some() {
+        let effects = if open.backing.entity.is_some() || open.backing.ender {
             open.menu.close(&mut player.inventory)
         } else {
             open.menu
