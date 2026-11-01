@@ -370,6 +370,7 @@ impl<L: ClientLink> Server<L> {
                 ping: player.latency,
                 locale: player.settings.locale.clone(),
                 address: player.address,
+                hidden: self.visibility.hidden_from(id),
             }
         })
     }

@@ -8,6 +8,7 @@ mod player;
 mod registry;
 mod resolve;
 mod server;
+mod visibility;
 mod world;
 
 use std::net::IpAddr;
@@ -27,6 +28,7 @@ pub use orders::{
     ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub(crate) use registry::Registry;
+pub(crate) use visibility::Visibility;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EventKind {
@@ -145,6 +147,7 @@ pub struct PlayerState {
     pub ping: i32,
     pub locale: String,
     pub address: IpAddr,
+    pub hidden: Vec<PlayerId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

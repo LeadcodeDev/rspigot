@@ -25,7 +25,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::plugins::{Decisions, PluginIntro, Registry, ToPlugin};
+use crate::plugins::{Decisions, PluginIntro, Registry, ToPlugin, Visibility};
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
@@ -105,6 +105,7 @@ pub struct Server<L> {
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
     pub(crate) decisions: Decisions,
+    pub(crate) visibility: Visibility,
     clock: fn() -> SystemTime,
     next_entity_id: i32,
     status: StatusBoard,
@@ -169,6 +170,7 @@ impl<L: ClientLink> Server<L> {
             spawning,
             plugins: Registry::default(),
             decisions: Decisions::default(),
+            visibility: Visibility::default(),
             clock: SystemTime::now,
             next_entity_id: 1,
             status,
@@ -669,6 +671,7 @@ impl<L: ClientLink> Server<L> {
         self.close_open_menu(id, false);
         self.tell_plugins_of_leave(id);
         self.decisions.forget(id);
+        self.visibility.forget(id);
         let Some(mut player) = self.players.remove(&id) else {
             return;
         };
@@ -809,13 +812,15 @@ impl<L: ClientLink> Server<L> {
             })
             .collect();
         let range = self.config.player_tracking_range * self.config.player_tracking_range;
+        let visibility = &self.visibility;
         for viewer in self.players.values_mut() {
             for target in &targets {
                 if target.id == viewer.id {
                     continue;
                 }
                 let visible = viewer.position.distance_squared(target.position) <= range
-                    && viewer.streamer.has_sent(target.chunk);
+                    && viewer.streamer.has_sent(target.chunk)
+                    && !visibility.hides(viewer.id, target.id);
                 let tracking = viewer.tracked.contains(&target.entity);
                 if visible && !tracking {
                     viewer.tracked.insert(target.entity);
