@@ -1,5 +1,5 @@
 use rspigot_blocks::{BlockKind, StateId};
-use rspigot_domain::particle::Particle;
+use rspigot_domain::particle::{Particle, ParticleData};
 use rspigot_domain::{BlockPos, Vec3};
 use rspigot_entities::SoundSource;
 use rspigot_items::ItemKind;
@@ -200,7 +200,7 @@ impl RemoveTurtleEggGoal {
             );
             context.act(MobAction::Particle(Particle {
                 kind: "minecraft:item",
-                item: Some(ItemKind::Egg.id()),
+                data: ParticleData::Item(ItemKind::Egg.id()),
                 position: Vec3::new(center.x, center.y + 0.7, center.z),
                 count: 3,
                 spread,
@@ -232,7 +232,7 @@ impl RemoveTurtleEggGoal {
                 );
                 context.act(MobAction::Particle(Particle {
                     kind: "minecraft:poof",
-                    item: None,
+                    data: ParticleData::None,
                     position: center,
                     count: 1,
                     spread,

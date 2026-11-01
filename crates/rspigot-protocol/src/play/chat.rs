@@ -188,6 +188,36 @@ wire_struct! {
 
 wire_struct! {
     #[derive(Debug, Clone, PartialEq)]
+    pub struct SetTitleText = id::SET_TITLE_TEXT {
+        pub text: Text,
+    }
+}
+
+wire_struct! {
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct SetSubtitleText = id::SET_SUBTITLE_TEXT {
+        pub text: Text,
+    }
+}
+
+wire_struct! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct SetTitlesAnimation = id::SET_TITLES_ANIMATION {
+        pub fade_in: i32,
+        pub stay: i32,
+        pub fade_out: i32,
+    }
+}
+
+wire_struct! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ClearTitles = id::CLEAR_TITLES {
+        pub reset_times: bool,
+    }
+}
+
+wire_struct! {
+    #[derive(Debug, Clone, PartialEq)]
     pub struct DisguisedChat = id::DISGUISED_CHAT {
         pub message: Text,
         pub chat_type: ChatTypeBound,

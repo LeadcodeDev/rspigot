@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
-use rspigot_core::events::{ClientEvent, Inbound};
+use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::ports::SessionVerifier;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
@@ -115,6 +115,10 @@ async fn read_loop<V: SessionVerifier>(
                     .is_ok()
                 {
                     *keep_alive.answered_at.lock() = Instant::now();
+                    let input = PlayerInput::Latency((millis_since_epoch() - id) as i32);
+                    if shared.game.send(Inbound::Input { player, input }).is_err() {
+                        return;
+                    }
                 }
             }
             Decoded::Ping(payload) => link.pong(payload),

@@ -1,5 +1,8 @@
 mod decisions;
+mod orders;
+mod player;
 mod registry;
+mod resolve;
 mod server;
 
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -7,6 +10,9 @@ use rspigot_domain::{Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
 pub(crate) use decisions::{Decisions, Held};
+pub use orders::{
+    EffectSpec, Order, ParticleDataSpec, ParticleSpec, PlayerOrder, SoundSpec, TitleSpec,
+};
 pub(crate) use registry::Registry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,8 +110,27 @@ pub struct PlayerSnapshot {
 pub struct PlayerState {
     pub player: PlayerSnapshot,
     pub health: f32,
+    pub max_health: f32,
+    pub absorption: f32,
     pub food: i32,
+    pub saturation: f32,
+    pub exhaustion: f32,
     pub level: i32,
+    pub exp: f32,
+    pub total_exp: i32,
+    pub operator: bool,
+    pub allow_flight: bool,
+    pub flying: bool,
+    pub fly_speed: f32,
+    pub walk_speed: f32,
+    pub sneaking: bool,
+    pub sprinting: bool,
+    pub on_ground: bool,
+    pub fire_ticks: i32,
+    pub dead: bool,
+    pub effects: Vec<EffectSpec>,
+    pub ping: i32,
+    pub locale: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,19 +195,6 @@ pub enum FromPlugin {
     Decision { event: u64, cancel: bool },
     Order(Order),
     Question { request: u64, question: Question },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Order {
-    Player {
-        player: PlayerId,
-        order: PlayerOrder,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PlayerOrder {
-    SendMessage(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

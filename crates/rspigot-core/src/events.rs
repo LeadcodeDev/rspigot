@@ -160,6 +160,7 @@ pub enum PlayerInput {
         primary: Option<i32>,
         secondary: Option<i32>,
     },
+    Latency(i32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -413,6 +414,16 @@ pub enum ClientEvent {
     TabList {
         header: Component,
         footer: Component,
+    },
+    TitleText(Component),
+    SubtitleText(Component),
+    TitleTimes {
+        fade_in: i32,
+        stay: i32,
+        fade_out: i32,
+    },
+    ClearTitles {
+        reset: bool,
     },
     SpawnEntity {
         entity: EntityId,

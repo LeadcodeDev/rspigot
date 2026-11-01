@@ -17,6 +17,7 @@ use rspigot_domain::chunk::{
 use rspigot_domain::dye::dye_color_id;
 use rspigot_domain::effect::{AttributeOperation, AttributeState, EffectInstance};
 use rspigot_domain::item::{ItemStack, Slot};
+use rspigot_domain::particle::ParticleData;
 use rspigot_domain::player::GameMode as DomainGameMode;
 use rspigot_domain::world::Difficulty as DomainDifficulty;
 use rspigot_domain::{BlockPos, ChunkPos, Rotation, Vec3};
@@ -545,19 +546,24 @@ fn registry_variant(kind: VariantKind) -> RegistryVariant {
     }
 }
 
-fn particle_options(
-    name: &str,
-    item: Option<rspigot_domain::ItemId>,
-) -> Option<cb::ParticleOptions> {
+fn particle_options(name: &str, options: &ParticleData) -> Option<cb::ParticleOptions> {
     let kind = rspigot_data::registries::static_index("minecraft:particle_type", name)
         .and_then(|id| i32::try_from(id).ok())?;
     let mut data = Vec::new();
-    if let Some(item) = item {
-        let slot = Some(rspigot_domain::item::ItemStack::new(
-            item,
-            std::num::NonZeroU8::MIN,
-        ));
-        stack(&slot).encode(&mut data);
+    match options {
+        ParticleData::None => {}
+        ParticleData::Item(item) => {
+            let slot = Some(rspigot_domain::item::ItemStack::new(
+                *item,
+                std::num::NonZeroU8::MIN,
+            ));
+            stack(&slot).encode(&mut data);
+        }
+        ParticleData::Block(state) => write_var(i32::from(state.0), &mut data),
+        ParticleData::Dust { color, scale } => {
+            data.extend_from_slice(&color.to_be_bytes());
+            data.extend_from_slice(&scale.to_be_bytes());
+        }
     }
     Some(cb::ParticleOptions { kind, data })
 }
@@ -1035,6 +1041,36 @@ impl Encoder {
                     overlay: *overlay,
                 },
             ),
+            ClientEvent::TitleText(message) => Self::queue(
+                writer,
+                &cb::SetTitleText {
+                    text: text(message),
+                },
+            ),
+            ClientEvent::SubtitleText(message) => Self::queue(
+                writer,
+                &cb::SetSubtitleText {
+                    text: text(message),
+                },
+            ),
+            ClientEvent::TitleTimes {
+                fade_in,
+                stay,
+                fade_out,
+            } => Self::queue(
+                writer,
+                &cb::SetTitlesAnimation {
+                    fade_in: *fade_in,
+                    stay: *stay,
+                    fade_out: *fade_out,
+                },
+            ),
+            ClientEvent::ClearTitles { reset } => Self::queue(
+                writer,
+                &cb::ClearTitles {
+                    reset_times: *reset,
+                },
+            ),
             ClientEvent::PlayerChat {
                 sender_name,
                 message,
@@ -1490,7 +1526,7 @@ impl Encoder {
                     "minecraft:explosion"
                 };
                 let (Some(particle), Some(sound)) = (
-                    particle_options(particle, None),
+                    particle_options(particle, &ParticleData::None),
                     rspigot_data::registries::static_index(
                         "minecraft:sound_event",
                         "minecraft:entity.generic.explode",
@@ -1503,7 +1539,7 @@ impl Encoder {
                     .into_iter()
                     .filter_map(|(name, scaling)| {
                         Some(cb::ExplosionParticle {
-                            particle: particle_options(name, None)?,
+                            particle: particle_options(name, &ParticleData::None)?,
                             scaling,
                             speed: 1.0,
                             weight: 1,
@@ -1536,7 +1572,7 @@ impl Encoder {
                 },
             ),
             ClientEvent::Particle(particle) => {
-                let Some(options) = particle_options(particle.kind, particle.item) else {
+                let Some(options) = particle_options(particle.kind, &particle.data) else {
                     return Ok(());
                 };
                 Self::queue(
@@ -1694,6 +1730,7 @@ impl Encoder {
 #[cfg(test)]
 mod tests {
     use rspigot_core::events::{DeltaStep as CoreStep, MetadataEntry};
+    use rspigot_domain::text::Component;
     use rspigot_domain::{BlockPos, EntityId};
     use rspigot_protocol::ids::play::clientbound as id;
 
@@ -2383,7 +2420,7 @@ mod tests {
         let wheat = named("minecraft:wheat");
         let event = ClientEvent::Particle(rspigot_domain::particle::Particle {
             kind: "minecraft:item",
-            item: Some(wheat),
+            data: ParticleData::Item(wheat),
             position: Vec3::new(0.5, 65.0, -0.5),
             count: 0,
             spread: Vec3::new(0.25, 0.0, 0.0),
@@ -2407,6 +2444,63 @@ mod tests {
         expected.extend_from_slice(&0.1f32.to_be_bytes());
         expected.extend_from_slice(&[0, 0]);
         assert_eq!(encode(event), vec![(id::LEVEL_PARTICLES, expected)]);
+    }
+
+    #[test]
+    fn titles_golden_bytes() {
+        let times = ClientEvent::TitleTimes {
+            fade_in: 10,
+            stay: 70,
+            fade_out: 20,
+        };
+        assert_eq!(
+            encode(times),
+            vec![(
+                id::SET_TITLES_ANIMATION,
+                vec![0, 0, 0, 10, 0, 0, 0, 70, 0, 0, 0, 20]
+            )]
+        );
+        assert_eq!(
+            encode(ClientEvent::ClearTitles { reset: true }),
+            vec![(id::CLEAR_TITLES, vec![1])]
+        );
+        let hi = vec![8, 0, 2, b'H', b'i'];
+        assert_eq!(
+            encode(ClientEvent::TitleText(Component::text("Hi"))),
+            vec![(id::SET_TITLE_TEXT, hi.clone())]
+        );
+        assert_eq!(
+            encode(ClientEvent::SubtitleText(Component::text("Hi"))),
+            vec![(id::SET_SUBTITLE_TEXT, hi)]
+        );
+    }
+
+    #[test]
+    fn particle_data_golden_bytes() {
+        let data = |name: &str, data: ParticleData| particle_options(name, &data).unwrap().data;
+        let mut dust = vec![0x00, 0xFF, 0x00, 0x00];
+        dust.extend_from_slice(&1.0f32.to_be_bytes());
+        assert_eq!(
+            data(
+                "minecraft:dust",
+                ParticleData::Dust {
+                    color: 0xFF0000,
+                    scale: 1.0
+                }
+            ),
+            dust
+        );
+        assert_eq!(
+            data(
+                "minecraft:block",
+                ParticleData::Block(rspigot_domain::BlockStateId(1))
+            ),
+            vec![1]
+        );
+        assert_eq!(
+            data("minecraft:happy_villager", ParticleData::None),
+            Vec::<u8>::new()
+        );
     }
 
     #[test]

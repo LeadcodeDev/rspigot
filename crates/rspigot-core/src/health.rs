@@ -9,6 +9,7 @@ use rspigot_domain::effect::EffectId;
 use rspigot_domain::experience::PlayerExperience;
 use rspigot_domain::food::{FoodData, FoodEffect};
 use rspigot_domain::item::{HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE};
+use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
@@ -667,6 +668,7 @@ impl<L: ClientLink> Server<L> {
             slots: player.inventory.slots().to_vec(),
             carried: None,
         });
+        player.menu = InventoryMenu::synced(&player.inventory);
         if hardcore {
             self.apply_game_mode(id, GameMode::Spectator);
         }

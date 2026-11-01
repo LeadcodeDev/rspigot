@@ -133,36 +133,11 @@ impl Component {
     }
 
     pub fn from_legacy(input: &str) -> Self {
-        let mut root = Self::text("");
-        let mut current = Style::default();
-        let mut buffer = String::new();
-        let mut chars = input.chars().peekable();
-        while let Some(ch) = chars.next() {
-            if (ch == '§' || ch == '&') && chars.peek().is_some_and(|c| is_legacy_code(*c)) {
-                let code = chars.next().unwrap_or('r');
-                if !buffer.is_empty() {
-                    root.extra.push(Self {
-                        content: Content::Text(std::mem::take(&mut buffer)),
-                        style: current.clone(),
-                        extra: Vec::new(),
-                    });
-                }
-                apply_legacy(&mut current, code);
-            } else {
-                buffer.push(ch);
-            }
-        }
-        if !buffer.is_empty() {
-            root.extra.push(Self {
-                content: Content::Text(buffer),
-                style: current,
-                extra: Vec::new(),
-            });
-        }
-        if root.extra.len() == 1 {
-            return root.extra.remove(0);
-        }
-        root
+        parse_legacy(input, |c| c == '§' || c == '&')
+    }
+
+    pub fn from_section_codes(input: &str) -> Self {
+        parse_legacy(input, |c| c == '§')
     }
 
     pub fn render(&self, translate: &impl Fn(&str) -> Option<&'static str>) -> String {
@@ -211,6 +186,39 @@ impl Component {
             child.write_plain(out);
         }
     }
+}
+
+fn parse_legacy(input: &str, is_marker: impl Fn(char) -> bool) -> Component {
+    let mut root = Component::text("");
+    let mut current = Style::default();
+    let mut buffer = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if is_marker(ch) && chars.peek().is_some_and(|c| is_legacy_code(*c)) {
+            let code = chars.next().unwrap_or('r');
+            if !buffer.is_empty() {
+                root.extra.push(Component {
+                    content: Content::Text(std::mem::take(&mut buffer)),
+                    style: current.clone(),
+                    extra: Vec::new(),
+                });
+            }
+            apply_legacy(&mut current, code);
+        } else {
+            buffer.push(ch);
+        }
+    }
+    if !buffer.is_empty() {
+        root.extra.push(Component {
+            content: Content::Text(buffer),
+            style: current,
+            extra: Vec::new(),
+        });
+    }
+    if root.extra.len() == 1 {
+        return root.extra.remove(0);
+    }
+    root
 }
 
 fn fill_template(
@@ -303,5 +311,20 @@ mod tests {
             Some(Color::Named(NamedColor::Green))
         );
         assert_eq!(c.extra[1].style.bold, Some(true));
+    }
+
+    #[test]
+    fn section_codes_ignore_ampersands() {
+        let c = Component::from_section_codes("R&D &aok §6Gold §lnow");
+        assert_eq!(c.plain_text(), "R&D &aok Gold now");
+        assert_eq!(c.extra.len(), 3);
+        assert_eq!(c.extra[0].style, Style::default());
+        assert_eq!(c.extra[1].style.color, Some(Color::Named(NamedColor::Gold)));
+        assert_eq!(c.extra[2].style.bold, Some(true));
+        assert_eq!(c.extra[2].style.color, Some(Color::Named(NamedColor::Gold)));
+
+        let plain = Component::from_section_codes("R&D &aok");
+        assert_eq!(plain, Component::text("R&D &aok"));
+        assert_eq!(Component::from_section_codes(""), Component::text(""));
     }
 }
