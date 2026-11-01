@@ -70,7 +70,7 @@ impl<L: ClientLink> Server<L> {
             Order::Inventory { player, order } => {
                 self.apply_inventory_order(connection, player, order);
             }
-            Order::Server(order) => self.apply_server_order(order),
+            Order::Server(order) => self.apply_server_order(connection, order),
             Order::World(order) => self.apply_world_order(connection, order),
             Order::Block { pos, order } => self.apply_block_order(connection, pos, order),
         }

@@ -58,6 +58,14 @@ pub(super) fn finite_not_negative(what: &str, value: f64) -> Result<(), String> 
     }
 }
 
+pub(super) fn name_of(name: &str) -> Result<&str, String> {
+    if name.trim().is_empty() {
+        Err("name cannot be empty".to_owned())
+    } else {
+        Ok(name)
+    }
+}
+
 pub(super) fn position_of(position: Vec3) -> Result<Vec3, String> {
     let inside = position.is_finite()
         && position.x.abs() < WORLD_BORDER

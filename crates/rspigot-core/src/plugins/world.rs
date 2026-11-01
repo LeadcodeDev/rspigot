@@ -5,7 +5,7 @@ use crate::config::GameRules;
 use crate::events::{ClientEvent, GameEvent, SoundSource};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
-use crate::plugins::resolve::{self, finite_not_negative};
+use crate::plugins::resolve::{self, finite_not_negative, name_of};
 use crate::plugins::{GameRule, ServerOrder, ServerState, WorldOrder, WorldState};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -14,7 +14,14 @@ const PARTICLE_RANGE: f64 = 32.0;
 const DAY_TICKS: i64 = 24_000;
 
 impl<L: ClientLink> Server<L> {
-    pub(super) fn apply_server_order(&mut self, order: ServerOrder) {
+    pub(super) fn apply_server_order(&mut self, connection: u64, order: ServerOrder) {
+        let name = order.name();
+        if let Err(reason) = self.server_order(order) {
+            self.warn_plugin(connection, name, reason);
+        }
+    }
+
+    fn server_order(&mut self, order: ServerOrder) -> Result<(), String> {
         match order {
             ServerOrder::Broadcast(message) => {
                 CommandContext::broadcast(self, resolve::text(&message));
@@ -30,18 +37,19 @@ impl<L: ClientLink> Server<L> {
                 CommandContext::set_whitelist_enabled(self, enabled);
             }
             ServerOrder::WhitelistAdd(name) => {
-                CommandContext::whitelist_add(self, &name);
+                CommandContext::whitelist_add(self, name_of(&name)?);
             }
             ServerOrder::WhitelistRemove(name) => {
-                CommandContext::whitelist_remove(self, &name);
+                CommandContext::whitelist_remove(self, name_of(&name)?);
             }
             ServerOrder::OperatorAdd(name) => {
-                CommandContext::set_operator(self, &name, true);
+                CommandContext::set_operator(self, name_of(&name)?, true);
             }
             ServerOrder::OperatorRemove(name) => {
-                CommandContext::set_operator(self, &name, false);
+                CommandContext::set_operator(self, name_of(&name)?, false);
             }
         }
+        Ok(())
     }
 
     pub(super) fn apply_world_order(&mut self, connection: u64, order: WorldOrder) {

@@ -216,6 +216,34 @@ fn whitelist_and_operators_are_listed() {
 }
 
 #[test]
+fn blank_names_are_refused_with_one_warning() {
+    let mut s = scene(&["Alice", "Bob"]);
+    s.act(Order::Server(ServerOrder::WhitelistAdd("Carol".into())));
+    s.act(Order::Server(ServerOrder::OperatorAdd("Alice".into())));
+    let whitelist = names(&mut s, Question::Whitelist);
+    let operators = names(&mut s, Question::Operators);
+    let bad_orders = [
+        ServerOrder::WhitelistAdd(String::new()),
+        ServerOrder::WhitelistRemove(" ".into()),
+        ServerOrder::OperatorAdd("  ".into()),
+        ServerOrder::OperatorRemove("\t".into()),
+    ];
+    for bad in bad_orders {
+        let name = bad.name();
+        let before = s.warnings().len();
+        s.act(Order::Server(bad));
+        let warnings = s.warnings();
+        assert_eq!(warnings.len(), before + 1, "{name}");
+        assert_eq!(
+            warnings.last().map(String::as_str),
+            Some(format!("{name} was not applied: name cannot be empty").as_str())
+        );
+    }
+    assert_eq!(names(&mut s, Question::Whitelist), whitelist);
+    assert_eq!(names(&mut s, Question::Operators), operators);
+}
+
+#[test]
 fn server_state_and_named_players() {
     let mut s = scene(&["Alice", "Bob"]);
     let alice = s.players[0].clone();
