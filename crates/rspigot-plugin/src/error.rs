@@ -15,6 +15,8 @@ pub enum Error {
     Timeout,
     #[error("rspigot does not know it")]
     NotFound,
+    #[error("rspigot rejected the request: {0}")]
+    Rejected(String),
     #[error("rspigot sent {0}")]
     Malformed(String),
 }
