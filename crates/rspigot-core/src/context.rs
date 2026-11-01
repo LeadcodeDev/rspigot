@@ -523,7 +523,7 @@ impl<L: ClientLink> Server<L> {
         if self.world.difficulty == Difficulty::Peaceful && !kind.allowed_in_peaceful() {
             return Err("commands.summon.failed.peaceful");
         }
-        if !save::is_simulated(kind) || !self.world.chunks.is_loaded(position.chunk()) {
+        if !save::is_simulated(kind) {
             return Err(SUMMON_FAILED);
         }
         let finalize = nbt.is_none();

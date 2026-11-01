@@ -113,10 +113,10 @@ fn spawning_is_refused_with_the_vanilla_reason() {
         Answer::Refused(_)
     ));
     let before = s.server.entity_count();
-    assert!(matches!(
+    assert_eq!(
         spawn_answer(&mut s, "minecraft:cow", Vec3::new(100_000.0, 64.0, 0.0)),
-        Answer::Refused(_)
-    ));
+        Answer::Refused("Unable to summon entity".into())
+    );
     assert!(matches!(
         spawn_answer(&mut s, "minecraft:cow", Vec3::new(f64::NAN, 64.0, 0.0)),
         Answer::Refused(_)

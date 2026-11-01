@@ -300,6 +300,19 @@ fn spawned(events: &[ClientEvent], kind: Kind) -> Vec<(EntityId, Vec3)> {
 }
 
 #[test]
+fn summon_into_an_unloaded_chunk_succeeds_like_vanilla() {
+    let mut server = server(Arc::default());
+    let mut alice = join(&mut server, "Alice");
+    command(&mut server, &alice, "/summon minecraft:cow 100000 64 0");
+    assert!(
+        texts(&alice.drain()).contains(&"commands.summon.success entity.minecraft.cow".to_owned())
+    );
+    let summoned = cows(&server);
+    assert_eq!(summoned.len(), 1);
+    assert_eq!(summoned[0].position.chunk(), ChunkPos::new(6250, 0));
+}
+
+#[test]
 fn summoned_cow_falls_and_settles_on_the_floor() {
     let mut server = server(Arc::default());
     let mut alice = join(&mut server, "Alice");

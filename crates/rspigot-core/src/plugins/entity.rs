@@ -123,8 +123,17 @@ impl<L: ClientLink> Server<L> {
         position: Vec3,
     ) -> Result<EntityId, String> {
         let kind = entity_kind(kind)?;
-        let position = resolve::position_of(position)?;
+        let position = self.loaded_position(position)?;
         self.summon_entity(kind, position, None).map_err(refusal)
+    }
+
+    fn loaded_position(&self, position: Vec3) -> Result<Vec3, String> {
+        let position = resolve::position_of(position)?;
+        if self.world.chunks.is_loaded(position.chunk()) {
+            Ok(position)
+        } else {
+            Err(refusal(SUMMON_FAILED))
+        }
     }
 
     pub(super) fn drop_for_plugin(
@@ -132,11 +141,8 @@ impl<L: ClientLink> Server<L> {
         position: Vec3,
         item: &ItemSpec,
     ) -> Result<EntityId, String> {
-        let position = resolve::position_of(position)?;
         let stack = stack_of(item)?.ok_or_else(|| "air cannot be dropped".to_owned())?;
-        if !self.world.chunks.is_loaded(position.chunk()) {
-            return Err(refusal(SUMMON_FAILED));
-        }
+        let position = self.loaded_position(position)?;
         let velocity = Vec3::new(
             self.rng.random::<f64>() * 0.2 - 0.1,
             0.2,
