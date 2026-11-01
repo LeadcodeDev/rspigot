@@ -16,6 +16,7 @@ tracing = "0.1"
 uuid = "1"
 
 [dev-dependencies]
+rspigot-data = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "test-util"] }
 trybuild = "1"
 
