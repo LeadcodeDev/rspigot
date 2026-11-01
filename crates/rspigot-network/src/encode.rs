@@ -552,13 +552,12 @@ fn particle_options(name: &str, options: &ParticleData) -> Option<cb::ParticleOp
     let mut data = Vec::new();
     match options {
         ParticleData::None => {}
-        ParticleData::Item(item) => {
-            let slot = Some(rspigot_domain::item::ItemStack::new(
-                *item,
-                std::num::NonZeroU8::MIN,
-            ));
-            stack(&slot).encode(&mut data);
+        ParticleData::Item(item) => ItemStackTemplate {
+            item: i32::from(item.0),
+            count: 1,
+            components: DataComponentPatch::EMPTY,
         }
+        .encode(&mut data),
         ParticleData::Block(state) => write_var(i32::from(state.0), &mut data),
         ParticleData::Dust { color, scale } => {
             data.extend_from_slice(&color.to_be_bytes());
@@ -2427,10 +2426,8 @@ mod tests {
             speed: 0.1,
         });
         let mut expected = vec![registry_id("minecraft:particle_type", "minecraft:item")];
+        write_var(i32::from(wheat.0), &mut expected);
         expected.push(1);
-        let mut item = Vec::new();
-        write_var(i32::from(wheat.0), &mut item);
-        expected.extend_from_slice(&item);
         expected.extend_from_slice(&[0, 0]);
         expected.extend_from_slice(&[0, 0]);
         expected.extend_from_slice(&0.5f64.to_be_bytes());

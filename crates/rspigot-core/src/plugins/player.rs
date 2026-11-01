@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use rand::Rng;
+use rspigot_domain::attribute::MOVEMENT_SPEED;
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::food::{MAX_FOOD, MAX_SATURATION};
 use rspigot_domain::player::PlayerId;
@@ -175,6 +176,7 @@ impl<L: ClientLink> Server<L> {
                 within("walk speed", speed, SPEED)?;
                 self.update(id, |player| player.walk_speed = speed / SPEED_SCALE);
                 self.send_abilities(id);
+                self.sync_attributes(id, &[MOVEMENT_SPEED]);
             }
             PlayerOrder::SetOp(operator) => {
                 if let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) {

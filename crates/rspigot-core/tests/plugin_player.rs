@@ -9,7 +9,8 @@ use rspigot_core::plugins::{
     SoundSpec, TitleSpec,
 };
 use rspigot_core::ports::ClientLink;
-use rspigot_domain::effect::{EffectId, EffectInstance};
+use rspigot_domain::attribute::value;
+use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
 use rspigot_domain::particle::{Particle, ParticleData};
 use rspigot_domain::player::GameMode;
 use rspigot_domain::text::{Color, Component, Content, NamedColor, Style};
@@ -378,6 +379,51 @@ fn flight_override_and_speeds_go_in_the_abilities_packet() {
     assert_eq!(sent.len(), 3);
     assert!(!sent[2].may_fly);
     assert!(!sent[2].flying);
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn walk_speed_sets_the_movement_speed_base_that_speed_stacks_on() {
+    let mut s = scene(&["Alice", "Bob"]);
+    let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
+    let movement = |player: &Player| -> Vec<AttributeState> {
+        player
+            .link
+            .take()
+            .into_iter()
+            .filter_map(|event| match event {
+                ClientEvent::Attributes { attributes, .. } => Some(attributes),
+                _ => None,
+            })
+            .flatten()
+            .filter(|attribute| attribute.attribute == "minecraft:movement_speed")
+            .collect()
+    };
+    let bob_sees_alice = (0..40).any(|_| {
+        s.tick(1);
+        bob.link.take().iter().any(
+            |event| matches!(event, ClientEvent::SpawnEntity { uuid, .. } if *uuid == alice.id.0),
+        )
+    });
+    assert!(bob_sees_alice);
+    alice.link.take();
+    s.act(to(&alice, PlayerOrder::SetWalkSpeed(0.4)));
+    let base = f64::from(0.2f32);
+    let slower = [AttributeState {
+        attribute: "minecraft:movement_speed",
+        base,
+        modifiers: Vec::new(),
+    }];
+    assert_eq!(movement(&alice), slower);
+    assert_eq!(movement(&bob), slower);
+
+    s.act(to(&alice, PlayerOrder::AddEffect(speed(1))));
+    let boosted = movement(&alice);
+    assert_eq!(boosted.len(), 1);
+    assert_eq!(boosted[0].base, base);
+    assert_eq!(boosted[0].modifiers.len(), 1);
+    assert_eq!(boosted[0].modifiers[0].id, "minecraft:effect.speed");
+    assert!((value(&boosted[0]) - base * 1.4).abs() < 1e-6);
     assert!(s.warnings().is_empty());
 }
 

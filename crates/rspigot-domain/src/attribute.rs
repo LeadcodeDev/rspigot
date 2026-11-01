@@ -16,8 +16,9 @@ pub const ARMOR_TOUGHNESS: &str = "minecraft:armor_toughness";
 pub const SAFE_FALL_DISTANCE: &str = "minecraft:safe_fall_distance";
 pub const FALL_DAMAGE_MULTIPLIER: &str = "minecraft:fall_damage_multiplier";
 pub const KNOCKBACK_RESISTANCE: &str = "minecraft:knockback_resistance";
+pub const MOVEMENT_SPEED: &str = "minecraft:movement_speed";
 
-const RANGES: [(&str, f64, f64); 10] = [
+const RANGES: [(&str, f64, f64); 11] = [
     (MAX_HEALTH, 1.0, 1024.0),
     (MAX_ABSORPTION, 0.0, 2048.0),
     (ATTACK_DAMAGE, 0.0, 2048.0),
@@ -28,6 +29,7 @@ const RANGES: [(&str, f64, f64); 10] = [
     (SAFE_FALL_DISTANCE, -1024.0, 1024.0),
     (FALL_DAMAGE_MULTIPLIER, 0.0, 100.0),
     (KNOCKBACK_RESISTANCE, -2.0, 1.0),
+    (MOVEMENT_SPEED, 0.0, 1024.0),
 ];
 
 const SYNCABLE: [&str; 7] = [
@@ -120,6 +122,18 @@ impl Attributes {
             }
         }
         Self { states }
+    }
+
+    pub fn with_base(mut self, attribute: &'static str, base: f64) -> Self {
+        match self.states.iter_mut().find(|s| s.attribute == attribute) {
+            Some(state) => state.base = base,
+            None => self.states.push(AttributeState {
+                attribute,
+                base,
+                modifiers: Vec::new(),
+            }),
+        }
+        self
     }
 
     pub fn get(&self, attribute: &str) -> f64 {
@@ -231,5 +245,21 @@ mod tests {
         assert_eq!(sanitize(MAX_HEALTH, 0.0), 1.0);
         assert_eq!(sanitize(ARMOR, 99.0), 30.0);
         assert_eq!(sanitize(ARMOR, f64::NAN), 0.0);
+    }
+
+    #[test]
+    fn a_new_base_keeps_the_modifiers_and_its_range() {
+        let mut effects = ActiveEffects::default();
+        let _ = effects.apply(effect("speed", 1));
+        let attributes = Attributes::of(&effects, &[]).with_base(MOVEMENT_SPEED, 0.2);
+        let state = attributes.state(MOVEMENT_SPEED);
+        assert_eq!(state.base, 0.2);
+        assert_eq!(state.modifiers.len(), 1);
+        assert!((attributes.get(MOVEMENT_SPEED) - 0.2 * 1.4).abs() < 1e-6);
+
+        let still = Attributes::default().with_base(MOVEMENT_SPEED, -0.5);
+        assert_eq!(still.state(MOVEMENT_SPEED).base, -0.5);
+        assert!(still.state(MOVEMENT_SPEED).modifiers.is_empty());
+        assert_eq!(still.get(MOVEMENT_SPEED), 0.0);
     }
 }
