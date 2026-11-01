@@ -2506,10 +2506,13 @@ dependencies = [
  "crossbeam-channel",
  "rspigot-core",
  "rspigot-domain",
+ "rspigot-entities",
+ "rspigot-items",
  "rspigot-nbt",
  "rspigot-plugin",
  "rspigot-plugins",
  "tokio",
+ "tracing",
  "tracing-subscriber",
 ]
 
