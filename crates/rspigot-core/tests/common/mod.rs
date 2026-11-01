@@ -359,6 +359,22 @@ impl Scene {
     }
 }
 
+pub fn stream_chunk_of(s: &mut Scene, pos: BlockPos) {
+    let mut waiting = s.players.clone();
+    for _ in 0..40 {
+        if waiting.is_empty() {
+            break;
+        }
+        s.tick(1);
+        waiting.retain(|player| {
+            !player.link.take().iter().any(
+                |event| matches!(event, ClientEvent::Chunk { chunk, .. } if chunk.pos() == pos.chunk()),
+            )
+        });
+    }
+    assert!(waiting.is_empty(), "every client received the chunk");
+}
+
 pub fn to(player: &Player, order: PlayerOrder) -> Order {
     Order::Player {
         player: player.id,

@@ -9,7 +9,7 @@ use crate::events::ClientEvent;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
-const PICKUP_DELAY: u16 = 10;
+pub(crate) const PICKUP_DELAY: u16 = 10;
 const ITEM_HALF_WIDTH: f64 = 0.125;
 const ITEM_HEIGHT: f64 = 0.25;
 const PLAYER_HALF_WIDTH: f64 = 0.3;

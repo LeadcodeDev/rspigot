@@ -448,51 +448,13 @@ impl<L: ClientLink> CommandContext for Server<L> {
         nbt: Option<Compound>,
     ) -> Result<Component, Component> {
         let failed = |key: &str| Component::translatable(key, Vec::new());
-        let block = position.block();
-        if !(-20_000_000..20_000_000).contains(&block.y)
-            || !(-30_000_000..30_000_000).contains(&block.x)
-            || !(-30_000_000..30_000_000).contains(&block.z)
-        {
-            return Err(failed("commands.summon.invalidPosition"));
-        }
-        if self.world.difficulty == Difficulty::Peaceful && !kind.allowed_in_peaceful() {
-            return Err(failed("commands.summon.failed.peaceful"));
-        }
-        if !save::is_simulated(kind) {
-            return Err(failed("commands.summon.failed"));
-        }
-        let finalize = nbt.is_none();
-        let mut compound = nbt.unwrap_or_default();
-        compound.insert("id", kind.name());
-        let id = self.allocate_entity_id();
-        let uuid = self.random_uuid();
-        let mut entity =
-            save::load_entity(&compound, id, uuid).map_err(|_| failed("commands.summon.failed"))?;
-        let (yaw, pitch) = (entity.base.yaw, entity.base.pitch);
-        entity.base.snap_to(position, yaw, pitch);
-        let mut own = LegacyRandom::new(rand::Rng::random(&mut self.rng));
-        if finalize && entity.living().is_some_and(|state| state.is_mob()) {
-            let environment = self.spawn_environment(entity.base.position);
-            spawn::finalize_spawn(
-                &mut entity,
-                &environment,
-                SpawnReason::Command,
-                None,
-                &mut ServerRandom(&mut self.rng),
-                &mut own,
-            );
-        }
-        let name = match entity.base.custom_name() {
-            Some(name) => name.clone(),
-            None => {
-                Component::translatable(crate::entities::entity_translation_key(kind), Vec::new())
-            }
-        };
-        self.add_mob_entity(entity, own)
-            .map(|_| name)
-            .map_err(|_| failed("commands.summon.failed.uuid"))
+        let id = self.summon_entity(kind, position, nbt).map_err(failed)?;
+        self.entity_name(id).ok_or_else(|| failed(SUMMON_FAILED))
     }
 }
+
+pub(crate) const SUMMON_FAILED: &str = "commands.summon.failed";
+pub(crate) const SUMMON_DUPLICATE_UUID: &str = "commands.summon.failed.uuid";
 
 struct Candidate<'a> {
     target: Target,
@@ -545,6 +507,49 @@ fn selection_box(selector: &Selector, origin: Vec3) -> Option<Aabb> {
 }
 
 impl<L: ClientLink> Server<L> {
+    pub(crate) fn summon_entity(
+        &mut self,
+        kind: Kind,
+        position: Vec3,
+        nbt: Option<Compound>,
+    ) -> Result<EntityId, &'static str> {
+        let block = position.block();
+        if !(-20_000_000..20_000_000).contains(&block.y)
+            || !(-30_000_000..30_000_000).contains(&block.x)
+            || !(-30_000_000..30_000_000).contains(&block.z)
+        {
+            return Err("commands.summon.invalidPosition");
+        }
+        if self.world.difficulty == Difficulty::Peaceful && !kind.allowed_in_peaceful() {
+            return Err("commands.summon.failed.peaceful");
+        }
+        if !save::is_simulated(kind) || !self.world.chunks.is_loaded(position.chunk()) {
+            return Err(SUMMON_FAILED);
+        }
+        let finalize = nbt.is_none();
+        let mut compound = nbt.unwrap_or_default();
+        compound.insert("id", kind.name());
+        let id = self.allocate_entity_id();
+        let uuid = self.random_uuid();
+        let mut entity = save::load_entity(&compound, id, uuid).map_err(|_| SUMMON_FAILED)?;
+        let (yaw, pitch) = (entity.base.yaw, entity.base.pitch);
+        entity.base.snap_to(position, yaw, pitch);
+        let mut own = LegacyRandom::new(rand::Rng::random(&mut self.rng));
+        if finalize && entity.living().is_some_and(|state| state.is_mob()) {
+            let environment = self.spawn_environment(entity.base.position);
+            spawn::finalize_spawn(
+                &mut entity,
+                &environment,
+                SpawnReason::Command,
+                None,
+                &mut ServerRandom(&mut self.rng),
+                &mut own,
+            );
+        }
+        self.add_mob_entity(entity, own)
+            .map_err(|_| SUMMON_DUPLICATE_UUID)
+    }
+
     pub(crate) fn teleport_player(&mut self, player: PlayerId, position: Vec3) {
         let Some(p) = self.players.get_mut(&player) else {
             return;
