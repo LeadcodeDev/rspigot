@@ -1,44 +1,146 @@
 syntax = "proto3";
 package rspigot.plugin.v1;
 
-service PluginHost {
-  rpc Connect(stream FromPlugin) returns (stream ToPlugin);
-}
+service PluginHost { rpc Connect(stream FromPlugin) returns (stream ToPlugin); }
 
-enum EventKind { EVENT_KIND_UNSPECIFIED = 0; EVENT_KIND_PLAYER_JOIN = 1; EVENT_KIND_PLAYER_LEAVE = 2; EVENT_KIND_PLAYER_MOVE = 3; }
+enum EventKind { EVENT_KIND_UNSPECIFIED = 0; EVENT_KIND_PLAYER_JOIN = 1; EVENT_KIND_PLAYER_LEAVE = 2; EVENT_KIND_PLAYER_MOVE = 3; EVENT_KIND_INVENTORY_CLICK = 4; EVENT_KIND_INVENTORY_CLOSE = 5; }
 enum Access { ACCESS_UNSPECIFIED = 0; ACCESS_OBSERVE = 1; ACCESS_DECIDE = 2; }
 enum Priority { PRIORITY_UNSPECIFIED = 0; PRIORITY_LOWEST = 1; PRIORITY_LOW = 2; PRIORITY_NORMAL = 3; PRIORITY_HIGH = 4; PRIORITY_HIGHEST = 5; }
 enum GameMode { GAME_MODE_UNSPECIFIED = 0; GAME_MODE_SURVIVAL = 1; GAME_MODE_CREATIVE = 2; GAME_MODE_ADVENTURE = 3; GAME_MODE_SPECTATOR = 4; }
 enum Phase { PHASE_UNSPECIFIED = 0; PHASE_DECIDE = 1; PHASE_SETTLED = 2; PHASE_ROLLED_BACK = 3; }
+enum Difficulty { DIFFICULTY_UNSPECIFIED = 0; DIFFICULTY_PEACEFUL = 1; DIFFICULTY_EASY = 2; DIFFICULTY_NORMAL = 3; DIFFICULTY_HARD = 4; }
+enum Weather { WEATHER_UNSPECIFIED = 0; WEATHER_CLEAR = 1; WEATHER_RAIN = 2; WEATHER_THUNDER = 3; }
+enum GameRule { GAME_RULE_UNSPECIFIED = 0; GAME_RULE_DAYLIGHT_CYCLE = 1; GAME_RULE_NATURAL_REGENERATION = 2; GAME_RULE_KEEP_INVENTORY = 3; GAME_RULE_SHOW_DEATH_MESSAGES = 4; GAME_RULE_IMMEDIATE_RESPAWN = 5; GAME_RULE_FALL_DAMAGE = 6; GAME_RULE_MOB_DROPS = 7; GAME_RULE_MOB_GRIEFING = 8; GAME_RULE_MOB_EXPLOSION_DROP_DECAY = 9; GAME_RULE_BLOCK_DROPS = 10; GAME_RULE_UNIVERSAL_ANGER = 11; }
+enum Face { FACE_UNSPECIFIED = 0; FACE_DOWN = 1; FACE_UP = 2; FACE_NORTH = 3; FACE_SOUTH = 4; FACE_WEST = 5; FACE_EAST = 6; }
+enum ClickKind { CLICK_KIND_UNSPECIFIED = 0; CLICK_KIND_LEFT = 1; CLICK_KIND_RIGHT = 2; CLICK_KIND_SHIFT_LEFT = 3; CLICK_KIND_SHIFT_RIGHT = 4; CLICK_KIND_NUMBER_KEY = 5; CLICK_KIND_SWAP_OFFHAND = 6; CLICK_KIND_DROP = 7; CLICK_KIND_CONTROL_DROP = 8; CLICK_KIND_DOUBLE_CLICK = 9; CLICK_KIND_MIDDLE = 10; }
+
+message Empty {}
+message Vec3 { double x = 1; double y = 2; double z = 3; }
+message Rotation { float yaw = 1; float pitch = 2; }
+message BlockPos { int32 x = 1; int32 y = 2; int32 z = 3; }
+message Property { string name = 1; string value = 2; }
+message Enchant { string key = 1; int32 level = 2; }
+message Item { string key = 1; int32 count = 2; optional string name = 3; repeated string lore = 4; repeated Enchant enchantments = 5; bytes components = 6; }
+message Slot { int32 slot = 1; Item item = 2; }
+message Effect { string key = 1; int32 duration = 2; int32 amplifier = 3; bool ambient = 4; bool particles = 5; bool icon = 6; }
+message Dust { uint32 color = 1; float scale = 2; }
+message Particle { string key = 1; oneof data { string item = 2; string block = 3; Dust dust = 4; } Vec3 position = 5; int32 count = 6; Vec3 spread = 7; double speed = 8; }
+message Sound { string key = 1; float volume = 2; float pitch = 3; Vec3 position = 4; }
+message Title { string title = 1; optional string subtitle = 2; int32 fade_in = 3; int32 stay = 4; int32 fade_out = 5; }
+message TabList { string header = 1; string footer = 2; }
+message Facing { Vec3 position = 1; Rotation rotation = 2; }
+message BanTerms { optional string reason = 1; optional int64 expires_ms = 2; }
+message Ban { string target = 1; optional string reason = 2; optional int64 expires_ms = 3; }
+message SetSlot { int32 slot = 1; Item item = 2; }
+message RemoveItems { string key = 1; int32 count = 2; }
+message CreateInventory { uint64 id = 1; int32 rows = 2; string title = 3; bool locked = 4; }
+message SetGameRule { GameRule rule = 1; bool value = 2; }
+message Explode { Vec3 position = 1; float power = 2; bool breaks_blocks = 3; }
+message SetBlockWith { string block = 1; repeated Property properties = 2; }
 
 message Handler { uint32 id = 1; EventKind event = 2; Access access = 3; Priority priority = 4; bool ignore_cancelled = 5; }
 message Hello { uint32 protocol_version = 1; string name = 2; string version = 3; string token = 4; repeated Handler handlers = 5; }
-message Vec3 { double x = 1; double y = 2; double z = 3; }
-message PlayerSnapshot { string uuid = 1; string name = 2; int32 entity_id = 3; string world = 4; Vec3 position = 5; GameMode game_mode = 6; }
-message PlayerState { PlayerSnapshot player = 1; float health = 2; int32 food = 3; int32 level = 4; }
+message PlayerSnapshot { string uuid = 1; string name = 2; int32 entity_id = 3; string world = 4; Vec3 position = 5; GameMode game_mode = 6; Rotation rotation = 7; }
+message EntitySnapshot { int32 entity_id = 1; string uuid = 2; string kind = 3; Vec3 position = 4; }
+message PlayerState {
+  PlayerSnapshot player = 1; float health = 2; int32 food = 3; int32 level = 4; float max_health = 5; float absorption = 6;
+  float saturation = 7; float exhaustion = 8; float exp = 9; int32 total_exp = 10; bool op = 11; bool allow_flight = 12;
+  bool flying = 13; float fly_speed = 14; float walk_speed = 15; bool sneaking = 16; bool sprinting = 17; bool on_ground = 18;
+  int32 fire_ticks = 19; bool dead = 20; repeated Effect effects = 21; int32 ping = 22; string locale = 23; string address = 24;
+  repeated string hidden = 25;
+}
 message PlayerJoin { PlayerSnapshot player = 1; }
 message PlayerLeave { PlayerSnapshot player = 1; }
 message PlayerMove { PlayerSnapshot player = 1; Vec3 from = 2; Vec3 to = 3; }
+message ClickedSlot { oneof slot { int32 menu = 1; int32 player = 2; Empty outside = 3; } }
+message InventoryClick { PlayerSnapshot player = 1; uint64 inventory = 2; ClickedSlot slot = 3; ClickKind kind = 4; int32 hotbar_key = 5; Item item = 6; }
+message InventoryClose { PlayerSnapshot player = 1; uint64 inventory = 2; bool by_player = 3; }
 message Event {
-  uint64 id = 1;
-  repeated uint32 handlers = 2;
-  Phase phase = 3;
-  bool cancelled = 4;
-  oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; }
+  uint64 id = 1; repeated uint32 handlers = 2; Phase phase = 3; bool cancelled = 4;
+  oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; InventoryClick inventory_click = 13; InventoryClose inventory_close = 14; }
 }
 message Decision { uint64 event = 1; bool cancel = 2; }
-message SendMessage { string player = 1; string text = 2; }
-message ResolvePlayer { uint64 request = 1; string player = 2; }
-message FetchPlayers { uint64 request = 1; }
-message FromPlugin {
-  oneof body { Hello hello = 1; Decision decision = 2; SendMessage send_message = 3; ResolvePlayer resolve_player = 4; FetchPlayers fetch_players = 5; }
+
+message PlayerOrder {
+  string player = 1;
+  oneof order {
+    string send_message = 10; string send_action_bar = 11; Title send_title = 12; Empty reset_title = 13; TabList set_tab_list = 14;
+    Vec3 teleport = 15; Facing teleport_facing = 16; GameMode set_game_mode = 17; string kick = 18;
+    float set_health = 19; float set_absorption = 20; double damage = 21; Empty kill = 22;
+    int32 set_food_level = 23; float set_saturation = 24; float set_exhaustion = 25;
+    int32 give_exp = 26; int32 give_levels = 27; int32 set_level = 28; float set_exp = 29;
+    Effect add_effect = 30; string remove_effect = 31; Empty clear_effects = 32; int32 set_fire_ticks = 33; Vec3 set_velocity = 34;
+    bool set_allow_flight = 35; bool set_flying = 36; float set_fly_speed = 37; float set_walk_speed = 38; bool set_op = 39;
+    Empty respawn = 40; string perform_command = 41; string chat = 42; Sound play_sound = 43; Particle spawn_particle = 44;
+    string hide_player = 45; string show_player = 46; uint64 open_inventory = 47; Empty close_inventory = 48; Empty update_inventory = 49;
+    BanTerms ban = 50;
+  }
 }
+message InventoryOrder { string player = 1; oneof order { Item add = 10; SetSlot set = 11; RemoveItems remove = 12; Empty clear = 13; int32 set_held_slot = 14; } }
+message ServerOrder {
+  oneof order {
+    string broadcast = 10; string dispatch_command = 11; Empty shutdown = 12; Empty save = 13; bool set_whitelist_enabled = 14;
+    string whitelist_add = 15; string whitelist_remove = 16; string operator_add = 17; string operator_remove = 18;
+    Ban ban_add = 19; string ban_remove = 20; Ban ip_ban_add = 21; string ip_ban_remove = 22; CreateInventory create_inventory = 23;
+  }
+}
+message WorldOrder {
+  oneof order {
+    int64 set_time = 10; Weather set_weather = 11; Difficulty set_difficulty = 12; BlockPos set_spawn = 13; bool set_pvp = 14;
+    SetGameRule set_game_rule = 15; Empty save = 16; Sound play_sound = 17; Particle spawn_particle = 18; Explode explode = 19;
+  }
+}
+message BlockOrder { BlockPos pos = 1; oneof order { string set = 10; SetBlockWith set_with = 11; Empty break_naturally = 12; } }
+message EntityOrder { int32 entity = 1; oneof order { Vec3 teleport = 10; Empty remove = 11; double damage = 12; Empty kill = 13; Effect add_effect = 14; string remove_effect = 15; Empty clear_effects = 16; Vec3 set_velocity = 17; } }
+message CustomInventoryOrder { uint64 inventory = 1; oneof order { SetSlot set = 10; Empty clear = 11; Empty close = 12; Empty discard = 13; } }
+
+message TargetQuery { string player = 1; double max_distance = 2; }
+message Near { Vec3 position = 1; double radius = 2; }
+message EntityQuery { Near near = 1; optional string kind = 2; }
+message Spawn { string kind = 1; Vec3 position = 2; }
+message DropItem { Vec3 position = 1; Item item = 2; }
+message Question {
+  uint64 request = 1;
+  oneof question {
+    string player = 10; Empty players = 11; string player_named = 12; string inventory = 13;
+    TargetQuery target_block = 14; TargetQuery target_entity = 15; Empty server = 16; Empty whitelist = 17;
+    Empty operators = 18; Empty bans = 19; Empty ip_bans = 20; Empty world = 21; EntityQuery entities = 22;
+    int32 entity = 23; BlockPos block = 24; Spawn spawn = 25; DropItem drop_item = 26; uint64 custom_inventory = 27;
+  }
+}
+message FromPlugin {
+  oneof body {
+    Hello hello = 1; Decision decision = 2; PlayerOrder player = 3; InventoryOrder inventory = 4; ServerOrder server = 5;
+    WorldOrder world = 6; BlockOrder block = 7; EntityOrder entity = 8; CustomInventoryOrder custom_inventory = 9; Question question = 10;
+  }
+}
+
 message Accepted {}
-message PlayerList { repeated PlayerSnapshot players = 1; }
 message NotFound {}
-message Answer { uint64 request = 1; oneof body { PlayerState player = 2; PlayerList players = 3; NotFound not_found = 4; } }
+message Refused { string reason = 1; }
+message PlayerList { repeated PlayerSnapshot players = 1; }
+message InventoryState { repeated Slot slots = 1; int32 held_slot = 2; }
+message BlockHit { BlockPos pos = 1; Face face = 2; string block = 3; }
+message Target { oneof hit { BlockHit block = 1; PlayerSnapshot player = 2; EntitySnapshot entity = 3; } }
+message ServerState { int32 max_players = 1; int32 online = 2; double tps_1m = 3; double tps_5m = 4; double tps_15m = 5; bool whitelist_enabled = 6; }
+message ListedPlayer { string name = 1; optional string uuid = 2; }
+message ListedPlayers { repeated ListedPlayer players = 1; }
+message BanEntry { string target = 1; optional string uuid = 2; int64 created_ms = 3; string source = 4; optional int64 expires_ms = 5; optional string reason = 6; }
+message BanList { repeated BanEntry entries = 1; }
+message GameRuleValue { GameRule rule = 1; bool value = 2; }
+message WorldState { string name = 1; optional string uuid = 2; int64 seed = 3; int64 day_time = 4; int64 game_time = 5; bool raining = 6; bool thundering = 7; Difficulty difficulty = 8; BlockPos spawn = 9; bool pvp = 10; repeated GameRuleValue rules = 11; }
+message BlockState { string block = 1; repeated Property properties = 2; }
+message EntityList { repeated EntitySnapshot entities = 1; }
+message EntityState { EntitySnapshot entity = 1; optional float health = 2; Vec3 velocity = 3; bool on_ground = 4; optional string custom_name = 5; int32 fire_ticks = 6; }
+message CustomInventoryState { repeated Slot slots = 1; repeated PlayerSnapshot viewers = 2; }
+message Answer {
+  uint64 request = 1;
+  oneof body {
+    PlayerState player = 2; PlayerList players = 3; NotFound not_found = 4; Refused refused = 5; InventoryState inventory = 6;
+    Target target = 7; ServerState server = 8; ListedPlayers listed = 9; BanList bans = 10; WorldState world = 11; BlockState block = 12;
+    EntityList entities = 13; EntityState entity = 14; EntitySnapshot spawned = 15; CustomInventoryState custom_inventory = 16;
+  }
+}
 message Warning { string message = 1; }
 message Replaced {}
-message ToPlugin {
-  oneof body { Accepted accepted = 1; Event event = 2; Answer answer = 3; Warning warning = 4; Replaced replaced = 5; }
-}
+message ToPlugin { oneof body { Accepted accepted = 1; Event event = 2; Answer answer = 3; Warning warning = 4; Replaced replaced = 5; } }

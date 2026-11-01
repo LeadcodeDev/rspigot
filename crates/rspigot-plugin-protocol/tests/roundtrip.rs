@@ -2,7 +2,7 @@ use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
     Access, Event, EventKind, FromPlugin, GameMode, Handler, Hello, Phase, PlayerMove,
-    PlayerSnapshot, Priority, ToPlugin, Vec3, event, from_plugin, to_plugin,
+    PlayerSnapshot, Priority, Rotation, ToPlugin, Vec3, event, from_plugin, to_plugin,
 };
 
 fn steve() -> PlayerSnapshot {
@@ -17,6 +17,10 @@ fn steve() -> PlayerSnapshot {
             z: -3.5,
         }),
         game_mode: GameMode::Survival as i32,
+        rotation: Some(Rotation {
+            yaw: 90.0,
+            pitch: -30.0,
+        }),
     }
 }
 

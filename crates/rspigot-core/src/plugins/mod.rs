@@ -2,8 +2,8 @@ mod decisions;
 mod registry;
 mod server;
 
-use rspigot_domain::Vec3;
 use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::{Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
 pub(crate) use decisions::{Decisions, Held};
@@ -96,6 +96,7 @@ pub struct PlayerSnapshot {
     pub entity_id: i32,
     pub world: String,
     pub position: Vec3,
+    pub rotation: Rotation,
     pub game_mode: GameMode,
 }
 
@@ -167,9 +168,27 @@ pub enum ToPlugin {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FromPlugin {
     Decision { event: u64, cancel: bool },
-    SendMessage { player: PlayerId, text: String },
-    ResolvePlayer { request: u64, player: PlayerId },
-    FetchPlayers { request: u64 },
+    Order(Order),
+    Question { request: u64, question: Question },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Order {
+    Player {
+        player: PlayerId,
+        order: PlayerOrder,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlayerOrder {
+    SendMessage(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Question {
+    Player(PlayerId),
+    Players,
 }
 
 #[cfg(test)]

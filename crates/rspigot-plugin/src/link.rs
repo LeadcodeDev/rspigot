@@ -128,6 +128,7 @@ pub(crate) const fn message(body: from_plugin::Body) -> v1::FromPlugin {
 mod tests {
     use std::time::Duration;
 
+    use rspigot_plugin_protocol::v1::question;
     use tokio::time::Instant;
 
     use super::*;
@@ -141,7 +142,12 @@ mod tests {
         let started = Instant::now();
 
         let asked = link
-            .ask(|request| from_plugin::Body::FetchPlayers(v1::FetchPlayers { request }))
+            .ask(|request| {
+                from_plugin::Body::Question(v1::Question {
+                    request,
+                    question: Some(question::Question::Players(v1::Empty {})),
+                })
+            })
             .await;
 
         assert!(matches!(asked, Err(Error::Timeout)), "got {asked:?}");

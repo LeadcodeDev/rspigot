@@ -6,8 +6,8 @@ use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::decisions::{Held, PendingMove, SettledMove, Undone, Verdict};
 use crate::plugins::{
-    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerSnapshot,
-    PlayerState, ToPlugin,
+    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Order, Phase, PlayerOrder,
+    PlayerSnapshot, PlayerState, Question, ToPlugin,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -51,22 +51,31 @@ impl<L: ClientLink> Server<L> {
         }
         match message {
             FromPlugin::Decision { event, cancel } => self.take_decision(connection, event, cancel),
-            FromPlugin::SendMessage { player, text } => self.push(
+            FromPlugin::Order(order) => self.apply_order(order),
+            FromPlugin::Question { request, question } => {
+                let answer = self.answer_question(question);
+                self.plugins
+                    .send(connection, ToPlugin::Answer { request, answer });
+            }
+        }
+    }
+
+    fn apply_order(&mut self, order: Order) {
+        match order {
+            Order::Player {
+                player,
+                order: PlayerOrder::SendMessage(text),
+            } => self.push(
                 Audience::One(player),
                 ClientEvent::system(Component::text(text)),
             ),
-            FromPlugin::ResolvePlayer { request, player } => {
-                let answer = self
-                    .state_of(player)
-                    .map_or(Answer::NotFound, Answer::Player);
-                self.plugins
-                    .send(connection, ToPlugin::Answer { request, answer });
-            }
-            FromPlugin::FetchPlayers { request } => {
-                let answer = Answer::Players(self.online_snapshots());
-                self.plugins
-                    .send(connection, ToPlugin::Answer { request, answer });
-            }
+        }
+    }
+
+    fn answer_question(&mut self, question: Question) -> Answer {
+        match question {
+            Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
+            Question::Players => Answer::Players(self.online_snapshots()),
         }
     }
 
@@ -281,6 +290,7 @@ impl<L: ClientLink> Server<L> {
             entity_id: player.entity_id.0,
             world: self.world.dimension.key.to_string(),
             position: player.position,
+            rotation: player.rotation,
             game_mode: player.game_mode,
         }
     }
