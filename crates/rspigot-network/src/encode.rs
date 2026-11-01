@@ -16,7 +16,8 @@ use rspigot_domain::chunk::{
 };
 use rspigot_domain::dye::dye_color_id;
 use rspigot_domain::effect::{AttributeOperation, AttributeState, EffectInstance};
-use rspigot_domain::item::{ItemStack, Slot};
+use rspigot_domain::entity::save::component_from_tag;
+use rspigot_domain::item::{CUSTOM_NAME, ENCHANTMENTS, ItemStack, LORE, MAX_LORE_LINES, Slot};
 use rspigot_domain::particle::ParticleData;
 use rspigot_domain::player::GameMode as DomainGameMode;
 use rspigot_domain::world::Difficulty as DomainDifficulty;
@@ -292,6 +293,27 @@ fn component_value(name: &str, value: &rspigot_nbt::Tag) -> Option<ComponentValu
             let sides = value.as_compound()?;
             for side in ["back", "left", "right", "front"] {
                 write_pot_side(sides.get_compound(side), &mut data)?;
+            }
+        }
+        CUSTOM_NAME => text(&component_from_tag(value)?).encode(&mut data),
+        LORE => {
+            let lines = value.as_list()?;
+            if lines.len() > MAX_LORE_LINES {
+                return None;
+            }
+            write_var_len(lines.len(), &mut data)?;
+            for line in lines {
+                text(&component_from_tag(line)?).encode(&mut data);
+            }
+        }
+        ENCHANTMENTS => {
+            let enchantments = value.as_compound()?;
+            let levels = enchantments.get_compound("levels").unwrap_or(enchantments);
+            write_var_len(levels.len(), &mut data)?;
+            for (name, level) in levels.iter() {
+                let id = rspigot_data::registries::synced_index("minecraft:enchantment", name)?;
+                write_var(i32::try_from(id).ok()?, &mut data);
+                write_var(i32::try_from(level.as_i64()?).ok()?, &mut data);
             }
         }
         "minecraft:suspicious_stew_effects" => {
@@ -2159,6 +2181,57 @@ mod tests {
         assert_eq!(component_bytes("minecraft:fireworks", fireworks), expected);
         let bare = rspigot_nbt::Compound::new().with("flight_duration", rspigot_nbt::Tag::Byte(3));
         assert_eq!(component_bytes("minecraft:fireworks", bare), vec![3, 0]);
+    }
+
+    #[test]
+    fn name_lore_and_enchantments_golden_bytes() {
+        assert_eq!(
+            component_bytes("minecraft:custom_name", "A"),
+            vec![8, 0, 1, b'A']
+        );
+        let lore = rspigot_nbt::Tag::List(vec![
+            rspigot_nbt::Tag::String("A".to_owned()),
+            rspigot_nbt::Tag::String("B".to_owned()),
+        ]);
+        assert_eq!(
+            component_bytes("minecraft:lore", lore),
+            vec![2, 8, 0, 1, b'A', 8, 0, 1, b'B']
+        );
+        let id =
+            rspigot_data::registries::synced_index("minecraft:enchantment", "minecraft:sharpness")
+                .unwrap();
+        let expected = vec![1, u8::try_from(id).unwrap(), 5];
+        assert_eq!(
+            component_bytes(
+                "minecraft:enchantments",
+                rspigot_nbt::Compound::new().with("minecraft:sharpness", 5)
+            ),
+            expected
+        );
+        let levels = rspigot_nbt::Compound::new().with("minecraft:sharpness", 5);
+        assert_eq!(
+            component_bytes(
+                "minecraft:enchantments",
+                rspigot_nbt::Compound::new().with("levels", levels)
+            ),
+            expected
+        );
+        let styled = rspigot_nbt::Compound::new()
+            .with("text", "A")
+            .with("color", "gold");
+        let mut gold = Vec::new();
+        rspigot_nbt::write_network(&mut gold, &rspigot_nbt::Tag::Compound(styled.clone()));
+        assert_eq!(component_bytes("minecraft:custom_name", styled), gold);
+        let unknown = rspigot_nbt::Compound::new().with("minecraft:nope", 1);
+        assert!(
+            component_value(
+                "minecraft:enchantments",
+                &rspigot_nbt::Tag::Compound(unknown)
+            )
+            .is_none()
+        );
+        let too_long = rspigot_nbt::Tag::List(vec![rspigot_nbt::Tag::String("A".to_owned()); 257]);
+        assert!(component_value("minecraft:lore", &too_long).is_none());
     }
 
     #[test]

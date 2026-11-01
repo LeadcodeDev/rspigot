@@ -23,13 +23,20 @@ use crate::effect::{
     AttributeModifier, AttributeOperation, EffectDuration, EffectId, EffectInstance,
 };
 use crate::item::ItemStack;
-use crate::text::{Component, Content};
+use crate::text::{Color, Component, Content, Style};
 use crate::{BlockPos, BlockStateId, EntityId, ItemId, Vec3};
 
 const MOTION_LIMIT: f64 = 10.0;
 const HORIZONTAL_LIMIT: f64 = 30_000_512.0;
 const VERTICAL_LIMIT: f64 = 20_000_000.0;
 const BUKKIT_UPDATE_LEVEL: i32 = 2;
+const STYLE_FLAGS: [&str; 5] = [
+    "bold",
+    "italic",
+    "underlined",
+    "strikethrough",
+    "obfuscated",
+];
 const ENTITY_KEYS: [&str; 29] = [
     "id",
     "Pos",
@@ -255,6 +262,9 @@ pub fn component_from_tag(tag: &Tag) -> Option<Component> {
     match tag {
         Tag::String(text) => Some(Component::text(text.clone())),
         Tag::Compound(compound) => {
+            if let Some(wrapped) = list_wrapped(compound) {
+                return component_from_tag(wrapped);
+            }
             let mut component = if let Some(text) = compound.get_str("text") {
                 Component::text(text)
             } else if let Some(key) = compound.get_str("translate") {
@@ -266,6 +276,10 @@ pub fn component_from_tag(tag: &Tag) -> Option<Component> {
             } else {
                 Component::text("")
             };
+            component.style = Style::from_parts(
+                compound.get_str("color").and_then(Color::parse),
+                STYLE_FLAGS.map(|flag| compound.get_bool(flag)),
+            );
             if let Some(extra) = compound.get_list("extra") {
                 component.extra = extra.iter().filter_map(component_from_tag).collect();
             }
@@ -285,19 +299,10 @@ pub fn component_from_tag(tag: &Tag) -> Option<Component> {
 }
 
 pub fn component_to_tag(component: &Component) -> Tag {
-    let plain = component.extra.is_empty() && component.style == crate::text::Style::default();
-    match &component.content {
-        Content::Text(text) if plain => Tag::String(text.clone()),
-        Content::Text(text) => {
-            let mut out = Compound::new().with("text", text.as_str());
-            if !component.extra.is_empty() {
-                out.insert(
-                    "extra",
-                    Tag::List(component.extra.iter().map(component_to_tag).collect()),
-                );
-            }
-            Tag::Compound(out)
-        }
+    let plain = component.extra.is_empty() && component.style == Style::default();
+    let mut out = match &component.content {
+        Content::Text(text) if plain => return Tag::String(text.clone()),
+        Content::Text(text) => Compound::new().with("text", text.as_str()),
         Content::Translatable { key, args } => {
             let mut out = Compound::new().with("translate", key.as_str());
             if !args.is_empty() {
@@ -306,9 +311,28 @@ pub fn component_to_tag(component: &Component) -> Tag {
                     Tag::List(args.iter().map(component_to_tag).collect()),
                 );
             }
-            Tag::Compound(out)
+            out
+        }
+    };
+    if let Some(color) = component.style.color {
+        out.insert("color", color.serialize());
+    }
+    for (flag, value) in STYLE_FLAGS.into_iter().zip(component.style.flags()) {
+        if let Some(value) = value {
+            out.insert(flag, value);
         }
     }
+    if !component.extra.is_empty() {
+        out.insert(
+            "extra",
+            Tag::List(component.extra.iter().map(component_to_tag).collect()),
+        );
+    }
+    Tag::Compound(out)
+}
+
+fn list_wrapped(compound: &Compound) -> Option<&Tag> {
+    compound.get("").filter(|_| compound.len() == 1)
 }
 
 fn operation_name(operation: AttributeOperation) -> &'static str {
@@ -1135,6 +1159,7 @@ pub fn entity_position(nbt: &Compound) -> Option<Vec3> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::NamedColor;
 
     fn cow_nbt() -> Compound {
         Compound::new()
@@ -1237,6 +1262,34 @@ mod tests {
             invalid.state,
             EntityState::Orb(OrbState { count: 1, .. })
         ));
+    }
+
+    #[test]
+    fn styled_names_survive_a_save_and_reload() {
+        let mut stack = ItemStack::new(ItemKind::DiamondSword.id(), NonZeroU8::MIN);
+        let name = Component::text("Excalibur").color(NamedColor::Gold).bold();
+        let mut teal = Component::text("Teal");
+        teal.style.color = Some(Color::Rgb(0x008080));
+        teal.style.italic = Some(false);
+        stack.set_custom_name(Some(&name));
+        stack.set_lore(&[Component::from_section_codes("§6A§rB"), teal.clone()]);
+        stack.set_enchantments(&[("minecraft:sharpness".into(), 5)]);
+        let saved = item_stack_to_nbt(&stack);
+        assert_eq!(item_stack_from_nbt(&saved), Some(stack.clone()));
+
+        let mut bytes = Vec::new();
+        rspigot_nbt::write_named(&mut bytes, "", &saved);
+        let (_, read) = rspigot_nbt::read_named(&mut bytes.as_slice()).unwrap();
+        let reloaded = item_stack_from_nbt(&read).unwrap();
+        assert_eq!(reloaded.custom_name(), Some(name));
+        assert_eq!(
+            reloaded.lore(),
+            [Component::from_section_codes("§6A§rB"), teal]
+        );
+        assert_eq!(
+            reloaded.enchantments(),
+            [("minecraft:sharpness".to_owned(), 5)]
+        );
     }
 
     #[test]
