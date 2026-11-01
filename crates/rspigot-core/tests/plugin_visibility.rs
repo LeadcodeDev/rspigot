@@ -182,3 +182,36 @@ fn resolve_lists_the_hidden_players() {
     assert_eq!(state(&mut s, &alice).hidden, [bob.id]);
     assert!(s.warnings().is_empty());
 }
+
+fn hears_sound(listener: &Player) -> bool {
+    listener
+        .link
+        .take()
+        .iter()
+        .any(|event| matches!(event, ClientEvent::Sound { .. }))
+}
+
+#[test]
+fn a_hidden_player_is_not_heard() {
+    let mut s = scene(&["Alice", "Bob", "Carol"]);
+    let (alice, bob, carol) = (
+        s.players[0].clone(),
+        s.players[1].clone(),
+        s.players[2].clone(),
+    );
+    s.act(to(&alice, PlayerOrder::HidePlayer(bob.id)));
+    alice.link.take();
+    carol.link.take();
+    s.act(to(&bob, PlayerOrder::Damage(1.0)));
+    assert!(!hears_sound(&alice));
+    assert!(hears_sound(&carol));
+
+    s.act(to(&alice, PlayerOrder::ShowPlayer(bob.id)));
+    s.tick(20);
+    alice.link.take();
+    carol.link.take();
+    s.act(to(&bob, PlayerOrder::Damage(1.0)));
+    assert!(hears_sound(&alice));
+    assert!(hears_sound(&carol));
+    assert!(s.warnings().is_empty());
+}

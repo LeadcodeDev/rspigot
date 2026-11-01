@@ -377,6 +377,7 @@ impl<L: ClientLink> Server<L> {
                 } => {
                     for player in self.players.values().filter(|p| {
                         Some(p.id) != except
+                            && except.is_none_or(|source| !self.visibility.hides(p.id, source))
                             && p.position.distance_squared(position) < range * range
                     }) {
                         player.link.send(event.clone());
