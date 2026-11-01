@@ -427,6 +427,19 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn break_block_naturally(&mut self, pos: BlockPos) -> bool {
+        let Some(state) = self.world.chunks.block(pos).filter(|state| !state.is_air()) else {
+            return false;
+        };
+        if loot::tool_is_correct(None, state) {
+            let context = LootContext::block(state, None, None);
+            for stack in loot::block_drops(&context, &mut self.rng) {
+                self.spawn_item(pos, stack);
+            }
+        }
+        self.set_block(pos, BlockStateId::AIR)
+    }
+
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         let before = self.world.chunks.block(pos);
         let lost = before

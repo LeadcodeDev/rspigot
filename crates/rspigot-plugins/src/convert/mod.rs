@@ -1,7 +1,9 @@
+mod block;
 mod inventory;
 mod player;
 mod server;
 mod shared;
+mod world;
 
 use rspigot_core::plugins::{
     Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority,
@@ -93,8 +95,8 @@ pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malform
         from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
         from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
         from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
-        from_plugin::Body::World(_) => return Err(Malformed::Unsupported("world order")),
-        from_plugin::Body::Block(_) => return Err(Malformed::Unsupported("block order")),
+        from_plugin::Body::World(order) => FromPlugin::Order(world::order(order)?),
+        from_plugin::Body::Block(order) => FromPlugin::Order(block::order(order)?),
         from_plugin::Body::Entity(_) => return Err(Malformed::Unsupported("entity order")),
         from_plugin::Body::CustomInventory(_) => {
             return Err(Malformed::Unsupported("custom inventory order"));
@@ -107,7 +109,13 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
     let question = match asked.question.ok_or(Malformed::Empty)? {
         question::Question::Player(player) => Question::Player(player::id(player)?),
         question::Question::Players(_) => Question::Players,
+        question::Question::PlayerNamed(name) => Question::PlayerNamed(name),
         question::Question::Inventory(player) => Question::Inventory(player::id(player)?),
+        question::Question::Server(_) => Question::Server,
+        question::Question::Whitelist(_) => Question::Whitelist,
+        question::Question::Operators(_) => Question::Operators,
+        question::Question::World(_) => Question::World,
+        question::Question::Block(pos) => Question::Block(shared::block_pos(pos)),
         _ => return Err(Malformed::Unsupported("question")),
     };
     Ok(FromPlugin::Question {
@@ -175,6 +183,10 @@ fn wire_answer(answer: Answer) -> answer::Body {
             players: players.into_iter().map(wire_player).collect(),
         }),
         Answer::Inventory(state) => answer::Body::Inventory(inventory::wire_state(state)),
+        Answer::Server(state) => answer::Body::Server(server::wire_state(state)),
+        Answer::Names(names) => answer::Body::Listed(server::wire_names(names)),
+        Answer::World(state) => answer::Body::World(world::wire_state(state)),
+        Answer::Block(state) => answer::Body::Block(block::wire_state(state)),
         Answer::NotFound => answer::Body::NotFound(v1::NotFound {}),
     }
 }
@@ -184,7 +196,7 @@ mod tests {
     use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot};
     use rspigot_domain::player::{GameMode, PlayerId};
     use rspigot_domain::{Rotation, Vec3};
-    use rspigot_plugin_protocol::v1::{player_order, world_order};
+    use rspigot_plugin_protocol::v1::{entity_order, player_order};
     use uuid::Uuid;
 
     use super::*;
@@ -243,19 +255,20 @@ mod tests {
             from_plugin(hide),
             Err(Malformed::Unsupported("player order"))
         ));
-        let save = body(from_plugin::Body::World(v1::WorldOrder {
-            order: Some(world_order::Order::Save(v1::Empty {})),
+        let kill = body(from_plugin::Body::Entity(v1::EntityOrder {
+            entity: 1,
+            order: Some(entity_order::Order::Kill(v1::Empty {})),
         }));
         assert!(matches!(
-            from_plugin(save),
-            Err(Malformed::Unsupported("world order"))
+            from_plugin(kill),
+            Err(Malformed::Unsupported("entity order"))
         ));
-        let server = body(from_plugin::Body::Question(v1::Question {
+        let bans = body(from_plugin::Body::Question(v1::Question {
             request: 1,
-            question: Some(question::Question::Server(v1::Empty {})),
+            question: Some(question::Question::Bans(v1::Empty {})),
         }));
         assert!(matches!(
-            from_plugin(server),
+            from_plugin(bans),
             Err(Malformed::Unsupported("question"))
         ));
     }
