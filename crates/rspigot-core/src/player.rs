@@ -33,6 +33,10 @@ pub struct Player<L> {
     pub sneaking: bool,
     pub sprinting: bool,
     pub flying: bool,
+    pub allow_flight: Option<bool>,
+    pub fly_speed: f32,
+    pub walk_speed: f32,
+    pub latency: i32,
     pub tracked: FxHashSet<EntityId>,
     pub loaded: bool,
     pub operator: bool,
@@ -55,10 +59,10 @@ impl<L> Player<L> {
         Abilities {
             invulnerable: matches!(self.game_mode, GameMode::Creative | GameMode::Spectator),
             flying: self.flying || self.game_mode == GameMode::Spectator,
-            may_fly: self.game_mode.can_fly(),
+            may_fly: self.allow_flight.unwrap_or(self.game_mode.can_fly()),
             instant_build: self.game_mode == GameMode::Creative,
-            fly_speed: 0.05,
-            walk_speed: 0.1,
+            fly_speed: self.fly_speed,
+            walk_speed: self.walk_speed,
         }
     }
 

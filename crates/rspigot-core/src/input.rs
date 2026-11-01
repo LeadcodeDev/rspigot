@@ -1,7 +1,6 @@
 use std::num::NonZeroU8;
 
 use rspigot_domain::item::{HOTBAR_START, ItemStack};
-use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ItemId, Rotation, Vec3};
@@ -41,19 +40,7 @@ impl<L: ClientLink> Server<L> {
                 }
             }
             PlayerInput::Chat(message) => self.handle_chat(id, &message),
-            PlayerInput::Command(command) => {
-                let name = self
-                    .players
-                    .get(&id)
-                    .map(|p| p.profile.name.clone())
-                    .unwrap_or_default();
-                tracing::info!("{name} issued server command: /{command}");
-                crate::commands::execute(
-                    self,
-                    crate::commands::CommandSender::Player(id),
-                    &command,
-                );
-            }
+            PlayerInput::Command(command) => self.run_player_command(id, &command),
             PlayerInput::Dig {
                 action,
                 pos,
@@ -158,13 +145,7 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn => {
-                let dead = self.players.get(&id).is_some_and(|p| p.vitals.is_dead());
-                self.respawn(id);
-                if dead && let Some(player) = self.players.get_mut(&id) {
-                    player.menu = InventoryMenu::synced(&player.inventory);
-                }
-            }
+            PlayerInput::Respawn => self.respawn(id),
             PlayerInput::ClientTickEnd => {
                 if let Some(player) = self.players.get_mut(&id) {
                     if !player.moved_this_tick {
@@ -187,7 +168,22 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::SetBeacon { primary, secondary } => {
                 self.handle_set_beacon(id, primary, secondary);
             }
+            PlayerInput::Latency(millis) => {
+                if let Some(player) = self.players.get_mut(&id) {
+                    player.latency = player.latency.wrapping_mul(3).wrapping_add(millis) / 4;
+                }
+            }
         }
+    }
+
+    pub(crate) fn run_player_command(&mut self, id: PlayerId, command: &str) {
+        let name = self
+            .players
+            .get(&id)
+            .map(|p| p.profile.name.clone())
+            .unwrap_or_default();
+        tracing::info!("{name} issued server command: /{command}");
+        crate::commands::execute(self, crate::commands::CommandSender::Player(id), command);
     }
 
     fn handle_move(
@@ -312,7 +308,13 @@ impl<L: ClientLink> Server<L> {
             ));
             return;
         }
-        let name = player.profile.name.clone();
+        self.broadcast_chat(id, message);
+    }
+
+    pub(crate) fn broadcast_chat(&mut self, id: PlayerId, message: &str) {
+        let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) else {
+            return;
+        };
         tracing::info!("<{name}> {message}");
         self.push(
             Audience::All,
@@ -749,6 +751,7 @@ impl<L: ClientLink> Server<L> {
         }
         player.previous_game_mode = Some(player.game_mode);
         player.game_mode = mode;
+        player.allow_flight = None;
         if !mode.can_fly() {
             player.flying = false;
         }
