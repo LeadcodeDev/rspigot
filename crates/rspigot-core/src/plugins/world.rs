@@ -5,12 +5,13 @@ use crate::config::GameRules;
 use crate::events::{ClientEvent, GameEvent, SoundSource};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
-use crate::plugins::resolve::{self, finite_not_negative, not_negative};
+use crate::plugins::resolve::{self, finite_not_negative};
 use crate::plugins::{GameRule, ServerOrder, ServerState, WorldOrder, WorldState};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
 const PARTICLE_RANGE: f64 = 32.0;
+const DAY_TICKS: i64 = 24_000;
 
 impl<L: ClientLink> Server<L> {
     pub(super) fn apply_server_order(&mut self, order: ServerOrder) {
@@ -53,8 +54,9 @@ impl<L: ClientLink> Server<L> {
     fn world_order(&mut self, order: WorldOrder) -> Result<(), String> {
         match order {
             WorldOrder::SetTime(time) => {
-                not_negative("day time", time)?;
-                CommandContext::set_day_time(self, time);
+                let full_time = self.world.level.day_time;
+                let margin = time.wrapping_sub(full_time).rem_euclid(DAY_TICKS);
+                CommandContext::set_day_time(self, full_time.wrapping_add(margin));
             }
             WorldOrder::SetWeather(weather) => CommandContext::set_weather(self, weather),
             WorldOrder::SetDifficulty(difficulty) => {

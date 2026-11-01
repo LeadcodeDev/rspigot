@@ -68,6 +68,15 @@ fn world_state(s: &mut Scene) -> WorldState {
     state
 }
 
+fn on_the_ground(s: &Scene, item: ItemKind) -> Vec<u8> {
+    s.server
+        .ground_items()
+        .into_iter()
+        .filter(|(_, stack)| stack.item == item.id())
+        .map(|(_, stack)| stack.count.get())
+        .collect()
+}
+
 fn sound(key: &str) -> SoundSpec {
     SoundSpec {
         key: key.into(),
@@ -426,15 +435,59 @@ fn a_block_is_set_read_back_and_broken() {
     s.act(block(pos, set("minecraft:stone")));
     s.act(block(pos, BlockOrder::BreakNaturally));
     assert_eq!(block_state(&mut s, pos).kind, "minecraft:air");
-    assert!(s.server.ground_items().is_empty());
+    assert_eq!(s.server.ground_items().len(), 1);
+    assert_eq!(on_the_ground(&s, ItemKind::Cobblestone), [1]);
 
     s.act(block(pos, set("minecraft:dirt")));
     s.act(block(pos, BlockOrder::BreakNaturally));
     assert_eq!(block_state(&mut s, pos).kind, "minecraft:air");
-    let dropped = s.server.ground_items();
-    assert_eq!(dropped.len(), 1);
-    assert_eq!(dropped[0].1.item, ItemKind::Dirt.id());
-    assert_eq!(dropped[0].1.count.get(), 1);
+    assert_eq!(s.server.ground_items().len(), 2);
+    assert_eq!(on_the_ground(&s, ItemKind::Dirt), [1]);
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn without_block_drops_a_broken_block_drops_nothing() {
+    let mut s = scene(&["Alice", "Bob"]);
+    let pos = BlockPos::new(2, 64, 2);
+    s.act(Order::World(WorldOrder::SetGameRule(
+        GameRule::BlockDrops,
+        false,
+    )));
+    s.act(block(pos, set("minecraft:stone")));
+    s.act(block(pos, BlockOrder::BreakNaturally));
+    assert_eq!(block_state(&mut s, pos).kind, "minecraft:air");
+    assert!(s.server.ground_items().is_empty());
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn set_time_moves_forward_to_that_time_of_day() {
+    let mut s = scene(&["Alice", "Bob"]);
+    let players = s.players.clone();
+    let time_set = |s: &mut Scene, line: &str| {
+        s.act(Order::Server(ServerOrder::DispatchCommand(line.into())));
+    };
+    time_set(&mut s, "time set 30000");
+    assert_eq!(world_state(&mut s).day_time, 30000);
+
+    s.act(Order::World(WorldOrder::SetTime(1000)));
+    assert_eq!(world_state(&mut s).day_time, 49000);
+    for player in &players {
+        assert!(player.link.take().iter().any(|event| matches!(
+            event,
+            ClientEvent::Time {
+                day_time: 49000,
+                ..
+            }
+        )));
+    }
+
+    time_set(&mut s, "time set 30000");
+    s.act(Order::World(WorldOrder::SetTime(-1000)));
+    assert_eq!(world_state(&mut s).day_time, 47000);
+    s.act(Order::World(WorldOrder::SetTime(47000)));
+    assert_eq!(world_state(&mut s).day_time, 47000);
     assert!(s.warnings().is_empty());
 }
 
@@ -513,7 +566,6 @@ fn invalid_world_orders_warn() {
         })
     };
     let bad_orders = [
-        Order::World(WorldOrder::SetTime(-1)),
         Order::World(WorldOrder::PlaySound {
             sound: sound("minecraft:nope"),
             position: center,
@@ -542,13 +594,11 @@ fn invalid_world_orders_warn() {
             "{last}"
         );
     }
-    assert_eq!(world_state(&mut s).day_time, 0);
     assert_eq!(block_state(&mut s, pos).kind, "minecraft:air");
     for player in &players {
         assert!(!player.link.take().iter().any(|event| matches!(
             event,
-            ClientEvent::Time { .. }
-                | ClientEvent::Sound { .. }
+            ClientEvent::Sound { .. }
                 | ClientEvent::Particle(_)
                 | ClientEvent::BlockUpdate { .. }
                 | ClientEvent::Explode { .. }

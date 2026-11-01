@@ -422,22 +422,24 @@ impl<L: ClientLink> Server<L> {
         }
         let breaker = LootEntity::of(rspigot_entities::EntityKind::Player);
         let context = LootContext::block(state, tool.as_ref(), Some(&breaker));
-        for stack in loot::block_drops(&context, &mut self.rng) {
-            self.spawn_item(pos, stack);
-        }
+        self.pop_block_loot(pos, &context);
     }
 
     pub(crate) fn break_block_naturally(&mut self, pos: BlockPos) -> bool {
         let Some(state) = self.world.chunks.block(pos).filter(|state| !state.is_air()) else {
             return false;
         };
-        if loot::tool_is_correct(None, state) {
-            let context = LootContext::block(state, None, None);
-            for stack in loot::block_drops(&context, &mut self.rng) {
-                self.spawn_item(pos, stack);
-            }
-        }
+        self.pop_block_loot(pos, &LootContext::block(state, None, None));
         self.set_block(pos, BlockStateId::AIR)
+    }
+
+    fn pop_block_loot(&mut self, pos: BlockPos, context: &LootContext<'_>) {
+        if !self.config.rules.block_drops {
+            return;
+        }
+        for stack in loot::block_drops(context, &mut self.rng) {
+            self.spawn_item(pos, stack);
+        }
     }
 
     pub(crate) fn set_block(&mut self, pos: BlockPos, state: BlockStateId) -> bool {

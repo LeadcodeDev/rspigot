@@ -40,11 +40,8 @@ pub(super) fn within<T: PartialOrd + Display>(
     }
 }
 
-pub(super) fn not_negative<T: PartialOrd + Default + Display>(
-    what: &str,
-    value: T,
-) -> Result<(), String> {
-    if value >= T::default() {
+pub(super) fn not_negative(what: &str, value: i32) -> Result<(), String> {
+    if value >= 0 {
         Ok(())
     } else {
         Err(format!("{what} {value} is below 0"))
