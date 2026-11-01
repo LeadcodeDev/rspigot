@@ -1,7 +1,7 @@
 use rand::Rng;
 use rspigot_domain::attribute::{
-    ARMOR, ARMOR_TOUGHNESS, Attributes, MAX_ABSORPTION, MAX_HEALTH, equipment_modifiers,
-    is_syncable,
+    ARMOR, ARMOR_TOUGHNESS, Attributes, MAX_ABSORPTION, MAX_HEALTH, MOVEMENT_SPEED,
+    equipment_modifiers, is_syncable,
 };
 use rspigot_domain::combat::{CombatEntry, CombatTracker};
 use rspigot_domain::damage::{self, DamageTag, DamageType, java_clamp};
@@ -243,6 +243,7 @@ pub(crate) fn equipment(inventory: &Inventory) -> Vec<(ItemSlot, ItemId)> {
 
 pub(crate) fn attributes<L>(player: &Player<L>) -> Attributes {
     Attributes::of(&player.effects, &equipment(&player.inventory))
+        .with_base(MOVEMENT_SPEED, f64::from(player.walk_speed))
 }
 
 pub(crate) fn max_health<L>(player: &Player<L>) -> f32 {
