@@ -171,3 +171,51 @@ fn distance_is_checked() {
     assert_eq!(target_entity(&mut s, &alice, 10.0), Answer::NotFound);
     assert!(s.warnings().is_empty());
 }
+
+#[test]
+fn a_shapeless_block_around_the_eyes_is_passed_through() {
+    let mut s = scene(&["Alice"]);
+    let alice = s.players[0].clone();
+    look_ahead(&mut s, &alice);
+    put(&mut s, BlockPos::new(0, 65, -1), set("minecraft:stone"));
+    put(
+        &mut s,
+        BlockPos::new(0, 65, 0),
+        BlockOrder::SetWith {
+            kind: "minecraft:vine".into(),
+            properties: vec![("north".into(), "true".into())],
+        },
+    );
+    let stone = BlockPos::new(0, 65, 3);
+    put(&mut s, stone, set("minecraft:stone"));
+    assert_eq!(
+        target_block(&mut s, &alice, 10.0),
+        north_face_of(stone, "minecraft:stone")
+    );
+    let skeleton = spawn(&mut s, "minecraft:skeleton", Vec3::new(0.5, 64.0, 2.5));
+    assert_eq!(
+        target_entity(&mut s, &alice, 10.0),
+        Answer::Target(Some(TargetHit::Entity(skeleton)))
+    );
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn light_blocks_are_passed_through() {
+    let mut s = scene(&["Alice"]);
+    let alice = s.players[0].clone();
+    look_ahead(&mut s, &alice);
+    put(&mut s, BlockPos::new(0, 65, 2), set("minecraft:light"));
+    let stone = BlockPos::new(0, 65, 4);
+    put(&mut s, stone, set("minecraft:stone"));
+    assert_eq!(
+        target_block(&mut s, &alice, 10.0),
+        north_face_of(stone, "minecraft:stone")
+    );
+    let skeleton = spawn(&mut s, "minecraft:skeleton", Vec3::new(0.5, 64.0, 3.5));
+    assert_eq!(
+        target_entity(&mut s, &alice, 10.0),
+        Answer::Target(Some(TargetHit::Entity(skeleton)))
+    );
+    assert!(s.warnings().is_empty());
+}

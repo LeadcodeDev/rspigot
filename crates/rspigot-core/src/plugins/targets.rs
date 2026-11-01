@@ -1,9 +1,10 @@
 use rspigot_blocks::{BlockKind, Face, ShapeId};
-use rspigot_domain::entity::Aabb;
 use rspigot_domain::entity::raycast::{self, BlockHit};
+use rspigot_domain::entity::{Aabb, BlockView};
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{BlockStateId, EntityId, Rotation, Vec3, mth};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, Rotation, Vec3, mth};
 
+use crate::chunks::ChunkManager;
 use crate::events::Direction;
 use crate::plugins::resolve::finite_not_negative;
 use crate::plugins::{Answer, TargetHit};
@@ -23,6 +24,21 @@ struct Sight {
 enum Struck {
     Player(PlayerId),
     Entity(EntityId),
+}
+
+struct Sightline<'a> {
+    chunks: &'a ChunkManager,
+    eyes: BlockPos,
+}
+
+impl BlockView for Sightline<'_> {
+    fn block(&self, pos: BlockPos) -> Option<BlockStateId> {
+        let state = self.chunks.block(pos)?;
+        if pos == self.eyes && state.collision_shape().is_empty() {
+            return Some(BlockStateId::AIR);
+        }
+        Some(state)
+    }
 }
 
 impl<L: ClientLink> Server<L> {
@@ -50,11 +66,15 @@ impl<L: ClientLink> Server<L> {
         }
         let from = player.eye_position();
         let to = ray_end(from, player.rotation, max_distance);
+        let sightline = Sightline {
+            chunks: &self.world.chunks,
+            eyes: from.block(),
+        };
         let sight = Sight {
             from,
             to,
             length: max_distance.min(MAX_TARGET_DISTANCE),
-            block: raycast::clip_blocks_with(&self.world.chunks, from, to, sight_shape),
+            block: raycast::clip_blocks_with(&sightline, from, to, sight_shape),
         };
         Answer::Target(target(&sight))
     }
@@ -123,11 +143,11 @@ pub(crate) fn ray_end(from: Vec3, rotation: Rotation, max_distance: f64) -> Vec3
 }
 
 fn sight_shape(state: BlockStateId) -> &'static [rspigot_blocks::Aabb] {
-    let fluid = matches!(
+    let passed = matches!(
         state.kind(),
-        Some(BlockKind::Water | BlockKind::Lava | BlockKind::BubbleColumn)
+        Some(BlockKind::Light | BlockKind::Water | BlockKind::Lava | BlockKind::BubbleColumn)
     );
-    if state.is_air() || fluid {
+    if state.is_air() || passed {
         return &[];
     }
     match state.collision_shape() {
