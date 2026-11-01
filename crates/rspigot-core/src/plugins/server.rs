@@ -1,16 +1,19 @@
+use std::fmt::Display;
+
+use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::text::Component;
 use rspigot_domain::{Rotation, Vec3};
 
 use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::decisions::{Held, PendingMove, SettledMove, Undone, Verdict};
+use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
-    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Order, Phase, PlayerOrder,
+    Access, Answer, EffectSpec, EventKind, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
     PlayerSnapshot, PlayerState, Question, ToPlugin,
 };
 use crate::ports::ClientLink;
-use crate::server::{Audience, Server};
+use crate::server::Server;
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn next_event_id(&mut self) -> u64 {
@@ -51,7 +54,7 @@ impl<L: ClientLink> Server<L> {
         }
         match message {
             FromPlugin::Decision { event, cancel } => self.take_decision(connection, event, cancel),
-            FromPlugin::Order(order) => self.apply_order(order),
+            FromPlugin::Order(order) => self.apply_order(connection, order),
             FromPlugin::Question { request, question } => {
                 let answer = self.answer_question(question);
                 self.plugins
@@ -60,16 +63,17 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn apply_order(&mut self, order: Order) {
+    fn apply_order(&mut self, connection: u64, order: Order) {
         match order {
-            Order::Player {
-                player,
-                order: PlayerOrder::SendMessage(text),
-            } => self.push(
-                Audience::One(player),
-                ClientEvent::system(Component::text(text)),
-            ),
+            Order::Player { player, order } => self.apply_player_order(connection, player, order),
         }
+    }
+
+    pub(super) fn warn_plugin(&self, connection: u64, order: &str, reason: impl Display) {
+        self.plugins.send(
+            connection,
+            ToPlugin::Warning(format!("{order} was not applied: {reason}")),
+        );
     }
 
     fn answer_question(&mut self, question: Question) -> Answer {
@@ -296,11 +300,34 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn state_of(&self, id: PlayerId) -> Option<PlayerState> {
-        self.players.get(&id).map(|player| PlayerState {
-            player: self.describe(player),
-            health: player.vitals.health,
-            food: player.vitals.food.food,
-            level: player.vitals.experience.level,
+        self.players.get(&id).map(|player| {
+            let abilities = player.abilities();
+            let vitals = &player.vitals;
+            PlayerState {
+                player: self.describe(player),
+                health: vitals.health,
+                max_health: crate::health::max_health(player),
+                absorption: vitals.absorption,
+                food: vitals.food.food,
+                saturation: vitals.food.saturation,
+                exhaustion: vitals.food.exhaustion,
+                level: vitals.experience.level,
+                exp: vitals.experience.progress,
+                total_exp: vitals.experience.total,
+                operator: player.operator,
+                allow_flight: abilities.may_fly,
+                flying: abilities.flying,
+                fly_speed: abilities.fly_speed * SPEED_SCALE,
+                walk_speed: abilities.walk_speed * SPEED_SCALE,
+                sneaking: player.sneaking,
+                sprinting: player.sprinting,
+                on_ground: player.on_ground,
+                fire_ticks: vitals.fire_ticks,
+                dead: vitals.is_dead(),
+                effects: player.effects.iter().filter_map(effect_spec).collect(),
+                ping: player.latency,
+                locale: player.settings.locale.clone(),
+            }
         })
     }
 
@@ -313,6 +340,17 @@ impl<L: ClientLink> Server<L> {
         online.sort_by_key(|snapshot| snapshot.entity_id);
         online
     }
+}
+
+fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
+    Some(EffectSpec {
+        key: effect.effect.name()?.to_owned(),
+        duration: effect.duration.wire_ticks(),
+        amplifier: i32::from(effect.amplifier),
+        ambient: effect.ambient,
+        particles: effect.visible,
+        icon: effect.show_icon,
+    })
 }
 
 fn recipients(

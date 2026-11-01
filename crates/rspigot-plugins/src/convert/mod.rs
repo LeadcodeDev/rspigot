@@ -1,14 +1,15 @@
 mod player;
 mod server;
+mod shared;
 
 use rspigot_core::plugins::{
     Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority,
     Question, ToPlugin,
 };
-use rspigot_domain::Vec3;
 use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
 
 use player::{wire_player, wire_state};
+use shared::wire_vec;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Malformed {
@@ -26,6 +27,8 @@ pub(crate) enum Malformed {
     SecondHello,
     #[error("`{0}` is not supported yet")]
     Unsupported(&'static str),
+    #[error("unknown {field} value {value}")]
+    Enum { field: &'static str, value: i32 },
 }
 
 pub(crate) fn intro(hello: v1::Hello) -> Result<PluginIntro, Malformed> {
@@ -173,19 +176,11 @@ fn wire_answer(answer: Answer) -> answer::Body {
     }
 }
 
-const fn wire_vec(vec: Vec3) -> v1::Vec3 {
-    v1::Vec3 {
-        x: vec.x,
-        y: vec.y,
-        z: vec.z,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot};
-    use rspigot_domain::Rotation;
     use rspigot_domain::player::{GameMode, PlayerId};
+    use rspigot_domain::{Rotation, Vec3};
     use rspigot_plugin_protocol::v1::{player_order, world_order};
     use uuid::Uuid;
 
@@ -237,12 +232,12 @@ mod tests {
 
     #[test]
     fn an_order_or_question_not_supported_yet_is_dropped() {
-        let heal = body(from_plugin::Body::Player(v1::PlayerOrder {
+        let hide = body(from_plugin::Body::Player(v1::PlayerOrder {
             player: STEVE.into(),
-            order: Some(player_order::Order::SetHealth(5.0)),
+            order: Some(player_order::Order::HidePlayer(STEVE.into())),
         }));
         assert!(matches!(
-            from_plugin(heal),
+            from_plugin(hide),
             Err(Malformed::Unsupported("player order"))
         ));
         let save = body(from_plugin::Body::World(v1::WorldOrder {

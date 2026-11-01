@@ -16,7 +16,10 @@ pub mod world;
 pub use serverbound::ServerboundPlay;
 
 pub mod clientbound {
-    pub use super::chat::{DisguisedChat, PlayerChat, SystemChat};
+    pub use super::chat::{
+        ClearTitles, DisguisedChat, PlayerChat, SetSubtitleText, SetTitleText, SetTitlesAnimation,
+        SystemChat,
+    };
     pub use super::chunk::{ForgetLevelChunk, LevelChunkWithLight, LightUpdate};
     pub use super::combat::{DamageEvent, EntityEvent, HurtAnimation, PlayerCombatKill};
     pub use super::commands::{CommandSuggestions, Commands};
@@ -79,6 +82,10 @@ mod tests {
             (<PlayerInfoUpdate as Packet>::ID, 71),
             (<PlayerInfoRemove as Packet>::ID, 70),
             (<TabList as Packet>::ID, 125),
+            (<SetTitleText as Packet>::ID, 116),
+            (<SetSubtitleText as Packet>::ID, 114),
+            (<SetTitlesAnimation as Packet>::ID, 117),
+            (<ClearTitles as Packet>::ID, 14),
             (<AddEntity as Packet>::ID, 1),
             (<MoveEntityPos as Packet>::ID, 54),
             (<MoveEntityPosRot as Packet>::ID, 55),
