@@ -10,7 +10,7 @@ use rspigot_domain::world::{Difficulty, Dimension};
 use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::admin::{AdminLists, Ban};
+use crate::admin::{AdminLists, Ban, format_ban_date};
 use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, MobGeneration, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
@@ -32,6 +32,8 @@ use crate::ports::{
 use crate::spawning::Spawning;
 use crate::status::{PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
+
+const KICK_DATE: &str = "%Y-%m-%d at %H:%M:%S UTC";
 
 pub(crate) enum Audience {
     One(PlayerId),
@@ -565,10 +567,13 @@ impl<L: ClientLink> Server<L> {
     ) {
         let mut reason =
             Component::translatable(format!("{key}.reason"), vec![ban.reason_message()]);
-        if let Some(expires) = ban.expires {
+        if let Some(date) = ban
+            .expires
+            .and_then(|expires| format_ban_date(expires, KICK_DATE))
+        {
             reason = reason.append(Component::translatable(
                 format!("{key}.expiration"),
-                vec![Component::text(kick_date(expires))],
+                vec![Component::text(date)],
             ));
         }
         tracing::info!(
@@ -901,12 +906,6 @@ impl<L: ClientLink> Server<L> {
         );
         self.world.level
     }
-}
-
-fn kick_date(time: SystemTime) -> String {
-    chrono::DateTime::<chrono::Utc>::from(time)
-        .format("%Y-%m-%d at %H:%M:%S UTC")
-        .to_string()
 }
 
 fn queued<T>(inbound: &Receiver<T>) -> impl Iterator<Item = T> {

@@ -6,6 +6,7 @@ use rspigot_domain::damage::DamageType;
 use rspigot_domain::food::{MAX_FOOD, MAX_SATURATION};
 use rspigot_domain::player::PlayerId;
 
+use crate::admin::ListEntry;
 use crate::commands::{self, CommandContext, CommandSender};
 use crate::events::{ClientEvent, SoundSource};
 use crate::health::{self, DamageSource};
@@ -227,9 +228,10 @@ impl<L: ClientLink> Server<L> {
             }
             PlayerOrder::UpdateInventory => self.send_inventory(id),
             PlayerOrder::Ban { reason, expires } => {
-                if let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) {
+                let expires = resolve::expiry_of(expires)?;
+                if let Some(target) = self.players.get(&id).map(|p| ListEntry::of(&p.profile)) {
                     let source = self.plugin_name(connection);
-                    CommandContext::ban_profile(self, &name, &source, reason, expires);
+                    CommandContext::ban_profile(self, target, &source, reason, expires);
                 }
             }
         }

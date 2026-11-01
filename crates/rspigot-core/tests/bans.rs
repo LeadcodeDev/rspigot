@@ -2,15 +2,18 @@ mod common;
 
 use std::cell::Cell;
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use common::*;
 use crossbeam_channel::{Receiver, unbounded};
 use rspigot_core::admin::{AdminLists, Ban, BanEntry, IpBanEntry, ListEntry};
-use rspigot_core::config::PluginSettings;
+use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::console::console_text;
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::{Answer, Order, PlayerOrder, Question, ServerOrder};
+use rspigot_core::server::Server;
+use rspigot_core::status::StatusBoard;
 use rspigot_domain::player::PlayerId;
 use rspigot_domain::text::Content;
 
@@ -36,6 +39,45 @@ fn setup() -> (Scene, Receiver<AdminLists>) {
     };
     s.act(Order::Server(ServerOrder::OperatorAdd("Alice".into())));
     (s, published)
+}
+
+fn far_future() -> SystemTime {
+    UNIX_EPOCH + Duration::from_millis(i64::MAX.unsigned_abs())
+}
+
+fn far_past() -> SystemTime {
+    UNIX_EPOCH - Duration::from_millis(i64::MAX.unsigned_abs())
+}
+
+fn server_with_bans(bans: Vec<BanEntry>) -> Server<Link> {
+    let config = GameConfig {
+        view_distance: 3,
+        chunk_workers: 2,
+        admin: AdminLists {
+            bans,
+            ..AdminLists::default()
+        },
+        ..GameConfig::default()
+    };
+    let mut server = Server::new(
+        config,
+        LevelData::default(),
+        Arc::new(NoStore),
+        Arc::new(Floor),
+        StatusBoard::new(20),
+    )
+    .with_clock(clock);
+    server.wait_for_spawn(Duration::from_secs(10));
+    server
+}
+
+fn twins() -> (Scene, Player, Player) {
+    let (mut s, _published) = setup();
+    let upper = join(&mut s.server, "Steve");
+    let lower = join(&mut s.server, "steve");
+    assert_ne!(upper.id, lower.id);
+    assert_eq!(s.server.players_online(), 3);
+    (s, upper, lower)
 }
 
 fn said(player: &Player) -> Vec<String> {
@@ -339,4 +381,115 @@ fn plugin_bans_and_their_lists() {
         panic!("expected the state of Alice");
     };
     assert_eq!(state.address, IpAddr::from([127, 0, 0, 1]));
+}
+
+#[test]
+fn an_expiry_the_ban_files_cannot_hold_is_refused_with_one_warning() {
+    let (mut s, _published) = setup();
+    let steve = join(&mut s.server, "Steve");
+    s.act(Order::Server(ServerOrder::BanAdd {
+        name: "Carol".into(),
+        reason: None,
+        expires: Some(far_future()),
+    }));
+    s.act(Order::Server(ServerOrder::IpBanAdd {
+        address: "203.0.113.9".into(),
+        reason: None,
+        expires: Some(far_past()),
+    }));
+    s.act(Order::Player {
+        player: steve.id,
+        order: PlayerOrder::Ban {
+            reason: None,
+            expires: Some(far_future()),
+        },
+    });
+    let reason = "expiry is outside the dates a ban can store";
+    assert_eq!(
+        s.warnings(),
+        [
+            format!("server.ban_add was not applied: {reason}"),
+            format!("server.ip_ban_add was not applied: {reason}"),
+            format!("player.ban was not applied: {reason}"),
+        ]
+    );
+    assert_eq!(bans(&mut s), []);
+    assert_eq!(ip_bans(&mut s), []);
+    assert!(steve.link.disconnected_with().is_none());
+}
+
+#[test]
+fn a_date_outside_the_range_never_breaks_the_kick_text() {
+    let mut server = server_with_bans(vec![Ban {
+        target: ListEntry::named("Steve"),
+        created: far_past(),
+        source: "Server".into(),
+        expires: Some(far_future()),
+        reason: None,
+    }]);
+    let steve = join(&mut server, "Steve");
+    assert_eq!(
+        refusal(&steve),
+        "You are banned from this server.\nReason: Banned by an operator."
+    );
+}
+
+#[test]
+fn a_plugin_ban_hits_the_player_it_names_not_a_name_twin() {
+    for banned_lower in [true, false] {
+        let (mut s, upper, lower) = twins();
+        let (banned, spared) = if banned_lower {
+            (lower, upper)
+        } else {
+            (upper, lower)
+        };
+        s.act(Order::Player {
+            player: banned.id,
+            order: PlayerOrder::Ban {
+                reason: None,
+                expires: None,
+            },
+        });
+        assert_eq!(refusal(&banned), "You are banned from this server");
+        assert!(spared.link.disconnected_with().is_none());
+        assert_eq!(bans(&mut s)[0].target.uuid, Some(banned.id.0));
+    }
+}
+
+#[test]
+fn a_selector_ban_hits_the_selected_player_not_a_name_twin() {
+    for name in ["steve", "Steve"] {
+        let (mut s, upper, lower) = twins();
+        let alice = s.players[0].clone();
+        let (banned, spared) = if name == "steve" {
+            (lower, upper)
+        } else {
+            (upper, lower)
+        };
+        assert_eq!(
+            command(&mut s, &alice, &format!("/ban @a[name={name}]")),
+            [format!("Banned {name}: Banned by an operator.")]
+        );
+        assert_eq!(refusal(&banned), "You are banned from this server");
+        assert!(spared.link.disconnected_with().is_none());
+        assert_eq!(bans(&mut s)[0].target.uuid, Some(banned.id.0));
+    }
+}
+
+#[test]
+fn a_ban_of_another_uuid_with_the_same_name_is_a_new_ban() {
+    let (mut s, _published) = setup();
+    let alice = s.players[0].clone();
+    let upper = join(&mut s.server, "Steve");
+    command(&mut s, &alice, "/ban Steve");
+    assert!(upper.link.disconnected_with().is_some());
+    let lower = join(&mut s.server, "steve");
+    assert!(lower.link.disconnected_with().is_none());
+    assert_eq!(
+        command(&mut s, &alice, "/ban steve"),
+        ["Banned steve: Banned by an operator."]
+    );
+    assert_eq!(refusal(&lower), "You are banned from this server");
+    let uuids: Vec<_> = bans(&mut s).iter().map(|ban| ban.target.uuid).collect();
+    assert_eq!(uuids, [Some(upper.id.0), Some(lower.id.0)]);
 }

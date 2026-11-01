@@ -7,7 +7,7 @@ use crate::config::GameRules;
 use crate::events::{ClientEvent, GameEvent, SoundSource};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
-use crate::plugins::resolve::{self, finite_not_negative, name_of};
+use crate::plugins::resolve::{self, expiry_of, finite_not_negative, name_of};
 use crate::plugins::{GameRule, ServerOrder, ServerState, WorldOrder, WorldState};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -55,11 +55,14 @@ impl<L: ClientLink> Server<L> {
                 reason,
                 expires,
             } => {
+                let target = CommandContext::profile_entry(self, name_of(&name)?);
+                let expires = expiry_of(expires)?;
                 let source = self.plugin_name(connection);
-                CommandContext::ban_profile(self, name_of(&name)?, &source, reason, expires);
+                CommandContext::ban_profile(self, target, &source, reason, expires);
             }
             ServerOrder::BanRemove(name) => {
-                CommandContext::pardon_profile(self, name_of(&name)?);
+                let target = CommandContext::profile_entry(self, name_of(&name)?);
+                CommandContext::pardon_profile(self, &target);
             }
             ServerOrder::IpBanAdd {
                 address,
@@ -67,6 +70,7 @@ impl<L: ClientLink> Server<L> {
                 expires,
             } => {
                 let address = address_of(&address)?;
+                let expires = expiry_of(expires)?;
                 let source = self.plugin_name(connection);
                 CommandContext::ban_address(self, address, &source, reason, expires);
             }

@@ -1,6 +1,8 @@
+use std::fmt::Write;
 use std::net::IpAddr;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use chrono::{DateTime, TimeZone, Utc};
 use rspigot_domain::player::GameProfile;
 use rspigot_domain::text::Component;
 use uuid::Uuid;
@@ -32,10 +34,6 @@ impl ListEntry {
 
     pub fn matches_name(&self, name: &str) -> bool {
         self.name.eq_ignore_ascii_case(name)
-    }
-
-    pub fn matches_entry(&self, other: &Self) -> bool {
-        self.matches_name(&other.name) || (other.uuid.is_some() && self.uuid == other.uuid)
     }
 }
 
@@ -69,12 +67,50 @@ impl<T> Ban<T> {
 }
 
 impl BanEntry {
-    fn bans(&self, profile: &GameProfile) -> bool {
-        match self.target.uuid {
-            Some(uuid) => uuid == profile.id.0,
-            None => self.target.matches_name(&profile.name),
+    fn bans(&self, name: &str, uuid: Option<Uuid>) -> bool {
+        match (self.target.uuid, uuid) {
+            (Some(banned), Some(uuid)) => banned == uuid,
+            _ => self.target.matches_name(name),
         }
     }
+}
+
+pub(crate) fn utc(time: SystemTime) -> Option<DateTime<Utc>> {
+    let (seconds, nanos) = match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => (i64::try_from(after.as_secs()).ok()?, after.subsec_nanos()),
+        Err(before) => {
+            let before = before.duration();
+            let seconds = i64::try_from(before.as_secs()).ok()?;
+            match before.subsec_nanos() {
+                0 => (-seconds, 0),
+                nanos => (-seconds - 1, 1_000_000_000 - nanos),
+            }
+        }
+    };
+    DateTime::from_timestamp(seconds, nanos)
+}
+
+pub fn format_ban_date(time: SystemTime, pattern: &str) -> Option<String> {
+    let mut text = String::new();
+    write!(text, "{}", utc(time)?.format(pattern)).ok()?;
+    Some(text)
+}
+
+pub fn parse_ban_date(text: &str, pattern: &str) -> Option<SystemTime> {
+    let date = DateTime::parse_from_str(text, pattern).ok()?;
+    system_time(&date)
+}
+
+fn system_time<Tz: TimeZone>(date: &DateTime<Tz>) -> Option<SystemTime> {
+    let seconds = Duration::from_secs(date.timestamp().unsigned_abs());
+    let whole = if date.timestamp() < 0 {
+        UNIX_EPOCH.checked_sub(seconds)
+    } else {
+        UNIX_EPOCH.checked_add(seconds)
+    }?;
+    whole.checked_add(Duration::from_nanos(u64::from(
+        date.timestamp_subsec_nanos(),
+    )))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -98,9 +134,23 @@ impl AdminLists {
     }
 
     pub fn profile_ban(&self, profile: &GameProfile, now: SystemTime) -> Option<&BanEntry> {
+        self.ban_matching(&profile.name, Some(profile.id.0), now)
+    }
+
+    pub fn ban_of(&self, target: &ListEntry, now: SystemTime) -> Option<&BanEntry> {
+        self.ban_matching(&target.name, target.uuid, now)
+    }
+
+    fn ban_matching(&self, name: &str, uuid: Option<Uuid>, now: SystemTime) -> Option<&BanEntry> {
         self.bans
             .iter()
-            .find(|ban| ban.bans(profile) && !ban.has_expired(now))
+            .find(|ban| ban.bans(name, uuid) && !ban.has_expired(now))
+    }
+
+    pub fn remove_ban(&mut self, target: &ListEntry) -> bool {
+        let before = self.bans.len();
+        self.bans.retain(|ban| !ban.bans(&target.name, target.uuid));
+        self.bans.len() != before
     }
 
     pub fn ip_ban(&self, address: IpAddr, now: SystemTime) -> Option<&IpBanEntry> {
@@ -129,7 +179,10 @@ impl AdminLists {
     }
 
     pub fn add(list: &mut Vec<ListEntry>, entry: ListEntry) -> bool {
-        if let Some(existing) = list.iter_mut().find(|e| e.matches_entry(&entry)) {
+        if let Some(existing) = list
+            .iter_mut()
+            .find(|e| e.matches_name(&entry.name) || (entry.uuid.is_some() && e.uuid == entry.uuid))
+        {
             if existing.uuid.is_none() && entry.uuid.is_some() {
                 *existing = entry;
             }
@@ -229,6 +282,14 @@ mod tests {
             Some(&ListEntry::named("CAROL"))
         );
         assert!(lists.profile_ban(&profile("Dave"), noon()).is_none());
+        assert!(lists.ban_of(&ListEntry::named("steve"), noon()).is_some());
+        assert!(
+            lists
+                .ban_of(&ListEntry::of(&profile("steve")), noon())
+                .is_none()
+        );
+        assert!(!lists.remove_ban(&ListEntry::of(&profile("steve"))));
+        assert_eq!(lists.bans.len(), 2);
         assert!(lists.learn_uuid(&profile("carol")));
         assert_eq!(
             lists.bans[1].target.uuid,
@@ -264,5 +325,32 @@ mod tests {
             lists.bans[0].reason_message(),
             Component::translatable("multiplayer.disconnect.banned.reason.default", Vec::new())
         );
+    }
+
+    #[test]
+    fn ban_dates_outside_the_range_are_refused_not_panicked() {
+        let pattern = "%Y-%m-%d %H:%M:%S %z";
+        let far = UNIX_EPOCH + Duration::from_millis(i64::MAX.unsigned_abs());
+        let far_back = UNIX_EPOCH - Duration::from_millis(i64::MAX.unsigned_abs());
+        assert_eq!(format_ban_date(far, pattern), None);
+        assert_eq!(format_ban_date(far_back, pattern), None);
+        assert_eq!(
+            format_ban_date(noon(), pattern).as_deref(),
+            Some("2026-11-01 12:00:00 +0000")
+        );
+        let before_1970 = UNIX_EPOCH - Duration::from_millis(1_500);
+        assert_eq!(
+            format_ban_date(before_1970, pattern).as_deref(),
+            Some("1969-12-31 23:59:58 +0000")
+        );
+        assert_eq!(
+            parse_ban_date("2026-11-01 14:00:00 +0200", pattern),
+            Some(noon())
+        );
+        assert_eq!(
+            parse_ban_date("1969-12-31 23:59:59 +0000", pattern),
+            Some(UNIX_EPOCH - Duration::from_secs(1))
+        );
+        assert_eq!(parse_ban_date("forever", pattern), None);
     }
 }

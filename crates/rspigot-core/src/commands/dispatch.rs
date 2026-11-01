@@ -10,7 +10,7 @@ use rspigot_items::ItemKind;
 use rspigot_nbt::Compound;
 
 use super::selector::split_argument;
-use crate::admin::{Ban, BanEntry, IpBanEntry, ban_reason};
+use crate::admin::{Ban, BanEntry, IpBanEntry, ListEntry, ban_reason};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Target {
@@ -65,12 +65,12 @@ pub trait CommandContext {
     fn whitelist_names(&self) -> Vec<String>;
     fn ban_profile(
         &mut self,
-        name: &str,
+        target: ListEntry,
         source: &str,
         reason: Option<String>,
         expires: Option<SystemTime>,
     ) -> bool;
-    fn pardon_profile(&mut self, name: &str) -> bool;
+    fn pardon_profile(&mut self, target: &ListEntry) -> bool;
     fn ban_address(
         &mut self,
         address: IpAddr,
@@ -101,6 +101,19 @@ pub trait CommandContext {
 
     fn sender_rotation(&self, _sender: CommandSender) -> Rotation {
         Rotation::default()
+    }
+
+    fn player_entry(&self, player: PlayerId) -> Option<ListEntry> {
+        self.player_name(player).map(|name| ListEntry {
+            name,
+            uuid: Some(player.0),
+        })
+    }
+
+    fn profile_entry(&self, name: &str) -> ListEntry {
+        self.find_player(name)
+            .and_then(|id| self.player_entry(id))
+            .unwrap_or_else(|| ListEntry::named(name))
     }
 
     fn sender_origin(&self, sender: CommandSender) -> Vec3 {
@@ -1331,16 +1344,15 @@ fn profile_targets<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
     raw: &str,
-) -> Result<Vec<String>, CommandOutcome> {
+) -> Result<Vec<ListEntry>, CommandOutcome> {
     if !raw.starts_with('@') {
-        let online = ctx.find_player(raw).and_then(|id| ctx.player_name(id));
-        return Ok(vec![online.unwrap_or_else(|| raw.to_owned())]);
+        return Ok(vec![ctx.profile_entry(raw)]);
     }
     match ctx.select_players(sender, raw) {
         Ok(players) if players.is_empty() => Err(not_found(ctx, sender)),
         Ok(players) => Ok(players
             .into_iter()
-            .filter_map(|id| ctx.player_name(id))
+            .filter_map(|id| ctx.player_entry(id))
             .collect()),
         Err(message) => {
             ctx.reply(sender, message.color(NamedColor::Red));
@@ -1357,15 +1369,16 @@ fn ban<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> 
     let Some(raw) = args.first() else {
         return usage(ctx, sender, "/ban <targets> [<reason>]");
     };
-    let names = match profile_targets(ctx, sender, raw) {
-        Ok(names) => names,
+    let targets = match profile_targets(ctx, sender, raw) {
+        Ok(targets) => targets,
         Err(outcome) => return outcome,
     };
     let reason = reason_argument(args);
     let source = ctx.sender_name(sender);
     let mut banned = 0;
-    for name in names {
-        if ctx.ban_profile(&name, &source, reason.clone(), None) {
+    for target in targets {
+        let name = target.name.clone();
+        if ctx.ban_profile(target, &source, reason.clone(), None) {
             banned += 1;
             ctx.reply(
                 sender,
@@ -1427,17 +1440,20 @@ fn pardon<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) 
     let Some(raw) = args.first() else {
         return usage(ctx, sender, "/pardon <targets>");
     };
-    let names = match profile_targets(ctx, sender, raw) {
-        Ok(names) => names,
+    let targets = match profile_targets(ctx, sender, raw) {
+        Ok(targets) => targets,
         Err(outcome) => return outcome,
     };
     let mut pardoned = 0;
-    for name in names {
-        if ctx.pardon_profile(&name) {
+    for target in targets {
+        if ctx.pardon_profile(&target) {
             pardoned += 1;
             ctx.reply(
                 sender,
-                Component::translatable("commands.pardon.success", vec![Component::text(name)]),
+                Component::translatable(
+                    "commands.pardon.success",
+                    vec![Component::text(target.name)],
+                ),
             );
         }
     }
@@ -1706,14 +1722,14 @@ mod tests {
         }
         fn ban_profile(
             &mut self,
-            _: &str,
+            _: ListEntry,
             _: &str,
             _: Option<String>,
             _: Option<SystemTime>,
         ) -> bool {
             true
         }
-        fn pardon_profile(&mut self, _: &str) -> bool {
+        fn pardon_profile(&mut self, _: &ListEntry) -> bool {
             true
         }
         fn ban_address(

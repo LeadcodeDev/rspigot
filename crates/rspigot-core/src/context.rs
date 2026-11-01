@@ -216,24 +216,19 @@ impl<L: ClientLink> CommandContext for Server<L> {
 
     fn ban_profile(
         &mut self,
-        name: &str,
+        target: ListEntry,
         source: &str,
         reason: Option<String>,
         expires: Option<SystemTime>,
     ) -> bool {
         let now = self.prune_expired_bans();
-        let online = self.find_player(name);
-        let target = online
-            .and_then(|id| self.players.get(&id))
-            .map_or_else(|| ListEntry::named(name), |p| ListEntry::of(&p.profile));
-        if self
-            .admin
-            .bans
-            .iter()
-            .any(|ban| ban.target.matches_entry(&target))
-        {
+        if self.admin.ban_of(&target, now).is_some() {
             return false;
         }
+        let online = target
+            .uuid
+            .map(PlayerId)
+            .filter(|id| self.players.contains_key(id));
         self.admin.bans.push(Ban {
             target,
             created: now,
@@ -251,11 +246,9 @@ impl<L: ClientLink> CommandContext for Server<L> {
         true
     }
 
-    fn pardon_profile(&mut self, name: &str) -> bool {
+    fn pardon_profile(&mut self, target: &ListEntry) -> bool {
         self.prune_expired_bans();
-        let before = self.admin.bans.len();
-        self.admin.bans.retain(|ban| !ban.target.matches_name(name));
-        let changed = self.admin.bans.len() != before;
+        let changed = self.admin.remove_ban(target);
         if changed {
             self.publish_admin();
         }
