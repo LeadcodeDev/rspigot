@@ -1,4 +1,5 @@
 mod block;
+mod custom_inventory;
 mod entity;
 mod inventory;
 mod player;
@@ -30,8 +31,6 @@ pub(crate) enum Malformed {
     Empty,
     #[error("the plugin already introduced itself")]
     SecondHello,
-    #[error("`{0}` is not supported yet")]
-    Unsupported(&'static str),
     #[error("unknown {field} value {value}")]
     Enum { field: &'static str, value: i32 },
     #[error("{0} ms is not a time the server can hold")]
@@ -60,12 +59,9 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
         Ok(v1::EventKind::PlayerJoin) => EventKind::PlayerJoin,
         Ok(v1::EventKind::PlayerLeave) => EventKind::PlayerLeave,
         Ok(v1::EventKind::PlayerMove) => EventKind::PlayerMove,
-        Ok(
-            v1::EventKind::Unspecified
-            | v1::EventKind::InventoryClick
-            | v1::EventKind::InventoryClose,
-        )
-        | Err(_) => return Err(unknown("event", handler.event)),
+        Ok(v1::EventKind::InventoryClick) => EventKind::InventoryClick,
+        Ok(v1::EventKind::InventoryClose) => EventKind::InventoryClose,
+        Ok(v1::EventKind::Unspecified) | Err(_) => return Err(unknown("event", handler.event)),
     };
     let access = match v1::Access::try_from(handler.access) {
         Ok(v1::Access::Observe) => Access::Observe,
@@ -102,8 +98,8 @@ pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malform
         from_plugin::Body::World(order) => FromPlugin::Order(world::order(order)?),
         from_plugin::Body::Block(order) => FromPlugin::Order(block::order(order)?),
         from_plugin::Body::Entity(order) => FromPlugin::Order(entity::order(order)?),
-        from_plugin::Body::CustomInventory(_) => {
-            return Err(Malformed::Unsupported("custom inventory order"));
+        from_plugin::Body::CustomInventory(order) => {
+            FromPlugin::Order(custom_inventory::order(order)?)
         }
         from_plugin::Body::Question(asked) => question(asked)?,
     })
@@ -128,7 +124,7 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
         question::Question::Entity(id) => Question::Entity(EntityId(id)),
         question::Question::Spawn(spawn) => entity::spawn(spawn)?,
         question::Question::DropItem(drop) => entity::drop_item(drop)?,
-        question::Question::CustomInventory(_) => return Err(Malformed::Unsupported("question")),
+        question::Question::CustomInventory(id) => Question::CustomInventory(id),
     };
     Ok(FromPlugin::Question {
         request: asked.request,
@@ -185,6 +181,18 @@ fn wire_payload(payload: EventPayload) -> event::Payload {
                 to: Some(wire_vec(to)),
             })
         }
+        EventPayload::InventoryClick {
+            player,
+            inventory,
+            slot,
+            kind,
+            item,
+        } => custom_inventory::wire_click(player, inventory, slot, kind, item),
+        EventPayload::InventoryClose {
+            player,
+            inventory,
+            by_player,
+        } => custom_inventory::wire_close(player, inventory, by_player),
     }
 }
 
@@ -207,6 +215,9 @@ fn wire_answer(answer: Answer) -> answer::Body {
         Answer::Entity(details) => answer::Body::Entity(entity::wire_details(details)),
         Answer::Spawned(view) => answer::Body::Spawned(entity::wire_view(view)),
         Answer::Target(hit) => answer::Body::Target(player::wire_target(hit)),
+        Answer::CustomInventory(state) => {
+            answer::Body::CustomInventory(custom_inventory::wire_state(state))
+        }
         Answer::Refused(reason) => answer::Body::Refused(v1::Refused { reason }),
         Answer::NotFound => answer::Body::NotFound(v1::NotFound {}),
     }
@@ -217,7 +228,7 @@ mod tests {
     use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot};
     use rspigot_domain::player::{GameMode, PlayerId};
     use rspigot_domain::{Rotation, Vec3};
-    use rspigot_plugin_protocol::v1::{custom_inventory_order, player_order};
+    use rspigot_plugin_protocol::v1::player_order;
     use uuid::Uuid;
 
     use super::*;
@@ -264,36 +275,6 @@ mod tests {
                 question: Question::Players
             }
         );
-    }
-
-    #[test]
-    fn an_order_or_question_not_supported_yet_is_dropped() {
-        let open = body(from_plugin::Body::Player(v1::PlayerOrder {
-            player: STEVE.into(),
-            order: Some(player_order::Order::OpenInventory(1)),
-        }));
-        assert!(matches!(
-            from_plugin(open),
-            Err(Malformed::Unsupported("player order"))
-        ));
-        let clear = body(from_plugin::Body::CustomInventory(
-            v1::CustomInventoryOrder {
-                inventory: 1,
-                order: Some(custom_inventory_order::Order::Clear(v1::Empty {})),
-            },
-        ));
-        assert!(matches!(
-            from_plugin(clear),
-            Err(Malformed::Unsupported("custom inventory order"))
-        ));
-        let custom = body(from_plugin::Body::Question(v1::Question {
-            request: 1,
-            question: Some(question::Question::CustomInventory(1)),
-        }));
-        assert!(matches!(
-            from_plugin(custom),
-            Err(Malformed::Unsupported("question"))
-        ));
     }
 
     #[test]

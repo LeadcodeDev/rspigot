@@ -55,7 +55,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_container_click(&mut self, id: PlayerId, click: ContainerClick) {
-        if self.handle_open_menu_click(id, &click) {
+        if self.handle_plugin_menu_click(id, &click) || self.handle_open_menu_click(id, &click) {
             return;
         }
         let Some(player) = self.players.get_mut(&id) else {

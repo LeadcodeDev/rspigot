@@ -45,6 +45,30 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn notify_owner(&mut self, connection: u64, payload: EventPayload) {
+        let owned = self
+            .plugins
+            .listeners(payload.kind(), Access::Observe, &self.config.plugins)
+            .into_iter()
+            .filter(|(listener, _)| *listener == connection)
+            .collect();
+        if let Some((connection, handlers)) =
+            recipients(owned, false, Phase::Settled).into_iter().next()
+        {
+            let id = self.next_event_id();
+            self.plugins.send(
+                connection,
+                ToPlugin::Event {
+                    id,
+                    handlers,
+                    phase: Phase::Settled,
+                    cancelled: false,
+                    payload,
+                },
+            );
+        }
+    }
+
     pub(crate) fn snapshot_of(&self, id: PlayerId) -> Option<PlayerSnapshot> {
         self.players.get(&id).map(|player| self.describe(player))
     }
@@ -57,7 +81,7 @@ impl<L: ClientLink> Server<L> {
             FromPlugin::Decision { event, cancel } => self.take_decision(connection, event, cancel),
             FromPlugin::Order(order) => self.apply_order(connection, order),
             FromPlugin::Question { request, question } => {
-                let answer = self.answer_question(question);
+                let answer = self.answer_question(connection, question);
                 self.plugins
                     .send(connection, ToPlugin::Answer { request, answer });
             }
@@ -74,6 +98,9 @@ impl<L: ClientLink> Server<L> {
             Order::World(order) => self.apply_world_order(connection, order),
             Order::Block { pos, order } => self.apply_block_order(connection, pos, order),
             Order::Entity { entity, order } => self.apply_entity_order(connection, entity, order),
+            Order::CustomInventory { inventory, order } => {
+                self.apply_custom_inventory_order(connection, inventory, order);
+            }
         }
     }
 
@@ -88,7 +115,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn answer_question(&mut self, question: Question) -> Answer {
+    fn answer_question(&mut self, connection: u64, question: Question) -> Answer {
         match question {
             Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
             Question::Players => Answer::Players(self.online_snapshots()),
@@ -130,6 +157,9 @@ impl<L: ClientLink> Server<L> {
             Question::DropItem { position, item } => self
                 .drop_for_plugin(position, &item)
                 .map_or_else(Answer::Refused, |id| self.spawned(id)),
+            Question::CustomInventory(inventory) => self
+                .custom_inventory_state(connection, inventory)
+                .map_or(Answer::NotFound, Answer::CustomInventory),
         }
     }
 
@@ -212,6 +242,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn plugin_disconnected(&mut self, connection: u64) {
         self.plugins.disconnect(connection);
+        self.forget_plugin_inventories(connection);
         self.release_departed_plugins();
     }
 
