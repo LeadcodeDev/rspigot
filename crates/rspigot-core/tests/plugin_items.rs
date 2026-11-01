@@ -321,6 +321,53 @@ fn remove_clear_and_held_slot() {
 }
 
 #[test]
+fn a_reset_name_is_not_italic_and_survives_a_round_trip() {
+    let mut s = scene(&["Alice"]);
+    let alice = s.players[0].clone();
+    let plain = ItemSpec {
+        name: Some("§rPlain".into()),
+        ..ItemSpec::of("minecraft:stone", 1)
+    };
+    s.act(inv(
+        &alice,
+        InventoryOrder::Set {
+            slot: 0,
+            item: Some(plain),
+        },
+    ));
+    let sent = alice
+        .link
+        .take()
+        .into_iter()
+        .find_map(|event| match event {
+            ClientEvent::InventorySlot {
+                slot: 36,
+                stack: Some(stack),
+                ..
+            } => Some(stack),
+            _ => None,
+        })
+        .expect("Alice receives the stone");
+    let Some(Tag::Compound(name)) = sent.components.get("minecraft:custom_name") else {
+        panic!("the name is a styled compound");
+    };
+    assert_eq!(name.get_bool("italic"), Some(false));
+    let read = item(&inventory(&mut s, &alice), 0);
+    assert_eq!(read.name.as_deref(), Some("§rPlain"));
+    s.act(inv(
+        &alice,
+        InventoryOrder::Set {
+            slot: 1,
+            item: Some(read),
+        },
+    ));
+    assert_eq!(
+        item(&inventory(&mut s, &alice), 1).name.as_deref(),
+        Some("§rPlain")
+    );
+}
+
+#[test]
 fn a_name_with_an_ampersand_survives_a_round_trip() {
     let mut s = scene(&["Alice"]);
     let alice = s.players[0].clone();

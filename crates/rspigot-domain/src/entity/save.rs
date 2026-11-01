@@ -1293,6 +1293,29 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_name_survives_a_save_and_reload() {
+        let mut stack = ItemStack::new(ItemKind::DiamondSword.id(), NonZeroU8::MIN);
+        let plain = Component::from_section_codes("§rPlain");
+        stack.set_custom_name(Some(&plain));
+        let Some(Tag::Compound(name)) = stack.components.get(crate::item::CUSTOM_NAME) else {
+            panic!("a styled name is a compound");
+        };
+        assert_eq!(name.get("italic"), Some(&Tag::Byte(0)));
+        let mut bytes = Vec::new();
+        rspigot_nbt::write_named(&mut bytes, "", &item_stack_to_nbt(&stack));
+        let (_, read) = rspigot_nbt::read_named(&mut bytes.as_slice()).unwrap();
+        let reloaded = item_stack_from_nbt(&read).unwrap();
+        assert_eq!(reloaded.custom_name(), Some(plain));
+        assert_eq!(
+            reloaded
+                .custom_name()
+                .map(|name| name.to_legacy())
+                .as_deref(),
+            Some("§rPlain")
+        );
+    }
+
+    #[test]
     fn item_and_falling_block_keys() {
         let item_nbt = Compound::new()
             .with("id", "minecraft:item")

@@ -2235,6 +2235,30 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_name_reaches_the_client_without_italic() {
+        let name = rspigot_domain::entity::save::component_to_tag(&Component::from_section_codes(
+            "§rPlain",
+        ));
+        let bytes = component_bytes("minecraft:custom_name", name);
+        let Some(rspigot_nbt::Tag::Compound(sent)) =
+            rspigot_nbt::read_network(&mut bytes.as_slice()).unwrap()
+        else {
+            panic!("the name is sent as a compound");
+        };
+        assert_eq!(sent.get_str("text"), Some("Plain"));
+        for flag in [
+            "bold",
+            "italic",
+            "underlined",
+            "strikethrough",
+            "obfuscated",
+        ] {
+            assert_eq!(sent.get(flag), Some(&rspigot_nbt::Tag::Byte(0)), "{flag}");
+        }
+        assert!(sent.get("color").is_none());
+    }
+
+    #[test]
     fn the_trim_component_names_its_material_then_its_pattern_by_registry_id() {
         let trim = rspigot_nbt::Compound::new()
             .with("material", "minecraft:copper")
