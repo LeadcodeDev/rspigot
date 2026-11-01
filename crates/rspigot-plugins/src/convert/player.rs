@@ -1,10 +1,11 @@
-use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot, PlayerState};
+use rspigot_core::events::Direction;
+use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot, PlayerState, Question, TargetHit};
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_plugin_protocol::v1::{self, player_order::Order as Wire};
+use rspigot_plugin_protocol::v1::{self, player_order::Order as Wire, target};
 use uuid::Uuid;
 
-use super::Malformed;
-use super::shared::{self, required, wire_rotation, wire_vec};
+use super::shared::{self, required, wire_block_pos, wire_rotation, wire_vec};
+use super::{Malformed, entity};
 
 pub(super) fn order(order: v1::PlayerOrder) -> Result<Order, Malformed> {
     let player = id(order.player)?;
@@ -66,6 +67,45 @@ pub(super) fn id(raw: String) -> Result<PlayerId, Malformed> {
     Uuid::parse_str(&raw)
         .map(PlayerId)
         .map_err(|_| Malformed::Player(raw))
+}
+
+pub(super) fn target_block(query: v1::TargetQuery) -> Result<Question, Malformed> {
+    Ok(Question::TargetBlock {
+        player: id(query.player)?,
+        max_distance: query.max_distance,
+    })
+}
+
+pub(super) fn target_entity(query: v1::TargetQuery) -> Result<Question, Malformed> {
+    Ok(Question::TargetEntity {
+        player: id(query.player)?,
+        max_distance: query.max_distance,
+    })
+}
+
+pub(super) fn wire_target(hit: Option<TargetHit>) -> v1::Target {
+    v1::Target {
+        hit: hit.map(|hit| match hit {
+            TargetHit::Block { pos, face, kind } => target::Hit::Block(v1::BlockHit {
+                pos: Some(wire_block_pos(pos)),
+                face: wire_face(face) as i32,
+                block: kind,
+            }),
+            TargetHit::Player(player) => target::Hit::Player(wire_player(player)),
+            TargetHit::Entity(view) => target::Hit::Entity(entity::wire_view(view)),
+        }),
+    }
+}
+
+const fn wire_face(face: Direction) -> v1::Face {
+    match face {
+        Direction::Down => v1::Face::Down,
+        Direction::Up => v1::Face::Up,
+        Direction::North => v1::Face::North,
+        Direction::South => v1::Face::South,
+        Direction::West => v1::Face::West,
+        Direction::East => v1::Face::East,
+    }
 }
 
 pub(super) fn wire_state(state: PlayerState) -> v1::PlayerState {
@@ -142,12 +182,14 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use rspigot_core::plugins::{
-        EffectSpec, ParticleDataSpec, ParticleSpec, PlayerOrder, PlayerState, TitleSpec,
+        Answer, EffectSpec, EntityView, FromPlugin, ParticleDataSpec, ParticleSpec, PlayerOrder,
+        PlayerState, TitleSpec, ToPlugin,
     };
-    use rspigot_domain::{Rotation, Vec3};
-    use rspigot_plugin_protocol::v1::{particle, player_order};
+    use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
+    use rspigot_plugin_protocol::v1::{answer, particle, player_order};
 
     use super::*;
+    use crate::convert::{from_plugin, question, to_plugin};
 
     const STEVE: &str = "00000000-0000-0000-0000-000000000001";
 
@@ -381,6 +423,102 @@ mod tests {
         assert_eq!(
             wire_state(hiding).hidden,
             [ALEX, "00000000-0000-0000-0000-000000000003"]
+        );
+    }
+
+    fn ask(asked: question::Question) -> Result<FromPlugin, Malformed> {
+        from_plugin(v1::FromPlugin {
+            body: Some(from_plugin::Body::Question(v1::Question {
+                request: 5,
+                question: Some(asked),
+            })),
+        })
+    }
+
+    fn answered(answer: Answer) -> Option<answer::Body> {
+        match to_plugin(ToPlugin::Answer { request: 5, answer }).body {
+            Some(to_plugin::Body::Answer(v1::Answer { request: 5, body })) => body,
+            other => panic!("expected an answer, got {other:?}"),
+        }
+    }
+
+    fn sight() -> v1::TargetQuery {
+        v1::TargetQuery {
+            player: STEVE.into(),
+            max_distance: 8.5,
+        }
+    }
+
+    #[test]
+    fn target_questions_and_answers_convert() {
+        let steve = PlayerId(Uuid::from_u128(1));
+        assert_eq!(
+            ask(question::Question::TargetBlock(sight())).unwrap(),
+            FromPlugin::Question {
+                request: 5,
+                question: Question::TargetBlock {
+                    player: steve,
+                    max_distance: 8.5
+                }
+            }
+        );
+        assert_eq!(
+            ask(question::Question::TargetEntity(sight())).unwrap(),
+            FromPlugin::Question {
+                request: 5,
+                question: Question::TargetEntity {
+                    player: steve,
+                    max_distance: 8.5
+                }
+            }
+        );
+        assert!(matches!(
+            ask(question::Question::TargetBlock(v1::TargetQuery {
+                player: "steve".into(),
+                max_distance: 8.5,
+            })),
+            Err(Malformed::Player(raw)) if raw == "steve"
+        ));
+
+        assert_eq!(
+            answered(Answer::Target(Some(TargetHit::Block {
+                pos: BlockPos::new(0, 65, 3),
+                face: Direction::North,
+                kind: "minecraft:stone".into(),
+            }))),
+            Some(answer::Body::Target(v1::Target {
+                hit: Some(target::Hit::Block(v1::BlockHit {
+                    pos: Some(v1::BlockPos { x: 0, y: 65, z: 3 }),
+                    face: v1::Face::North as i32,
+                    block: "minecraft:stone".into(),
+                })),
+            }))
+        );
+        assert_eq!(
+            answered(Answer::Target(Some(TargetHit::Player(snapshot())))),
+            Some(answer::Body::Target(v1::Target {
+                hit: Some(target::Hit::Player(wire_player(snapshot()))),
+            }))
+        );
+        assert_eq!(
+            answered(Answer::Target(Some(TargetHit::Entity(EntityView {
+                id: EntityId(42),
+                uuid: Uuid::from_u128(7),
+                kind: "minecraft:skeleton".into(),
+                position: Vec3::new(0.5, 64.0, 3.5),
+            })))),
+            Some(answer::Body::Target(v1::Target {
+                hit: Some(target::Hit::Entity(v1::EntitySnapshot {
+                    entity_id: 42,
+                    uuid: "00000000-0000-0000-0000-000000000007".into(),
+                    kind: "minecraft:skeleton".into(),
+                    position: Some(wire_vec3(0.5, 64.0, 3.5)),
+                })),
+            }))
+        );
+        assert_eq!(
+            answered(Answer::Target(None)),
+            Some(answer::Body::Target(v1::Target { hit: None }))
         );
     }
 

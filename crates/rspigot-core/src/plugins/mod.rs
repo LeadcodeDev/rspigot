@@ -8,6 +8,7 @@ mod player;
 mod registry;
 mod resolve;
 mod server;
+mod targets;
 mod visibility;
 mod world;
 
@@ -20,6 +21,7 @@ use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
+use crate::events::Direction;
 
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
@@ -28,6 +30,7 @@ pub use orders::{
     ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub(crate) use registry::Registry;
+pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -204,6 +207,17 @@ pub struct EntityDetails {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TargetHit {
+    Block {
+        pos: BlockPos,
+        face: Direction,
+        kind: String,
+    },
+    Player(PlayerSnapshot),
+    Entity(EntityView),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum EventPayload {
     PlayerJoin {
         player: PlayerSnapshot,
@@ -249,6 +263,7 @@ pub enum Answer {
     Entities(Vec<EntityView>),
     Entity(EntityDetails),
     Spawned(EntityView),
+    Target(Option<TargetHit>),
     Refused(String),
     NotFound,
 }
@@ -284,6 +299,14 @@ pub enum Question {
     Players,
     PlayerNamed(String),
     Inventory(PlayerId),
+    TargetBlock {
+        player: PlayerId,
+        max_distance: f64,
+    },
+    TargetEntity {
+        player: PlayerId,
+        max_distance: f64,
+    },
     Server,
     Whitelist,
     Operators,

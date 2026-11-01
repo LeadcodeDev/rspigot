@@ -1,6 +1,8 @@
+use rspigot_blocks::Face;
+
 use super::aabb::Aabb;
 use super::physics::BlockView;
-use crate::{BlockPos, Vec3, mth};
+use crate::{BlockPos, BlockStateId, Vec3, mth};
 
 const CLIP_EPSILON: f64 = 1.0e-7;
 const INSIDE_PROBE: f64 = 0.001;
@@ -10,6 +12,7 @@ pub struct BlockHit {
     pub pos: BlockPos,
     pub location: Vec3,
     pub inside: bool,
+    pub face: Face,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -39,37 +42,47 @@ fn clip_point(
     false
 }
 
-fn clip_scale(aabb: &Aabb, from: Vec3, delta: Vec3, scale: &mut f64) -> bool {
+fn entry_plane(along: f64, min: f64, max: f64, sides: (Face, Face)) -> Option<(f64, Face)> {
+    if along > CLIP_EPSILON {
+        Some((min, sides.0))
+    } else if along < -CLIP_EPSILON {
+        Some((max, sides.1))
+    } else {
+        None
+    }
+}
+
+fn clip_scale(aabb: &Aabb, from: Vec3, delta: Vec3, scale: &mut f64) -> Option<Face> {
     let (dx, dy, dz) = (delta.x, delta.y, delta.z);
-    let mut hit = false;
+    let mut face = None;
     let x_origin = (from.x, from.y, from.z);
     let yz = ((aabb.min_y, aabb.max_y), (aabb.min_z, aabb.max_z));
-    if dx > CLIP_EPSILON {
-        hit |= clip_point(scale, dx, dy, dz, aabb.min_x, yz.0, yz.1, x_origin);
-    } else if dx < -CLIP_EPSILON {
-        hit |= clip_point(scale, dx, dy, dz, aabb.max_x, yz.0, yz.1, x_origin);
+    if let Some((plane, side)) = entry_plane(dx, aabb.min_x, aabb.max_x, (Face::West, Face::East))
+        && clip_point(scale, dx, dy, dz, plane, yz.0, yz.1, x_origin)
+    {
+        face = Some(side);
     }
     let y_origin = (from.y, from.z, from.x);
     let zx = ((aabb.min_z, aabb.max_z), (aabb.min_x, aabb.max_x));
-    if dy > CLIP_EPSILON {
-        hit |= clip_point(scale, dy, dz, dx, aabb.min_y, zx.0, zx.1, y_origin);
-    } else if dy < -CLIP_EPSILON {
-        hit |= clip_point(scale, dy, dz, dx, aabb.max_y, zx.0, zx.1, y_origin);
+    if let Some((plane, side)) = entry_plane(dy, aabb.min_y, aabb.max_y, (Face::Down, Face::Up))
+        && clip_point(scale, dy, dz, dx, plane, zx.0, zx.1, y_origin)
+    {
+        face = Some(side);
     }
     let z_origin = (from.z, from.x, from.y);
     let xy = ((aabb.min_x, aabb.max_x), (aabb.min_y, aabb.max_y));
-    if dz > CLIP_EPSILON {
-        hit |= clip_point(scale, dz, dx, dy, aabb.min_z, xy.0, xy.1, z_origin);
-    } else if dz < -CLIP_EPSILON {
-        hit |= clip_point(scale, dz, dx, dy, aabb.max_z, xy.0, xy.1, z_origin);
+    if let Some((plane, side)) = entry_plane(dz, aabb.min_z, aabb.max_z, (Face::North, Face::South))
+        && clip_point(scale, dz, dx, dy, plane, xy.0, xy.1, z_origin)
+    {
+        face = Some(side);
     }
-    hit
+    face
 }
 
 pub fn clip_box(aabb: &Aabb, from: Vec3, to: Vec3) -> Option<Vec3> {
     let delta = to - from;
     let mut scale = 1.0;
-    clip_scale(aabb, from, delta, &mut scale).then(|| from + delta.scale(scale))
+    clip_scale(aabb, from, delta, &mut scale).map(|_| from + delta.scale(scale))
 }
 
 pub fn contains(aabb: &Aabb, point: Vec3) -> bool {
@@ -81,18 +94,38 @@ pub fn contains(aabb: &Aabb, point: Vec3) -> bool {
         && point.z < aabb.max_z
 }
 
-fn block_boxes(view: &impl BlockView, pos: BlockPos) -> Vec<Aabb> {
-    let state = view.block_or_air(pos);
+fn block_boxes(
+    view: &impl BlockView,
+    pos: BlockPos,
+    shape: &impl Fn(BlockStateId) -> &'static [rspigot_blocks::Aabb],
+) -> Vec<Aabb> {
     let origin = Vec3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z));
-    state
-        .collision_shape()
+    shape(view.block_or_air(pos))
         .iter()
         .map(|b| Aabb::new(b.min_x, b.min_y, b.min_z, b.max_x, b.max_y, b.max_z).move_by(origin))
         .collect()
 }
 
-fn clip_block(view: &impl BlockView, from: Vec3, to: Vec3, pos: BlockPos) -> Option<BlockHit> {
-    let boxes = block_boxes(view, pos);
+fn inside_face(delta: Vec3) -> Face {
+    let (x, y, z) = (delta.x.abs(), delta.y.abs(), delta.z.abs());
+    let (along, sides) = if y >= x && y >= z {
+        (delta.y, (Face::Down, Face::Up))
+    } else if z >= x {
+        (delta.z, (Face::North, Face::South))
+    } else {
+        (delta.x, (Face::West, Face::East))
+    };
+    if along > 0.0 { sides.0 } else { sides.1 }
+}
+
+fn clip_block(
+    view: &impl BlockView,
+    from: Vec3,
+    to: Vec3,
+    pos: BlockPos,
+    shape: &impl Fn(BlockStateId) -> &'static [rspigot_blocks::Aabb],
+) -> Option<BlockHit> {
+    let boxes = block_boxes(view, pos, shape);
     if boxes.is_empty() {
         return None;
     }
@@ -106,21 +139,32 @@ fn clip_block(view: &impl BlockView, from: Vec3, to: Vec3, pos: BlockPos) -> Opt
             pos,
             location: probe,
             inside: true,
+            face: inside_face(delta),
         });
     }
     let mut scale = 1.0;
-    let mut hit = false;
+    let mut face = None;
     for b in &boxes {
-        hit |= clip_scale(b, from, delta, &mut scale);
+        face = clip_scale(b, from, delta, &mut scale).or(face);
     }
-    hit.then(|| BlockHit {
+    face.map(|face| BlockHit {
         pos,
         location: from + delta.scale(scale),
         inside: false,
+        face,
     })
 }
 
 pub fn clip_blocks(view: &impl BlockView, from: Vec3, to: Vec3) -> Option<BlockHit> {
+    clip_blocks_with(view, from, to, BlockStateId::collision_shape)
+}
+
+pub fn clip_blocks_with(
+    view: &impl BlockView,
+    from: Vec3,
+    to: Vec3,
+    shape: impl Fn(BlockStateId) -> &'static [rspigot_blocks::Aabb],
+) -> Option<BlockHit> {
     if from == to {
         return None;
     }
@@ -137,7 +181,7 @@ pub fn clip_blocks(view: &impl BlockView, from: Vec3, to: Vec3) -> Option<BlockH
     let mut x = mth::floor(start.x);
     let mut y = mth::floor(start.y);
     let mut z = mth::floor(start.z);
-    if let Some(hit) = clip_block(view, from, to, BlockPos::new(x, y, z)) {
+    if let Some(hit) = clip_block(view, from, to, BlockPos::new(x, y, z), &shape) {
         return Some(hit);
     }
     let dx = end.x - start.x;
@@ -182,7 +226,7 @@ pub fn clip_blocks(view: &impl BlockView, from: Vec3, to: Vec3) -> Option<BlockH
             z += sz;
             tz += tz_step;
         }
-        if let Some(hit) = clip_block(view, from, to, BlockPos::new(x, y, z)) {
+        if let Some(hit) = clip_block(view, from, to, BlockPos::new(x, y, z), &shape) {
             return Some(hit);
         }
     }
@@ -196,7 +240,6 @@ mod tests {
     use rspigot_blocks::BlockKind;
 
     use super::*;
-    use crate::BlockStateId;
 
     struct Wall(HashMap<BlockPos, BlockStateId>);
 
@@ -215,6 +258,28 @@ mod tests {
         assert_eq!(hit.pos, BlockPos::new(3, 64, 0));
         assert!((hit.location.x - 3.0).abs() < 1.0e-9);
         assert!(clip_blocks(&wall, Vec3::new(0.5, 66.5, 0.5), Vec3::new(5.5, 66.5, 0.5)).is_none());
+    }
+
+    #[test]
+    fn the_face_is_the_side_the_ray_enters() {
+        let mut blocks = HashMap::new();
+        blocks.insert(BlockPos::new(3, 64, 0), BlockKind::Stone.default_state());
+        blocks.insert(BlockPos::new(0, 60, 0), BlockKind::Stone.default_state());
+        blocks.insert(BlockPos::new(0, 0, 0), BlockKind::OakSlab.default_state());
+        let wall = Wall(blocks);
+        let east =
+            clip_blocks(&wall, Vec3::new(0.5, 64.5, 0.5), Vec3::new(5.5, 64.5, 0.5)).unwrap();
+        assert_eq!((east.pos, east.face), (BlockPos::new(3, 64, 0), Face::West));
+        let down =
+            clip_blocks(&wall, Vec3::new(0.5, 62.5, 0.5), Vec3::new(0.5, 58.5, 0.5)).unwrap();
+        assert_eq!((down.pos, down.face), (BlockPos::new(0, 60, 0), Face::Up));
+        let slab = clip_blocks(&wall, Vec3::new(0.5, 2.5, 0.5), Vec3::new(0.5, -1.5, 0.5)).unwrap();
+        assert_eq!((slab.pos, slab.face), (BlockPos::new(0, 0, 0), Face::Up));
+        assert!((slab.location.y - 0.5).abs() < 1.0e-9);
+        let inside =
+            clip_blocks(&wall, Vec3::new(3.5, 64.5, 0.5), Vec3::new(5.5, 64.5, 0.5)).unwrap();
+        assert!(inside.inside);
+        assert_eq!(inside.face, Face::West);
     }
 
     #[test]
