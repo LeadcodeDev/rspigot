@@ -617,6 +617,18 @@ fn sound_and_particles_reach_only_that_player() {
     s.act(to(
         &alice,
         PlayerOrder::SpawnParticle(particle(
+            "minecraft:block_crumble",
+            ParticleDataSpec::Block("minecraft:stone".into()),
+        )),
+    ));
+    let crumble = particles(&alice);
+    assert_eq!(crumble.len(), 1);
+    assert_eq!(crumble[0].kind, "minecraft:block_crumble");
+    assert_eq!(crumble[0].data, ParticleData::Block(stone));
+
+    s.act(to(
+        &alice,
+        PlayerOrder::SpawnParticle(particle(
             "minecraft:item",
             ParticleDataSpec::Item("minecraft:egg".into()),
         )),
