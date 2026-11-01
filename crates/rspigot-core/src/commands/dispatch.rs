@@ -1,3 +1,6 @@
+use std::net::IpAddr;
+use std::time::SystemTime;
+
 use rspigot_domain::effect::{EffectDuration, EffectId, EffectInstance};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::{Component, NamedColor};
@@ -7,6 +10,7 @@ use rspigot_items::ItemKind;
 use rspigot_nbt::Compound;
 
 use super::selector::split_argument;
+use crate::admin::{Ban, BanEntry, IpBanEntry, ban_reason};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Target {
@@ -59,6 +63,25 @@ pub trait CommandContext {
     fn whitelist_add(&mut self, name: &str) -> bool;
     fn whitelist_remove(&mut self, name: &str) -> bool;
     fn whitelist_names(&self) -> Vec<String>;
+    fn ban_profile(
+        &mut self,
+        name: &str,
+        source: &str,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    ) -> bool;
+    fn pardon_profile(&mut self, name: &str) -> bool;
+    fn ban_address(
+        &mut self,
+        address: IpAddr,
+        source: &str,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    ) -> Option<Vec<String>>;
+    fn pardon_address(&mut self, address: IpAddr) -> bool;
+    fn player_address(&self, player: PlayerId) -> Option<IpAddr>;
+    fn ban_entries(&self) -> Vec<BanEntry>;
+    fn ip_ban_entries(&self) -> Vec<IpBanEntry>;
     fn select_players(
         &self,
         sender: CommandSender,
@@ -151,7 +174,7 @@ pub trait CommandContext {
     }
 }
 
-const ADMIN_COMMANDS: [&str; 20] = [
+const ADMIN_COMMANDS: [&str; 25] = [
     "summon",
     "effect",
     "kill",
@@ -172,6 +195,11 @@ const ADMIN_COMMANDS: [&str; 20] = [
     "save-all",
     "stop",
     "defaultgamemode",
+    "ban",
+    "ban-ip",
+    "pardon",
+    "pardon-ip",
+    "banlist",
 ];
 
 pub fn execute<C: CommandContext>(
@@ -265,6 +293,11 @@ pub fn execute<C: CommandContext>(
         "kick" => kick(ctx, sender, &args),
         "op" | "deop" => operator(ctx, sender, &args, label == "op"),
         "whitelist" => whitelist(ctx, sender, &args),
+        "ban" => ban(ctx, sender, &args),
+        "ban-ip" => ban_ip(ctx, sender, &args),
+        "pardon" => pardon(ctx, sender, &args),
+        "pardon-ip" => pardon_ip(ctx, sender, &args),
+        "banlist" => banlist(ctx, sender, &args),
         "effect" => effect(ctx, sender, rest),
         "kill" => kill(ctx, sender, rest).unwrap_or_else(|outcome| outcome),
         "difficulty" => difficulty(ctx, sender, &args),
@@ -1294,6 +1327,203 @@ fn whitelist<C: CommandContext>(
     CommandOutcome::Success
 }
 
+fn profile_targets<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    raw: &str,
+) -> Result<Vec<String>, CommandOutcome> {
+    if !raw.starts_with('@') {
+        let online = ctx.find_player(raw).and_then(|id| ctx.player_name(id));
+        return Ok(vec![online.unwrap_or_else(|| raw.to_owned())]);
+    }
+    match ctx.select_players(sender, raw) {
+        Ok(players) if players.is_empty() => Err(not_found(ctx, sender)),
+        Ok(players) => Ok(players
+            .into_iter()
+            .filter_map(|id| ctx.player_name(id))
+            .collect()),
+        Err(message) => {
+            ctx.reply(sender, message.color(NamedColor::Red));
+            Err(CommandOutcome::Failure)
+        }
+    }
+}
+
+fn reason_argument(args: &[&str]) -> Option<String> {
+    (args.len() > 1).then(|| args[1..].join(" "))
+}
+
+fn ban<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+    let Some(raw) = args.first() else {
+        return usage(ctx, sender, "/ban <targets> [<reason>]");
+    };
+    let names = match profile_targets(ctx, sender, raw) {
+        Ok(names) => names,
+        Err(outcome) => return outcome,
+    };
+    let reason = reason_argument(args);
+    let source = ctx.sender_name(sender);
+    let mut banned = 0;
+    for name in names {
+        if ctx.ban_profile(&name, &source, reason.clone(), None) {
+            banned += 1;
+            ctx.reply(
+                sender,
+                Component::translatable(
+                    "commands.ban.success",
+                    vec![Component::text(name), ban_reason(reason.as_deref())],
+                ),
+            );
+        }
+    }
+    if banned == 0 {
+        return fail(ctx, sender, "commands.ban.failed", Vec::new());
+    }
+    CommandOutcome::Success
+}
+
+fn ban_ip<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+    let Some(raw) = args.first() else {
+        return usage(ctx, sender, "/ban-ip <address|player> [<reason>]");
+    };
+    let address = raw
+        .parse::<IpAddr>()
+        .ok()
+        .or_else(|| ctx.find_player(raw).and_then(|id| ctx.player_address(id)));
+    let Some(address) = address else {
+        return fail(ctx, sender, "commands.banip.invalid", Vec::new());
+    };
+    let reason = reason_argument(args);
+    let source = ctx.sender_name(sender);
+    let Some(kicked) = ctx.ban_address(address, &source, reason.clone(), None) else {
+        return fail(ctx, sender, "commands.banip.failed", Vec::new());
+    };
+    ctx.reply(
+        sender,
+        Component::translatable(
+            "commands.banip.success",
+            vec![
+                Component::text(address.to_string()),
+                ban_reason(reason.as_deref()),
+            ],
+        ),
+    );
+    if !kicked.is_empty() {
+        ctx.reply(
+            sender,
+            Component::translatable(
+                "commands.banip.info",
+                vec![
+                    Component::text(kicked.len().to_string()),
+                    Component::text(kicked.join(", ")),
+                ],
+            ),
+        );
+    }
+    CommandOutcome::Success
+}
+
+fn pardon<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+    let Some(raw) = args.first() else {
+        return usage(ctx, sender, "/pardon <targets>");
+    };
+    let names = match profile_targets(ctx, sender, raw) {
+        Ok(names) => names,
+        Err(outcome) => return outcome,
+    };
+    let mut pardoned = 0;
+    for name in names {
+        if ctx.pardon_profile(&name) {
+            pardoned += 1;
+            ctx.reply(
+                sender,
+                Component::translatable("commands.pardon.success", vec![Component::text(name)]),
+            );
+        }
+    }
+    if pardoned == 0 {
+        return fail(ctx, sender, "commands.pardon.failed", Vec::new());
+    }
+    CommandOutcome::Success
+}
+
+fn pardon_ip<C: CommandContext>(
+    ctx: &mut C,
+    sender: CommandSender,
+    args: &[&str],
+) -> CommandOutcome {
+    let Some(raw) = args.first() else {
+        return usage(ctx, sender, "/pardon-ip <address>");
+    };
+    let Ok(address) = raw.parse::<IpAddr>() else {
+        return fail(ctx, sender, "commands.pardonip.invalid", Vec::new());
+    };
+    if !ctx.pardon_address(address) {
+        return fail(ctx, sender, "commands.pardonip.failed", Vec::new());
+    }
+    ctx.reply(
+        sender,
+        Component::translatable(
+            "commands.pardonip.success",
+            vec![Component::text(address.to_string())],
+        ),
+    );
+    CommandOutcome::Success
+}
+
+fn banlist_entry<T>(name: String, ban: &Ban<T>) -> Component {
+    Component::translatable(
+        "commands.banlist.entry",
+        vec![
+            Component::text(name),
+            Component::text(ban.source.clone()),
+            ban.reason_message(),
+        ],
+    )
+}
+
+fn banlist<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) -> CommandOutcome {
+    let (players, ips) = match args.first().copied() {
+        None => (true, true),
+        Some("players") => (true, false),
+        Some("ips") => (false, true),
+        Some(_) => return usage(ctx, sender, "/banlist [ips|players]"),
+    };
+    let mut entries = Vec::new();
+    if players {
+        entries.extend(
+            ctx.ban_entries()
+                .iter()
+                .map(|ban| banlist_entry(ban.target.name.clone(), ban)),
+        );
+    }
+    if ips {
+        entries.extend(
+            ctx.ip_ban_entries()
+                .iter()
+                .map(|ban| banlist_entry(ban.target.to_string(), ban)),
+        );
+    }
+    if entries.is_empty() {
+        ctx.reply(
+            sender,
+            Component::translatable("commands.banlist.none", Vec::new()),
+        );
+        return CommandOutcome::Success;
+    }
+    ctx.reply(
+        sender,
+        Component::translatable(
+            "commands.banlist.list",
+            vec![Component::text(entries.len().to_string())],
+        ),
+    );
+    for entry in entries {
+        ctx.reply(sender, entry);
+    }
+    CommandOutcome::Success
+}
+
 fn difficulty<C: CommandContext>(
     ctx: &mut C,
     sender: CommandSender,
@@ -1472,6 +1702,39 @@ mod tests {
             true
         }
         fn whitelist_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+        fn ban_profile(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<String>,
+            _: Option<SystemTime>,
+        ) -> bool {
+            true
+        }
+        fn pardon_profile(&mut self, _: &str) -> bool {
+            true
+        }
+        fn ban_address(
+            &mut self,
+            _: IpAddr,
+            _: &str,
+            _: Option<String>,
+            _: Option<SystemTime>,
+        ) -> Option<Vec<String>> {
+            Some(Vec::new())
+        }
+        fn pardon_address(&mut self, _: IpAddr) -> bool {
+            true
+        }
+        fn player_address(&self, _: PlayerId) -> Option<IpAddr> {
+            None
+        }
+        fn ban_entries(&self) -> Vec<BanEntry> {
+            Vec::new()
+        }
+        fn ip_ban_entries(&self) -> Vec<IpBanEntry> {
             Vec::new()
         }
         fn select_players(

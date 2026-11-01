@@ -1,16 +1,24 @@
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
+use chrono::{DateTime, Utc};
 use crossbeam_channel::Receiver;
-use rspigot_core::admin::{AdminLists, ListEntry};
+use rspigot_core::admin::{AdminLists, Ban, BanEntry, IpBanEntry, ListEntry};
 use uuid::Uuid;
 
 use crate::config::Properties;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-fn read_list(path: &Path) -> Vec<ListEntry> {
+const DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S %z";
+const FOREVER: &str = "forever";
+const UNKNOWN_SOURCE: &str = "(Unknown)";
+const DEFAULT_REASON: &str = "Banned by an operator.";
+
+fn read_entries(path: &Path) -> Vec<Value> {
     let Ok(text) = std::fs::read_to_string(path) else {
         let _ = std::fs::write(path, "[]");
         return Vec::new();
@@ -20,41 +28,97 @@ fn read_list(path: &Path) -> Vec<ListEntry> {
         return Vec::new();
     };
     entries
+}
+
+fn list_entry(entry: &Value) -> Option<ListEntry> {
+    let name = entry.get("name").and_then(Value::as_str)?;
+    let uuid = entry
+        .get("uuid")
+        .and_then(Value::as_str)
+        .and_then(|u| Uuid::parse_str(u).ok());
+    Some(ListEntry {
+        name: name.to_owned(),
+        uuid,
+    })
+}
+
+fn read_list(path: &Path) -> Vec<ListEntry> {
+    read_entries(path).iter().filter_map(list_entry).collect()
+}
+
+fn parse_date(text: &str) -> Option<SystemTime> {
+    DateTime::parse_from_str(text, DATE_FORMAT)
+        .ok()
+        .map(SystemTime::from)
+}
+
+fn format_date(time: SystemTime) -> String {
+    DateTime::<Utc>::from(time).format(DATE_FORMAT).to_string()
+}
+
+fn read_ban<T>(entry: &Value, target: T, now: SystemTime) -> Ban<T> {
+    let text = |key: &str| entry.get(key).and_then(Value::as_str);
+    Ban {
+        target,
+        created: text("created").and_then(parse_date).unwrap_or(now),
+        source: text("source").unwrap_or(UNKNOWN_SOURCE).to_owned(),
+        expires: text("expires").and_then(parse_date),
+        reason: text("reason").map(str::to_owned),
+    }
+}
+
+fn read_bans(path: &Path, now: SystemTime) -> Vec<BanEntry> {
+    read_entries(path)
         .iter()
-        .filter_map(|e| {
-            let name = e.get("name").and_then(Value::as_str)?;
-            let uuid = e
-                .get("uuid")
-                .and_then(Value::as_str)
-                .and_then(|u| Uuid::parse_str(u).ok());
-            Some(ListEntry {
-                name: name.to_owned(),
-                uuid,
-            })
+        .filter_map(|entry| list_entry(entry).map(|target| read_ban(entry, target, now)))
+        .collect()
+}
+
+fn read_ip_bans(path: &Path, now: SystemTime) -> Vec<IpBanEntry> {
+    read_entries(path)
+        .iter()
+        .filter_map(|entry| {
+            let address = entry.get("ip")?.as_str()?.parse::<IpAddr>().ok()?;
+            Some(read_ban(entry, address.to_canonical(), now))
         })
         .collect()
 }
 
-pub fn read_admin_lists(root: &Path, whitelist_enabled: bool) -> AdminLists {
-    AdminLists {
+pub fn read_admin_lists(root: &Path, whitelist_enabled: bool, now: SystemTime) -> AdminLists {
+    let mut lists = AdminLists {
         operators: read_list(&root.join("ops.json")),
         whitelist: read_list(&root.join("whitelist.json")),
         whitelist_enabled,
+        bans: read_bans(&root.join("banned-players.json"), now),
+        ip_bans: read_ip_bans(&root.join("banned-ips.json"), now),
+    };
+    lists.prune_expired(now);
+    lists
+}
+
+fn write_json(path: &Path, values: Vec<Value>) -> std::io::Result<()> {
+    let text =
+        serde_json::to_string_pretty(&Value::Array(values)).map_err(std::io::Error::other)?;
+    std::fs::write(path, text)
+}
+
+fn list_object(entry: &ListEntry) -> Map<String, Value> {
+    let mut object = Map::new();
+    if let Some(uuid) = entry.uuid {
+        object.insert(
+            "uuid".to_owned(),
+            Value::String(uuid.hyphenated().to_string()),
+        );
     }
+    object.insert("name".to_owned(), Value::String(entry.name.clone()));
+    object
 }
 
 fn write_list(path: &Path, entries: &[ListEntry], operator: bool) -> std::io::Result<()> {
     let values: Vec<Value> = entries
         .iter()
         .map(|e| {
-            let mut object = serde_json::Map::new();
-            if let Some(uuid) = e.uuid {
-                object.insert(
-                    "uuid".to_owned(),
-                    Value::String(uuid.hyphenated().to_string()),
-                );
-            }
-            object.insert("name".to_owned(), Value::String(e.name.clone()));
+            let mut object = list_object(e);
             if operator {
                 object.insert("level".to_owned(), Value::from(4));
                 object.insert("bypassesPlayerLimit".to_owned(), Value::Bool(false));
@@ -62,9 +126,49 @@ fn write_list(path: &Path, entries: &[ListEntry], operator: bool) -> std::io::Re
             Value::Object(object)
         })
         .collect();
-    let text =
-        serde_json::to_string_pretty(&Value::Array(values)).map_err(std::io::Error::other)?;
-    std::fs::write(path, text)
+    write_json(path, values)
+}
+
+fn ban_object<T>(mut object: Map<String, Value>, ban: &Ban<T>) -> Value {
+    let expires = ban.expires.map_or_else(|| FOREVER.to_owned(), format_date);
+    let reason = ban.reason.as_deref().unwrap_or(DEFAULT_REASON);
+    object.insert(
+        "created".to_owned(),
+        Value::String(format_date(ban.created)),
+    );
+    object.insert("source".to_owned(), Value::String(ban.source.clone()));
+    object.insert("expires".to_owned(), Value::String(expires));
+    object.insert("reason".to_owned(), Value::String(reason.to_owned()));
+    Value::Object(object)
+}
+
+fn write_bans(path: &Path, bans: &[BanEntry]) -> std::io::Result<()> {
+    write_json(
+        path,
+        bans.iter()
+            .map(|ban| ban_object(list_object(&ban.target), ban))
+            .collect(),
+    )
+}
+
+fn write_ip_bans(path: &Path, bans: &[IpBanEntry]) -> std::io::Result<()> {
+    write_json(
+        path,
+        bans.iter()
+            .map(|ban| {
+                let mut object = Map::new();
+                object.insert("ip".to_owned(), Value::String(ban.target.to_string()));
+                ban_object(object, ban)
+            })
+            .collect(),
+    )
+}
+
+fn write_admin_lists(root: &Path, lists: &AdminLists) -> std::io::Result<()> {
+    write_list(&root.join("ops.json"), &lists.operators, true)?;
+    write_list(&root.join("whitelist.json"), &lists.whitelist, false)?;
+    write_bans(&root.join("banned-players.json"), &lists.bans)?;
+    write_ip_bans(&root.join("banned-ips.json"), &lists.ip_bans)
 }
 
 pub fn spawn_admin_writer(root: PathBuf, updates: Receiver<AdminLists>) {
@@ -73,12 +177,11 @@ pub fn spawn_admin_writer(root: PathBuf, updates: Receiver<AdminLists>) {
         .spawn(move || {
             let mut whitelist_enabled = None;
             for lists in updates {
-                let result =
-                    write_list(&root.join("ops.json"), &lists.operators, true).and_then(|()| {
-                        write_list(&root.join("whitelist.json"), &lists.whitelist, false)
-                    });
-                if let Err(error) = result {
-                    tracing::error!(%error, "could not save ops.json or whitelist.json");
+                if let Err(error) = write_admin_lists(&root, &lists) {
+                    tracing::error!(
+                        %error,
+                        "could not save ops.json, whitelist.json, banned-players.json or banned-ips.json"
+                    );
                 }
                 if whitelist_enabled != Some(lists.whitelist_enabled) {
                     whitelist_enabled = Some(lists.whitelist_enabled);
@@ -110,4 +213,135 @@ pub fn read_favicon(root: &Path) -> Option<String> {
         return None;
     }
     Some(format!("data:image/png;base64,{}", STANDARD.encode(&bytes)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use rspigot_core::admin::{AdminLists, Ban, ListEntry};
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use super::*;
+
+    const STEVE: &str = "00000000-0000-0000-0000-000000000001";
+
+    fn noon() -> SystemTime {
+        UNIX_EPOCH + Duration::from_secs(1_793_534_400)
+    }
+
+    fn directory(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("rspigot-bans-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("a temporary directory");
+        root
+    }
+
+    fn parsed(path: &Path) -> Value {
+        let text = std::fs::read_to_string(path).expect("the file was written");
+        serde_json::from_str(&text).expect("the file is JSON")
+    }
+
+    #[test]
+    fn ban_files_are_written_in_the_vanilla_format() {
+        let root = directory("written");
+        let lists = AdminLists {
+            bans: vec![Ban {
+                target: ListEntry {
+                    name: "Steve".into(),
+                    uuid: Some(Uuid::parse_str(STEVE).expect("a uuid")),
+                },
+                created: noon(),
+                source: "Server".into(),
+                expires: None,
+                reason: Some("griefing".into()),
+            }],
+            ip_bans: vec![Ban {
+                target: IpAddr::from([203, 0, 113, 7]),
+                created: noon(),
+                source: "Server".into(),
+                expires: None,
+                reason: None,
+            }],
+            ..AdminLists::default()
+        };
+        write_admin_lists(&root, &lists).expect("the lists are written");
+        assert_eq!(
+            parsed(&root.join("banned-players.json")),
+            json!([{
+                "uuid": STEVE,
+                "name": "Steve",
+                "created": "2026-11-01 12:00:00 +0000",
+                "source": "Server",
+                "expires": "forever",
+                "reason": "griefing",
+            }])
+        );
+        assert_eq!(
+            parsed(&root.join("banned-ips.json")),
+            json!([{
+                "ip": "203.0.113.7",
+                "created": "2026-11-01 12:00:00 +0000",
+                "source": "Server",
+                "expires": "forever",
+                "reason": "Banned by an operator.",
+            }])
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ban_files_are_read_back_and_expired_entries_pruned() {
+        let root = directory("read");
+        let players = json!([
+            {
+                "uuid": STEVE,
+                "name": "Old",
+                "created": "2026-10-01 12:00:00 +0000",
+                "source": "Server",
+                "expires": "2026-11-01 11:00:00 +0000",
+                "reason": "spam",
+            },
+            {
+                "name": "Steve",
+                "created": "2026-11-01 14:00:00 +0200",
+                "source": "Alice",
+                "expires": "forever",
+                "reason": "griefing",
+            },
+        ]);
+        let ips = json!([
+            {
+                "ip": "203.0.113.7",
+                "created": "yesterday",
+                "expires": "2026-11-01 15:00:00 +0200",
+            },
+        ]);
+        std::fs::write(root.join("banned-players.json"), players.to_string()).expect("written");
+        std::fs::write(root.join("banned-ips.json"), ips.to_string()).expect("written");
+        let lists = read_admin_lists(&root, false, noon());
+        assert_eq!(
+            lists.bans,
+            [Ban {
+                target: ListEntry::named("Steve"),
+                created: noon(),
+                source: "Alice".into(),
+                expires: None,
+                reason: Some("griefing".into()),
+            }]
+        );
+        assert_eq!(
+            lists.ip_bans,
+            [Ban {
+                target: IpAddr::from([203, 0, 113, 7]),
+                created: noon(),
+                source: "(Unknown)".into(),
+                expires: Some(noon() + Duration::from_secs(3600)),
+                reason: None,
+            }]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

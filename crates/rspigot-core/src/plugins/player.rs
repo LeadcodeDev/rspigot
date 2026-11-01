@@ -30,12 +30,17 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let name = order.name();
-        if let Err(reason) = self.player_order(player, order) {
+        if let Err(reason) = self.player_order(connection, player, order) {
             self.warn_plugin(connection, name, reason);
         }
     }
 
-    fn player_order(&mut self, id: PlayerId, order: PlayerOrder) -> Result<(), String> {
+    fn player_order(
+        &mut self,
+        connection: u64,
+        id: PlayerId,
+        order: PlayerOrder,
+    ) -> Result<(), String> {
         match order {
             PlayerOrder::SendMessage(message) => {
                 self.push(
@@ -221,6 +226,12 @@ impl<L: ClientLink> Server<L> {
                 self.close_open_menu(id, true);
             }
             PlayerOrder::UpdateInventory => self.send_inventory(id),
+            PlayerOrder::Ban { reason, expires } => {
+                if let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) {
+                    let source = self.plugin_name(connection);
+                    CommandContext::ban_profile(self, &name, &source, reason, expires);
+                }
+            }
         }
         Ok(())
     }

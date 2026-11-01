@@ -235,6 +235,7 @@ impl Setup {
                 operators: vec![ListEntry::named("Alice")],
                 whitelist: Vec::new(),
                 whitelist_enabled: false,
+                ..AdminLists::default()
             },
             spawning: SpawningConfig {
                 categories: self.spawning,
@@ -320,6 +321,7 @@ fn join(server: &mut Server<Link>, name: &str) -> Client {
         profile,
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
     let mut client = Client {

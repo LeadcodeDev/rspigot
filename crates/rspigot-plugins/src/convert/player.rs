@@ -51,7 +51,11 @@ pub(super) fn order(order: v1::PlayerOrder) -> Result<Order, Malformed> {
         Wire::SpawnParticle(particle) => PlayerOrder::SpawnParticle(shared::particle(particle)?),
         Wire::CloseInventory(_) => PlayerOrder::CloseInventory,
         Wire::UpdateInventory(_) => PlayerOrder::UpdateInventory,
-        Wire::HidePlayer(_) | Wire::ShowPlayer(_) | Wire::OpenInventory(_) | Wire::Ban(_) => {
+        Wire::Ban(terms) => PlayerOrder::Ban {
+            reason: terms.reason,
+            expires: shared::expiry(terms.expires_ms)?,
+        },
+        Wire::HidePlayer(_) | Wire::ShowPlayer(_) | Wire::OpenInventory(_) => {
             return Err(Malformed::Unsupported("player order"));
         }
     };
@@ -89,6 +93,7 @@ pub(super) fn wire_state(state: PlayerState) -> v1::PlayerState {
         effects: state.effects.into_iter().map(shared::wire_effect).collect(),
         ping: state.ping,
         locale: state.locale,
+        address: state.address.to_string(),
         ..v1::PlayerState::default()
     }
 }
@@ -129,6 +134,9 @@ const fn wire_game_mode(mode: GameMode) -> v1::GameMode {
 
 #[cfg(test)]
 mod tests {
+    use std::net::IpAddr;
+    use std::time::{Duration, UNIX_EPOCH};
+
     use rspigot_core::plugins::{
         EffectSpec, ParticleDataSpec, ParticleSpec, PlayerOrder, PlayerState, TitleSpec,
     };
@@ -268,9 +276,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn a_full_player_state_converts_to_the_wire() {
-        let state = PlayerState {
+    fn state() -> PlayerState {
+        PlayerState {
             player: snapshot(),
             health: 10.0,
             max_health: 20.0,
@@ -301,9 +308,14 @@ mod tests {
             }],
             ping: 43,
             locale: "fr_fr".into(),
-        };
+            address: IpAddr::from([203, 0, 113, 7]),
+        }
+    }
+
+    #[test]
+    fn a_full_player_state_converts_to_the_wire() {
         assert_eq!(
-            wire_state(state),
+            wire_state(state()),
             v1::PlayerState {
                 player: Some(wire_player(snapshot())),
                 health: 10.0,
@@ -335,9 +347,40 @@ mod tests {
                 }],
                 ping: 43,
                 locale: "fr_fr".into(),
-                address: String::new(),
+                address: "203.0.113.7".into(),
                 hidden: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn player_ban_and_address_convert() {
+        assert_eq!(
+            convert(player_order::Order::Ban(v1::BanTerms {
+                reason: None,
+                expires_ms: None,
+            }))
+            .unwrap(),
+            PlayerOrder::Ban {
+                reason: None,
+                expires: None,
+            }
+        );
+        assert_eq!(
+            convert(player_order::Order::Ban(v1::BanTerms {
+                reason: Some("cheating".into()),
+                expires_ms: Some(-1_500),
+            }))
+            .unwrap(),
+            PlayerOrder::Ban {
+                reason: Some("cheating".into()),
+                expires: Some(UNIX_EPOCH - Duration::from_millis(1_500)),
+            }
+        );
+        let ipv6 = PlayerState {
+            address: "2001:db8::7".parse().expect("an address"),
+            ..state()
+        };
+        assert_eq!(wire_state(ipv6).address, "2001:db8::7");
     }
 }

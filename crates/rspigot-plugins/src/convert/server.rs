@@ -1,9 +1,9 @@
-use rspigot_core::admin::ListEntry;
+use rspigot_core::admin::{Ban, BanEntry, IpBanEntry, ListEntry};
 use rspigot_core::plugins::{Order, ServerOrder, ServerState};
 use rspigot_plugin_protocol::v1::{self, server_order::Order as Wire};
 
 use super::Malformed;
-use super::shared::required;
+use super::shared::{expiry, required, wire_time};
 
 pub(super) fn order(order: v1::ServerOrder) -> Result<Order, Malformed> {
     let order = match required(order.order)? {
@@ -16,11 +16,19 @@ pub(super) fn order(order: v1::ServerOrder) -> Result<Order, Malformed> {
         Wire::WhitelistRemove(name) => ServerOrder::WhitelistRemove(name),
         Wire::OperatorAdd(name) => ServerOrder::OperatorAdd(name),
         Wire::OperatorRemove(name) => ServerOrder::OperatorRemove(name),
-        Wire::BanAdd(_)
-        | Wire::BanRemove(_)
-        | Wire::IpBanAdd(_)
-        | Wire::IpBanRemove(_)
-        | Wire::CreateInventory(_) => return Err(Malformed::Unsupported("server order")),
+        Wire::BanAdd(ban) => ServerOrder::BanAdd {
+            name: ban.target,
+            reason: ban.reason,
+            expires: expiry(ban.expires_ms)?,
+        },
+        Wire::BanRemove(name) => ServerOrder::BanRemove(name),
+        Wire::IpBanAdd(ban) => ServerOrder::IpBanAdd {
+            address: ban.target,
+            reason: ban.reason,
+            expires: expiry(ban.expires_ms)?,
+        },
+        Wire::IpBanRemove(address) => ServerOrder::IpBanRemove(address),
+        Wire::CreateInventory(_) => return Err(Malformed::Unsupported("server order")),
     };
     Ok(Order::Server(order))
 }
@@ -49,13 +57,51 @@ pub(super) fn wire_names(names: Vec<ListEntry>) -> v1::ListedPlayers {
     }
 }
 
+pub(super) fn wire_bans(bans: Vec<BanEntry>) -> v1::BanList {
+    wire_ban_list(bans, |entry| {
+        (
+            entry.name,
+            entry.uuid.map(|uuid| uuid.hyphenated().to_string()),
+        )
+    })
+}
+
+pub(super) fn wire_ip_bans(bans: Vec<IpBanEntry>) -> v1::BanList {
+    wire_ban_list(bans, |address| (address.to_string(), None))
+}
+
+fn wire_ban_list<T>(
+    bans: Vec<Ban<T>>,
+    target: impl Fn(T) -> (String, Option<String>),
+) -> v1::BanList {
+    v1::BanList {
+        entries: bans
+            .into_iter()
+            .map(|ban| {
+                let (name, uuid) = target(ban.target);
+                v1::BanEntry {
+                    target: name,
+                    uuid,
+                    created_ms: wire_time(ban.created),
+                    source: ban.source,
+                    expires_ms: ban.expires.map(wire_time),
+                    reason: ban.reason,
+                }
+            })
+            .collect(),
+    }
+}
+
 fn wire_count(count: u32) -> i32 {
     i32::try_from(count).unwrap_or(i32::MAX)
 }
 
 #[cfg(test)]
 mod tests {
-    use rspigot_core::admin::ListEntry;
+    use std::net::IpAddr;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use rspigot_core::admin::{Ban, ListEntry};
     use rspigot_core::plugins::{
         Answer, FromPlugin, Order, Question, ServerOrder, ServerState, ToPlugin,
     };
@@ -119,7 +165,9 @@ mod tests {
         );
         assert!(matches!(convert(None), Err(Malformed::Empty)));
         assert!(matches!(
-            convert(Some(server_order::Order::BanRemove("Steve".into()))),
+            convert(Some(server_order::Order::CreateInventory(
+                v1::CreateInventory::default()
+            ))),
             Err(Malformed::Unsupported("server order"))
         ));
 
@@ -173,6 +221,92 @@ mod tests {
                         uuid: Some("00000000-0000-0000-0000-000000000001".into()),
                     },
                 ],
+            })
+        );
+    }
+
+    #[test]
+    fn ban_orders_and_lists_convert() {
+        assert_eq!(
+            convert(Some(server_order::Order::BanAdd(v1::Ban {
+                target: "Steve".into(),
+                reason: Some("griefing".into()),
+                expires_ms: Some(1_000_000),
+            })))
+            .unwrap(),
+            server(ServerOrder::BanAdd {
+                name: "Steve".into(),
+                reason: Some("griefing".into()),
+                expires: Some(UNIX_EPOCH + Duration::from_secs(1000)),
+            })
+        );
+        assert_eq!(
+            convert(Some(server_order::Order::IpBanAdd(v1::Ban {
+                target: "203.0.113.7".into(),
+                reason: None,
+                expires_ms: None,
+            })))
+            .unwrap(),
+            server(ServerOrder::IpBanAdd {
+                address: "203.0.113.7".into(),
+                reason: None,
+                expires: None,
+            })
+        );
+        assert_eq!(
+            convert(Some(server_order::Order::BanRemove("Steve".into()))).unwrap(),
+            server(ServerOrder::BanRemove("Steve".into()))
+        );
+        assert_eq!(
+            convert(Some(server_order::Order::IpBanRemove("203.0.113.7".into()))).unwrap(),
+            server(ServerOrder::IpBanRemove("203.0.113.7".into()))
+        );
+        assert_eq!(ask(question::Question::Bans(v1::Empty {})), Question::Bans);
+        assert_eq!(
+            ask(question::Question::IpBans(v1::Empty {})),
+            Question::IpBans
+        );
+
+        let created = UNIX_EPOCH + Duration::from_millis(1_793_534_400_000);
+        assert_eq!(
+            answered(Answer::Bans(vec![Ban {
+                target: ListEntry {
+                    name: "Steve".into(),
+                    uuid: Some(Uuid::from_u128(1)),
+                },
+                created,
+                source: "Alice".into(),
+                expires: Some(UNIX_EPOCH + Duration::from_secs(1000)),
+                reason: Some("griefing".into()),
+            }])),
+            answer::Body::Bans(v1::BanList {
+                entries: vec![v1::BanEntry {
+                    target: "Steve".into(),
+                    uuid: Some("00000000-0000-0000-0000-000000000001".into()),
+                    created_ms: 1_793_534_400_000,
+                    source: "Alice".into(),
+                    expires_ms: Some(1_000_000),
+                    reason: Some("griefing".into()),
+                }],
+            })
+        );
+        assert_eq!(
+            answered(Answer::IpBans(vec![Ban {
+                target: IpAddr::from([203, 0, 113, 7]),
+                created,
+                source: "tester".into(),
+                expires: None,
+                reason: None,
+            }])),
+            answer::Body::Bans(v1::BanList {
+                entries: vec![v1::BanEntry {
+                    target: "203.0.113.7".into(),
+                    uuid: None,
+                    created_ms: 1_793_534_400_000,
+                    source: "tester".into(),
+                    expires_ms: None,
+                    reason: None,
+                }],
             })
         );
     }

@@ -1,5 +1,6 @@
+use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crossbeam_channel::{Receiver, Sender, select};
 use rspigot_domain::item::HOTBAR_START;
@@ -9,7 +10,7 @@ use rspigot_domain::world::{Difficulty, Dimension};
 use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::admin::AdminLists;
+use crate::admin::{AdminLists, Ban};
 use crate::chunks::{ChunkJob, ChunkManager, ChunkWorkers, MobGeneration, Priority};
 use crate::commands::{CommandTree, build_tree};
 use crate::config::{GameConfig, LevelData, hashed_seed};
@@ -102,6 +103,7 @@ pub struct Server<L> {
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
     pub(crate) decisions: Decisions,
+    clock: fn() -> SystemTime,
     next_entity_id: i32,
     status: StatusBoard,
     operator_tree: Arc<CommandTree>,
@@ -165,6 +167,7 @@ impl<L: ClientLink> Server<L> {
             spawning,
             plugins: Registry::default(),
             decisions: Decisions::default(),
+            clock: SystemTime::now,
             next_entity_id: 1,
             status,
             operator_tree: Arc::new(build_tree(true)),
@@ -183,6 +186,23 @@ impl<L: ClientLink> Server<L> {
     pub fn with_admin_sink(mut self, sink: Sender<AdminLists>) -> Self {
         self.admin_sink = Some(sink);
         self
+    }
+
+    pub fn with_clock(mut self, clock: fn() -> SystemTime) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    pub(crate) fn now(&self) -> SystemTime {
+        (self.clock)()
+    }
+
+    pub(crate) fn prune_expired_bans(&mut self) -> SystemTime {
+        let now = self.now();
+        if self.admin.prune_expired(now) {
+            self.publish_admin();
+        }
+        now
     }
 
     pub(crate) fn publish_admin(&self) {
@@ -260,7 +280,8 @@ impl<L: ClientLink> Server<L> {
                 profile,
                 settings,
                 link,
-            } => self.join(profile, settings, link),
+                address,
+            } => self.join(profile, settings, link, address),
             Inbound::Input { player, input } => self.handle_input(player, input),
             Inbound::Leave { player } => self.remove_player(player, true),
             Inbound::Console(line) => {
@@ -392,7 +413,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn join(&mut self, profile: GameProfile, settings: ClientSettings, link: L) {
+    fn join(&mut self, profile: GameProfile, settings: ClientSettings, link: L, address: IpAddr) {
         if self.players.contains_key(&profile.id) {
             if let Some(existing) = self.players.get(&profile.id) {
                 existing.link.disconnect(Component::translatable(
@@ -401,6 +422,21 @@ impl<L: ClientLink> Server<L> {
                 ));
             }
             self.remove_player(profile.id, true);
+        }
+        let address = address.to_canonical();
+        let now = self.prune_expired_bans();
+        if let Some(ban) = self.admin.profile_ban(&profile, now) {
+            self.refuse_banned(
+                &profile,
+                address,
+                &link,
+                "multiplayer.disconnect.banned",
+                ban,
+            );
+            if self.admin.learn_uuid(&profile) {
+                self.publish_admin();
+            }
+            return;
         }
         let operator = self.admin.is_operator(&profile);
         if !self.admin.may_join(&profile) {
@@ -411,6 +447,16 @@ impl<L: ClientLink> Server<L> {
                 self.config.whitelist_message
             );
             link.disconnect(Component::text(self.config.whitelist_message.clone()));
+            return;
+        }
+        if let Some(ban) = self.admin.ip_ban(address, now) {
+            self.refuse_banned(
+                &profile,
+                address,
+                &link,
+                "multiplayer.disconnect.banned_ip",
+                ban,
+            );
             return;
         }
         if self.players.len() as u32 >= self.config.max_players && !operator {
@@ -431,6 +477,7 @@ impl<L: ClientLink> Server<L> {
             id: profile.id,
             profile,
             link,
+            address,
             entity_id,
             position,
             rotation: Rotation::new(self.world.level.spawn_angle, 0.0),
@@ -506,6 +553,30 @@ impl<L: ClientLink> Server<L> {
         self.push(Audience::All, ClientEvent::system(joined));
         self.refresh_status();
         self.tell_plugins_of_join(id);
+    }
+
+    fn refuse_banned<T>(
+        &self,
+        profile: &GameProfile,
+        address: IpAddr,
+        link: &L,
+        key: &str,
+        ban: &Ban<T>,
+    ) {
+        let mut reason =
+            Component::translatable(format!("{key}.reason"), vec![ban.reason_message()]);
+        if let Some(expires) = ban.expires {
+            reason = reason.append(Component::translatable(
+                format!("{key}.expiration"),
+                vec![Component::text(kick_date(expires))],
+            ));
+        }
+        tracing::info!(
+            "Disconnecting {} ({address}): {}",
+            profile.name,
+            crate::console::console_text(&reason)
+        );
+        link.disconnect(reason);
     }
 
     fn send_join_sequence(&self, player: &mut Player<L>) {
@@ -830,6 +901,12 @@ impl<L: ClientLink> Server<L> {
         );
         self.world.level
     }
+}
+
+fn kick_date(time: SystemTime) -> String {
+    chrono::DateTime::<chrono::Utc>::from(time)
+        .format("%Y-%m-%d at %H:%M:%S UTC")
+        .to_string()
 }
 
 fn queued<T>(inbound: &Receiver<T>) -> impl Iterator<Item = T> {

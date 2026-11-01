@@ -77,6 +77,10 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(super) fn plugin_name(&self, connection: u64) -> String {
+        self.plugins.name(connection).unwrap_or_default().to_owned()
+    }
+
     pub(super) fn warn_plugin(&self, connection: u64, order: &str, reason: impl Display) {
         self.plugins.send(
             connection,
@@ -100,6 +104,8 @@ impl<L: ClientLink> Server<L> {
             Question::Server => Answer::Server(self.server_state()),
             Question::Whitelist => Answer::Names(self.admin.whitelist.clone()),
             Question::Operators => Answer::Names(self.admin.operators.clone()),
+            Question::Bans => Answer::Bans(self.ban_entries()),
+            Question::IpBans => Answer::IpBans(self.ip_ban_entries()),
             Question::World => Answer::World(self.world_state()),
             Question::Block(pos) => self
                 .block_state(pos)
@@ -363,6 +369,7 @@ impl<L: ClientLink> Server<L> {
                 effects: player.effects.iter().filter_map(effect_spec).collect(),
                 ping: player.latency,
                 locale: player.settings.locale.clone(),
+                address: player.address,
             }
         })
     }

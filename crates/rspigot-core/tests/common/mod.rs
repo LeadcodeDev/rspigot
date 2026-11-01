@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -159,6 +160,10 @@ pub fn server(plugins: PluginSettings) -> Server<Link> {
 }
 
 pub fn join(server: &mut Server<Link>, name: &str) -> Player {
+    join_from(server, name, IpAddr::from([127, 0, 0, 1]))
+}
+
+pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Player {
     let link = Link::default();
     let id = PlayerId::offline(name);
     server.handle(Inbound::Join {
@@ -169,6 +174,7 @@ pub fn join(server: &mut Server<Link>, name: &str) -> Player {
         },
         settings: ClientSettings::default(),
         link: link.clone(),
+        address,
     });
     server.deliver();
     for event in link.take() {

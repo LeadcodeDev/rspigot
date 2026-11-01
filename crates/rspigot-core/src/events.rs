@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use rspigot_domain::chunk::ChunkColumn;
@@ -179,6 +180,7 @@ pub enum Inbound<L> {
         profile: GameProfile,
         settings: ClientSettings,
         link: L,
+        address: IpAddr,
     },
     Input {
         player: PlayerId,
