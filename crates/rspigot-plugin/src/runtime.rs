@@ -14,6 +14,7 @@ use crate::Error;
 use crate::event::Received;
 use crate::link::{ANSWER_TIMEOUT, Link, Outbound, message};
 use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin};
+use crate::server::Server;
 
 const DEFAULT_URL: &str = "http://127.0.0.1:25580";
 const FIRST_RETRY: Duration = Duration::from_secs(1);
@@ -22,9 +23,13 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 
-struct Queued {
-    event: v1::Event,
-    reply: mpsc::WeakUnboundedSender<v1::FromPlugin>,
+enum Queued {
+    Event {
+        event: Box<v1::Event>,
+        reply: mpsc::WeakUnboundedSender<v1::FromPlugin>,
+    },
+    Enable(Link),
+    Disable,
 }
 
 type Queue = mpsc::UnboundedSender<Queued>;
@@ -62,10 +67,11 @@ pub async fn run_with<P: Plugin>(
             .map(HandlerSpec::to_wire)
             .collect(),
     };
-    tokio::select! {
-        error = keep_connected(endpoint, url, hello, &link, queue) => Err(error),
-        () = handle_events(&plugin, &link, queued) => Ok(()),
-    }
+    let (error, ()) = tokio::join!(
+        keep_connected(endpoint, url, hello, &link, queue),
+        handle_events(&plugin, &link, queued),
+    );
+    Err(error)
 }
 
 fn endpoint(url: &str) -> Result<Endpoint, Error> {
@@ -156,13 +162,27 @@ async fn accepted(
 }
 
 async fn read(
-    mut hears: Streaming<v1::ToPlugin>,
+    hears: Streaming<v1::ToPlugin>,
     link: Link,
     outbound: Outbound,
     queue: Queue,
 ) -> Ended {
     let reply = outbound.downgrade();
     let _attached = link.attach(outbound);
+    if queue.send(Queued::Enable(link.clone())).is_err() {
+        return Ended::Lost("the plugin stopped handling events".to_owned());
+    }
+    let ended = listen(hears, &link, &reply, &queue).await;
+    let _ = queue.send(Queued::Disable);
+    ended
+}
+
+async fn listen(
+    mut hears: Streaming<v1::ToPlugin>,
+    link: &Link,
+    reply: &mpsc::WeakUnboundedSender<v1::FromPlugin>,
+    queue: &Queue,
+) -> Ended {
     loop {
         let body = match hears.message().await {
             Ok(Some(message)) => message.body,
@@ -171,8 +191,8 @@ async fn read(
         };
         match body {
             Some(to_plugin::Body::Event(event)) => {
-                let queued = Queued {
-                    event,
+                let queued = Queued::Event {
+                    event: Box::new(event),
                     reply: reply.clone(),
                 };
                 if queue.send(queued).is_err() {
@@ -218,12 +238,20 @@ async fn handle_events<P: Listeners>(
     mut queued: mpsc::UnboundedReceiver<Queued>,
 ) {
     while let Some(next) = queued.recv().await {
-        handle(plugin, link, next).await;
+        match next {
+            Queued::Event { event, reply } => handle(plugin, link, *event, reply).await,
+            Queued::Enable(connected) => plugin.enable(&Server::new(connected)).await,
+            Queued::Disable => plugin.disable().await,
+        }
     }
 }
 
-async fn handle<P: Listeners>(plugin: &P, link: &Link, queued: Queued) {
-    let Queued { mut event, reply } = queued;
+async fn handle<P: Listeners>(
+    plugin: &P,
+    link: &Link,
+    mut event: v1::Event,
+    reply: mpsc::WeakUnboundedSender<v1::FromPlugin>,
+) {
     let id = event.id;
     let handlers = std::mem::take(&mut event.handlers);
     if event.phase() != v1::Phase::Decide {
