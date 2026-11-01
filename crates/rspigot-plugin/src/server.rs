@@ -1,4 +1,4 @@
-use rspigot_plugin_protocol::v1::{self, answer, from_plugin};
+use rspigot_plugin_protocol::v1::{self, answer, from_plugin, question};
 
 use crate::Error;
 use crate::link::Link;
@@ -26,7 +26,12 @@ impl Players {
     pub async fn fetch(&self) -> Result<Vec<Player>, Error> {
         let answer = self
             .link
-            .ask(|request| from_plugin::Body::FetchPlayers(v1::FetchPlayers { request }))
+            .ask(|request| {
+                from_plugin::Body::Question(v1::Question {
+                    request,
+                    question: Some(question::Question::Players(v1::Empty {})),
+                })
+            })
             .await?;
         match answer {
             answer::Body::Players(list) => list
@@ -35,8 +40,8 @@ impl Players {
                 .map(|player| Player::from_wire(Some(player), &self.link))
                 .collect(),
             answer::Body::NotFound(_) => Err(Error::NotFound),
-            answer::Body::Player(_) => Err(Error::Malformed(
-                "one player where a player list was expected".to_owned(),
+            _ => Err(Error::Malformed(
+                "an answer that is not a player list".to_owned(),
             )),
         }
     }

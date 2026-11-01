@@ -1,4 +1,4 @@
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[allow(clippy::all)]
 pub mod v1 {

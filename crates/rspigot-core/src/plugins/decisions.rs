@@ -206,6 +206,7 @@ mod tests {
                 entity_id: 1,
                 world: "minecraft:overworld".to_owned(),
                 position: from,
+                rotation: Rotation::default(),
                 game_mode: GameMode::Survival,
             },
             from,

@@ -1,4 +1,4 @@
-use rspigot_plugin_protocol::v1::{self, answer, from_plugin};
+use rspigot_plugin_protocol::v1::{self, answer, from_plugin, player_order, question};
 use uuid::Uuid;
 
 use crate::Error;
@@ -19,6 +19,23 @@ impl Position {
             x: vec.x,
             y: vec.y,
             z: vec.z,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Rotation {
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+impl Rotation {
+    fn from_wire(rotation: Option<v1::Rotation>) -> Result<Self, Error> {
+        let rotation =
+            rotation.ok_or_else(|| Error::Malformed("a message without `rotation`".to_owned()))?;
+        Ok(Self {
+            yaw: rotation.yaw,
+            pitch: rotation.pitch,
         })
     }
 }
@@ -52,6 +69,7 @@ pub struct Player {
     pub entity_id: i32,
     pub world: String,
     pub position: Position,
+    pub rotation: Rotation,
     pub game_mode: GameMode,
     link: Link,
 }
@@ -73,29 +91,34 @@ impl Player {
             entity_id: snapshot.entity_id,
             world: snapshot.world,
             position: Position::from_wire(snapshot.position, "position")?,
+            rotation: Rotation::from_wire(snapshot.rotation)?,
             link: link.clone(),
         })
     }
 
     pub fn send_message(&self, text: impl Into<String>) {
-        self.link
-            .order(from_plugin::Body::SendMessage(v1::SendMessage {
-                player: self.uuid.to_string(),
-                text: text.into(),
-            }));
+        self.link.order(from_plugin::Body::Player(v1::PlayerOrder {
+            player: self.uuid.to_string(),
+            order: Some(player_order::Order::SendMessage(text.into())),
+        }));
     }
 
     pub async fn resolve(&self) -> Result<PlayerState, Error> {
         let player = self.uuid.to_string();
         let answer = self
             .link
-            .ask(|request| from_plugin::Body::ResolvePlayer(v1::ResolvePlayer { request, player }))
+            .ask(|request| {
+                from_plugin::Body::Question(v1::Question {
+                    request,
+                    question: Some(question::Question::Player(player)),
+                })
+            })
             .await?;
         match answer {
             answer::Body::Player(state) => PlayerState::from_wire(state, &self.link),
             answer::Body::NotFound(_) => Err(Error::NotFound),
-            answer::Body::Players(_) => Err(Error::Malformed(
-                "a player list where one player was expected".to_owned(),
+            _ => Err(Error::Malformed(
+                "an answer that is not a player state".to_owned(),
             )),
         }
     }

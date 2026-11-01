@@ -99,6 +99,8 @@ impl Received {
                 cancelled,
                 rolled_back,
             }),
+            event::Payload::InventoryClick(_) => return Err(not_handled_yet("an inventory click")),
+            event::Payload::InventoryClose(_) => return Err(not_handled_yet("an inventory close")),
         })
     }
 
@@ -118,4 +120,8 @@ impl Received {
             },
         }
     }
+}
+
+fn not_handled_yet(event: &str) -> Error {
+    Error::Malformed(format!("{event}, which this plugin cannot handle yet"))
 }

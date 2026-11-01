@@ -1,147 +1,19 @@
-use std::future::Future;
-use std::pin::Pin;
+mod fake_host;
+
 use std::time::{Duration, Instant};
 
+use fake_host::*;
 use rspigot_plugin::{
-    Error, GameMode, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position, listeners,
-    run_with,
+    Error, GameMode, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position, Rotation,
+    listeners, run_with,
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
-use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
-use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, to_plugin};
-use tokio::net::TcpListener;
-use tokio::sync::{mpsc, oneshot};
+use rspigot_plugin_protocol::v1::{
+    self, answer, event, from_plugin, player_order, question, to_plugin,
+};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::transport::Server;
-use tonic::transport::server::TcpIncoming;
-use tonic::{Code, Request, Response, Status, Streaming};
-
-const STEVE: &str = "00000000-0000-0000-0000-000000000001";
-const ALEX: &str = "00000000-0000-0000-0000-000000000002";
-
-type Reply = Result<v1::ToPlugin, Status>;
-type Replies = UnboundedReceiverStream<Reply>;
-type Opened = Pin<Box<dyn Future<Output = Result<Response<Replies>, Status>> + Send>>;
-
-struct Knock {
-    hello: v1::Hello,
-    incoming: Streaming<v1::FromPlugin>,
-    answer: oneshot::Sender<Result<Replies, Status>>,
-}
-
-impl Knock {
-    fn accept(self) -> Session {
-        let (says, said) = mpsc::unbounded_channel();
-        let session = Session {
-            says,
-            hears: self.incoming,
-        };
-        session.say(to_plugin::Body::Accepted(v1::Accepted {}));
-        let _ = self.answer.send(Ok(UnboundedReceiverStream::new(said)));
-        session
-    }
-
-    fn refuse(self, status: Status) {
-        let _ = self.answer.send(Err(status));
-    }
-}
-
-struct Session {
-    says: mpsc::UnboundedSender<Reply>,
-    hears: Streaming<v1::FromPlugin>,
-}
-
-impl Session {
-    fn say(&self, body: to_plugin::Body) {
-        self.says
-            .send(Ok(v1::ToPlugin { body: Some(body) }))
-            .unwrap();
-    }
-
-    fn end(self, status: Status) {
-        self.says.send(Err(status)).unwrap();
-    }
-
-    async fn hear(&mut self) -> from_plugin::Body {
-        within(self.hears.message())
-            .await
-            .unwrap()
-            .unwrap()
-            .body
-            .unwrap()
-    }
-}
-
-struct Stub {
-    knocks: mpsc::UnboundedSender<Knock>,
-}
-
-impl Stub {
-    fn open(&self, request: Request<Streaming<v1::FromPlugin>>) -> Opened {
-        let knocks = self.knocks.clone();
-        Box::pin(async move {
-            let mut incoming = request.into_inner();
-            let hello = match incoming.message().await? {
-                Some(v1::FromPlugin {
-                    body: Some(from_plugin::Body::Hello(hello)),
-                }) => hello,
-                _ => return Err(Status::invalid_argument("expected a Hello")),
-            };
-            let (answer, answered) = oneshot::channel();
-            let gone = || Status::unavailable("the stub host is gone");
-            knocks
-                .send(Knock {
-                    hello,
-                    incoming,
-                    answer,
-                })
-                .map_err(|_| gone())?;
-            answered.await.map_err(|_| gone())?.map(Response::new)
-        })
-    }
-}
-
-impl PluginHost for Stub {
-    type ConnectStream = Replies;
-
-    fn connect<'host, 'call>(
-        &'host self,
-        request: Request<Streaming<v1::FromPlugin>>,
-    ) -> Pin<Box<dyn Future<Output = Result<Response<Replies>, Status>> + Send + 'call>>
-    where
-        'host: 'call,
-        Self: 'call,
-    {
-        self.open(request)
-    }
-}
-
-struct Host {
-    url: String,
-    knocks: mpsc::UnboundedReceiver<Knock>,
-}
-
-impl Host {
-    async fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
-        let (knocks, knocked) = mpsc::unbounded_channel();
-        tokio::spawn(
-            Server::builder()
-                .add_service(PluginHostServer::new(Stub { knocks }))
-                .serve_with_incoming(TcpIncoming::from(listener)),
-        );
-        Self {
-            url,
-            knocks: knocked,
-        }
-    }
-
-    async fn knock(&mut self) -> Knock {
-        within(self.knocks.recv()).await.unwrap()
-    }
-}
+use tonic::{Code, Status};
 
 #[derive(Debug, PartialEq)]
 enum Mark {
@@ -246,35 +118,6 @@ fn launch(host: &Host, token: Option<&str>) -> Running {
     }
 }
 
-async fn within<F: Future>(future: F) -> F::Output {
-    tokio::time::timeout(Duration::from_secs(5), future)
-        .await
-        .expect("timed out")
-}
-
-fn snapshot(uuid: &str, name: &str, entity_id: i32) -> v1::PlayerSnapshot {
-    v1::PlayerSnapshot {
-        uuid: uuid.to_owned(),
-        name: name.to_owned(),
-        entity_id,
-        world: "minecraft:overworld".to_owned(),
-        position: Some(v1::Vec3 {
-            x: 1.0,
-            y: 64.0,
-            z: -3.5,
-        }),
-        game_mode: v1::GameMode::Creative as i32,
-    }
-}
-
-fn steve() -> v1::PlayerSnapshot {
-    snapshot(STEVE, "Steve", 12)
-}
-
-fn alex() -> v1::PlayerSnapshot {
-    snapshot(ALEX, "Alex", 13)
-}
-
 fn joining(player: v1::PlayerSnapshot) -> event::Payload {
     event::Payload::PlayerJoin(v1::PlayerJoin {
         player: Some(player),
@@ -297,38 +140,35 @@ fn moving_to(height: f64) -> event::Payload {
     })
 }
 
-fn event(
-    id: u64,
-    handlers: &[u32],
-    phase: v1::Phase,
-    cancelled: bool,
-    payload: event::Payload,
-) -> to_plugin::Body {
-    to_plugin::Body::Event(v1::Event {
-        id,
-        handlers: handlers.to_vec(),
-        phase: phase as i32,
-        cancelled,
-        payload: Some(payload),
-    })
-}
-
-fn answer(request: u64, body: answer::Body) -> to_plugin::Body {
-    to_plugin::Body::Answer(v1::Answer {
-        request,
-        body: Some(body),
-    })
-}
-
 fn decision(event: u64, cancel: bool) -> from_plugin::Body {
     from_plugin::Body::Decision(v1::Decision { event, cancel })
 }
 
 fn message(player: &str, text: &str) -> from_plugin::Body {
-    from_plugin::Body::SendMessage(v1::SendMessage {
+    from_plugin::Body::Player(v1::PlayerOrder {
         player: player.to_owned(),
-        text: text.to_owned(),
+        order: Some(player_order::Order::SendMessage(text.to_owned())),
     })
+}
+
+fn resolving(body: from_plugin::Body) -> Option<(u64, String)> {
+    match body {
+        from_plugin::Body::Question(v1::Question {
+            request,
+            question: Some(question::Question::Player(player)),
+        }) => Some((request, player)),
+        _ => None,
+    }
+}
+
+fn fetching(body: from_plugin::Body) -> Option<u64> {
+    match body {
+        from_plugin::Body::Question(v1::Question {
+            request,
+            question: Some(question::Question::Players(_)),
+        }) => Some(request),
+        _ => None,
+    }
 }
 
 fn wire(
@@ -352,8 +192,10 @@ async fn a_plugin_introduces_its_handlers() {
     let mut host = Host::start().await;
     let _plugin = launch(&host, Some("s3cret"));
 
+    let hello = host.knock().await.hello;
+    assert_eq!(hello.protocol_version, 2);
     assert_eq!(
-        host.knock().await.hello,
+        hello,
         v1::Hello {
             protocol_version: PROTOCOL_VERSION,
             name: "guard".to_owned(),
@@ -507,25 +349,26 @@ async fn a_handler_can_ask_a_question_while_handling_an_event() {
 
     session.say(event(1, &[1], v1::Phase::Settled, false, joining(steve())));
     assert_eq!(session.hear().await, message(STEVE, "Welcome, Steve!"));
-    let from_plugin::Body::ResolvePlayer(resolve) = session.hear().await else {
+    let Some((resolved, about)) = resolving(session.hear().await) else {
         panic!("expected a question about Steve");
     };
-    assert_eq!(resolve.player, STEVE);
+    assert_eq!(about, STEVE);
     session.say(answer(
-        resolve.request,
+        resolved,
         answer::Body::Player(v1::PlayerState {
             player: Some(steve()),
             health: 17.5,
             food: 12,
             level: 3,
+            ..v1::PlayerState::default()
         }),
     ));
-    let from_plugin::Body::FetchPlayers(fetch) = session.hear().await else {
+    let Some(fetched) = fetching(session.hear().await) else {
         panic!("expected a question about the players");
     };
-    assert_ne!(fetch.request, resolve.request);
+    assert_ne!(fetched, resolved);
     session.say(answer(
-        fetch.request,
+        fetched,
         answer::Body::Players(v1::PlayerList {
             players: vec![steve(), alex()],
         }),
@@ -544,6 +387,13 @@ async fn a_handler_can_ask_a_question_while_handling_an_event() {
             z: -3.5
         }
     );
+    assert_eq!(
+        joined.player.rotation,
+        Rotation {
+            yaw: 90.0,
+            pitch: -30.0
+        }
+    );
     assert_eq!(joined.player.game_mode, GameMode::Creative);
     let state = joined.state.unwrap();
     assert_eq!(state.player.name, "Steve");
@@ -555,18 +405,15 @@ async fn a_handler_can_ask_a_question_while_handling_an_event() {
 
     session.say(event(2, &[1], v1::Phase::Settled, false, joining(alex())));
     assert_eq!(session.hear().await, message(ALEX, "Welcome, Alex!"));
-    let from_plugin::Body::ResolvePlayer(resolve) = session.hear().await else {
+    let Some((resolved, _)) = resolving(session.hear().await) else {
         panic!("expected a question about Alex");
     };
-    session.say(answer(
-        resolve.request,
-        answer::Body::NotFound(v1::NotFound {}),
-    ));
-    let from_plugin::Body::FetchPlayers(fetch) = session.hear().await else {
+    session.say(answer(resolved, answer::Body::NotFound(v1::NotFound {})));
+    let Some(fetched) = fetching(session.hear().await) else {
         panic!("expected a question about the players");
     };
     session.say(answer(
-        fetch.request,
+        fetched,
         answer::Body::Players(v1::PlayerList {
             players: vec![steve()],
         }),
@@ -644,9 +491,10 @@ async fn a_lost_connection_is_retried() {
 
     first.say(event(1, &[1], v1::Phase::Settled, false, joining(steve())));
     assert_eq!(first.hear().await, message(STEVE, "Welcome, Steve!"));
-    let from_plugin::Body::ResolvePlayer(_) = first.hear().await else {
-        panic!("expected a question about Steve");
-    };
+    assert!(
+        resolving(first.hear().await).is_some(),
+        "expected a question about Steve"
+    );
     let lost = Instant::now();
     drop(first);
 
@@ -686,9 +534,10 @@ async fn an_old_event_is_not_decided_after_a_reconnect() {
 
     first.say(event(1, &[1], v1::Phase::Settled, false, joining(steve())));
     assert_eq!(first.hear().await, message(STEVE, "Welcome, Steve!"));
-    let from_plugin::Body::ResolvePlayer(_) = first.hear().await else {
-        panic!("expected a question about Steve");
-    };
+    assert!(
+        resolving(first.hear().await).is_some(),
+        "expected a question about Steve"
+    );
     first.say(event(2, &[2], v1::Phase::Decide, false, moving_to(200.0)));
     let Session {
         says,
@@ -708,4 +557,20 @@ async fn an_old_event_is_not_decided_after_a_reconnect() {
             event: 3
         }]
     );
+}
+
+#[tokio::test]
+async fn an_event_the_plugin_cannot_handle_yet_is_skipped() {
+    let mut host = Host::start().await;
+    let _plugin = launch(&host, None);
+    let mut session = host.knock().await.accept();
+
+    let closed = event::Payload::InventoryClose(v1::InventoryClose {
+        player: Some(steve()),
+        inventory: 1,
+        by_player: true,
+    });
+    session.say(event(1, &[1], v1::Phase::Settled, false, closed));
+    session.say(event(2, &[1], v1::Phase::Settled, false, joining(steve())));
+    assert_eq!(session.hear().await, message(STEVE, "Welcome, Steve!"));
 }

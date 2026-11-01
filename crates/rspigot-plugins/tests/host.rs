@@ -10,12 +10,12 @@ use rspigot_core::plugins::{
     Priority, ToPlugin,
 };
 use rspigot_core::ports::{ClientLink, PluginOutbox};
-use rspigot_domain::Vec3;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
+use rspigot_domain::{Rotation, Vec3};
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::plugin_host_client::PluginHostClient;
-use rspigot_plugin_protocol::v1::{self, event, from_plugin, to_plugin};
+use rspigot_plugin_protocol::v1::{self, event, from_plugin, player_order, to_plugin};
 use rspigot_plugins::{PluginHostConfig, PluginHostError, run, serve};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
@@ -249,6 +249,7 @@ fn steve() -> PlayerSnapshot {
             y: 64.0,
             z: -3.5,
         },
+        rotation: Rotation::new(90.0, -30.0),
         game_mode: GameMode::Creative,
     }
 }
@@ -321,11 +322,22 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
     assert_eq!(player.name, "Steve");
     assert_eq!(player.entity_id, 12);
     assert_eq!(player.game_mode, v1::GameMode::Creative as i32);
+    assert_eq!(
+        player.rotation,
+        Some(v1::Rotation {
+            yaw: 90.0,
+            pitch: -30.0
+        })
+    );
     assert_eq!(moved.to.unwrap().x, 2.0);
 
-    plugin.say(from_plugin::Body::SendMessage(v1::SendMessage {
+    plugin.say(from_plugin::Body::Player(v1::PlayerOrder {
         player: "not a uuid".to_owned(),
-        text: "lost".to_owned(),
+        order: Some(player_order::Order::SendMessage("lost".to_owned())),
+    }));
+    plugin.say(from_plugin::Body::Player(v1::PlayerOrder {
+        player: "00000000-0000-0000-0000-000000000001".to_owned(),
+        order: Some(player_order::Order::SetHealth(5.0)),
     }));
     plugin.say(from_plugin::Body::Hello(hello("welcome")));
     plugin.say(from_plugin::Body::Decision(v1::Decision {
@@ -377,12 +389,14 @@ async fn a_bad_introduction_is_refused_with_a_status() {
         Code::Unauthenticated
     );
 
-    let mut future = with_token(hello("welcome"));
-    future.protocol_version = 2;
-    assert_eq!(
-        refusal(Plugin::open(host.address, from_plugin::Body::Hello(future)).await),
-        Code::FailedPrecondition
-    );
+    for version in [PROTOCOL_VERSION - 1, PROTOCOL_VERSION + 1] {
+        let mut other = with_token(hello("welcome"));
+        other.protocol_version = version;
+        assert_eq!(
+            refusal(Plugin::open(host.address, from_plugin::Body::Hello(other)).await),
+            Code::FailedPrecondition
+        );
+    }
 
     let mut twins = with_token(hello("welcome"));
     twins.handlers[1].id = 1;
