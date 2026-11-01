@@ -97,7 +97,7 @@ impl PlayerSave {
         player.position = self.position;
         player.rotation = self.rotation;
         player.on_ground = self.on_ground;
-        player.flying = self.flying;
+        player.flying = self.flying && player.abilities().may_fly;
         player.vitals.health = self.health;
         player.vitals.absorption = self.absorption;
         player.vitals.food = self.food;
