@@ -7,10 +7,12 @@ use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::{GameConfig, LevelData};
 use rspigot_core::events::{
-    ClickInput, ClientEvent, ContainerClick, Direction, Hand, HashedSlot, Inbound, PlayerInput,
+    Abilities, ClickInput, ClientEvent, ContainerClick, Direction, Hand, HashedSlot, Inbound,
+    PlayerInput,
 };
+use rspigot_core::plugins::{FromPlugin, Order, PlayerOrder, PluginIntro, ToPlugin};
 use rspigot_core::ports::{
-    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, StoreError,
+    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox, StoreError,
 };
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
@@ -245,6 +247,42 @@ fn run_ticks(
     }
 }
 
+struct Deaf;
+
+impl PluginOutbox for Deaf {
+    fn send(&self, _: ToPlugin) {}
+}
+
+fn connect_plugin(server: &mut Server<Link>) {
+    server.handle(Inbound::PluginConnected {
+        connection: 1,
+        intro: PluginIntro {
+            name: "tester".to_owned(),
+            version: "1.0.0".to_owned(),
+            handlers: Vec::new(),
+        },
+        outbox: Box::new(Deaf),
+    });
+}
+
+fn order(server: &mut Server<Link>, player: PlayerId, order: PlayerOrder) {
+    server.handle(Inbound::PluginMessage {
+        connection: 1,
+        message: FromPlugin::Order(Order::Player { player, order }),
+    });
+    server.deliver();
+}
+
+fn abilities(events: &[ClientEvent]) -> Vec<Abilities> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::Abilities(abilities) => Some(*abilities),
+            _ => None,
+        })
+        .collect()
+}
+
 fn console(server: &mut Server<Link>, line: &str) {
     server.handle(Inbound::Console(line.to_owned()));
     server.deliver();
@@ -311,6 +349,35 @@ fn position_game_mode_and_inventory_survive_a_reconnect() {
     assert_eq!(join_game_mode(&events), Some(GameMode::Creative));
     assert_eq!(first_position(&events), Some(Vec3::new(100.5, 64.0, 100.5)));
     assert!(holds_diamonds(&events, 3));
+}
+
+#[test]
+fn a_survival_player_a_plugin_made_fly_comes_back_not_flying() {
+    let players = Arc::new(Players::default());
+    let mut server = server(&players, 6000);
+    connect_plugin(&mut server);
+    let (alice, link, _) = join(&mut server, "Alice");
+    order(&mut server, alice, PlayerOrder::SetAllowFlight(true));
+    order(&mut server, alice, PlayerOrder::SetFlying(true));
+    let granted = abilities(&link.take());
+    assert!(granted.last().is_some_and(|a| a.may_fly && a.flying));
+
+    server.handle(Inbound::Leave { player: alice });
+    server.deliver();
+    let saved = players.wait_saved(alice).unwrap();
+    assert_eq!(
+        saved
+            .get_compound("abilities")
+            .and_then(|abilities| abilities.get_bool("flying")),
+        Some(true)
+    );
+
+    let (_, _, events) = join(&mut server, "Alice");
+    assert_eq!(join_game_mode(&events), Some(GameMode::Survival));
+    let joined = abilities(&events);
+    assert!(!joined.is_empty());
+    assert!(!joined[0].may_fly);
+    assert!(!joined[0].flying);
 }
 
 #[test]

@@ -1,10 +1,11 @@
 use crate::{BlockStateId, ItemId, Vec3};
 
-pub const BLOCK_PARTICLES: [&str; 4] = [
+pub const BLOCK_PARTICLES: [&str; 5] = [
     "minecraft:block",
     "minecraft:block_marker",
     "minecraft:falling_dust",
     "minecraft:dust_pillar",
+    "minecraft:block_crumble",
 ];
 
 pub const PARTICLES_WITH_DATA: [&str; 22] = [
