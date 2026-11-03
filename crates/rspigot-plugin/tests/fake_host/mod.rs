@@ -4,8 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
+use rspigot_plugin::{Player, PlayerJoin, Plugin, listeners, run_with};
 use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
-use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, to_plugin};
+use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -66,6 +67,16 @@ impl Session {
             .unwrap()
             .body
             .unwrap()
+    }
+
+    pub async fn asked(&mut self) -> (u64, question::Question) {
+        match self.hear().await {
+            from_plugin::Body::Question(v1::Question {
+                request,
+                question: Some(question),
+            }) => (request, question),
+            body => panic!("expected a question, heard {body:?}"),
+        }
     }
 }
 
@@ -193,4 +204,55 @@ pub fn answer(request: u64, body: answer::Body) -> to_plugin::Body {
         request,
         body: Some(body),
     })
+}
+
+pub type Script = fn(Player) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+#[derive(Plugin)]
+#[plugin(name = "caller", version = "1.0.0")]
+pub struct Caller {
+    pub script: Script,
+    pub done: mpsc::UnboundedSender<()>,
+}
+
+#[listeners]
+impl Caller {
+    async fn on_player_join(&self, event: &PlayerJoin) {
+        (self.script)(event.player.clone()).await;
+        let _ = self.done.send(());
+    }
+}
+
+pub struct Called {
+    pub session: Session,
+    pub done: mpsc::UnboundedReceiver<()>,
+}
+
+impl Called {
+    pub async fn finished(&mut self) {
+        assert!(
+            within(self.done.recv()).await.is_some(),
+            "the script did not finish"
+        );
+    }
+}
+
+pub async fn calling(script: Script) -> Called {
+    let mut host = Host::start().await;
+    let (done, finished) = mpsc::unbounded_channel();
+    tokio::spawn(run_with(Caller { script, done }, host.url.clone(), None));
+    let session = host.knock().await.accept();
+    session.say(event(
+        1,
+        &[1],
+        v1::Phase::Settled,
+        false,
+        event::Payload::PlayerJoin(v1::PlayerJoin {
+            player: Some(steve()),
+        }),
+    ));
+    Called {
+        session,
+        done: finished,
+    }
 }

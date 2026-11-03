@@ -360,6 +360,7 @@ async fn a_handler_can_ask_a_question_while_handling_an_event() {
             health: 17.5,
             food: 12,
             level: 3,
+            address: "127.0.0.1".to_owned(),
             ..v1::PlayerState::default()
         }),
     ));
@@ -397,7 +398,7 @@ async fn a_handler_can_ask_a_question_while_handling_an_event() {
     assert_eq!(joined.player.game_mode, GameMode::Creative);
     let state = joined.state.unwrap();
     assert_eq!(state.player.name, "Steve");
-    assert_eq!((state.health, state.food, state.level), (17.5, 12, 3));
+    assert_eq!((state.health, state.food_level, state.level), (17.5, 12, 3));
     let online = joined.online.unwrap();
     let names: Vec<&str> = online.iter().map(|player| player.name.as_str()).collect();
     assert_eq!(names, ["Steve", "Alex"]);
