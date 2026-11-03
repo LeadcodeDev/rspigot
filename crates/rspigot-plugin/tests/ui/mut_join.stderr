@@ -1,4 +1,4 @@
-error: `&mut` is only allowed for events that can be cancelled: PlayerMove
+error: `&mut` is only allowed for events a handler can decide (cancel or change): PlayerMove
  --> tests/ui/mut_join.rs:8:43
   |
 8 |     async fn on_player_join(&self, event: &mut PlayerJoin) {
