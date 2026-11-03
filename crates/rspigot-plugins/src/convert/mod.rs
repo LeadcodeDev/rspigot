@@ -1,5 +1,6 @@
 mod block;
 mod custom_inventory;
+mod decision;
 mod entity;
 mod inventory;
 mod player;
@@ -88,10 +89,7 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
 pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malformed> {
     Ok(match message.body.ok_or(Malformed::Empty)? {
         from_plugin::Body::Hello(_) => return Err(Malformed::SecondHello),
-        from_plugin::Body::Decision(decision) => FromPlugin::Decision {
-            event: decision.event,
-            cancel: decision.cancel,
-        },
+        from_plugin::Body::Decision(decided) => decision::decision(decided),
         from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
         from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
         from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
