@@ -242,6 +242,12 @@ pub enum EntityOrder {
     RemoveEffect(String),
     ClearEffects,
     SetVelocity(Vec3),
+    SetCustomName(String),
+    ClearCustomName,
+    SetNameVisible(bool),
+    SetNoAi(bool),
+    SetInvulnerable(bool),
+    SetSilent(bool),
 }
 
 impl EntityOrder {
@@ -255,6 +261,12 @@ impl EntityOrder {
             Self::RemoveEffect(_) => "entity.remove_effect",
             Self::ClearEffects => "entity.clear_effects",
             Self::SetVelocity(_) => "entity.set_velocity",
+            Self::SetCustomName(_) => "entity.set_custom_name",
+            Self::ClearCustomName => "entity.clear_custom_name",
+            Self::SetNameVisible(_) => "entity.set_name_visible",
+            Self::SetNoAi(_) => "entity.set_no_ai",
+            Self::SetInvulnerable(_) => "entity.set_invulnerable",
+            Self::SetSilent(_) => "entity.set_silent",
         }
     }
 }

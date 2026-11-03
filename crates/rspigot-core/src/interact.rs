@@ -146,6 +146,7 @@ impl<L: ClientLink> Server<L> {
         if box_distance_squared(&bounds, player.eye_position()) >= reach * reach {
             return;
         }
+        self.tell_plugins_of_interact(id, target, hand, sneaking);
         let result = self.interact_on(id, target, hand);
         if matches!(result, Interaction::Predicted | Interaction::ServerOnly) {
             self.player_swing(id, hand, result == Interaction::ServerOnly);

@@ -1,10 +1,10 @@
 mod common;
 
 use common::*;
-use rspigot_core::events::ClientEvent;
+use rspigot_core::events::{ClientEvent, Hand, Inbound, PlayerInput};
 use rspigot_core::plugins::{
-    Answer, EffectSpec, EntityDetails, EntityOrder, EntityView, ItemSpec, Order, Question,
-    WorldOrder,
+    Answer, EffectSpec, EntityDetails, EntityOrder, EntityView, EventKind, EventPayload, ItemSpec,
+    Order, Question, ToPlugin, WorldOrder,
 };
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{EntityId, Vec3};
@@ -339,4 +339,133 @@ fn invalid_entity_questions_are_refused() {
     }
     assert_eq!(s.ask(Question::Entity(EntityId(999_999))), Answer::NotFound);
     assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn appearance_orders_name_and_freeze_a_mob() {
+    let mut s = scene(&["Alice"]);
+    let at = Vec3::new(4.5, 64.0, 4.5);
+    stream_chunk_of(&mut s, at.block());
+    let guide = spawn(&mut s, "minecraft:villager", at);
+    let to = |order| Order::Entity {
+        entity: guide.id,
+        order,
+    };
+    assert_eq!(details(&mut s, guide.id).custom_name, None);
+
+    s.act(to(EntityOrder::SetCustomName("§aGuide".into())));
+    s.act(to(EntityOrder::SetNameVisible(true)));
+    s.act(to(EntityOrder::SetNoAi(true)));
+    s.act(to(EntityOrder::SetInvulnerable(true)));
+    s.act(to(EntityOrder::SetSilent(true)));
+    assert_eq!(
+        details(&mut s, guide.id).custom_name.as_deref(),
+        Some("§aGuide")
+    );
+    let saved = s
+        .server
+        .saved_entity(guide.id)
+        .expect("the entity is saved");
+    assert_eq!(saved.get_bool("CustomNameVisible"), Some(true));
+    assert_eq!(saved.get_bool("NoAI"), Some(true));
+    assert_eq!(saved.get_bool("Invulnerable"), Some(true));
+    assert_eq!(saved.get_bool("Silent"), Some(true));
+
+    s.act(to(EntityOrder::Damage(5.0)));
+    assert_eq!(details(&mut s, guide.id).health, Some(20.0));
+
+    s.act(to(EntityOrder::ClearCustomName));
+    assert_eq!(details(&mut s, guide.id).custom_name, None);
+    s.act(to(EntityOrder::SetNoAi(false)));
+    s.act(to(EntityOrder::SetInvulnerable(false)));
+    s.act(to(EntityOrder::Damage(5.0)));
+    assert_eq!(details(&mut s, guide.id).health, Some(15.0));
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn only_a_mob_can_lose_its_ai() {
+    let mut s = scene(&["Alice"]);
+    let at = Vec3::new(4.5, 64.0, 4.5);
+    stream_chunk_of(&mut s, at.block());
+    let Answer::Spawned(item) = s.ask(Question::DropItem {
+        position: at,
+        item: ItemSpec::of("minecraft:diamond", 1),
+    }) else {
+        panic!("expected the dropped item");
+    };
+    let count = s.warnings().len();
+    s.act(Order::Entity {
+        entity: item.id,
+        order: EntityOrder::SetNoAi(true),
+    });
+    assert_eq!(s.warnings().len(), count + 1);
+}
+
+fn interactions(s: &Scene) -> Vec<(Vec<u32>, EntityView, Hand, bool)> {
+    s.plugin
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            ToPlugin::Event {
+                handlers,
+                payload:
+                    EventPayload::EntityInteract {
+                        entity,
+                        hand,
+                        sneaking,
+                        ..
+                    },
+                ..
+            } => Some((handlers, entity, hand, sneaking)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn interact(s: &mut Scene, target: EntityId, hand: Hand, sneaking: bool) {
+    s.server.handle(Inbound::Input {
+        player: s.players[0].id,
+        input: PlayerInput::Interact {
+            target,
+            hand,
+            sneaking,
+        },
+    });
+    s.server.deliver();
+}
+
+#[test]
+fn a_plugin_hears_when_a_player_interacts_with_an_entity() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::EntityInteract)]);
+    let Answer::Player(alice) = s.ask(Question::Player(s.players[0].id)) else {
+        panic!("expected Alice");
+    };
+    let mut at = alice.player.position;
+    at.x += 1.5;
+    let guide = spawn(&mut s, "minecraft:villager", at);
+
+    interact(&mut s, guide.id, Hand::Main, false);
+    interact(&mut s, guide.id, Hand::Off, true);
+    let heard = interactions(&s);
+    assert_eq!(heard.len(), 2);
+    assert_eq!(heard[0].0, [1]);
+    assert_eq!(heard[0].1.id, guide.id);
+    assert_eq!(heard[0].1.kind, "minecraft:villager");
+    assert_eq!((heard[0].2, heard[0].3), (Hand::Main, false));
+    assert_eq!((heard[1].2, heard[1].3), (Hand::Off, true));
+}
+
+#[test]
+fn an_unreachable_entity_is_not_heard() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::EntityInteract)]);
+    let Answer::Player(alice) = s.ask(Question::Player(s.players[0].id)) else {
+        panic!("expected Alice");
+    };
+    let mut at = alice.player.position;
+    at.x += 30.0;
+    stream_chunk_of(&mut s, at.block());
+    let guide = spawn(&mut s, "minecraft:villager", at);
+    interact(&mut s, guide.id, Hand::Main, false);
+    assert!(interactions(&s).is_empty());
 }
