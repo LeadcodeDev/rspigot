@@ -93,8 +93,24 @@ pub enum Call {
     InventoryClose { handler: u32, event: InventoryClose },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Outcome {
     Observed,
-    Decided { cancel: bool },
+    Decided(Verdict),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Verdict {
+    pub(crate) cancel: bool,
+    pub(crate) patch: Option<v1::Patch>,
+}
+
+impl Verdict {
+    pub(crate) const fn into_wire(self, handler: u32) -> v1::Verdict {
+        v1::Verdict {
+            handler,
+            cancel: self.cancel,
+            patch: self.patch,
+        }
+    }
 }

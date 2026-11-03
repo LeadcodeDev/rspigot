@@ -1,8 +1,8 @@
-use rspigot_plugin_protocol::v1::{self, event};
+use rspigot_plugin_protocol::v1::{self, event, patch};
 
 use crate::custom_inventory::{ClickKind, ClickedSlot, CustomInventory};
 use crate::link::Link;
-use crate::listener::Call;
+use crate::listener::{Call, Verdict};
 use crate::player::{Player, Position};
 use crate::{Error, ItemStack};
 
@@ -34,15 +34,25 @@ impl PlayerLeave {
 pub struct PlayerMove {
     pub player: Player,
     pub from: Position,
-    pub to: Position,
+    to: Position,
     id: u64,
     cancelled: bool,
     rolled_back: bool,
+    moved_to: Option<Position>,
 }
 
 impl PlayerMove {
     pub const fn id(&self) -> u64 {
         self.id
+    }
+
+    pub const fn to(&self) -> Position {
+        self.to
+    }
+
+    pub const fn set_to(&mut self, to: Position) {
+        self.to = to;
+        self.moved_to = Some(to);
     }
 
     pub const fn cancel(&mut self) {
@@ -65,6 +75,20 @@ impl PlayerMove {
             id: self.id,
             cancelled: self.cancelled,
             rolled_back: self.rolled_back,
+            moved_to: self.moved_to,
+        }
+    }
+}
+
+impl From<PlayerMove> for Verdict {
+    fn from(event: PlayerMove) -> Self {
+        Self {
+            cancel: event.cancelled,
+            patch: event.moved_to.map(|to| v1::Patch {
+                change: Some(patch::Change::PlayerMove(v1::PlayerMovePatch {
+                    to: Some(to.to_wire()),
+                })),
+            }),
         }
     }
 }
@@ -131,6 +155,7 @@ impl Received {
                 id,
                 cancelled,
                 rolled_back,
+                moved_to: None,
             }),
             event::Payload::InventoryClick(click) => Self::Click(InventoryClick {
                 player: Player::from_wire(click.player, link)?,

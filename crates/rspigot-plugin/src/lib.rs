@@ -29,7 +29,9 @@ pub use event::{InventoryClick, InventoryClose, PlayerJoin, PlayerLeave, PlayerM
 pub use inventory::{ArmorSlot, Inventory, InventorySlot, InventoryState};
 pub use item::ItemStack;
 pub use keys::{BlockType, EffectType, Enchantment, EntityType, Material, Particle, Sound};
-pub use listener::{Access, Call, EventKind, HandlerSpec, Listeners, Outcome, Plugin, Priority};
+pub use listener::{
+    Access, Call, EventKind, HandlerSpec, Listeners, Outcome, Plugin, Priority, Verdict,
+};
 pub use player::{GameMode, Player, PlayerState, Position, Rotation, Vector};
 pub use rspigot_plugin_macros::{Plugin, listeners};
 pub use runtime::{run, run_with};

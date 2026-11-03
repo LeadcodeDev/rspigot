@@ -9,7 +9,7 @@ use rspigot_plugin::{
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
-    self, answer, event, from_plugin, player_order, question, to_plugin,
+    self, answer, event, from_plugin, patch, player_order, question, to_plugin,
 };
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -20,6 +20,7 @@ enum Mark {
     Decided {
         handler: u32,
         event: u64,
+        height: f64,
     },
     Watched {
         event: u64,
@@ -59,12 +60,16 @@ impl Guard {
 
     #[priority(High)]
     async fn on_player_move(&self, event: &mut PlayerMove) {
+        let to = event.to();
         let _ = self.marks.send(Mark::Decided {
             handler: 2,
             event: event.id(),
+            height: to.y,
         });
-        if event.to.y > 100.0 {
+        if to.y > 100.0 {
             event.cancel();
+        } else if to.y > 80.0 {
+            event.set_to(Position { y: 80.0, ..to });
         }
     }
 
@@ -83,6 +88,7 @@ impl Guard {
         let _ = self.marks.send(Mark::Decided {
             handler: 4,
             event: event.id(),
+            height: event.to().y,
         });
     }
 }
@@ -140,8 +146,28 @@ fn moving_to(height: f64) -> event::Payload {
     })
 }
 
-fn decision(event: u64, cancel: bool) -> from_plugin::Body {
-    from_plugin::Body::Decision(v1::Decision { event, cancel })
+fn decision(event: u64, verdicts: Vec<v1::Verdict>) -> from_plugin::Body {
+    from_plugin::Body::Decision(v1::Decision { event, verdicts })
+}
+
+fn verdict(handler: u32, cancel: bool, height: Option<f64>) -> v1::Verdict {
+    v1::Verdict {
+        handler,
+        cancel,
+        patch: height.map(|y| v1::Patch {
+            change: Some(patch::Change::PlayerMove(v1::PlayerMovePatch {
+                to: Some(v1::Vec3 { x: 1.0, y, z: -3.5 }),
+            })),
+        }),
+    }
+}
+
+fn decided(handler: u32, event: u64, height: f64) -> Mark {
+    Mark::Decided {
+        handler,
+        event,
+        height,
+    }
 }
 
 fn message(player: &str, text: &str) -> from_plugin::Body {
@@ -193,7 +219,7 @@ async fn a_plugin_introduces_its_handlers() {
     let _plugin = launch(&host, Some("s3cret"));
 
     let hello = host.knock().await.hello;
-    assert_eq!(hello.protocol_version, 2);
+    assert_eq!(hello.protocol_version, 3);
     assert_eq!(
         hello,
         v1::Hello {
@@ -252,16 +278,22 @@ async fn a_deciding_handler_answers_its_event() {
         false,
         moving_to(200.0),
     ));
-    assert_eq!(session.hear().await, decision(7, true));
+    assert_eq!(
+        session.hear().await,
+        decision(7, vec![verdict(2, true, None), verdict(4, false, None)])
+    );
     session.say(event(8, &[2, 4], v1::Phase::Decide, false, moving_to(65.0)));
-    assert_eq!(session.hear().await, decision(8, false));
+    assert_eq!(
+        session.hear().await,
+        decision(8, vec![verdict(2, false, None), verdict(4, false, None)])
+    );
     let nowhere = event::Payload::PlayerMove(v1::PlayerMove {
         player: Some(steve()),
         from: None,
         to: None,
     });
     session.say(event(9, &[2, 4], v1::Phase::Decide, false, nowhere));
-    assert_eq!(session.hear().await, decision(9, false));
+    assert_eq!(session.hear().await, decision(9, Vec::new()));
     let stranger = event::Payload::PlayerMove(v1::PlayerMove {
         player: Some(snapshot("not a uuid", "Steve", 12)),
         from: Some(v1::Vec3 {
@@ -276,23 +308,49 @@ async fn a_deciding_handler_answers_its_event() {
         }),
     });
     session.say(event(10, &[2, 4], v1::Phase::Decide, false, stranger));
-    assert_eq!(session.hear().await, decision(10, false));
+    assert_eq!(session.hear().await, decision(10, Vec::new()));
 
     assert_eq!(
         plugin.marks(),
         [
-            Mark::Decided {
-                handler: 2,
-                event: 7
-            },
-            Mark::Decided {
-                handler: 2,
-                event: 8
-            },
-            Mark::Decided {
-                handler: 4,
-                event: 8
-            },
+            decided(2, 7, 200.0),
+            decided(4, 7, 200.0),
+            decided(2, 8, 65.0),
+            decided(4, 8, 65.0),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn every_deciding_handler_runs_on_its_own_copy_and_the_plugin_answers_once() {
+    let mut host = Host::start().await;
+    let mut plugin = launch(&host, None);
+    let mut session = host.knock().await.accept();
+
+    session.say(event(5, &[2, 4], v1::Phase::Decide, false, moving_to(90.0)));
+    assert_eq!(
+        session.hear().await,
+        decision(
+            5,
+            vec![verdict(2, false, Some(80.0)), verdict(4, false, None)]
+        )
+    );
+    session.say(event(6, &[4, 2], v1::Phase::Decide, false, moving_to(90.0)));
+    assert_eq!(
+        session.hear().await,
+        decision(
+            6,
+            vec![verdict(4, false, None), verdict(2, false, Some(80.0))]
+        )
+    );
+
+    assert_eq!(
+        plugin.marks(),
+        [
+            decided(2, 5, 90.0),
+            decided(4, 5, 90.0),
+            decided(4, 6, 90.0),
+            decided(2, 6, 90.0),
         ]
     );
 }
@@ -313,7 +371,10 @@ async fn an_observer_answers_nothing() {
     ));
     session.say(event(10, &[3], v1::Phase::Settled, false, moving_to(65.0)));
     session.say(event(11, &[2], v1::Phase::Decide, false, moving_to(65.0)));
-    assert_eq!(session.hear().await, decision(11, false));
+    assert_eq!(
+        session.hear().await,
+        decision(11, vec![verdict(2, false, None)])
+    );
 
     assert_eq!(
         plugin.marks(),
@@ -333,10 +394,7 @@ async fn an_observer_answers_nothing() {
                 cancelled: false,
                 rolled_back: false
             },
-            Mark::Decided {
-                handler: 2,
-                event: 11
-            },
+            decided(2, 11, 65.0),
         ]
     );
 }
@@ -511,7 +569,10 @@ async fn a_lost_connection_is_retried() {
     assert_eq!(knock.hello, hello);
     let mut second = knock.accept();
     second.say(event(2, &[2], v1::Phase::Decide, false, moving_to(65.0)));
-    assert_eq!(second.hear().await, decision(2, false));
+    assert_eq!(
+        second.hear().await,
+        decision(2, vec![verdict(2, false, None)])
+    );
     steve.send_message("back again");
     assert_eq!(second.hear().await, message(STEVE, "back again"));
 
@@ -524,7 +585,10 @@ async fn a_lost_connection_is_retried() {
     assert_eq!(knock.hello, hello);
     let mut third = knock.accept();
     third.say(event(3, &[2], v1::Phase::Decide, false, moving_to(200.0)));
-    assert_eq!(third.hear().await, decision(3, true));
+    assert_eq!(
+        third.hear().await,
+        decision(3, vec![verdict(2, true, None)])
+    );
 }
 
 #[tokio::test]
@@ -550,14 +614,11 @@ async fn an_old_event_is_not_decided_after_a_reconnect() {
     assert!(matches!(joined.state, Err(Error::Disconnected)));
     let mut second = host.knock().await.accept();
     second.say(event(3, &[2], v1::Phase::Decide, false, moving_to(65.0)));
-    assert_eq!(second.hear().await, decision(3, false));
     assert_eq!(
-        plugin.marks(),
-        [Mark::Decided {
-            handler: 2,
-            event: 3
-        }]
+        second.hear().await,
+        decision(3, vec![verdict(2, false, None)])
     );
+    assert_eq!(plugin.marks(), [decided(2, 3, 65.0)]);
 }
 
 #[tokio::test]

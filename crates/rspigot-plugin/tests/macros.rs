@@ -18,13 +18,15 @@ impl Welcome {
     #[ignore_cancelled]
     #[priority(Lowest)]
     async fn log_real_moves(&self, event: &rspigot_plugin::PlayerMove) {
-        let _ = event.to;
+        let _ = event.to();
     }
 
     #[priority(Highest)]
     async fn hold_the_spawn(&self, event: &mut ::rspigot_plugin::PlayerMove) {
-        if event.to.y > 100.0 {
+        if event.to().y > 100.0 {
             event.cancel();
+        } else {
+            event.set_to(event.from);
         }
     }
 

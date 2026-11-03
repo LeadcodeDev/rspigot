@@ -10,7 +10,8 @@ const MUT_SELF: &str = "handlers take `&self`; keep state in fields behind a `Mu
 const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave`, `&PlayerMove`, `&InventoryClick` or `&InventoryClose` to observe it, or `&mut PlayerMove` to decide on it";
 const BAD_ON_ENABLE: &str = "`on_enable` takes `&self, server: &Server`";
 const BAD_ON_DISABLE: &str = "`on_disable` takes `&self`";
-const NOT_CANCELLABLE: &str = "`&mut` is only allowed for events that can be cancelled: PlayerMove";
+const NOT_DECIDABLE: &str =
+    "`&mut` is only allowed for events a handler can decide (cancel or change): PlayerMove";
 const IGNORE_CANCELLED_ON_DECIDER: &str =
     "`#[ignore_cancelled]` only applies to observing handlers (`&Event`)";
 const NOT_A_PRIORITY: &str = "`#[priority(...)]` takes one of Lowest, Low, Normal, High, Highest";
@@ -277,19 +278,19 @@ fn event(sig: &Signature) -> Result<(Ident, bool), Error> {
     else {
         return Err(Error::new_spanned(sig, NOT_A_HANDLER));
     };
-    let Some((name, cancellable, decides)) = event_type(&argument.ty) else {
+    let Some((name, decidable, decides)) = event_type(&argument.ty) else {
         return Err(Error::new_spanned(&argument.ty, NOT_AN_EVENT));
     };
-    if decides && !cancellable {
-        return Err(Error::new_spanned(&argument.ty, NOT_CANCELLABLE));
+    if decides && !decidable {
+        return Err(Error::new_spanned(&argument.ty, NOT_DECIDABLE));
     }
     Ok((Ident::new(name, Span::call_site()), decides))
 }
 
 fn event_type(ty: &Type) -> Option<(&'static str, bool, bool)> {
     let (ident, mutable) = referenced(ty)?;
-    let (name, cancellable) = EVENTS.iter().find(|(name, _)| ident == name)?;
-    Some((*name, *cancellable, mutable))
+    let (name, decidable) = EVENTS.iter().find(|(name, _)| ident == name)?;
+    Some((*name, *decidable, mutable))
 }
 
 fn referenced(ty: &Type) -> Option<(&Ident, bool)> {
@@ -349,7 +350,7 @@ fn arm(handler: &Handler) -> TokenStream {
             #(#cfgs)*
             ::rspigot_plugin::Call::#kind { handler: #id, mut event } => {
                 self.#method(&mut event).await;
-                ::rspigot_plugin::Outcome::Decided { cancel: event.is_cancelled() }
+                ::rspigot_plugin::Outcome::Decided(::rspigot_plugin::Verdict::from(event))
             }
         }
     } else {

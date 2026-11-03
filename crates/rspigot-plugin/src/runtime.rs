@@ -13,7 +13,7 @@ use tonic::{Code, Status, Streaming};
 use crate::Error;
 use crate::event::Received;
 use crate::link::{ANSWER_TIMEOUT, Link, Outbound, message};
-use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin};
+use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin, Verdict};
 use crate::server::Server;
 
 const DEFAULT_URL: &str = "http://127.0.0.1:25580";
@@ -265,16 +265,16 @@ async fn handle<P: Listeners>(
         tracing::debug!("Dropped event {id}: its connection is gone");
         return;
     };
-    let cancel = match Received::from_wire(event, link) {
+    let verdicts = match Received::from_wire(event, link) {
         Ok(received) => decide(plugin, &received, &handlers).await,
         Err(error) => {
             tracing::warn!("Let event {id} through: {error}");
-            false
+            Vec::new()
         }
     };
     let _ = reply.send(message(from_plugin::Body::Decision(v1::Decision {
         event: id,
-        cancel,
+        verdicts,
     })));
 }
 
@@ -284,13 +284,20 @@ async fn observe<P: Listeners>(plugin: &P, received: &Received, handlers: &[u32]
     }
 }
 
-async fn decide<P: Listeners>(plugin: &P, received: &Received, handlers: &[u32]) -> bool {
+async fn decide<P: Listeners>(
+    plugin: &P,
+    received: &Received,
+    handlers: &[u32],
+) -> Vec<v1::Verdict> {
+    let mut verdicts = Vec::with_capacity(handlers.len());
     for &handler in handlers {
-        if plugin.dispatch(received.call(handler)).await == (Outcome::Decided { cancel: true }) {
-            return true;
-        }
+        let verdict = match plugin.dispatch(received.call(handler)).await {
+            Outcome::Decided(verdict) => verdict,
+            Outcome::Observed => Verdict::default(),
+        };
+        verdicts.push(verdict.into_wire(handler));
     }
-    false
+    verdicts
 }
 
 struct Backoff(Duration);
