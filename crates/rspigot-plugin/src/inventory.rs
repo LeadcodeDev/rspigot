@@ -111,23 +111,18 @@ impl Inventory {
     }
 
     pub async fn resolve(&self) -> Result<InventoryState, Error> {
-        let player = self.player.to_string();
-        let answer = self
+        let state = self
             .link
-            .ask(|request| {
-                from_plugin::Body::Question(v1::Question {
-                    request,
-                    question: Some(question::Question::Inventory(player)),
-                })
-            })
+            .ask(
+                question::Question::Inventory(self.player.to_string()),
+                "an inventory",
+                |body| match body {
+                    answer::Body::Inventory(state) => Some(state),
+                    _ => None,
+                },
+            )
             .await?;
-        match answer {
-            answer::Body::Inventory(state) => InventoryState::from_wire(state),
-            answer::Body::NotFound(_) => Err(Error::NotFound),
-            _ => Err(Error::Malformed(
-                "an answer that is not an inventory".to_owned(),
-            )),
-        }
+        InventoryState::from_wire(state)
     }
 
     fn order(&self, order: inventory_order::Order) {

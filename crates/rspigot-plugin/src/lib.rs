@@ -1,5 +1,7 @@
+mod block;
 mod color;
 mod effect;
+mod entity;
 mod error;
 mod event;
 mod inventory;
@@ -11,11 +13,15 @@ mod listener;
 mod player;
 mod runtime;
 mod server;
+mod target;
 mod text;
 mod wire;
+mod world;
 
+pub use block::{Block, BlockPos, BlockState, Face};
 pub use color::Color;
 pub use effect::Effect;
+pub use entity::{Entities, Entity, EntityState};
 pub use error::Error;
 pub use event::{PlayerJoin, PlayerLeave, PlayerMove};
 pub use inventory::{ArmorSlot, Inventory, InventorySlot, InventoryState};
@@ -25,15 +31,23 @@ pub use listener::{Access, Call, EventKind, HandlerSpec, Listeners, Outcome, Plu
 pub use player::{GameMode, Player, PlayerState, Position, Rotation, Vector};
 pub use rspigot_plugin_macros::{Plugin, listeners};
 pub use runtime::{run, run_with};
-pub use server::{Players, Server};
+pub use server::{
+    BanEntry, BanList, BanListKind, Bans, ByAddress, ByName, IpBanEntry, IpBans, ListedPlayer,
+    NameList, NameListKind, NamedPlayers, OperatorKind, Operators, Players, Server, ServerState,
+    Whitelist, WhitelistKind,
+};
+pub use target::{BlockTarget, Target};
 pub use text::{ChatColor, Title};
 pub use uuid::Uuid;
+pub use world::{Difficulty, GameRule, Weather, World, WorldState};
 
 pub mod prelude {
     pub use crate::{
-        ArmorSlot, BlockType, ChatColor, Color, Effect, EffectType, Enchantment, EntityType, Error,
-        GameMode, Inventory, InventorySlot, InventoryState, ItemStack, Listeners, Material,
-        Particle, Player, PlayerJoin, PlayerLeave, PlayerMove, PlayerState, Plugin, Position,
-        Priority, Rotation, Server, Sound, Title, Vector, listeners, run, run_with,
+        ArmorSlot, Block, BlockPos, BlockState, BlockTarget, BlockType, ChatColor, Color,
+        Difficulty, Effect, EffectType, Enchantment, Entity, EntityState, EntityType, Error, Face,
+        GameMode, GameRule, Inventory, InventorySlot, InventoryState, ItemStack, Listeners,
+        Material, Particle, Player, PlayerJoin, PlayerLeave, PlayerMove, PlayerState, Plugin,
+        Position, Priority, Rotation, Server, ServerState, Sound, Target, Title, Vector, Weather,
+        World, WorldState, listeners, run, run_with,
     };
 }

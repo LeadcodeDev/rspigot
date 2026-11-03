@@ -8,7 +8,9 @@ use uuid::Uuid;
 use crate::inventory::Inventory;
 use crate::link::Link;
 use crate::server::Server;
-use crate::wire::millis;
+use crate::target::{BlockTarget, Target};
+use crate::wire::{millis, parse_address, parse_uuid};
+use crate::world::World;
 use crate::{Effect, EffectType, Error, Particle, Sound, Title};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -99,11 +101,8 @@ impl Player {
     ) -> Result<Self, Error> {
         let snapshot =
             snapshot.ok_or_else(|| Error::Malformed("a message without its player".to_owned()))?;
-        let uuid = Uuid::parse_str(&snapshot.uuid).map_err(|_| {
-            Error::Malformed(format!("`{}`, which is not a player UUID", snapshot.uuid))
-        })?;
         Ok(Self {
-            uuid,
+            uuid: parse_uuid(&snapshot.uuid, "a player")?,
             game_mode: GameMode::from_wire(snapshot.game_mode)?,
             name: snapshot.name,
             entity_id: snapshot.entity_id,
@@ -302,27 +301,57 @@ impl Player {
     }
 
     pub async fn resolve(&self) -> Result<PlayerState, Error> {
-        let player = self.uuid.to_string();
-        let answer = self
+        let state = self
             .link
-            .ask(|request| {
-                from_plugin::Body::Question(v1::Question {
-                    request,
-                    question: Some(question::Question::Player(player)),
-                })
-            })
+            .ask(
+                question::Question::Player(self.uuid.to_string()),
+                "a player state",
+                |body| match body {
+                    answer::Body::Player(state) => Some(state),
+                    _ => None,
+                },
+            )
             .await?;
-        match answer {
-            answer::Body::Player(state) => PlayerState::from_wire(state, &self.link),
-            answer::Body::NotFound(_) => Err(Error::NotFound),
-            _ => Err(Error::Malformed(
-                "an answer that is not a player state".to_owned(),
-            )),
-        }
+        PlayerState::from_wire(state, &self.link)
+    }
+
+    pub async fn target_block(&self, max_distance: f64) -> Result<Option<BlockTarget>, Error> {
+        let hit = self
+            .aim(question::Question::TargetBlock, max_distance)
+            .await?;
+        BlockTarget::from_wire(hit, &self.link)
+    }
+
+    pub async fn target_entity(&self, max_distance: f64) -> Result<Option<Target>, Error> {
+        let hit = self
+            .aim(question::Question::TargetEntity, max_distance)
+            .await?;
+        Target::from_wire(hit, &self.link)
     }
 
     pub fn server(&self) -> Server {
         Server::new(self.link.clone())
+    }
+
+    pub fn world(&self) -> World {
+        World::new(self.link.clone())
+    }
+
+    async fn aim(
+        &self,
+        question: fn(v1::TargetQuery) -> question::Question,
+        max_distance: f64,
+    ) -> Result<Option<v1::target::Hit>, Error> {
+        let query = v1::TargetQuery {
+            player: self.uuid.to_string(),
+            max_distance,
+        };
+        self.link
+            .ask(question(query), "a target", |body| match body {
+                answer::Body::Target(target) => Some(target.hit),
+                _ => None,
+            })
+            .await
     }
 
     fn order(&self, order: Order) {
@@ -364,17 +393,11 @@ pub struct PlayerState {
 
 impl PlayerState {
     fn from_wire(state: v1::PlayerState, link: &Link) -> Result<Self, Error> {
-        let address = state.address.parse().map_err(|_| {
-            Error::Malformed(format!("`{}`, which is not an IP address", state.address))
-        })?;
+        let address = parse_address(&state.address)?;
         let hidden = state
             .hidden
             .iter()
-            .map(|hidden| {
-                Uuid::parse_str(hidden).map_err(|_| {
-                    Error::Malformed(format!("`{hidden}`, which is not a player UUID"))
-                })
-            })
+            .map(|hidden| parse_uuid(hidden, "a player"))
             .collect::<Result<_, Error>>()?;
         Ok(Self {
             player: Player::from_wire(state.player, link)?,
