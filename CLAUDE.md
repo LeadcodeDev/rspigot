@@ -8,6 +8,8 @@ Game objects: one generated struct per block, item, mob effect and entity type (
 
 Plugin contract (`crates/rspigot-plugin-protocol/proto`): regenerate the Rust code with `cargo run --manifest-path tools/plugin-protocol-gen/Cargo.toml` (needs `protoc`); `-- --check` fails when it is stale.
 
+Plugin SDK typed keys (`crates/rspigot-plugin/src/keys`): regenerate with `python3 -I tools/gen_plugin_keys.py`; `--check` fails when they are stale.
+
 Rules: no `async-trait`, no comments in code, static dispatch first, `thiserror` per crate, `anyhow` only in `apps/rspigot`. Stacked PRs, one per crate, in dependency order.
 
 Verify: `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`.
