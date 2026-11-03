@@ -1,5 +1,6 @@
 mod block;
 mod decisions;
+mod entity;
 mod inventory;
 mod items;
 mod orders;
@@ -11,7 +12,7 @@ mod world;
 
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::world::Difficulty;
-use rspigot_domain::{BlockPos, Rotation, Vec3};
+use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
@@ -20,8 +21,8 @@ use crate::admin::ListEntry;
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
 pub use orders::{
-    BlockOrder, EffectSpec, GameRule, InventoryOrder, Order, ParticleDataSpec, ParticleSpec,
-    PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
+    BlockOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order, ParticleDataSpec,
+    ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub(crate) use registry::Registry;
 
@@ -179,6 +180,24 @@ pub struct BlockState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EntityView {
+    pub id: EntityId,
+    pub uuid: Uuid,
+    pub kind: String,
+    pub position: Vec3,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntityDetails {
+    pub entity: EntityView,
+    pub health: Option<f32>,
+    pub velocity: Vec3,
+    pub on_ground: bool,
+    pub custom_name: Option<String>,
+    pub fire_ticks: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum EventPayload {
     PlayerJoin {
         player: PlayerSnapshot,
@@ -219,6 +238,10 @@ pub enum Answer {
     Names(Vec<ListEntry>),
     World(WorldState),
     Block(BlockState),
+    Entities(Vec<EntityView>),
+    Entity(EntityDetails),
+    Spawned(EntityView),
+    Refused(String),
     NotFound,
 }
 
@@ -258,6 +281,19 @@ pub enum Question {
     Operators,
     World,
     Block(BlockPos),
+    Entities {
+        near: Option<(Vec3, f64)>,
+        kind: Option<String>,
+    },
+    Entity(EntityId),
+    Spawn {
+        kind: String,
+        position: Vec3,
+    },
+    DropItem {
+        position: Vec3,
+        item: ItemSpec,
+    },
 }
 
 #[cfg(test)]

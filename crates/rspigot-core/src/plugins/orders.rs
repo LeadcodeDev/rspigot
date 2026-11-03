@@ -1,6 +1,6 @@
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::world::Difficulty;
-use rspigot_domain::{BlockPos, Rotation, Vec3};
+use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 
 use crate::commands::Weather;
 use crate::plugins::ItemSpec;
@@ -65,6 +65,10 @@ pub enum Order {
         pos: BlockPos,
         order: BlockOrder,
     },
+    Entity {
+        entity: EntityId,
+        order: EntityOrder,
+    },
 }
 
 impl Order {
@@ -75,6 +79,7 @@ impl Order {
             Self::Server(order) => order.name(),
             Self::World(order) => order.name(),
             Self::Block { order, .. } => order.name(),
+            Self::Entity { order, .. } => order.name(),
         }
     }
 }
@@ -193,6 +198,33 @@ impl BlockOrder {
             Self::Set(_) => "block.set",
             Self::SetWith { .. } => "block.set_with",
             Self::BreakNaturally => "block.break_naturally",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EntityOrder {
+    Teleport(Vec3),
+    Remove,
+    Damage(f64),
+    Kill,
+    AddEffect(EffectSpec),
+    RemoveEffect(String),
+    ClearEffects,
+    SetVelocity(Vec3),
+}
+
+impl EntityOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Teleport(_) => "entity.teleport",
+            Self::Remove => "entity.remove",
+            Self::Damage(_) => "entity.damage",
+            Self::Kill => "entity.kill",
+            Self::AddEffect(_) => "entity.add_effect",
+            Self::RemoveEffect(_) => "entity.remove_effect",
+            Self::ClearEffects => "entity.clear_effects",
+            Self::SetVelocity(_) => "entity.set_velocity",
         }
     }
 }

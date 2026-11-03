@@ -73,6 +73,7 @@ impl<L: ClientLink> Server<L> {
             Order::Server(order) => self.apply_server_order(connection, order),
             Order::World(order) => self.apply_world_order(connection, order),
             Order::Block { pos, order } => self.apply_block_order(connection, pos, order),
+            Order::Entity { entity, order } => self.apply_entity_order(connection, entity, order),
         }
     }
 
@@ -103,6 +104,18 @@ impl<L: ClientLink> Server<L> {
             Question::Block(pos) => self
                 .block_state(pos)
                 .map_or(Answer::NotFound, Answer::Block),
+            Question::Entities { near, kind } => self
+                .listed_entities(near, kind.as_deref())
+                .map_or_else(Answer::Refused, Answer::Entities),
+            Question::Entity(id) => self
+                .entity_details(id)
+                .map_or(Answer::NotFound, Answer::Entity),
+            Question::Spawn { kind, position } => self
+                .spawn_for_plugin(&kind, position)
+                .map_or_else(Answer::Refused, |id| self.spawned(id)),
+            Question::DropItem { position, item } => self
+                .drop_for_plugin(position, &item)
+                .map_or_else(Answer::Refused, |id| self.spawned(id)),
         }
     }
 
