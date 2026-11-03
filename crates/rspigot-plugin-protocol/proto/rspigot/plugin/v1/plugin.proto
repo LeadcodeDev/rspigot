@@ -3,7 +3,7 @@ package rspigot.plugin.v1;
 
 service PluginHost { rpc Connect(stream FromPlugin) returns (stream ToPlugin); }
 
-enum EventKind { EVENT_KIND_UNSPECIFIED = 0; EVENT_KIND_PLAYER_JOIN = 1; EVENT_KIND_PLAYER_LEAVE = 2; EVENT_KIND_PLAYER_MOVE = 3; EVENT_KIND_INVENTORY_CLICK = 4; EVENT_KIND_INVENTORY_CLOSE = 5; }
+enum EventKind { EVENT_KIND_UNSPECIFIED = 0; EVENT_KIND_PLAYER_JOIN = 1; EVENT_KIND_PLAYER_LEAVE = 2; EVENT_KIND_PLAYER_MOVE = 3; EVENT_KIND_INVENTORY_CLICK = 4; EVENT_KIND_INVENTORY_CLOSE = 5; EVENT_KIND_ENTITY_INTERACT = 6; }
 enum Access { ACCESS_UNSPECIFIED = 0; ACCESS_OBSERVE = 1; ACCESS_DECIDE = 2; }
 enum Priority { PRIORITY_UNSPECIFIED = 0; PRIORITY_LOWEST = 1; PRIORITY_LOW = 2; PRIORITY_NORMAL = 3; PRIORITY_HIGH = 4; PRIORITY_HIGHEST = 5; }
 enum GameMode { GAME_MODE_UNSPECIFIED = 0; GAME_MODE_SURVIVAL = 1; GAME_MODE_CREATIVE = 2; GAME_MODE_ADVENTURE = 3; GAME_MODE_SPECTATOR = 4; }
@@ -12,6 +12,7 @@ enum Difficulty { DIFFICULTY_UNSPECIFIED = 0; DIFFICULTY_PEACEFUL = 1; DIFFICULT
 enum Weather { WEATHER_UNSPECIFIED = 0; WEATHER_CLEAR = 1; WEATHER_RAIN = 2; WEATHER_THUNDER = 3; }
 enum GameRule { GAME_RULE_UNSPECIFIED = 0; GAME_RULE_DAYLIGHT_CYCLE = 1; GAME_RULE_NATURAL_REGENERATION = 2; GAME_RULE_KEEP_INVENTORY = 3; GAME_RULE_SHOW_DEATH_MESSAGES = 4; GAME_RULE_IMMEDIATE_RESPAWN = 5; GAME_RULE_FALL_DAMAGE = 6; GAME_RULE_MOB_DROPS = 7; GAME_RULE_MOB_GRIEFING = 8; GAME_RULE_MOB_EXPLOSION_DROP_DECAY = 9; GAME_RULE_BLOCK_DROPS = 10; GAME_RULE_UNIVERSAL_ANGER = 11; }
 enum Face { FACE_UNSPECIFIED = 0; FACE_DOWN = 1; FACE_UP = 2; FACE_NORTH = 3; FACE_SOUTH = 4; FACE_WEST = 5; FACE_EAST = 6; }
+enum Hand { HAND_UNSPECIFIED = 0; HAND_MAIN = 1; HAND_OFF = 2; }
 enum ClickKind { CLICK_KIND_UNSPECIFIED = 0; CLICK_KIND_LEFT = 1; CLICK_KIND_RIGHT = 2; CLICK_KIND_SHIFT_LEFT = 3; CLICK_KIND_SHIFT_RIGHT = 4; CLICK_KIND_NUMBER_KEY = 5; CLICK_KIND_SWAP_OFFHAND = 6; CLICK_KIND_DROP = 7; CLICK_KIND_CONTROL_DROP = 8; CLICK_KIND_DOUBLE_CLICK = 9; CLICK_KIND_MIDDLE = 10; }
 
 message Empty {}
@@ -55,9 +56,10 @@ message PlayerMove { PlayerSnapshot player = 1; Vec3 from = 2; Vec3 to = 3; }
 message ClickedSlot { oneof slot { int32 menu = 1; int32 player = 2; Empty outside = 3; } }
 message InventoryClick { PlayerSnapshot player = 1; uint64 inventory = 2; ClickedSlot slot = 3; ClickKind kind = 4; int32 hotbar_key = 5; Item item = 6; }
 message InventoryClose { PlayerSnapshot player = 1; uint64 inventory = 2; bool by_player = 3; }
+message EntityInteract { PlayerSnapshot player = 1; EntitySnapshot entity = 2; Hand hand = 3; bool sneaking = 4; }
 message Event {
   uint64 id = 1; repeated uint32 handlers = 2; Phase phase = 3; bool cancelled = 4;
-  oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; InventoryClick inventory_click = 13; InventoryClose inventory_close = 14; }
+  oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; InventoryClick inventory_click = 13; InventoryClose inventory_close = 14; EntityInteract entity_interact = 15; }
 }
 message Decision { uint64 event = 1; bool cancel = 2; }
 
@@ -91,7 +93,8 @@ message WorldOrder {
   }
 }
 message BlockOrder { BlockPos pos = 1; oneof order { string set = 10; SetBlockWith set_with = 11; Empty break_naturally = 12; } }
-message EntityOrder { int32 entity = 1; oneof order { Vec3 teleport = 10; Empty remove = 11; double damage = 12; Empty kill = 13; Effect add_effect = 14; string remove_effect = 15; Empty clear_effects = 16; Vec3 set_velocity = 17; } }
+message EntityOrder { int32 entity = 1; oneof order { Vec3 teleport = 10; Empty remove = 11; double damage = 12; Empty kill = 13; Effect add_effect = 14; string remove_effect = 15; Empty clear_effects = 16; Vec3 set_velocity = 17;
+    string set_custom_name = 18; Empty clear_custom_name = 19; bool set_name_visible = 20; bool set_no_ai = 21; bool set_invulnerable = 22; bool set_silent = 23; } }
 message CustomInventoryOrder { uint64 inventory = 1; oneof order { SetSlot set = 10; Empty clear = 11; Empty close = 12; Empty discard = 13; } }
 
 message TargetQuery { string player = 1; double max_distance = 2; }

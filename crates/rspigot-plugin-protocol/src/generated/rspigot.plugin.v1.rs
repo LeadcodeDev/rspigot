@@ -418,6 +418,18 @@ pub struct InventoryClose {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityInteract {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "Hand", tag = "3")]
+    pub hand: i32,
+    #[prost(bool, tag = "4")]
+    pub sneaking: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Event {
     #[prost(uint64, tag = "1")]
     pub id: u64,
@@ -427,7 +439,7 @@ pub struct Event {
     pub phase: i32,
     #[prost(bool, tag = "4")]
     pub cancelled: bool,
-    #[prost(oneof = "event::Payload", tags = "10, 11, 12, 13, 14")]
+    #[prost(oneof = "event::Payload", tags = "10, 11, 12, 13, 14, 15")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -445,6 +457,8 @@ pub mod event {
         InventoryClick(super::InventoryClick),
         #[prost(message, tag = "14")]
         InventoryClose(super::InventoryClose),
+        #[prost(message, tag = "15")]
+        EntityInteract(super::EntityInteract),
     }
 }
 #[allow(clippy::all)]
@@ -686,7 +700,10 @@ pub mod block_order {
 pub struct EntityOrder {
     #[prost(int32, tag = "1")]
     pub entity: i32,
-    #[prost(oneof = "entity_order::Order", tags = "10, 11, 12, 13, 14, 15, 16, 17")]
+    #[prost(
+        oneof = "entity_order::Order",
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+    )]
     pub order: ::core::option::Option<entity_order::Order>,
 }
 /// Nested message and enum types in `EntityOrder`.
@@ -710,6 +727,18 @@ pub mod entity_order {
         ClearEffects(super::Empty),
         #[prost(message, tag = "17")]
         SetVelocity(super::Vec3),
+        #[prost(string, tag = "18")]
+        SetCustomName(::prost::alloc::string::String),
+        #[prost(message, tag = "19")]
+        ClearCustomName(super::Empty),
+        #[prost(bool, tag = "20")]
+        SetNameVisible(bool),
+        #[prost(bool, tag = "21")]
+        SetNoAi(bool),
+        #[prost(bool, tag = "22")]
+        SetInvulnerable(bool),
+        #[prost(bool, tag = "23")]
+        SetSilent(bool),
     }
 }
 #[allow(clippy::all)]
@@ -1131,6 +1160,7 @@ pub enum EventKind {
     PlayerMove = 3,
     InventoryClick = 4,
     InventoryClose = 5,
+    EntityInteract = 6,
 }
 impl EventKind {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1145,6 +1175,7 @@ impl EventKind {
             Self::PlayerMove => "EVENT_KIND_PLAYER_MOVE",
             Self::InventoryClick => "EVENT_KIND_INVENTORY_CLICK",
             Self::InventoryClose => "EVENT_KIND_INVENTORY_CLOSE",
+            Self::EntityInteract => "EVENT_KIND_ENTITY_INTERACT",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1156,6 +1187,7 @@ impl EventKind {
             "EVENT_KIND_PLAYER_MOVE" => Some(Self::PlayerMove),
             "EVENT_KIND_INVENTORY_CLICK" => Some(Self::InventoryClick),
             "EVENT_KIND_INVENTORY_CLOSE" => Some(Self::InventoryClose),
+            "EVENT_KIND_ENTITY_INTERACT" => Some(Self::EntityInteract),
             _ => None,
         }
     }
@@ -1462,6 +1494,36 @@ impl Face {
             "FACE_SOUTH" => Some(Self::South),
             "FACE_WEST" => Some(Self::West),
             "FACE_EAST" => Some(Self::East),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Hand {
+    Unspecified = 0,
+    Main = 1,
+    Off = 2,
+}
+impl Hand {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "HAND_UNSPECIFIED",
+            Self::Main => "HAND_MAIN",
+            Self::Off => "HAND_OFF",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HAND_UNSPECIFIED" => Some(Self::Unspecified),
+            "HAND_MAIN" => Some(Self::Main),
+            "HAND_OFF" => Some(Self::Off),
             _ => None,
         }
     }
