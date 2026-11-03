@@ -6,6 +6,7 @@ use rspigot_domain::damage::DamageType;
 use rspigot_domain::food::{MAX_FOOD, MAX_SATURATION};
 use rspigot_domain::player::PlayerId;
 
+use crate::admin::ListEntry;
 use crate::commands::{self, CommandContext, CommandSender};
 use crate::events::{ClientEvent, SoundSource};
 use crate::health::{self, DamageSource};
@@ -30,12 +31,17 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let name = order.name();
-        if let Err(reason) = self.player_order(player, order) {
+        if let Err(reason) = self.player_order(connection, player, order) {
             self.warn_plugin(connection, name, reason);
         }
     }
 
-    fn player_order(&mut self, id: PlayerId, order: PlayerOrder) -> Result<(), String> {
+    fn player_order(
+        &mut self,
+        connection: u64,
+        id: PlayerId,
+        order: PlayerOrder,
+    ) -> Result<(), String> {
         match order {
             PlayerOrder::SendMessage(message) => {
                 self.push(
@@ -221,6 +227,13 @@ impl<L: ClientLink> Server<L> {
                 self.close_open_menu(id, true);
             }
             PlayerOrder::UpdateInventory => self.send_inventory(id),
+            PlayerOrder::Ban { reason, expires } => {
+                let expires = resolve::expiry_of(expires)?;
+                if let Some(target) = self.players.get(&id).map(|p| ListEntry::of(&p.profile)) {
+                    let source = self.plugin_name(connection);
+                    CommandContext::ban_profile(self, target, &source, reason, expires);
+                }
+            }
         }
         Ok(())
     }

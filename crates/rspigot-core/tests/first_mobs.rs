@@ -172,6 +172,7 @@ fn server() -> Server<Link> {
             operators: vec![ListEntry::named("Alice"), ListEntry::named("Bob")],
             whitelist: Vec::new(),
             whitelist_enabled: false,
+            ..AdminLists::default()
         },
         ..GameConfig::default()
     };
@@ -273,6 +274,7 @@ fn join(server: &mut Server<Link>, name: &str) -> Client {
         profile,
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
     let mut client = Client {

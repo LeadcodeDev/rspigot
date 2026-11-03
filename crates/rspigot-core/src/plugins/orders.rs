@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
@@ -95,6 +97,18 @@ pub enum ServerOrder {
     WhitelistRemove(String),
     OperatorAdd(String),
     OperatorRemove(String),
+    BanAdd {
+        name: String,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    },
+    BanRemove(String),
+    IpBanAdd {
+        address: String,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    },
+    IpBanRemove(String),
 }
 
 impl ServerOrder {
@@ -109,6 +123,10 @@ impl ServerOrder {
             Self::WhitelistRemove(_) => "server.whitelist_remove",
             Self::OperatorAdd(_) => "server.operator_add",
             Self::OperatorRemove(_) => "server.operator_remove",
+            Self::BanAdd { .. } => "server.ban_add",
+            Self::BanRemove(_) => "server.ban_remove",
+            Self::IpBanAdd { .. } => "server.ip_ban_add",
+            Self::IpBanRemove(_) => "server.ip_ban_remove",
         }
     }
 }
@@ -256,7 +274,10 @@ pub enum PlayerOrder {
     SendActionBar(String),
     SendTitle(TitleSpec),
     ResetTitle,
-    SetTabList { header: String, footer: String },
+    SetTabList {
+        header: String,
+        footer: String,
+    },
     Teleport(Vec3),
     TeleportFacing(Vec3, Rotation),
     SetGameMode(GameMode),
@@ -289,6 +310,10 @@ pub enum PlayerOrder {
     SpawnParticle(ParticleSpec),
     CloseInventory,
     UpdateInventory,
+    Ban {
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    },
 }
 
 impl PlayerOrder {
@@ -331,6 +356,7 @@ impl PlayerOrder {
             Self::SpawnParticle(_) => "player.spawn_particle",
             Self::CloseInventory => "player.close_inventory",
             Self::UpdateInventory => "player.update_inventory",
+            Self::Ban { .. } => "player.ban",
         }
     }
 }

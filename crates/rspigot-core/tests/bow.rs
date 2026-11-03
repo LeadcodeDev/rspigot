@@ -110,6 +110,7 @@ fn server() -> Server<Link> {
             operators: vec![ListEntry::named("Alice")],
             whitelist: Vec::new(),
             whitelist_enabled: false,
+            ..AdminLists::default()
         },
         ..GameConfig::default()
     };
@@ -141,6 +142,7 @@ fn join_archer(server: &mut Server<Link>) -> Archer {
         },
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
     let mut archer = Archer {

@@ -10,13 +10,15 @@ mod resolve;
 mod server;
 mod world;
 
+use std::net::IpAddr;
+
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
-use crate::admin::ListEntry;
+use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
@@ -142,6 +144,7 @@ pub struct PlayerState {
     pub effects: Vec<EffectSpec>,
     pub ping: i32,
     pub locale: String,
+    pub address: IpAddr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -236,6 +239,8 @@ pub enum Answer {
     Inventory(InventoryState),
     Server(ServerState),
     Names(Vec<ListEntry>),
+    Bans(Vec<BanEntry>),
+    IpBans(Vec<IpBanEntry>),
     World(WorldState),
     Block(BlockState),
     Entities(Vec<EntityView>),
@@ -279,6 +284,8 @@ pub enum Question {
     Server,
     Whitelist,
     Operators,
+    Bans,
+    IpBans,
     World,
     Block(BlockPos),
     Entities {

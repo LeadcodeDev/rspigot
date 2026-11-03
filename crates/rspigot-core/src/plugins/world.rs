@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use rspigot_domain::damage::DamageType;
 
 use crate::commands::{self, CommandContext, CommandSender};
@@ -5,7 +7,7 @@ use crate::config::GameRules;
 use crate::events::{ClientEvent, GameEvent, SoundSource};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
-use crate::plugins::resolve::{self, finite_not_negative, name_of};
+use crate::plugins::resolve::{self, expiry_of, finite_not_negative, name_of};
 use crate::plugins::{GameRule, ServerOrder, ServerState, WorldOrder, WorldState};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -16,12 +18,12 @@ const DAY_TICKS: i64 = 24_000;
 impl<L: ClientLink> Server<L> {
     pub(super) fn apply_server_order(&mut self, connection: u64, order: ServerOrder) {
         let name = order.name();
-        if let Err(reason) = self.server_order(order) {
+        if let Err(reason) = self.server_order(connection, order) {
             self.warn_plugin(connection, name, reason);
         }
     }
 
-    fn server_order(&mut self, order: ServerOrder) -> Result<(), String> {
+    fn server_order(&mut self, connection: u64, order: ServerOrder) -> Result<(), String> {
         match order {
             ServerOrder::Broadcast(message) => {
                 CommandContext::broadcast(self, resolve::text(&message));
@@ -47,6 +49,33 @@ impl<L: ClientLink> Server<L> {
             }
             ServerOrder::OperatorRemove(name) => {
                 CommandContext::set_operator(self, name_of(&name)?, false);
+            }
+            ServerOrder::BanAdd {
+                name,
+                reason,
+                expires,
+            } => {
+                let target = CommandContext::profile_entry(self, name_of(&name)?);
+                let expires = expiry_of(expires)?;
+                let source = self.plugin_name(connection);
+                CommandContext::ban_profile(self, target, &source, reason, expires);
+            }
+            ServerOrder::BanRemove(name) => {
+                let target = CommandContext::profile_entry(self, name_of(&name)?);
+                CommandContext::pardon_profile(self, &target);
+            }
+            ServerOrder::IpBanAdd {
+                address,
+                reason,
+                expires,
+            } => {
+                let address = address_of(&address)?;
+                let expires = expiry_of(expires)?;
+                let source = self.plugin_name(connection);
+                CommandContext::ban_address(self, address, &source, reason, expires);
+            }
+            ServerOrder::IpBanRemove(address) => {
+                CommandContext::pardon_address(self, address_of(&address)?);
             }
         }
         Ok(())
@@ -165,6 +194,11 @@ impl<L: ClientLink> Server<L> {
                 .collect(),
         }
     }
+}
+
+fn address_of(raw: &str) -> Result<IpAddr, String> {
+    raw.parse()
+        .map_err(|_| format!("{raw} is not an IP address"))
 }
 
 const fn rule_flag<'a>(

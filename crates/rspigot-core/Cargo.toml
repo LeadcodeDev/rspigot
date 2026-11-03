@@ -13,6 +13,7 @@ rspigot-domain = { workspace = true }
 rspigot-entities = { workspace = true }
 rspigot-items = { workspace = true }
 rspigot-nbt = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["alloc", "std"] }
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
 rand = "0.9"
