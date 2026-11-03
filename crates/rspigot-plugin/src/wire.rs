@@ -1,9 +1,12 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::net::IpAddr;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rspigot_plugin_protocol::v1::{self, particle};
+use uuid::Uuid;
 
 use crate::{
-    Effect, EffectType, Enchantment, Error, ItemStack, Material, Particle, Position, Vector,
+    BlockPos, Effect, EffectType, Enchantment, Error, ItemStack, Material, Particle, Position,
+    Vector,
 };
 
 impl Position {
@@ -26,8 +29,36 @@ impl Position {
 }
 
 impl Vector {
+    pub(crate) fn from_wire(vec: Option<v1::Vec3>, field: &str) -> Result<Self, Error> {
+        let vec = vec.ok_or_else(|| Error::Malformed(format!("a message without `{field}`")))?;
+        Ok(Self {
+            x: vec.x,
+            y: vec.y,
+            z: vec.z,
+        })
+    }
+
     pub(crate) const fn to_wire(self) -> v1::Vec3 {
         v1::Vec3 {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+        }
+    }
+}
+
+impl BlockPos {
+    pub(crate) fn from_wire(pos: Option<v1::BlockPos>, field: &str) -> Result<Self, Error> {
+        let pos = pos.ok_or_else(|| Error::Malformed(format!("a message without `{field}`")))?;
+        Ok(Self {
+            x: pos.x,
+            y: pos.y,
+            z: pos.z,
+        })
+    }
+
+    pub(crate) const fn to_wire(self) -> v1::BlockPos {
+        v1::BlockPos {
             x: self.x,
             y: self.y,
             z: self.z,
@@ -148,4 +179,23 @@ pub(crate) fn millis(time: SystemTime) -> i64 {
         Ok(after) => i64::try_from(after.as_millis()).unwrap_or(i64::MAX),
         Err(before) => i64::try_from(before.duration().as_millis()).map_or(i64::MIN, |ms| -ms),
     }
+}
+
+pub(crate) fn from_millis(ms: i64) -> Result<SystemTime, Error> {
+    let span = Duration::from_millis(ms.unsigned_abs());
+    let time = if ms < 0 {
+        UNIX_EPOCH.checked_sub(span)
+    } else {
+        UNIX_EPOCH.checked_add(span)
+    };
+    time.ok_or_else(|| Error::Malformed(format!("{ms} ms, which is not a time this system holds")))
+}
+
+pub(crate) fn parse_address(text: &str) -> Result<IpAddr, Error> {
+    text.parse()
+        .map_err(|_| Error::Malformed(format!("`{text}`, which is not an IP address")))
+}
+
+pub(crate) fn parse_uuid(text: &str, of: &str) -> Result<Uuid, Error> {
+    Uuid::parse_str(text).map_err(|_| Error::Malformed(format!("`{text}`, which is not {of} UUID")))
 }

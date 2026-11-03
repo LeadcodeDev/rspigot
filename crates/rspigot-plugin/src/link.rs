@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use rspigot_plugin_protocol::v1::{self, answer, from_plugin};
+use rspigot_plugin_protocol::v1::{self, answer, from_plugin, question};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::Error;
@@ -56,32 +56,43 @@ impl Link {
         }
     }
 
-    pub(crate) async fn ask(
+    pub(crate) async fn ask<T>(
         &self,
-        question: impl FnOnce(u64) -> from_plugin::Body,
-    ) -> Result<answer::Body, Error> {
+        question: question::Question,
+        expected: &str,
+        pick: impl FnOnce(answer::Body) -> Option<T>,
+    ) -> Result<T, Error> {
         let (request, answered) = self.post(question)?;
-        match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
-            Ok(Ok(Some(body))) => Ok(body),
-            Ok(Ok(None)) => Err(Error::Malformed("an empty answer".to_owned())),
-            Ok(Err(_)) => Err(Error::Disconnected),
+        let body = match tokio::time::timeout(ANSWER_TIMEOUT, answered).await {
+            Ok(Ok(Some(body))) => body,
+            Ok(Ok(None)) => return Err(Error::Malformed("an empty answer".to_owned())),
+            Ok(Err(_)) => return Err(Error::Disconnected),
             Err(_) => {
                 self.forget(request);
-                Err(Error::Timeout)
+                return Err(Error::Timeout);
             }
+        };
+        match body {
+            answer::Body::NotFound(_) => Err(Error::NotFound),
+            answer::Body::Refused(refused) => Err(Error::Rejected(refused.reason)),
+            body => pick(body)
+                .ok_or_else(|| Error::Malformed(format!("an answer that is not {expected}"))),
         }
     }
 
     fn post(
         &self,
-        question: impl FnOnce(u64) -> from_plugin::Body,
+        question: question::Question,
     ) -> Result<(u64, oneshot::Receiver<Option<answer::Body>>), Error> {
         let mut current = self.lock();
         let connection = current.as_mut().ok_or(Error::Disconnected)?;
         let request = self.0.last_request.fetch_add(1, Ordering::Relaxed) + 1;
         connection
             .outbound
-            .send(message(question(request)))
+            .send(message(from_plugin::Body::Question(v1::Question {
+                request,
+                question: Some(question),
+            })))
             .map_err(|_| Error::Disconnected)?;
         let (waiting, answered) = oneshot::channel();
         connection.waiting.insert(request, waiting);
@@ -128,7 +139,6 @@ pub(crate) const fn message(body: from_plugin::Body) -> v1::FromPlugin {
 mod tests {
     use std::time::Duration;
 
-    use rspigot_plugin_protocol::v1::question;
     use tokio::time::Instant;
 
     use super::*;
@@ -142,12 +152,11 @@ mod tests {
         let started = Instant::now();
 
         let asked = link
-            .ask(|request| {
-                from_plugin::Body::Question(v1::Question {
-                    request,
-                    question: Some(question::Question::Players(v1::Empty {})),
-                })
-            })
+            .ask(
+                question::Question::Players(v1::Empty {}),
+                "a player list",
+                Some,
+            )
             .await;
 
         assert!(matches!(asked, Err(Error::Timeout)), "got {asked:?}");
