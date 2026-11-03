@@ -1,9 +1,10 @@
 use rspigot_plugin_protocol::v1::{self, event};
 
-use crate::Error;
+use crate::custom_inventory::{ClickKind, ClickedSlot, CustomInventory};
 use crate::link::Link;
 use crate::listener::Call;
 use crate::player::{Player, Position};
+use crate::{Error, ItemStack};
 
 #[derive(Debug, Clone)]
 pub struct PlayerJoin {
@@ -68,10 +69,42 @@ impl PlayerMove {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct InventoryClick {
+    pub player: Player,
+    pub inventory: CustomInventory,
+    pub slot: ClickedSlot,
+    pub kind: ClickKind,
+    pub item: Option<ItemStack>,
+    id: u64,
+}
+
+impl InventoryClick {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InventoryClose {
+    pub player: Player,
+    pub inventory: CustomInventory,
+    pub by_player: bool,
+    id: u64,
+}
+
+impl InventoryClose {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+}
+
 pub(crate) enum Received {
     Join(PlayerJoin),
     Leave(PlayerLeave),
     Move(PlayerMove),
+    Click(InventoryClick),
+    Close(InventoryClose),
 }
 
 impl Received {
@@ -99,8 +132,20 @@ impl Received {
                 cancelled,
                 rolled_back,
             }),
-            event::Payload::InventoryClick(_) => return Err(not_handled_yet("an inventory click")),
-            event::Payload::InventoryClose(_) => return Err(not_handled_yet("an inventory close")),
+            event::Payload::InventoryClick(click) => Self::Click(InventoryClick {
+                player: Player::from_wire(click.player, link)?,
+                inventory: CustomInventory::new(click.inventory, link),
+                slot: ClickedSlot::from_wire(click.slot)?,
+                kind: ClickKind::from_wire(click.kind, click.hotbar_key)?,
+                item: click.item.map(ItemStack::from_wire).transpose()?,
+                id,
+            }),
+            event::Payload::InventoryClose(close) => Self::Close(InventoryClose {
+                player: Player::from_wire(close.player, link)?,
+                inventory: CustomInventory::new(close.inventory, link),
+                by_player: close.by_player,
+                id,
+            }),
         })
     }
 
@@ -118,10 +163,14 @@ impl Received {
                 handler,
                 event: event.copy(),
             },
+            Self::Click(event) => Call::InventoryClick {
+                handler,
+                event: event.clone(),
+            },
+            Self::Close(event) => Call::InventoryClose {
+                handler,
+                event: event.clone(),
+            },
         }
     }
-}
-
-fn not_handled_yet(event: &str) -> Error {
-    Error::Malformed(format!("{event}, which this plugin cannot handle yet"))
 }

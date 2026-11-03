@@ -21,6 +21,7 @@ pub(crate) struct Link(Arc<Shared>);
 #[derive(Default)]
 struct Shared {
     current: Mutex<Option<Connection>>,
+    generation: AtomicU64,
     last_request: AtomicU64,
 }
 
@@ -43,16 +44,30 @@ impl Drop for Attached {
 
 impl Link {
     pub(crate) fn attach(&self, outbound: Outbound) -> Attached {
-        *self.lock() = Some(Connection {
+        let mut current = self.lock();
+        self.0.generation.fetch_add(1, Ordering::Relaxed);
+        *current = Some(Connection {
             outbound,
             waiting: HashMap::new(),
         });
+        drop(current);
         Attached(self.clone())
     }
 
+    pub(crate) fn generation(&self) -> u64 {
+        self.0.generation.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn order(&self, body: from_plugin::Body) {
-        if let Some(connection) = self.lock().as_ref() {
-            let _ = connection.outbound.send(message(body));
+        send(self.lock().as_ref(), body);
+    }
+
+    pub(crate) fn order_from(&self, generation: u64, body: from_plugin::Body) {
+        let current = self.lock();
+        if self.generation() == generation {
+            send(current.as_ref(), body);
+        } else {
+            tracing::warn!("Dropped an order on an inventory made before rspigot reconnected");
         }
     }
 
@@ -128,6 +143,12 @@ impl fmt::Debug for Link {
         f.debug_struct("Link")
             .field("connected", &self.lock().is_some())
             .finish()
+    }
+}
+
+fn send(connection: Option<&Connection>, body: from_plugin::Body) {
+    if let Some(connection) = connection {
+        let _ = connection.outbound.send(message(body));
     }
 }
 

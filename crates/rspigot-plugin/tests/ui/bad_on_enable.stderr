@@ -1,0 +1,5 @@
+error: `on_enable` takes `&self, server: &Server`
+ --> tests/ui/bad_on_enable.rs:8:5
+  |
+8 |     async fn on_enable(&self) {}
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^

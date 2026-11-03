@@ -8,6 +8,7 @@ use rspigot_plugin_protocol::v1::{self, answer, from_plugin, question};
 use uuid::Uuid;
 
 use crate::Error;
+use crate::custom_inventory::CustomInventory;
 use crate::link::Link;
 use crate::player::Player;
 use crate::wire::{from_millis, millis, parse_address, parse_uuid};
@@ -57,6 +58,14 @@ impl Server {
 
     pub fn world(&self) -> World {
         World::new(self.link.clone())
+    }
+
+    pub fn create_inventory(&self, rows: u8, title: impl Into<String>) -> CustomInventory {
+        CustomInventory::create(&self.link, rows, title.into(), true)
+    }
+
+    pub fn create_storage(&self, rows: u8, title: impl Into<String>) -> CustomInventory {
+        CustomInventory::create(&self.link, rows, title.into(), false)
     }
 
     pub async fn resolve(&self) -> Result<ServerState, Error> {

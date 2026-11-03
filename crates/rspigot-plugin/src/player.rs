@@ -5,6 +5,7 @@ use rspigot_plugin_protocol::v1::player_order::Order;
 use rspigot_plugin_protocol::v1::{self, answer, from_plugin, question};
 use uuid::Uuid;
 
+use crate::custom_inventory::CustomInventory;
 use crate::inventory::Inventory;
 use crate::link::Link;
 use crate::server::Server;
@@ -281,6 +282,13 @@ impl Player {
         self.order(Order::ShowPlayer(target.uuid.to_string()));
     }
 
+    pub fn open_inventory(&self, inventory: &CustomInventory) {
+        self.link.order_from(
+            inventory.generation(),
+            self.body(Order::OpenInventory(inventory.id())),
+        );
+    }
+
     pub fn close_inventory(&self) {
         self.order(Order::CloseInventory(v1::Empty {}));
     }
@@ -355,10 +363,14 @@ impl Player {
     }
 
     fn order(&self, order: Order) {
-        self.link.order(from_plugin::Body::Player(v1::PlayerOrder {
+        self.link.order(self.body(order));
+    }
+
+    fn body(&self, order: Order) -> from_plugin::Body {
+        from_plugin::Body::Player(v1::PlayerOrder {
             player: self.uuid.to_string(),
             order: Some(order),
-        }));
+        })
     }
 }
 
