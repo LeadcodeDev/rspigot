@@ -2,7 +2,8 @@ use std::future::Future;
 
 use rspigot_plugin_protocol::v1;
 
-use crate::event::{PlayerJoin, PlayerLeave, PlayerMove};
+use crate::event::{InventoryClick, InventoryClose, PlayerJoin, PlayerLeave, PlayerMove};
+use crate::server::Server;
 
 pub trait Plugin: Listeners + Send + Sync + 'static {
     const NAME: &'static str;
@@ -13,6 +14,10 @@ pub trait Listeners {
     fn handlers() -> Vec<HandlerSpec>;
 
     fn dispatch(&self, call: Call) -> impl Future<Output = Outcome> + Send;
+
+    fn enable(&self, server: &Server) -> impl Future<Output = ()> + Send;
+
+    fn disable(&self) -> impl Future<Output = ()> + Send;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -20,6 +25,8 @@ pub enum EventKind {
     PlayerJoin,
     PlayerLeave,
     PlayerMove,
+    InventoryClick,
+    InventoryClose,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,6 +60,8 @@ impl HandlerSpec {
             EventKind::PlayerJoin => v1::EventKind::PlayerJoin,
             EventKind::PlayerLeave => v1::EventKind::PlayerLeave,
             EventKind::PlayerMove => v1::EventKind::PlayerMove,
+            EventKind::InventoryClick => v1::EventKind::InventoryClick,
+            EventKind::InventoryClose => v1::EventKind::InventoryClose,
         };
         let access = match self.access {
             Access::Observe => v1::Access::Observe,
@@ -80,6 +89,8 @@ pub enum Call {
     PlayerJoin { handler: u32, event: PlayerJoin },
     PlayerLeave { handler: u32, event: PlayerLeave },
     PlayerMove { handler: u32, event: PlayerMove },
+    InventoryClick { handler: u32, event: InventoryClick },
+    InventoryClose { handler: u32, event: InventoryClose },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

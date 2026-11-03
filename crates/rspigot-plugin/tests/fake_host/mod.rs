@@ -4,13 +4,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-use rspigot_plugin::{Player, PlayerJoin, Plugin, listeners, run_with};
+use rspigot_plugin::{
+    Error, InventoryClick, InventoryClose, Player, PlayerJoin, Plugin, Server, listeners, run_with,
+};
 use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
 use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::transport::Server;
 use tonic::transport::server::TcpIncoming;
 use tonic::{Request, Response, Status, Streaming};
 
@@ -135,7 +137,7 @@ impl Host {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let (knocks, knocked) = mpsc::unbounded_channel();
         tokio::spawn(
-            Server::builder()
+            tonic::transport::Server::builder()
                 .add_service(PluginHostServer::new(Stub { knocks }))
                 .serve_with_incoming(TcpIncoming::from(listener)),
         );
@@ -206,53 +208,124 @@ pub fn answer(request: u64, body: answer::Body) -> to_plugin::Body {
     })
 }
 
-pub type Script = fn(Player) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-
-#[derive(Plugin)]
-#[plugin(name = "caller", version = "1.0.0")]
-pub struct Caller {
-    pub script: Script,
-    pub done: mpsc::UnboundedSender<()>,
-}
-
-#[listeners]
-impl Caller {
-    async fn on_player_join(&self, event: &PlayerJoin) {
-        (self.script)(event.player.clone()).await;
-        let _ = self.done.send(());
-    }
-}
-
-pub struct Called {
-    pub session: Session,
-    pub done: mpsc::UnboundedReceiver<()>,
-}
-
-impl Called {
-    pub async fn finished(&mut self) {
-        assert!(
-            within(self.done.recv()).await.is_some(),
-            "the script did not finish"
-        );
-    }
-}
-
-pub async fn calling(script: Script) -> Called {
-    let mut host = Host::start().await;
-    let (done, finished) = mpsc::unbounded_channel();
-    tokio::spawn(run_with(Caller { script, done }, host.url.clone(), None));
-    let session = host.knock().await.accept();
-    session.say(event(
-        1,
+pub fn join(id: u64) -> to_plugin::Body {
+    event(
+        id,
         &[1],
         v1::Phase::Settled,
         false,
         event::Payload::PlayerJoin(v1::PlayerJoin {
             player: Some(steve()),
         }),
-    ));
-    Called {
-        session,
-        done: finished,
+    )
+}
+
+pub type Script = fn(Player) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+pub type Enable = fn(Server) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+#[derive(Debug)]
+pub enum Mark {
+    Enabled,
+    Finished,
+    Clicked(InventoryClick),
+    Closed(InventoryClose),
+    Disabled,
+}
+
+#[derive(Plugin)]
+#[plugin(name = "caller", version = "1.0.0")]
+pub struct Caller {
+    pub script: Script,
+    pub enable: Enable,
+    pub marks: mpsc::UnboundedSender<Mark>,
+}
+
+#[listeners]
+impl Caller {
+    async fn on_player_join(&self, event: &PlayerJoin) {
+        (self.script)(event.player.clone()).await;
+        let _ = self.marks.send(Mark::Finished);
     }
+
+    async fn on_inventory_click(&self, event: &InventoryClick) {
+        let _ = self.marks.send(Mark::Clicked(event.clone()));
+    }
+
+    async fn on_inventory_close(&self, event: &InventoryClose) {
+        let _ = self.marks.send(Mark::Closed(event.clone()));
+    }
+
+    async fn on_enable(&self, server: &Server) {
+        (self.enable)(server.clone()).await;
+        let _ = self.marks.send(Mark::Enabled);
+    }
+
+    async fn on_disable(&self) {
+        tokio::task::yield_now().await;
+        let _ = self.marks.send(Mark::Disabled);
+    }
+}
+
+pub fn idle(_: Server) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async {})
+}
+
+pub struct Marks(mpsc::UnboundedReceiver<Mark>);
+
+impl Marks {
+    pub async fn next(&mut self) -> Mark {
+        within(self.0.recv()).await.expect("the plugin stopped")
+    }
+
+    pub async fn expect(&mut self, expected: fn(&Mark) -> bool) {
+        let mark = self.next().await;
+        assert!(expected(&mark), "unexpected {mark:?}");
+    }
+
+    pub fn left(&mut self) -> Vec<Mark> {
+        std::iter::from_fn(|| self.0.try_recv().ok()).collect()
+    }
+}
+
+pub fn start_caller(
+    host: &Host,
+    script: Script,
+    enable: Enable,
+) -> (Marks, JoinHandle<Result<(), Error>>) {
+    let (marks, marked) = mpsc::unbounded_channel();
+    let ended = tokio::spawn(run_with(
+        Caller {
+            script,
+            enable,
+            marks,
+        },
+        host.url.clone(),
+        None,
+    ));
+    (Marks(marked), ended)
+}
+
+pub struct Called {
+    pub session: Session,
+    pub marks: Marks,
+}
+
+impl Called {
+    pub async fn finished(&mut self) {
+        let mark = self.marks.next().await;
+        assert!(
+            matches!(mark, Mark::Finished),
+            "the script did not finish: {mark:?}"
+        );
+    }
+}
+
+pub async fn calling(script: Script) -> Called {
+    let mut host = Host::start().await;
+    let (mut marks, _) = start_caller(&host, script, idle);
+    let session = host.knock().await.accept();
+    marks.expect(|mark| matches!(mark, Mark::Enabled)).await;
+    session.say(join(1));
+    Called { session, marks }
 }

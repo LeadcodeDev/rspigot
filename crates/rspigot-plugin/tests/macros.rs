@@ -69,6 +69,21 @@ impl Conditional {
     }
 }
 
+struct Lifecycle;
+
+#[listeners]
+impl Lifecycle {
+    async fn on_enable(&self, server: &Server) {
+        server.broadcast("Enabled");
+    }
+
+    async fn on_disable(&self) {}
+
+    async fn on_player_join(&self, event: &PlayerJoin) {
+        let _ = event.id();
+    }
+}
+
 fn spec(
     id: u32,
     event: EventKind,
@@ -146,6 +161,20 @@ fn a_handler_left_out_by_cfg_is_not_registered() {
             EventKind::PlayerMove,
             Access::Decide,
             Priority::High,
+            false
+        )]
+    );
+}
+
+#[test]
+fn lifecycle_hooks_are_not_handlers() {
+    assert_eq!(
+        Lifecycle::handlers(),
+        vec![spec(
+            3,
+            EventKind::PlayerJoin,
+            Access::Observe,
+            Priority::Normal,
             false
         )]
     );

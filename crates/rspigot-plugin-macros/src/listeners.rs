@@ -7,16 +7,20 @@ use syn::{
 
 const NOT_A_HANDLER: &str = "a #[listeners] block only holds handlers: `async fn name(&self, event: &Event)`; put helpers in another impl block";
 const MUT_SELF: &str = "handlers take `&self`; keep state in fields behind a `Mutex` or atomics";
-const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave` or `&PlayerMove` to observe it, or `&mut PlayerMove` to decide on it";
+const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave`, `&PlayerMove`, `&InventoryClick` or `&InventoryClose` to observe it, or `&mut PlayerMove` to decide on it";
+const BAD_ON_ENABLE: &str = "`on_enable` takes `&self, server: &Server`";
+const BAD_ON_DISABLE: &str = "`on_disable` takes `&self`";
 const NOT_CANCELLABLE: &str = "`&mut` is only allowed for events that can be cancelled: PlayerMove";
 const IGNORE_CANCELLED_ON_DECIDER: &str =
     "`#[ignore_cancelled]` only applies to observing handlers (`&Event`)";
 const NOT_A_PRIORITY: &str = "`#[priority(...)]` takes one of Lowest, Low, Normal, High, Highest";
 const PRIORITIES: [&str; 5] = ["Lowest", "Low", "Normal", "High", "Highest"];
-const EVENTS: [(&str, bool); 3] = [
+const EVENTS: [(&str, bool); 5] = [
     ("PlayerJoin", false),
     ("PlayerLeave", false),
     ("PlayerMove", true),
+    ("InventoryClick", false),
+    ("InventoryClose", false),
 ];
 
 struct Handler {
@@ -30,6 +34,12 @@ struct Handler {
 }
 
 #[derive(Default)]
+struct Hooks {
+    enable: Vec<Vec<Attribute>>,
+    disable: Vec<Vec<Attribute>>,
+}
+
+#[derive(Default)]
 struct Marks {
     priority: Option<Ident>,
     ignore_cancelled: Option<Attribute>,
@@ -40,6 +50,7 @@ pub(crate) fn expand(args: TokenStream, mut block: ItemImpl) -> TokenStream {
     if !args.is_empty() {
         errors.push(Error::new_spanned(&args, "#[listeners] takes no arguments"));
     }
+    let mut hooks = Hooks::default();
     let handlers: Vec<Handler> = if let Some((_, path, _)) = &block.trait_ {
         errors.push(Error::new_spanned(
             path,
@@ -57,6 +68,14 @@ pub(crate) fn expand(args: TokenStream, mut block: ItemImpl) -> TokenStream {
             .iter_mut()
             .zip(1..)
             .filter_map(|(item, id)| match item {
+                ImplItem::Fn(method) if method.sig.ident == "on_enable" => {
+                    hook(method, true, &mut hooks.enable, &mut errors);
+                    None
+                }
+                ImplItem::Fn(method) if method.sig.ident == "on_disable" => {
+                    hook(method, false, &mut hooks.disable, &mut errors);
+                    None
+                }
                 ImplItem::Fn(method) => handler(method, id, &mut errors),
                 other => {
                     errors.push(Error::new_spanned(other, NOT_A_HANDLER));
@@ -67,6 +86,18 @@ pub(crate) fn expand(args: TokenStream, mut block: ItemImpl) -> TokenStream {
     };
     let specs = handlers.iter().map(spec);
     let arms = handlers.iter().map(arm);
+    let enables = hooks.enable.iter().map(|cfgs| {
+        quote! {
+            #(#cfgs)*
+            self.on_enable(server).await;
+        }
+    });
+    let disables = hooks.disable.iter().map(|cfgs| {
+        quote! {
+            #(#cfgs)*
+            self.on_disable().await;
+        }
+    });
     let errors = errors.iter().map(Error::to_compile_error);
     let plugin = &block.self_ty;
     let (impl_generics, _, where_clause) = block.generics.split_for_impl();
@@ -83,6 +114,15 @@ pub(crate) fn expand(args: TokenStream, mut block: ItemImpl) -> TokenStream {
                     #(#arms)*
                     _ => ::rspigot_plugin::Outcome::Observed,
                 }
+            }
+
+            async fn enable(&self, server: &::rspigot_plugin::Server) {
+                let _ = server;
+                #(#enables)*
+            }
+
+            async fn disable(&self) {
+                #(#disables)*
             }
         }
 
@@ -104,12 +144,7 @@ fn handler(method: &mut ImplItemFn, id: u32, errors: &mut Vec<Error>) -> Option<
         return None;
     }
     Some(Handler {
-        cfgs: method
-            .attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("cfg"))
-            .cloned()
-            .collect(),
+        cfgs: cfgs(&method.attrs),
         id,
         method: method.sig.ident.clone(),
         kind,
@@ -119,6 +154,47 @@ fn handler(method: &mut ImplItemFn, id: u32, errors: &mut Vec<Error>) -> Option<
             .unwrap_or_else(|| Ident::new("Normal", Span::call_site())),
         ignore_cancelled: marks.ignore_cancelled.is_some(),
     })
+}
+
+fn hook(
+    method: &ImplItemFn,
+    takes_server: bool,
+    hooks: &mut Vec<Vec<Attribute>>,
+    errors: &mut Vec<Error>,
+) {
+    let mut inputs = method.sig.inputs.iter();
+    let by_ref = matches!(
+        inputs.next(),
+        Some(FnArg::Receiver(Receiver {
+            reference: Some(_),
+            mutability: None,
+            ..
+        }))
+    );
+    let server = !takes_server
+        || matches!(
+            inputs.next(),
+            Some(FnArg::Typed(argument))
+                if matches!(referenced(&argument.ty), Some((name, false)) if name == "Server")
+        );
+    if plain(&method.sig) && by_ref && server && inputs.next().is_none() {
+        hooks.push(cfgs(&method.attrs));
+    } else {
+        let message = if takes_server {
+            BAD_ON_ENABLE
+        } else {
+            BAD_ON_DISABLE
+        };
+        errors.push(Error::new_spanned(&method.sig, message));
+    }
+}
+
+fn cfgs(attrs: &[Attribute]) -> Vec<Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .cloned()
+        .collect()
 }
 
 fn is_mark(attr: &Attribute) -> bool {
@@ -168,15 +244,19 @@ fn priority(attr: &Attribute) -> Result<Ident, Error> {
         .ok_or_else(|| Error::new_spanned(attr, NOT_A_PRIORITY))
 }
 
-fn event(sig: &Signature) -> Result<(Ident, bool), Error> {
-    let plain = sig.asyncness.is_some()
+fn plain(sig: &Signature) -> bool {
+    sig.asyncness.is_some()
         && sig.constness.is_none()
         && sig.unsafety.is_none()
         && sig.abi.is_none()
         && sig.generics.params.is_empty()
         && sig.generics.where_clause.is_none()
         && sig.variadic.is_none()
-        && matches!(sig.output, ReturnType::Default);
+        && matches!(sig.output, ReturnType::Default)
+}
+
+fn event(sig: &Signature) -> Result<(Ident, bool), Error> {
+    let plain = plain(sig);
     if plain
         && let Some(FnArg::Receiver(receiver)) = sig.inputs.first()
         && matches!(&*receiver.ty, Type::Reference(reference) if reference.mutability.is_some())
@@ -207,6 +287,12 @@ fn event(sig: &Signature) -> Result<(Ident, bool), Error> {
 }
 
 fn event_type(ty: &Type) -> Option<(&'static str, bool, bool)> {
+    let (ident, mutable) = referenced(ty)?;
+    let (name, cancellable) = EVENTS.iter().find(|(name, _)| ident == name)?;
+    Some((*name, *cancellable, mutable))
+}
+
+fn referenced(ty: &Type) -> Option<(&Ident, bool)> {
     let Type::Reference(reference) = ty else {
         return None;
     };
@@ -218,8 +304,7 @@ fn event_type(ty: &Type) -> Option<(&'static str, bool, bool)> {
         .segments
         .last()
         .filter(|segment| path.qself.is_none() && segment.arguments.is_none())?;
-    let (name, cancellable) = EVENTS.iter().find(|(name, _)| segment.ident == name)?;
-    Some((*name, *cancellable, reference.mutability.is_some()))
+    Some((&segment.ident, reference.mutability.is_some()))
 }
 
 fn spec(handler: &Handler) -> TokenStream {
