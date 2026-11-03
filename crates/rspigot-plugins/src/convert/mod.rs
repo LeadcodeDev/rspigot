@@ -1,4 +1,5 @@
 mod block;
+mod entity;
 mod inventory;
 mod player;
 mod server;
@@ -9,6 +10,7 @@ use rspigot_core::plugins::{
     Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority,
     Question, ToPlugin,
 };
+use rspigot_domain::EntityId;
 use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
 
 use player::{wire_player, wire_state};
@@ -97,7 +99,7 @@ pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malform
         from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
         from_plugin::Body::World(order) => FromPlugin::Order(world::order(order)?),
         from_plugin::Body::Block(order) => FromPlugin::Order(block::order(order)?),
-        from_plugin::Body::Entity(_) => return Err(Malformed::Unsupported("entity order")),
+        from_plugin::Body::Entity(order) => FromPlugin::Order(entity::order(order)?),
         from_plugin::Body::CustomInventory(_) => {
             return Err(Malformed::Unsupported("custom inventory order"));
         }
@@ -116,6 +118,10 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
         question::Question::Operators(_) => Question::Operators,
         question::Question::World(_) => Question::World,
         question::Question::Block(pos) => Question::Block(shared::block_pos(pos)),
+        question::Question::Entities(query) => entity::query(query)?,
+        question::Question::Entity(id) => Question::Entity(EntityId(id)),
+        question::Question::Spawn(spawn) => entity::spawn(spawn)?,
+        question::Question::DropItem(drop) => entity::drop_item(drop)?,
         _ => return Err(Malformed::Unsupported("question")),
     };
     Ok(FromPlugin::Question {
@@ -187,6 +193,12 @@ fn wire_answer(answer: Answer) -> answer::Body {
         Answer::Names(names) => answer::Body::Listed(server::wire_names(names)),
         Answer::World(state) => answer::Body::World(world::wire_state(state)),
         Answer::Block(state) => answer::Body::Block(block::wire_state(state)),
+        Answer::Entities(views) => answer::Body::Entities(v1::EntityList {
+            entities: views.into_iter().map(entity::wire_view).collect(),
+        }),
+        Answer::Entity(details) => answer::Body::Entity(entity::wire_details(details)),
+        Answer::Spawned(view) => answer::Body::Spawned(entity::wire_view(view)),
+        Answer::Refused(reason) => answer::Body::Refused(v1::Refused { reason }),
         Answer::NotFound => answer::Body::NotFound(v1::NotFound {}),
     }
 }
@@ -196,7 +208,7 @@ mod tests {
     use rspigot_core::plugins::{Order, PlayerOrder, PlayerSnapshot};
     use rspigot_domain::player::{GameMode, PlayerId};
     use rspigot_domain::{Rotation, Vec3};
-    use rspigot_plugin_protocol::v1::{entity_order, player_order};
+    use rspigot_plugin_protocol::v1::{custom_inventory_order, player_order};
     use uuid::Uuid;
 
     use super::*;
@@ -255,13 +267,15 @@ mod tests {
             from_plugin(hide),
             Err(Malformed::Unsupported("player order"))
         ));
-        let kill = body(from_plugin::Body::Entity(v1::EntityOrder {
-            entity: 1,
-            order: Some(entity_order::Order::Kill(v1::Empty {})),
-        }));
+        let clear = body(from_plugin::Body::CustomInventory(
+            v1::CustomInventoryOrder {
+                inventory: 1,
+                order: Some(custom_inventory_order::Order::Clear(v1::Empty {})),
+            },
+        ));
         assert!(matches!(
-            from_plugin(kill),
-            Err(Malformed::Unsupported("entity order"))
+            from_plugin(clear),
+            Err(Malformed::Unsupported("custom inventory order"))
         ));
         let bans = body(from_plugin::Body::Question(v1::Question {
             request: 1,

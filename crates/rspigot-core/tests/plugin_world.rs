@@ -24,22 +24,6 @@ fn set(key: &str) -> BlockOrder {
     BlockOrder::Set(key.into())
 }
 
-fn stream_chunk_of(s: &mut Scene, pos: BlockPos) {
-    let mut waiting = s.players.clone();
-    for _ in 0..40 {
-        if waiting.is_empty() {
-            break;
-        }
-        s.tick(1);
-        waiting.retain(|player| {
-            !player.link.take().iter().any(
-                |event| matches!(event, ClientEvent::Chunk { chunk, .. } if chunk.pos() == pos.chunk()),
-            )
-        });
-    }
-    assert!(waiting.is_empty(), "every client received the chunk");
-}
-
 fn block_state(s: &mut Scene, pos: BlockPos) -> BlockState {
     let Answer::Block(state) = s.ask(Question::Block(pos)) else {
         panic!("expected the block at {pos:?}");
