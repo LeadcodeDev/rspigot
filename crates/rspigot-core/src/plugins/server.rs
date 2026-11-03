@@ -7,11 +7,13 @@ use rspigot_domain::{Rotation, Vec3};
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
-use crate::plugins::decisions::{Held, PendingMove, SettledMove, Undone, Verdict};
+use crate::plugins::decisions::{
+    Asked, Continuation, Held, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
+};
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
-    Access, Answer, EffectSpec, EventKind, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
-    PlayerSnapshot, PlayerState, Question, ToPlugin,
+    Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
+    PlayerMovePatch, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -78,7 +80,9 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         match message {
-            FromPlugin::Decision { event, cancel } => self.take_decision(connection, event, cancel),
+            FromPlugin::Decision { event, verdicts } => {
+                self.take_decision(connection, event, verdicts);
+            }
             FromPlugin::Order(order) => self.apply_order(connection, order),
             FromPlugin::Question { request, question } => {
                 let answer = self.answer_question(connection, question);
@@ -171,29 +175,57 @@ impl<L: ClientLink> Server<L> {
         rotation: Option<Rotation>,
         on_ground: bool,
     ) {
-        if !self.plugins.listens(EventKind::PlayerMove, Access::Decide) {
-            let payload = if self.plugins.listens(EventKind::PlayerMove, Access::Observe) {
-                self.move_payload(id, from, to)
+        let step = MoveStep {
+            player: id,
+            from,
+            to,
+            rotation,
+            on_ground,
+        };
+        self.fire(id, Continuation::PlayerMove(step), |server| {
+            server.move_payload(id, from, to)
+        });
+    }
+
+    pub(crate) fn fire(
+        &mut self,
+        lane: PlayerId,
+        then: Continuation,
+        describe: impl FnOnce(&Self) -> Option<EventPayload>,
+    ) {
+        let kind = then.kind();
+        let deciding = self.plugins.listens(kind, Access::Decide);
+        if !deciding && !self.decisions.busy(lane) {
+            let observed = if self.plugins.listens(kind, Access::Observe) {
+                describe(self)
             } else {
                 None
             };
-            self.apply_move(id, Some(to), rotation, on_ground);
-            if let Some(payload) = payload {
+            self.carry_on(then, None, Vec::new());
+            if let Some(payload) = observed {
                 let event = self.next_event_id();
                 self.notify_plugins(event, &payload, false, Phase::Settled);
             }
             return;
         }
-        let Some(payload) = self.move_payload(id, from, to) else {
+        let Some(payload) = describe(self) else {
             return;
         };
         let event = self.next_event_id();
-        let deciders =
+        let deciders = if deciding {
             self.plugins
-                .listeners(EventKind::PlayerMove, Access::Decide, &self.config.plugins);
-        let asked = recipients(deciders, false, Phase::Decide);
-        let waiting = asked.iter().map(|(connection, _)| *connection).collect();
-        for (connection, handlers) in asked {
+                .listeners(kind, Access::Decide, &self.config.plugins)
+        } else {
+            Vec::new()
+        };
+        let asked = deciders
+            .iter()
+            .map(|(connection, spec)| Asked {
+                connection: *connection,
+                handler: spec.id,
+            })
+            .collect();
+        for (connection, handlers) in recipients(deciders, false, Phase::Decide) {
             self.plugins.send(
                 connection,
                 ToPlugin::Event {
@@ -213,19 +245,7 @@ impl<L: ClientLink> Server<L> {
         let until = arrival.saturating_add(settings.late_cancel_ticks);
         self.decisions.queue(
             event,
-            PendingMove {
-                player: id,
-                from,
-                to,
-                rotation,
-                on_ground,
-                payload,
-                waiting,
-                cancelled: false,
-                deadline,
-                until,
-                held: Vec::new(),
-            },
+            Pending::new(lane, payload, asked, deadline, until, then),
         );
     }
 
@@ -237,7 +257,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn tick_plugins(&mut self) {
         self.decisions.expire(self.current_tick());
-        self.settle_moves();
+        self.settle_events();
     }
 
     pub(crate) fn plugin_disconnected(&mut self, connection: u64) {
@@ -250,74 +270,127 @@ impl<L: ClientLink> Server<L> {
         let plugins = &self.plugins;
         self.decisions
             .release(|connection| plugins.is_current(connection));
-        self.settle_moves();
+        self.settle_events();
     }
 
-    fn take_decision(&mut self, connection: u64, event: u64, cancel: bool) {
-        match self
-            .decisions
-            .decide(connection, event, cancel, self.current_tick())
-        {
-            Verdict::Counted => self.settle_moves(),
-            Verdict::Ignored => {}
-            Verdict::RolledBack(rollback) => {
-                self.send_back(rollback.player, rollback.from);
+    fn take_decision(&mut self, connection: u64, event: u64, verdicts: Vec<Verdict>) {
+        let (taken, warnings) =
+            self.decisions
+                .decide(connection, event, verdicts, self.current_tick());
+        for warning in warnings {
+            self.plugins.send(connection, ToPlugin::Warning(warning));
+        }
+        match taken {
+            Taken::Counted => self.settle_events(),
+            Taken::Ignored => {}
+            Taken::RolledBack(rollback) => {
+                self.undo(rollback.lane, rollback.undo);
                 self.notify_undone(rollback.undone, Phase::RolledBack);
                 self.notify_undone(rollback.dropped, Phase::Settled);
             }
-            Verdict::TooLate => {
+            Taken::TooLate(what) => {
                 if self.plugins.issued(event) {
                     self.plugins.send(
                         connection,
-                        ToPlugin::Warning(format!("cancel of event {event} arrived too late")),
+                        ToPlugin::Warning(format!("{what} of event {event} arrived too late")),
                     );
                 }
             }
         }
     }
 
-    fn settle_moves(&mut self) {
+    fn settle_events(&mut self) {
         let tick = self.current_tick();
-        while let Some((event, settled)) = self.decisions.next_settled(tick) {
-            let PendingMove {
-                player,
-                from,
-                to,
-                rotation,
-                on_ground,
-                payload,
-                waiting,
-                cancelled,
-                until,
-                held,
-                ..
-            } = settled;
-            let mut remembered = SettledMove {
-                player,
-                from,
-                silent: waiting,
-                until,
-                applied: None,
-            };
-            if cancelled {
-                let dropped = self.decisions.drop_pending(player);
-                self.decisions.remember(event, remembered);
-                self.send_back(player, from);
+        while let Some(ready) = self.decisions.next_settled(tick) {
+            self.settle(ready);
+        }
+    }
+
+    fn settle(&mut self, ready: Ready) {
+        let Ready {
+            event,
+            mut payload,
+            settlement,
+            then,
+            held,
+            mut record,
+        } = ready;
+        match settlement {
+            Settlement::Cancelled => {
+                let dropped = self.call_off(then);
+                self.decisions.remember(event, record);
                 self.notify_plugins(event, &payload, true, Phase::Settled);
                 self.notify_undone(dropped, Phase::Settled);
-                continue;
             }
-            self.notify_plugins(event, &payload, false, Phase::Settled);
-            remembered.applied = Some(payload);
-            self.decisions.remember(event, remembered);
-            self.apply_move(player, Some(to), rotation, on_ground);
-            for step in held {
-                if self.players.get(&player).is_none_or(|p| p.vitals.is_dead()) {
-                    break;
+            Settlement::Applied(patch) => {
+                if let Some(patch) = patch {
+                    patch.settle(&mut payload);
                 }
-                self.apply_move(player, step.position, step.rotation, step.on_ground);
+                self.notify_plugins(event, &payload, false, Phase::Settled);
+                record.applied = Some(payload);
+                self.decisions.remember(event, record);
+                let dropped = self.carry_on(then, patch, held);
+                self.notify_undone(dropped, Phase::Settled);
             }
         }
+    }
+
+    fn carry_on(
+        &mut self,
+        then: Continuation,
+        patch: Option<EventPatch>,
+        held: Vec<Held>,
+    ) -> Undone {
+        match then {
+            Continuation::PlayerMove(step) => {
+                let patch = match patch {
+                    Some(EventPatch::PlayerMove(patch)) => patch,
+                    None => PlayerMovePatch::default(),
+                };
+                self.finish_move(step, patch, held)
+            }
+        }
+    }
+
+    fn call_off(&mut self, then: Continuation) -> Undone {
+        match then {
+            Continuation::PlayerMove(step) => {
+                let dropped = self.decisions.drop_pending(step.player);
+                self.send_back(step.player, step.from);
+                dropped
+            }
+        }
+    }
+
+    fn undo(&mut self, lane: PlayerId, undo: Undo) {
+        match undo {
+            Undo::SendBack(position) => self.send_back(lane, position),
+        }
+    }
+
+    fn finish_move(&mut self, step: MoveStep, patch: PlayerMovePatch, held: Vec<Held>) -> Undone {
+        if let Some(to) = patch.to.filter(|to| *to != step.to) {
+            let dropped = self.decisions.drop_pending(step.player);
+            self.teleport_player(step.player, to);
+            return dropped;
+        }
+        self.apply_move(step.player, Some(step.to), step.rotation, step.on_ground);
+        for packet in held {
+            if self
+                .players
+                .get(&step.player)
+                .is_none_or(|p| p.vitals.is_dead())
+            {
+                break;
+            }
+            self.apply_move(
+                step.player,
+                packet.position,
+                packet.rotation,
+                packet.on_ground,
+            );
+        }
+        Vec::new()
     }
 
     fn notify_undone(&mut self, undone: Undone, phase: Phase) {

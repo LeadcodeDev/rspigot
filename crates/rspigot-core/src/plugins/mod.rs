@@ -5,6 +5,7 @@ mod inventory;
 mod items;
 mod menus;
 mod orders;
+mod patch;
 mod player;
 mod registry;
 mod resolve;
@@ -32,6 +33,7 @@ pub use orders::{
     BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
     ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
+pub use patch::{EventPatch, PlayerMovePatch, Verdict};
 pub(crate) use registry::Registry;
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
@@ -335,7 +337,7 @@ pub enum ToPlugin {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FromPlugin {
-    Decision { event: u64, cancel: bool },
+    Decision { event: u64, verdicts: Vec<Verdict> },
     Order(Order),
     Question { request: u64, question: Question },
 }
