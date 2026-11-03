@@ -1,8 +1,16 @@
 use std::num::NonZeroU8;
 
-use rspigot_nbt::Compound;
+use rspigot_nbt::{Compound, Tag};
 
+use crate::entity::save::{component_from_tag, component_to_tag};
 use crate::ids::ItemId;
+use crate::text::Component;
+
+pub const CUSTOM_NAME: &str = "minecraft:custom_name";
+pub const LORE: &str = "minecraft:lore";
+pub const ENCHANTMENTS: &str = "minecraft:enchantments";
+pub const MAX_LORE_LINES: usize = 256;
+const ENCHANTMENT_LEVELS: &str = "levels";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemStack {
@@ -17,6 +25,59 @@ impl ItemStack {
             item,
             count,
             components: Compound::new(),
+        }
+    }
+
+    pub fn custom_name(&self) -> Option<Component> {
+        self.components
+            .get(CUSTOM_NAME)
+            .and_then(component_from_tag)
+    }
+
+    pub fn set_custom_name(&mut self, name: Option<&Component>) {
+        match name {
+            Some(name) => self.components.insert(CUSTOM_NAME, component_to_tag(name)),
+            None => self.components.remove(CUSTOM_NAME),
+        };
+    }
+
+    pub fn lore(&self) -> Vec<Component> {
+        self.components
+            .get_list(LORE)
+            .map(|lines| lines.iter().filter_map(component_from_tag).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn set_lore(&mut self, lines: &[Component]) {
+        if lines.is_empty() {
+            self.components.remove(LORE);
+        } else {
+            let lines = lines.iter().map(component_to_tag).collect();
+            self.components.insert(LORE, Tag::List(lines));
+        }
+    }
+
+    pub fn enchantments(&self) -> Vec<(String, u8)> {
+        let Some(enchantments) = self.components.get_compound(ENCHANTMENTS) else {
+            return Vec::new();
+        };
+        enchantments
+            .get_compound(ENCHANTMENT_LEVELS)
+            .unwrap_or(enchantments)
+            .iter()
+            .filter_map(|(key, level)| Some((key.to_owned(), u8::try_from(level.as_i64()?).ok()?)))
+            .collect()
+    }
+
+    pub fn set_enchantments(&mut self, levels: &[(String, u8)]) {
+        if levels.is_empty() {
+            self.components.remove(ENCHANTMENTS);
+        } else {
+            let levels: Compound = levels
+                .iter()
+                .map(|(key, level)| (key.clone(), Tag::Int(i32::from(*level))))
+                .collect();
+            self.components.insert(ENCHANTMENTS, levels);
         }
     }
 }
@@ -289,6 +350,7 @@ pub struct InsertOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::NamedColor;
 
     #[test]
     fn insert_merges_hotbar_first_then_fills_empty_slots() {
@@ -365,6 +427,60 @@ mod tests {
         assert_eq!(menu_slot(39), Some(5));
         assert_eq!(menu_slot(40), Some(OFFHAND_SLOT));
         assert_eq!(menu_slot(41), None);
+    }
+
+    #[test]
+    fn name_lore_and_enchantments_are_vanilla_components() {
+        let mut stack = stone(1);
+        stack.set_custom_name(Some(&Component::text("A").color(NamedColor::Gold)));
+        assert_eq!(
+            stack.components.get(CUSTOM_NAME),
+            Some(&Tag::Compound(
+                Compound::new().with("text", "A").with("color", "gold")
+            ))
+        );
+        stack.set_lore(&[Component::text("A"), Component::text("B")]);
+        assert_eq!(
+            stack.components.get(LORE),
+            Some(&Tag::List(vec![
+                Tag::String("A".to_owned()),
+                Tag::String("B".to_owned())
+            ]))
+        );
+        stack.set_enchantments(&[("minecraft:sharpness".into(), 5)]);
+        assert_eq!(
+            stack.components.get(ENCHANTMENTS),
+            Some(&Tag::Compound(
+                Compound::new().with("minecraft:sharpness", 5)
+            ))
+        );
+        assert_eq!(
+            stack.custom_name(),
+            Some(Component::text("A").color(NamedColor::Gold))
+        );
+        assert_eq!(stack.lore(), [Component::text("A"), Component::text("B")]);
+        assert_eq!(
+            stack.enchantments(),
+            [("minecraft:sharpness".to_owned(), 5)]
+        );
+
+        let mut legacy = stone(1);
+        legacy.components.insert(
+            ENCHANTMENTS,
+            Compound::new().with("levels", Compound::new().with("minecraft:sharpness", 5)),
+        );
+        assert_eq!(
+            legacy.enchantments(),
+            [("minecraft:sharpness".to_owned(), 5)]
+        );
+
+        stack.set_custom_name(None);
+        stack.set_lore(&[]);
+        stack.set_enchantments(&[]);
+        assert!(stack.components.is_empty());
+        assert_eq!(stack.custom_name(), None);
+        assert!(stack.lore().is_empty());
+        assert!(stack.enchantments().is_empty());
     }
 
     #[test]

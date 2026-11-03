@@ -1,3 +1,4 @@
+mod inventory;
 mod player;
 mod server;
 mod shared;
@@ -91,7 +92,7 @@ pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malform
         },
         from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
         from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
-        from_plugin::Body::Inventory(_) => return Err(Malformed::Unsupported("inventory order")),
+        from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
         from_plugin::Body::World(_) => return Err(Malformed::Unsupported("world order")),
         from_plugin::Body::Block(_) => return Err(Malformed::Unsupported("block order")),
         from_plugin::Body::Entity(_) => return Err(Malformed::Unsupported("entity order")),
@@ -106,6 +107,7 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
     let question = match asked.question.ok_or(Malformed::Empty)? {
         question::Question::Player(player) => Question::Player(player::id(player)?),
         question::Question::Players(_) => Question::Players,
+        question::Question::Inventory(player) => Question::Inventory(player::id(player)?),
         _ => return Err(Malformed::Unsupported("question")),
     };
     Ok(FromPlugin::Question {
@@ -172,6 +174,7 @@ fn wire_answer(answer: Answer) -> answer::Body {
         Answer::Players(players) => answer::Body::Players(v1::PlayerList {
             players: players.into_iter().map(wire_player).collect(),
         }),
+        Answer::Inventory(state) => answer::Body::Inventory(inventory::wire_state(state)),
         Answer::NotFound => answer::Body::NotFound(v1::NotFound {}),
     }
 }

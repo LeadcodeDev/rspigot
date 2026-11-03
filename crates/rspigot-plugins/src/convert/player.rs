@@ -144,7 +144,9 @@ mod tests {
             player: STEVE.into(),
             order: Some(order),
         })?;
-        let Order::Player { player, order } = converted;
+        let Order::Player { player, order } = converted else {
+            panic!("expected a player order");
+        };
         assert_eq!(player, PlayerId(Uuid::from_u128(1)));
         Ok(order)
     }
