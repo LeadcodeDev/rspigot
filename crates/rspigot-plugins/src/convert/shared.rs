@@ -1,7 +1,7 @@
 use rspigot_core::plugins::{
     EffectSpec, ItemSpec, ParticleDataSpec, ParticleSpec, SoundSpec, TitleSpec,
 };
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::{BlockPos, Rotation, Vec3};
 use rspigot_plugin_protocol::v1::{self, particle};
 
 use super::Malformed;
@@ -19,6 +19,18 @@ pub(super) const fn wire_vec(vec: Vec3) -> v1::Vec3 {
         x: vec.x,
         y: vec.y,
         z: vec.z,
+    }
+}
+
+pub(super) const fn block_pos(pos: v1::BlockPos) -> BlockPos {
+    BlockPos::new(pos.x, pos.y, pos.z)
+}
+
+pub(super) const fn wire_block_pos(pos: BlockPos) -> v1::BlockPos {
+    v1::BlockPos {
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
     }
 }
 

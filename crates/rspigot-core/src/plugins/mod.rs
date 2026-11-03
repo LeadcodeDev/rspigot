@@ -1,3 +1,4 @@
+mod block;
 mod decisions;
 mod inventory;
 mod items;
@@ -6,16 +7,21 @@ mod player;
 mod registry;
 mod resolve;
 mod server;
+mod world;
 
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::world::Difficulty;
+use rspigot_domain::{BlockPos, Rotation, Vec3};
 use rustc_hash::FxHashSet;
+use uuid::Uuid;
+
+use crate::admin::ListEntry;
 
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
 pub use orders::{
-    EffectSpec, InventoryOrder, Order, ParticleDataSpec, ParticleSpec, PlayerOrder, SoundSpec,
-    TitleSpec,
+    BlockOrder, EffectSpec, GameRule, InventoryOrder, Order, ParticleDataSpec, ParticleSpec,
+    PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub(crate) use registry::Registry;
 
@@ -144,6 +150,35 @@ pub struct InventoryState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ServerState {
+    pub max_players: u32,
+    pub online: u32,
+    pub tps: [f64; 3],
+    pub whitelist_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorldState {
+    pub name: String,
+    pub uuid: Option<Uuid>,
+    pub seed: i64,
+    pub day_time: i64,
+    pub game_time: i64,
+    pub raining: bool,
+    pub thundering: bool,
+    pub difficulty: Difficulty,
+    pub spawn: BlockPos,
+    pub pvp: bool,
+    pub rules: Vec<(GameRule, bool)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockState {
+    pub kind: String,
+    pub properties: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum EventPayload {
     PlayerJoin {
         player: PlayerSnapshot,
@@ -180,6 +215,10 @@ pub enum Answer {
     Player(PlayerState),
     Players(Vec<PlayerSnapshot>),
     Inventory(InventoryState),
+    Server(ServerState),
+    Names(Vec<ListEntry>),
+    World(WorldState),
+    Block(BlockState),
     NotFound,
 }
 
@@ -212,7 +251,13 @@ pub enum FromPlugin {
 pub enum Question {
     Player(PlayerId),
     Players,
+    PlayerNamed(String),
     Inventory(PlayerId),
+    Server,
+    Whitelist,
+    Operators,
+    World,
+    Block(BlockPos),
 }
 
 #[cfg(test)]

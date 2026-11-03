@@ -1,6 +1,8 @@
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::world::Difficulty;
+use rspigot_domain::{BlockPos, Rotation, Vec3};
 
+use crate::commands::Weather;
 use crate::plugins::ItemSpec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,12 @@ pub enum Order {
         player: PlayerId,
         order: InventoryOrder,
     },
+    Server(ServerOrder),
+    World(WorldOrder),
+    Block {
+        pos: BlockPos,
+        order: BlockOrder,
+    },
 }
 
 impl Order {
@@ -64,6 +72,127 @@ impl Order {
         match self {
             Self::Player { order, .. } => order.name(),
             Self::Inventory { order, .. } => order.name(),
+            Self::Server(order) => order.name(),
+            Self::World(order) => order.name(),
+            Self::Block { order, .. } => order.name(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerOrder {
+    Broadcast(String),
+    DispatchCommand(String),
+    Shutdown,
+    Save,
+    SetWhitelistEnabled(bool),
+    WhitelistAdd(String),
+    WhitelistRemove(String),
+    OperatorAdd(String),
+    OperatorRemove(String),
+}
+
+impl ServerOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Broadcast(_) => "server.broadcast",
+            Self::DispatchCommand(_) => "server.dispatch_command",
+            Self::Shutdown => "server.shutdown",
+            Self::Save => "server.save",
+            Self::SetWhitelistEnabled(_) => "server.set_whitelist_enabled",
+            Self::WhitelistAdd(_) => "server.whitelist_add",
+            Self::WhitelistRemove(_) => "server.whitelist_remove",
+            Self::OperatorAdd(_) => "server.operator_add",
+            Self::OperatorRemove(_) => "server.operator_remove",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameRule {
+    DaylightCycle,
+    NaturalRegeneration,
+    KeepInventory,
+    ShowDeathMessages,
+    ImmediateRespawn,
+    FallDamage,
+    MobDrops,
+    MobGriefing,
+    MobExplosionDropDecay,
+    BlockDrops,
+    UniversalAnger,
+}
+
+impl GameRule {
+    pub const ALL: [Self; 11] = [
+        Self::DaylightCycle,
+        Self::NaturalRegeneration,
+        Self::KeepInventory,
+        Self::ShowDeathMessages,
+        Self::ImmediateRespawn,
+        Self::FallDamage,
+        Self::MobDrops,
+        Self::MobGriefing,
+        Self::MobExplosionDropDecay,
+        Self::BlockDrops,
+        Self::UniversalAnger,
+    ];
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorldOrder {
+    SetTime(i64),
+    SetWeather(Weather),
+    SetDifficulty(Difficulty),
+    SetSpawn(BlockPos),
+    SetPvp(bool),
+    SetGameRule(GameRule, bool),
+    Save,
+    PlaySound {
+        sound: SoundSpec,
+        position: Vec3,
+    },
+    SpawnParticle(ParticleSpec),
+    Explode {
+        position: Vec3,
+        power: f32,
+        breaks_blocks: bool,
+    },
+}
+
+impl WorldOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::SetTime(_) => "world.set_time",
+            Self::SetWeather(_) => "world.set_weather",
+            Self::SetDifficulty(_) => "world.set_difficulty",
+            Self::SetSpawn(_) => "world.set_spawn",
+            Self::SetPvp(_) => "world.set_pvp",
+            Self::SetGameRule(..) => "world.set_game_rule",
+            Self::Save => "world.save",
+            Self::PlaySound { .. } => "world.play_sound",
+            Self::SpawnParticle(_) => "world.spawn_particle",
+            Self::Explode { .. } => "world.explode",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockOrder {
+    Set(String),
+    SetWith {
+        kind: String,
+        properties: Vec<(String, String)>,
+    },
+    BreakNaturally,
+}
+
+impl BlockOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Set(_) => "block.set",
+            Self::SetWith { .. } => "block.set_with",
+            Self::BreakNaturally => "block.break_naturally",
         }
     }
 }

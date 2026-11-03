@@ -58,6 +58,14 @@ pub(super) fn finite_not_negative(what: &str, value: f64) -> Result<(), String> 
     }
 }
 
+pub(super) fn name_of(name: &str) -> Result<&str, String> {
+    if name.trim().is_empty() {
+        Err("name cannot be empty".to_owned())
+    } else {
+        Ok(name)
+    }
+}
+
 pub(super) fn position_of(position: Vec3) -> Result<Vec3, String> {
     let inside = position.is_finite()
         && position.x.abs() < WORLD_BORDER
@@ -156,9 +164,7 @@ fn particle_data(kind: &'static str, data: &ParticleDataSpec) -> Result<Particle
             }
         }
         ParticleDataSpec::Block(key) if BLOCK_PARTICLES.contains(&kind) => {
-            BlockKind::from_name(key)
-                .map(|block| ParticleData::Block(block.default_state()))
-                .ok_or_else(|| format!("unknown block {key}"))
+            block_kind(key).map(|block| ParticleData::Block(block.default_state()))
         }
         ParticleDataSpec::Dust { color, scale } if kind == DUST_PARTICLE => {
             within("dust scale", *scale, DUST_SCALE)?;
@@ -169,6 +175,10 @@ fn particle_data(kind: &'static str, data: &ParticleDataSpec) -> Result<Particle
         }
         _ => Err(format!("particle {kind} does not take this data")),
     }
+}
+
+pub(super) fn block_kind(key: &str) -> Result<BlockKind, String> {
+    BlockKind::from_name(key).ok_or_else(|| format!("unknown block {key}"))
 }
 
 fn registered(registry: &str, key: &str) -> Option<&'static str> {

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use rspigot_blocks::BlockKind;
 use rspigot_core::admin::{AdminLists, ListEntry};
-use rspigot_core::config::{GameConfig, LevelData};
+use rspigot_core::config::{GameConfig, GameRules, LevelData};
 use rspigot_core::events::{
     ClickInput, ClientEvent, ContainerClick, DigAction, Direction, Hand, HashedSlot, Inbound,
     InputState, PlayerInput,
@@ -173,7 +173,7 @@ struct Player {
     log: Vec<ClientEvent>,
 }
 
-fn server() -> Server<Link> {
+fn server(rules: GameRules) -> Server<Link> {
     let config = GameConfig {
         view_distance: 3,
         chunk_workers: 2,
@@ -183,6 +183,7 @@ fn server() -> Server<Link> {
             whitelist: Vec::new(),
             whitelist_enabled: false,
         },
+        rules,
         ..GameConfig::default()
     };
     let mut server = Server::new(
@@ -264,7 +265,11 @@ struct World {
 }
 
 fn world() -> World {
-    let mut server = server();
+    world_with(GameRules::default())
+}
+
+fn world_with(rules: GameRules) -> World {
+    let mut server = server(rules);
     let mut alice = join(&mut server, "Alice");
     let mut bob = join(&mut server, "Bob");
     run_ticks(&mut server, &mut [&mut alice, &mut bob], 30);
@@ -1694,6 +1699,32 @@ fn breaking_a_container_drops_what_it_holds() {
         world.break_at(CHEST);
 
         assert_eq!(on_the_ground(&world, "minecraft:stone"), vec![1], "{block}");
+    }
+}
+
+#[test]
+fn without_block_drops_a_broken_chest_drops_what_it_holds_but_not_itself() {
+    for block_drops in [true, false] {
+        let mut world = world_with(GameRules {
+            block_drops,
+            ..GameRules::default()
+        });
+        world.place_chest();
+        world.stock_first_slot(HOTBAR_0, "stone");
+        world.step_away();
+        world.break_at(CHEST);
+
+        assert_eq!(
+            on_the_ground(&world, "minecraft:stone"),
+            vec![1],
+            "{block_drops}"
+        );
+        let chest = if block_drops { vec![1] } else { Vec::new() };
+        assert_eq!(
+            on_the_ground(&world, "minecraft:chest"),
+            chest,
+            "{block_drops}"
+        );
     }
 }
 
