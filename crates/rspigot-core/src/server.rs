@@ -781,6 +781,10 @@ impl<L: ClientLink> Server<L> {
         self.tps.recent
     }
 
+    pub fn is_running(&self) -> bool {
+        self.running
+    }
+
     pub fn players_online(&self) -> usize {
         self.players.len()
     }

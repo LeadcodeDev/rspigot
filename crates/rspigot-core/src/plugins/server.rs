@@ -4,6 +4,7 @@ use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::player::PlayerId;
 use rspigot_domain::{Rotation, Vec3};
 
+use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::decisions::{Held, PendingMove, SettledMove, Undone, Verdict};
@@ -69,6 +70,9 @@ impl<L: ClientLink> Server<L> {
             Order::Inventory { player, order } => {
                 self.apply_inventory_order(connection, player, order);
             }
+            Order::Server(order) => self.apply_server_order(connection, order),
+            Order::World(order) => self.apply_world_order(connection, order),
+            Order::Block { pos, order } => self.apply_block_order(connection, pos, order),
         }
     }
 
@@ -83,9 +87,22 @@ impl<L: ClientLink> Server<L> {
         match question {
             Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
             Question::Players => Answer::Players(self.online_snapshots()),
+            Question::PlayerNamed(name) => Answer::Players(
+                CommandContext::find_player(self, &name)
+                    .and_then(|id| self.snapshot_of(id))
+                    .into_iter()
+                    .collect(),
+            ),
             Question::Inventory(id) => self
                 .inventory_state(id)
                 .map_or(Answer::NotFound, Answer::Inventory),
+            Question::Server => Answer::Server(self.server_state()),
+            Question::Whitelist => Answer::Names(self.admin.whitelist.clone()),
+            Question::Operators => Answer::Names(self.admin.operators.clone()),
+            Question::World => Answer::World(self.world_state()),
+            Question::Block(pos) => self
+                .block_state(pos)
+                .map_or(Answer::NotFound, Answer::Block),
         }
     }
 
