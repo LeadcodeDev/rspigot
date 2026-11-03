@@ -1,6 +1,7 @@
 use rspigot_plugin_protocol::v1::{self, event};
 
 use crate::custom_inventory::{ClickKind, ClickedSlot, CustomInventory};
+use crate::entity::Entity;
 use crate::link::Link;
 use crate::listener::Call;
 use crate::player::{Player, Position};
@@ -99,12 +100,46 @@ impl InventoryClose {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hand {
+    Main,
+    Off,
+}
+
+impl Hand {
+    fn from_wire(hand: i32) -> Result<Self, Error> {
+        match v1::Hand::try_from(hand) {
+            Ok(v1::Hand::Main) => Ok(Self::Main),
+            Ok(v1::Hand::Off) => Ok(Self::Off),
+            Ok(v1::Hand::Unspecified) | Err(_) => {
+                Err(Error::Malformed(format!("an unknown hand {hand}")))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EntityInteract {
+    pub player: Player,
+    pub entity: Entity,
+    pub hand: Hand,
+    pub sneaking: bool,
+    id: u64,
+}
+
+impl EntityInteract {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+}
+
 pub(crate) enum Received {
     Join(PlayerJoin),
     Leave(PlayerLeave),
     Move(PlayerMove),
     Click(InventoryClick),
     Close(InventoryClose),
+    Interact(EntityInteract),
 }
 
 impl Received {
@@ -146,6 +181,18 @@ impl Received {
                 by_player: close.by_player,
                 id,
             }),
+            event::Payload::EntityInteract(interact) => Self::Interact(EntityInteract {
+                player: Player::from_wire(interact.player, link)?,
+                entity: Entity::from_wire(
+                    interact
+                        .entity
+                        .ok_or_else(|| Error::Malformed(format!("event {id} without an entity")))?,
+                    link,
+                )?,
+                hand: Hand::from_wire(interact.hand)?,
+                sneaking: interact.sneaking,
+                id,
+            }),
         })
     }
 
@@ -168,6 +215,10 @@ impl Received {
                 event: event.clone(),
             },
             Self::Close(event) => Call::InventoryClose {
+                handler,
+                event: event.clone(),
+            },
+            Self::Interact(event) => Call::EntityInteract {
                 handler,
                 event: event.clone(),
             },

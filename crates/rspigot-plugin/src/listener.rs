@@ -2,7 +2,9 @@ use std::future::Future;
 
 use rspigot_plugin_protocol::v1;
 
-use crate::event::{InventoryClick, InventoryClose, PlayerJoin, PlayerLeave, PlayerMove};
+use crate::event::{
+    EntityInteract, InventoryClick, InventoryClose, PlayerJoin, PlayerLeave, PlayerMove,
+};
 use crate::server::Server;
 
 pub trait Plugin: Listeners + Send + Sync + 'static {
@@ -27,6 +29,7 @@ pub enum EventKind {
     PlayerMove,
     InventoryClick,
     InventoryClose,
+    EntityInteract,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,6 +65,7 @@ impl HandlerSpec {
             EventKind::PlayerMove => v1::EventKind::PlayerMove,
             EventKind::InventoryClick => v1::EventKind::InventoryClick,
             EventKind::InventoryClose => v1::EventKind::InventoryClose,
+            EventKind::EntityInteract => v1::EventKind::EntityInteract,
         };
         let access = match self.access {
             Access::Observe => v1::Access::Observe,
@@ -91,6 +95,7 @@ pub enum Call {
     PlayerMove { handler: u32, event: PlayerMove },
     InventoryClick { handler: u32, event: InventoryClick },
     InventoryClose { handler: u32, event: InventoryClose },
+    EntityInteract { handler: u32, event: EntityInteract },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,7 +7,7 @@ use syn::{
 
 const NOT_A_HANDLER: &str = "a #[listeners] block only holds handlers: `async fn name(&self, event: &Event)`; put helpers in another impl block";
 const MUT_SELF: &str = "handlers take `&self`; keep state in fields behind a `Mutex` or atomics";
-const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave`, `&PlayerMove`, `&InventoryClick` or `&InventoryClose` to observe it, or `&mut PlayerMove` to decide on it";
+const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave`, `&PlayerMove`, `&InventoryClick`, `&InventoryClose` or `&EntityInteract` to observe it, or `&mut PlayerMove` to decide on it";
 const BAD_ON_ENABLE: &str = "`on_enable` takes `&self, server: &Server`";
 const BAD_ON_DISABLE: &str = "`on_disable` takes `&self`";
 const NOT_CANCELLABLE: &str = "`&mut` is only allowed for events that can be cancelled: PlayerMove";
@@ -15,12 +15,13 @@ const IGNORE_CANCELLED_ON_DECIDER: &str =
     "`#[ignore_cancelled]` only applies to observing handlers (`&Event`)";
 const NOT_A_PRIORITY: &str = "`#[priority(...)]` takes one of Lowest, Low, Normal, High, Highest";
 const PRIORITIES: [&str; 5] = ["Lowest", "Low", "Normal", "High", "Highest"];
-const EVENTS: [(&str, bool); 5] = [
+const EVENTS: [(&str, bool); 6] = [
     ("PlayerJoin", false),
     ("PlayerLeave", false),
     ("PlayerMove", true),
     ("InventoryClick", false),
     ("InventoryClose", false),
+    ("EntityInteract", false),
 ];
 
 struct Handler {

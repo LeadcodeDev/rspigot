@@ -61,6 +61,30 @@ impl Entity {
         self.order(entity_order::Order::SetVelocity(velocity.to_wire()));
     }
 
+    pub fn set_custom_name(&self, name: impl Into<String>) {
+        self.order(entity_order::Order::SetCustomName(name.into()));
+    }
+
+    pub fn clear_custom_name(&self) {
+        self.order(entity_order::Order::ClearCustomName(v1::Empty {}));
+    }
+
+    pub fn set_name_visible(&self, visible: bool) {
+        self.order(entity_order::Order::SetNameVisible(visible));
+    }
+
+    pub fn set_no_ai(&self, no_ai: bool) {
+        self.order(entity_order::Order::SetNoAi(no_ai));
+    }
+
+    pub fn set_invulnerable(&self, invulnerable: bool) {
+        self.order(entity_order::Order::SetInvulnerable(invulnerable));
+    }
+
+    pub fn set_silent(&self, silent: bool) {
+        self.order(entity_order::Order::SetSilent(silent));
+    }
+
     pub fn server(&self) -> Server {
         Server::new(self.link.clone())
     }
