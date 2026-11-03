@@ -1,4 +1,6 @@
 use std::hash::{BuildHasher, Hasher};
+use std::net::IpAddr;
+use std::time::SystemTime;
 
 use rspigot_domain::effect::{EffectId, EffectInstance};
 use rspigot_domain::entity::spawn;
@@ -13,7 +15,7 @@ use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
 use rspigot_nbt::Compound;
 
-use crate::admin::{AdminLists, ListEntry};
+use crate::admin::{AdminLists, Ban, BanEntry, IpBanEntry, ListEntry};
 use crate::chunks::{ChunkJob, Priority};
 use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
@@ -209,6 +211,121 @@ impl<L: ClientLink> CommandContext for Server<L> {
             .whitelist
             .iter()
             .map(|e| e.name.clone())
+            .collect()
+    }
+
+    fn ban_profile(
+        &mut self,
+        target: ListEntry,
+        source: &str,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    ) -> bool {
+        let now = self.prune_expired_bans();
+        if self.admin.ban_of(&target, now).is_some() {
+            return false;
+        }
+        let online = target
+            .uuid
+            .map(PlayerId)
+            .filter(|id| self.players.contains_key(id));
+        self.admin.bans.push(Ban {
+            target,
+            created: now,
+            source: source.to_owned(),
+            expires,
+            reason,
+        });
+        self.publish_admin();
+        if let Some(id) = online {
+            self.kick(
+                id,
+                Component::translatable("multiplayer.disconnect.banned", Vec::new()),
+            );
+        }
+        true
+    }
+
+    fn pardon_profile(&mut self, target: &ListEntry) -> bool {
+        self.prune_expired_bans();
+        let changed = self.admin.remove_ban(target);
+        if changed {
+            self.publish_admin();
+        }
+        changed
+    }
+
+    fn ban_address(
+        &mut self,
+        address: IpAddr,
+        source: &str,
+        reason: Option<String>,
+        expires: Option<SystemTime>,
+    ) -> Option<Vec<String>> {
+        let now = self.prune_expired_bans();
+        let address = address.to_canonical();
+        if self.admin.ip_ban(address, now).is_some() {
+            return None;
+        }
+        self.admin.ip_bans.push(Ban {
+            target: address,
+            created: now,
+            source: source.to_owned(),
+            expires,
+            reason,
+        });
+        self.publish_admin();
+        let mut affected: Vec<(EntityId, PlayerId)> = self
+            .players
+            .values()
+            .filter(|p| p.address == address)
+            .map(|p| (p.entity_id, p.id))
+            .collect();
+        affected.sort_by_key(|(entity, _)| entity.0);
+        let mut kicked = Vec::with_capacity(affected.len());
+        for (_, id) in affected {
+            kicked.extend(self.player_name(id));
+            self.kick(
+                id,
+                Component::translatable("multiplayer.disconnect.ip_banned", Vec::new()),
+            );
+        }
+        Some(kicked)
+    }
+
+    fn pardon_address(&mut self, address: IpAddr) -> bool {
+        self.prune_expired_bans();
+        let address = address.to_canonical();
+        let before = self.admin.ip_bans.len();
+        self.admin.ip_bans.retain(|ban| ban.target != address);
+        let changed = self.admin.ip_bans.len() != before;
+        if changed {
+            self.publish_admin();
+        }
+        changed
+    }
+
+    fn player_address(&self, player: PlayerId) -> Option<IpAddr> {
+        self.players.get(&player).map(|p| p.address)
+    }
+
+    fn ban_entries(&self) -> Vec<BanEntry> {
+        let now = self.now();
+        self.admin
+            .bans
+            .iter()
+            .filter(|ban| !ban.has_expired(now))
+            .cloned()
+            .collect()
+    }
+
+    fn ip_ban_entries(&self) -> Vec<IpBanEntry> {
+        let now = self.now();
+        self.admin
+            .ip_bans
+            .iter()
+            .filter(|ban| !ban.has_expired(now))
+            .cloned()
             .collect()
     }
 

@@ -56,6 +56,12 @@ impl Registry {
         (1..=self.last_event).contains(&event)
     }
 
+    pub(crate) fn name(&self, connection: u64) -> Option<&str> {
+        self.connected
+            .get(&connection)
+            .map(|plugin| plugin.intro.name.as_str())
+    }
+
     pub(crate) fn is_current(&self, connection: u64) -> bool {
         self.connected.contains_key(&connection)
     }

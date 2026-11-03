@@ -139,6 +139,7 @@ fn server_configured(
                 .collect(),
             whitelist: Vec::new(),
             whitelist_enabled,
+            ..AdminLists::default()
         },
         ..GameConfig::default()
     };
@@ -161,6 +162,7 @@ fn join(server: &mut Server<Link>, name: &str) -> (PlayerId, Link) {
         profile,
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
     (id, link)
