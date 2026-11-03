@@ -1,6 +1,8 @@
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::{Rotation, Vec3};
 
+use crate::plugins::ItemSpec;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TitleSpec {
     pub title: String,
@@ -51,12 +53,38 @@ pub enum Order {
         player: PlayerId,
         order: PlayerOrder,
     },
+    Inventory {
+        player: PlayerId,
+        order: InventoryOrder,
+    },
 }
 
 impl Order {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Player { order, .. } => order.name(),
+            Self::Inventory { order, .. } => order.name(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InventoryOrder {
+    Add(ItemSpec),
+    Set { slot: i32, item: Option<ItemSpec> },
+    Remove { key: String, count: i32 },
+    Clear,
+    SetHeldSlot(i32),
+}
+
+impl InventoryOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Add(_) => "inventory.add",
+            Self::Set { .. } => "inventory.set",
+            Self::Remove { .. } => "inventory.remove",
+            Self::Clear => "inventory.clear",
+            Self::SetHeldSlot(_) => "inventory.set_held_slot",
         }
     }
 }

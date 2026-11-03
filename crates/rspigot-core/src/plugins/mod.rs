@@ -1,4 +1,6 @@
 mod decisions;
+mod inventory;
+mod items;
 mod orders;
 mod player;
 mod registry;
@@ -10,8 +12,10 @@ use rspigot_domain::{Rotation, Vec3};
 use rustc_hash::FxHashSet;
 
 pub(crate) use decisions::{Decisions, Held};
+pub use items::ItemSpec;
 pub use orders::{
-    EffectSpec, Order, ParticleDataSpec, ParticleSpec, PlayerOrder, SoundSpec, TitleSpec,
+    EffectSpec, InventoryOrder, Order, ParticleDataSpec, ParticleSpec, PlayerOrder, SoundSpec,
+    TitleSpec,
 };
 pub(crate) use registry::Registry;
 
@@ -133,6 +137,12 @@ pub struct PlayerState {
     pub locale: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InventoryState {
+    pub slots: Vec<Option<ItemSpec>>,
+    pub held_slot: u8,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventPayload {
     PlayerJoin {
@@ -169,6 +179,7 @@ pub enum Phase {
 pub enum Answer {
     Player(PlayerState),
     Players(Vec<PlayerSnapshot>),
+    Inventory(InventoryState),
     NotFound,
 }
 
@@ -201,6 +212,7 @@ pub enum FromPlugin {
 pub enum Question {
     Player(PlayerId),
     Players,
+    Inventory(PlayerId),
 }
 
 #[cfg(test)]

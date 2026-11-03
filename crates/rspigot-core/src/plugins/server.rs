@@ -66,6 +66,9 @@ impl<L: ClientLink> Server<L> {
     fn apply_order(&mut self, connection: u64, order: Order) {
         match order {
             Order::Player { player, order } => self.apply_player_order(connection, player, order),
+            Order::Inventory { player, order } => {
+                self.apply_inventory_order(connection, player, order);
+            }
         }
     }
 
@@ -80,6 +83,9 @@ impl<L: ClientLink> Server<L> {
         match question {
             Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
             Question::Players => Answer::Players(self.online_snapshots()),
+            Question::Inventory(id) => self
+                .inventory_state(id)
+                .map_or(Answer::NotFound, Answer::Inventory),
         }
     }
 
