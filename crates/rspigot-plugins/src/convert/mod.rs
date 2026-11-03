@@ -115,6 +115,8 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
         question::Question::Players(_) => Question::Players,
         question::Question::PlayerNamed(name) => Question::PlayerNamed(name),
         question::Question::Inventory(player) => Question::Inventory(player::id(player)?),
+        question::Question::TargetBlock(query) => player::target_block(query)?,
+        question::Question::TargetEntity(query) => player::target_entity(query)?,
         question::Question::Server(_) => Question::Server,
         question::Question::Whitelist(_) => Question::Whitelist,
         question::Question::Operators(_) => Question::Operators,
@@ -126,7 +128,7 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
         question::Question::Entity(id) => Question::Entity(EntityId(id)),
         question::Question::Spawn(spawn) => entity::spawn(spawn)?,
         question::Question::DropItem(drop) => entity::drop_item(drop)?,
-        _ => return Err(Malformed::Unsupported("question")),
+        question::Question::CustomInventory(_) => return Err(Malformed::Unsupported("question")),
     };
     Ok(FromPlugin::Question {
         request: asked.request,
@@ -204,6 +206,7 @@ fn wire_answer(answer: Answer) -> answer::Body {
         }),
         Answer::Entity(details) => answer::Body::Entity(entity::wire_details(details)),
         Answer::Spawned(view) => answer::Body::Spawned(entity::wire_view(view)),
+        Answer::Target(hit) => answer::Body::Target(player::wire_target(hit)),
         Answer::Refused(reason) => answer::Body::Refused(v1::Refused { reason }),
         Answer::NotFound => answer::Body::NotFound(v1::NotFound {}),
     }

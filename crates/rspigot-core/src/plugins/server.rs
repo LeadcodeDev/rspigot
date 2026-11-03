@@ -101,6 +101,14 @@ impl<L: ClientLink> Server<L> {
             Question::Inventory(id) => self
                 .inventory_state(id)
                 .map_or(Answer::NotFound, Answer::Inventory),
+            Question::TargetBlock {
+                player,
+                max_distance,
+            } => self.target_block(player, max_distance),
+            Question::TargetEntity {
+                player,
+                max_distance,
+            } => self.target_entity(player, max_distance),
             Question::Server => Answer::Server(self.server_state()),
             Question::Whitelist => Answer::Names(self.admin.whitelist.clone()),
             Question::Operators => Answer::Names(self.admin.operators.clone()),
