@@ -12,6 +12,7 @@ use crate::containers::OpenMenu;
 use crate::drops::DropLimits;
 use crate::events::Abilities;
 use crate::health::Vitals;
+use crate::plugins::PluginMenu;
 use crate::streaming::ChunkStreamer;
 
 pub struct Player<L> {
@@ -49,6 +50,7 @@ pub struct Player<L> {
     pub moved_this_tick: bool,
     pub using_item: Option<UsingItem>,
     pub(crate) open_menu: Option<OpenMenu>,
+    pub(crate) plugin_menu: Option<PluginMenu>,
     pub(crate) window_counter: u8,
     pub ender_items: Vec<rspigot_domain::item::Slot>,
 }

@@ -25,7 +25,7 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::plugins::{Decisions, PluginIntro, Registry, ToPlugin, Visibility};
+use crate::plugins::{Decisions, PluginIntro, PluginInventories, Registry, ToPlugin, Visibility};
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
@@ -106,6 +106,7 @@ pub struct Server<L> {
     pub(crate) plugins: Registry,
     pub(crate) decisions: Decisions,
     pub(crate) visibility: Visibility,
+    pub(crate) plugin_inventories: PluginInventories,
     clock: fn() -> SystemTime,
     next_entity_id: i32,
     status: StatusBoard,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             plugins: Registry::default(),
             decisions: Decisions::default(),
             visibility: Visibility::default(),
+            plugin_inventories: PluginInventories::default(),
             clock: SystemTime::now,
             next_entity_id: 1,
             status,
@@ -313,8 +315,9 @@ impl<L: ClientLink> Server<L> {
     ) {
         let tick = self.current_tick();
         let replaced = self.plugins.connect(connection, intro, outbox, tick);
-        if let Some(old) = replaced {
-            old.send(ToPlugin::Replaced);
+        if let Some((old, outbox)) = replaced {
+            outbox.send(ToPlugin::Replaced);
+            self.forget_plugin_inventories(old);
         }
         self.plugins.send(connection, ToPlugin::Accepted);
         self.release_departed_plugins();
@@ -513,6 +516,7 @@ impl<L: ClientLink> Server<L> {
             moved_this_tick: false,
             using_item: None,
             open_menu: None,
+            plugin_menu: None,
             window_counter: 0,
             ender_items: vec![None; 27],
         };

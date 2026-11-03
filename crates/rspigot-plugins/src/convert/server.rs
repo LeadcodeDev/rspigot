@@ -28,7 +28,17 @@ pub(super) fn order(order: v1::ServerOrder) -> Result<Order, Malformed> {
             expires: expiry(ban.expires_ms)?,
         },
         Wire::IpBanRemove(address) => ServerOrder::IpBanRemove(address),
-        Wire::CreateInventory(_) => return Err(Malformed::Unsupported("server order")),
+        Wire::CreateInventory(v1::CreateInventory {
+            id,
+            rows,
+            title,
+            locked,
+        }) => ServerOrder::CreateInventory {
+            id,
+            rows,
+            title,
+            locked,
+        },
     };
     Ok(Order::Server(order))
 }
@@ -164,12 +174,6 @@ mod tests {
             server(ServerOrder::Shutdown)
         );
         assert!(matches!(convert(None), Err(Malformed::Empty)));
-        assert!(matches!(
-            convert(Some(server_order::Order::CreateInventory(
-                v1::CreateInventory::default()
-            ))),
-            Err(Malformed::Unsupported("server order"))
-        ));
 
         assert_eq!(
             ask(question::Question::Server(v1::Empty {})),

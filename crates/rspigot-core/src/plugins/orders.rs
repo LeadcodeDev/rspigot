@@ -71,6 +71,10 @@ pub enum Order {
         entity: EntityId,
         order: EntityOrder,
     },
+    CustomInventory {
+        inventory: u64,
+        order: CustomInventoryOrder,
+    },
 }
 
 impl Order {
@@ -82,6 +86,7 @@ impl Order {
             Self::World(order) => order.name(),
             Self::Block { order, .. } => order.name(),
             Self::Entity { order, .. } => order.name(),
+            Self::CustomInventory { order, .. } => order.name(),
         }
     }
 }
@@ -109,6 +114,12 @@ pub enum ServerOrder {
         expires: Option<SystemTime>,
     },
     IpBanRemove(String),
+    CreateInventory {
+        id: u64,
+        rows: i32,
+        title: String,
+        locked: bool,
+    },
 }
 
 impl ServerOrder {
@@ -127,6 +138,7 @@ impl ServerOrder {
             Self::BanRemove(_) => "server.ban_remove",
             Self::IpBanAdd { .. } => "server.ip_ban_add",
             Self::IpBanRemove(_) => "server.ip_ban_remove",
+            Self::CreateInventory { .. } => "server.create_inventory",
         }
     }
 }
@@ -310,6 +322,7 @@ pub enum PlayerOrder {
     SpawnParticle(ParticleSpec),
     HidePlayer(PlayerId),
     ShowPlayer(PlayerId),
+    OpenInventory(u64),
     CloseInventory,
     UpdateInventory,
     Ban {
@@ -358,9 +371,29 @@ impl PlayerOrder {
             Self::SpawnParticle(_) => "player.spawn_particle",
             Self::HidePlayer(_) => "player.hide_player",
             Self::ShowPlayer(_) => "player.show_player",
+            Self::OpenInventory(_) => "player.open_inventory",
             Self::CloseInventory => "player.close_inventory",
             Self::UpdateInventory => "player.update_inventory",
             Self::Ban { .. } => "player.ban",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomInventoryOrder {
+    Set { slot: i32, item: Option<ItemSpec> },
+    Clear,
+    Close,
+    Discard,
+}
+
+impl CustomInventoryOrder {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Set { .. } => "custom_inventory.set",
+            Self::Clear => "custom_inventory.clear",
+            Self::Close => "custom_inventory.close",
+            Self::Discard => "custom_inventory.discard",
         }
     }
 }

@@ -303,8 +303,12 @@ pub struct Scene {
 }
 
 pub fn scene(names: &[&str]) -> Scene {
+    scene_with(names, Vec::new())
+}
+
+pub fn scene_with(names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
     let mut server = server(PluginSettings::default());
-    let plugin = connect(&mut server, 1, "tester");
+    let plugin = connect_with(&mut server, 1, "tester", handlers);
     let players: Vec<Player> = names.iter().map(|name| join(&mut server, name)).collect();
     server.deliver();
     for player in &players {
@@ -327,9 +331,13 @@ impl Scene {
     }
 
     pub fn ask(&mut self, question: Question) -> Answer {
+        self.ask_on(1, question)
+    }
+
+    pub fn ask_on(&mut self, connection: u64, question: Question) -> Answer {
         let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
         self.server.handle(Inbound::PluginMessage {
-            connection: 1,
+            connection,
             message: FromPlugin::Question { request, question },
         });
         self.server.deliver();
