@@ -59,7 +59,10 @@ message Event {
   uint64 id = 1; repeated uint32 handlers = 2; Phase phase = 3; bool cancelled = 4;
   oneof payload { PlayerJoin player_join = 10; PlayerLeave player_leave = 11; PlayerMove player_move = 12; InventoryClick inventory_click = 13; InventoryClose inventory_close = 14; }
 }
-message Decision { uint64 event = 1; bool cancel = 2; }
+message PlayerMovePatch { optional Vec3 to = 1; }
+message Patch { oneof change { PlayerMovePatch player_move = 12; } }
+message Verdict { uint32 handler = 1; bool cancel = 2; Patch patch = 3; }
+message Decision { uint64 event = 1; reserved 2; repeated Verdict verdicts = 3; }
 
 message PlayerOrder {
   string player = 1;
