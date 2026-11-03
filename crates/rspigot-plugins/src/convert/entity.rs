@@ -1,8 +1,12 @@
-use rspigot_core::plugins::{EntityDetails, EntityOrder, EntityView, Order, Question};
+use rspigot_core::events::Hand;
+use rspigot_core::plugins::{
+    EntityDetails, EntityOrder, EntityView, Order, PlayerSnapshot, Question,
+};
 use rspigot_domain::EntityId;
-use rspigot_plugin_protocol::v1::{self, entity_order::Order as Wire};
+use rspigot_plugin_protocol::v1::{self, entity_order::Order as Wire, event};
 
 use super::Malformed;
+use super::player::wire_player;
 use super::shared::{self, required, wire_vec};
 
 pub(super) fn order(order: v1::EntityOrder) -> Result<Order, Malformed> {
@@ -16,6 +20,12 @@ pub(super) fn order(order: v1::EntityOrder) -> Result<Order, Malformed> {
         Wire::RemoveEffect(key) => EntityOrder::RemoveEffect(key),
         Wire::ClearEffects(_) => EntityOrder::ClearEffects,
         Wire::SetVelocity(velocity) => EntityOrder::SetVelocity(shared::vec3(velocity)),
+        Wire::SetCustomName(name) => EntityOrder::SetCustomName(name),
+        Wire::ClearCustomName(_) => EntityOrder::ClearCustomName,
+        Wire::SetNameVisible(visible) => EntityOrder::SetNameVisible(visible),
+        Wire::SetNoAi(no_ai) => EntityOrder::SetNoAi(no_ai),
+        Wire::SetInvulnerable(invulnerable) => EntityOrder::SetInvulnerable(invulnerable),
+        Wire::SetSilent(silent) => EntityOrder::SetSilent(silent),
     };
     Ok(Order::Entity { entity, order })
 }
@@ -45,6 +55,24 @@ pub(super) fn drop_item(drop: v1::DropItem) -> Result<Question, Malformed> {
     })
 }
 
+pub(super) fn wire_interact(
+    player: PlayerSnapshot,
+    entity: EntityView,
+    hand: Hand,
+    sneaking: bool,
+) -> event::Payload {
+    let hand = match hand {
+        Hand::Main => v1::Hand::Main,
+        Hand::Off => v1::Hand::Off,
+    };
+    event::Payload::EntityInteract(v1::EntityInteract {
+        player: Some(wire_player(player)),
+        entity: Some(wire_view(entity)),
+        hand: hand as i32,
+        sneaking,
+    })
+}
+
 pub(super) fn wire_view(view: EntityView) -> v1::EntitySnapshot {
     v1::EntitySnapshot {
         entity_id: view.id.0,
@@ -67,12 +95,14 @@ pub(super) fn wire_details(details: EntityDetails) -> v1::EntityState {
 
 #[cfg(test)]
 mod tests {
+    use rspigot_core::events::Hand;
     use rspigot_core::plugins::{
-        Answer, EntityDetails, EntityOrder, EntityView, FromPlugin, ItemSpec, Order, Question,
-        ToPlugin,
+        Answer, EntityDetails, EntityOrder, EntityView, EventPayload, FromPlugin, ItemSpec, Order,
+        Phase, PlayerSnapshot, Question, ToPlugin,
     };
-    use rspigot_domain::{EntityId, Vec3};
-    use rspigot_plugin_protocol::v1::{self, answer, entity_order};
+    use rspigot_domain::player::{GameMode, PlayerId};
+    use rspigot_domain::{EntityId, Rotation, Vec3};
+    use rspigot_plugin_protocol::v1::{self, answer, entity_order, event};
     use uuid::Uuid;
 
     use crate::convert::{Malformed, from_plugin, question, to_plugin};
@@ -154,6 +184,42 @@ mod tests {
             })
         );
         assert!(matches!(entity(None), Err(Malformed::Empty)));
+
+        let appearance = [
+            (
+                entity_order::Order::SetCustomName("§aGuide".into()),
+                EntityOrder::SetCustomName("§aGuide".into()),
+            ),
+            (
+                entity_order::Order::ClearCustomName(v1::Empty {}),
+                EntityOrder::ClearCustomName,
+            ),
+            (
+                entity_order::Order::SetNameVisible(true),
+                EntityOrder::SetNameVisible(true),
+            ),
+            (
+                entity_order::Order::SetNoAi(true),
+                EntityOrder::SetNoAi(true),
+            ),
+            (
+                entity_order::Order::SetInvulnerable(true),
+                EntityOrder::SetInvulnerable(true),
+            ),
+            (
+                entity_order::Order::SetSilent(false),
+                EntityOrder::SetSilent(false),
+            ),
+        ];
+        for (wire, order) in appearance {
+            assert_eq!(
+                entity(Some(wire)).unwrap(),
+                FromPlugin::Order(Order::Entity {
+                    entity: ZOMBIE,
+                    order,
+                })
+            );
+        }
 
         assert_eq!(
             ask(question::Question::Entities(v1::EntityQuery {
@@ -262,5 +328,41 @@ mod tests {
                 fire_ticks: -1,
             }))
         );
+    }
+
+    #[test]
+    fn an_interaction_converts_with_its_hand() {
+        let player = PlayerSnapshot {
+            id: PlayerId(Uuid::from_u128(1)),
+            name: "Steve".into(),
+            entity_id: 3,
+            world: "minecraft:overworld".into(),
+            position: Vec3::new(1.0, 64.0, 1.0),
+            rotation: Rotation::new(0.0, 0.0),
+            game_mode: GameMode::Survival,
+        };
+        let message = to_plugin(ToPlugin::Event {
+            id: 5,
+            handlers: vec![1],
+            phase: Phase::Settled,
+            cancelled: false,
+            payload: EventPayload::EntityInteract {
+                player,
+                entity: view(),
+                hand: Hand::Off,
+                sneaking: true,
+            },
+        });
+        let Some(to_plugin::Body::Event(v1::Event {
+            payload: Some(event::Payload::EntityInteract(interact)),
+            ..
+        })) = message.body
+        else {
+            panic!("expected an interaction");
+        };
+        assert_eq!(interact.entity, Some(snapshot()));
+        assert_eq!(interact.hand, v1::Hand::Off as i32);
+        assert!(interact.sneaking);
+        assert_eq!(interact.player.map(|p| p.name), Some("Steve".to_owned()));
     }
 }
