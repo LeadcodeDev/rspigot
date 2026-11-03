@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use common::*;
 use crossbeam_channel::{RecvTimeoutError, Sender, bounded, unbounded};
-use rspigot_core::config::{GameConfig, PluginSettings};
+use rspigot_core::config::{GameConfig, PluginSettings, PriorityOverride};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::{
-    Answer, EventKind, EventPayload, FromPlugin, Phase, PlayerOrder, Question, ToPlugin,
+    Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerMovePatch,
+    PlayerOrder, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::PluginOutbox;
 use rspigot_core::server::Server;
@@ -302,7 +303,27 @@ fn step(server: &mut Server<Link>, player: &Player, to: Vec3) {
 }
 
 fn answer(server: &mut Server<Link>, connection: u64, event: u64, cancel: bool) {
-    order(server, connection, FromPlugin::Decision { event, cancel });
+    let verdicts = vec![verdict(1, cancel, None)];
+    order(server, connection, FromPlugin::Decision { event, verdicts });
+}
+
+fn verdict(handler: u32, cancel: bool, to: Option<Vec3>) -> Verdict {
+    Verdict {
+        handler,
+        cancel,
+        patch: to.map(|to| EventPatch::PlayerMove(PlayerMovePatch { to: Some(to) })),
+    }
+}
+
+fn rule(server: &mut Server<Link>, connection: u64, event: u64, verdicts: Vec<Verdict>) {
+    order(server, connection, FromPlugin::Decision { event, verdicts });
+}
+
+fn decider(id: u32, priority: Priority) -> HandlerSpec {
+    HandlerSpec {
+        priority,
+        ..decide(id)
+    }
 }
 
 fn ticks(server: &mut Server<Link>, count: usize) {
@@ -1146,7 +1167,7 @@ impl PluginOutbox for CancelThenStall {
                 connection: self.connection,
                 message: FromPlugin::Decision {
                     event: id,
-                    cancel: true,
+                    verdicts: vec![verdict(1, true, None)],
                 },
             });
             std::thread::sleep(self.stall);
@@ -1234,5 +1255,502 @@ fn a_cancel_sent_at_once_stays_on_time_when_the_server_falls_behind() {
             SPAWN,
             east(1)
         )]
+    );
+}
+
+fn south(blocks: u32) -> Vec3 {
+    Vec3::new(0.5, 64.0, 0.5 + f64::from(blocks))
+}
+
+fn late_patch(event: u64) -> String {
+    format!("patch of event {event} arrived too late")
+}
+
+fn permutations(count: usize) -> Vec<Vec<usize>> {
+    (0..count).fold(vec![Vec::new()], |known, next| {
+        known
+            .into_iter()
+            .flat_map(|order: Vec<usize>| {
+                (0..=order.len()).map(move |at| {
+                    let mut longer = order.clone();
+                    longer.insert(at, next);
+                    longer
+                })
+            })
+            .collect()
+    })
+}
+
+#[test]
+fn two_plugins_that_disagree_on_the_destination_settle_on_the_higher_priority() {
+    for low_first in [true, false] {
+        let mut server = server(PluginSettings::default());
+        let alice = join(&mut server, "Alice");
+        let lower = connect_with(&mut server, 1, "lower", vec![decider(1, Priority::Low)]);
+        connect_with(&mut server, 2, "higher", vec![decider(1, Priority::High)]);
+        alice.link.take();
+        step(&mut server, &alice, east(1));
+        let event = asked(&lower)[0];
+        let mut rulings = vec![(1, south(2)), (2, south(4))];
+        if !low_first {
+            rulings.reverse();
+        }
+        for (connection, to) in rulings {
+            rule(
+                &mut server,
+                connection,
+                event,
+                vec![verdict(1, false, Some(to))],
+            );
+        }
+        assert_eq!(server.player_location(alice.id), Some(south(4)));
+        assert_eq!(teleported_to(&alice), [south(4)]);
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Settled {
+    location: Option<Vec3>,
+    cancelled: bool,
+    to: Vec3,
+}
+
+fn settle_four_plugins(rulings: &[(u64, Vec<Verdict>)], arrival: &[usize]) -> Settled {
+    let mut server = server(PluginSettings {
+        order: vec!["bravo".to_owned(), "alpha".to_owned()],
+        overrides: vec![PriorityOverride {
+            plugin: "delta".to_owned(),
+            event: Some(EventKind::PlayerMove),
+            priority: Priority::Low,
+        }],
+        ..PluginSettings::default()
+    });
+    let alice = join(&mut server, "Alice");
+    let plugins = [
+        connect_with(
+            &mut server,
+            1,
+            "alpha",
+            vec![decider(1, Priority::Lowest), decider(2, Priority::High)],
+        ),
+        connect_with(
+            &mut server,
+            2,
+            "bravo",
+            vec![decider(1, Priority::High), decider(2, Priority::Normal)],
+        ),
+        connect_with(
+            &mut server,
+            3,
+            "charlie",
+            vec![decider(1, Priority::Normal)],
+        ),
+        connect_with(&mut server, 4, "delta", vec![decider(1, Priority::Highest)]),
+    ];
+    let watch = connect_with(
+        &mut server,
+        5,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let event = asked(&plugins[0])[0];
+    for (count, index) in arrival.iter().enumerate() {
+        if count == 2 {
+            ticks(&mut server, 1);
+        }
+        let (connection, verdicts) = &rulings[*index];
+        rule(&mut server, *connection, event, verdicts.clone());
+    }
+    for plugin in &plugins {
+        assert!(warnings(plugin).is_empty());
+    }
+    let last = moves(&watch)
+        .pop()
+        .expect("the watch hears the settled move");
+    assert_eq!((last.id, last.phase), (event, Phase::Settled));
+    Settled {
+        location: server.player_location(alice.id),
+        cancelled: last.cancelled,
+        to: last.to,
+    }
+}
+
+#[test]
+fn four_plugins_settle_the_same_for_every_arrival_order() {
+    let patches = vec![
+        (
+            1,
+            vec![
+                verdict(2, false, Some(south(2))),
+                verdict(1, false, Some(south(1))),
+            ],
+        ),
+        (
+            2,
+            vec![verdict(1, false, Some(south(3))), verdict(2, false, None)],
+        ),
+        (3, vec![verdict(1, false, Some(south(4)))]),
+        (4, vec![verdict(1, false, Some(south(5)))]),
+    ];
+    let mut with_a_cancel = patches.clone();
+    with_a_cancel[2].1 = vec![verdict(1, true, Some(south(4)))];
+    let orders = permutations(patches.len());
+    assert_eq!(orders.len(), 24);
+    for (rulings, expected) in [
+        (
+            &patches,
+            Settled {
+                location: Some(south(2)),
+                cancelled: false,
+                to: south(2),
+            },
+        ),
+        (
+            &with_a_cancel,
+            Settled {
+                location: Some(SPAWN),
+                cancelled: true,
+                to: east(1),
+            },
+        ),
+    ] {
+        for arrival in &orders {
+            assert_eq!(
+                settle_four_plugins(rulings, arrival),
+                expected,
+                "arrival order {arrival:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_cancel_at_lowest_wins_over_a_patch_at_highest() {
+    for cancel_first in [true, false] {
+        let mut server = server(PluginSettings::default());
+        let alice = join(&mut server, "Alice");
+        let guard = connect_with(&mut server, 1, "guard", vec![decider(1, Priority::Lowest)]);
+        let mover = connect_with(&mut server, 2, "mover", vec![decider(1, Priority::Highest)]);
+        let watch = connect_with(
+            &mut server,
+            3,
+            "watch",
+            vec![observe(1, EventKind::PlayerMove)],
+        );
+        alice.link.take();
+        step(&mut server, &alice, east(1));
+        let event = asked(&guard)[0];
+        let mut rulings = vec![
+            (1, verdict(1, true, None)),
+            (2, verdict(1, false, Some(south(3)))),
+        ];
+        if !cancel_first {
+            rulings.reverse();
+        }
+        for (connection, ruling) in rulings {
+            rule(&mut server, connection, event, vec![ruling]);
+        }
+        assert_eq!(server.player_location(alice.id), Some(SPAWN));
+        assert_eq!(teleported_to(&alice), [SPAWN]);
+        assert_eq!(
+            moves(&watch),
+            [heard_move(
+                event,
+                &[1],
+                Phase::Settled,
+                true,
+                SPAWN,
+                east(1)
+            )]
+        );
+        assert!(warnings(&guard).is_empty());
+        assert!(warnings(&mover).is_empty());
+    }
+}
+
+#[test]
+fn a_patch_after_the_deadline_changes_nothing_and_warns() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    wait_out_the_deadline(&mut server);
+    let within = asked(&guard)[0];
+    rule(
+        &mut server,
+        1,
+        within,
+        vec![verdict(1, false, Some(south(3)))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+
+    step(&mut server, &alice, east(2));
+    ticks(&mut server, 21);
+    let after = asked(&guard)[1];
+    rule(
+        &mut server,
+        1,
+        after,
+        vec![verdict(1, false, Some(south(3)))],
+    );
+
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    assert!(teleported_to(&alice).is_empty());
+    assert_eq!(warnings(&guard), [late_patch(within), late_patch(after)]);
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(within, &[1], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(after, &[1], Phase::Settled, false, east(1), east(2)),
+        ]
+    );
+}
+
+#[test]
+fn a_late_cancel_that_also_patches_still_rolls_back() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    wait_out_the_deadline(&mut server);
+    let event = asked(&guard)[0];
+    rule(
+        &mut server,
+        1,
+        event,
+        vec![verdict(1, true, Some(south(3)))],
+    );
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert!(warnings(&guard).is_empty());
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(event, &[1], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(event, &[1], Phase::RolledBack, true, SPAWN, east(1)),
+        ]
+    );
+}
+
+#[test]
+fn observers_hear_the_settled_move_with_the_changed_destination() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let event = asked(&guard)[0];
+    rule(
+        &mut server,
+        1,
+        event,
+        vec![verdict(1, false, Some(south(3)))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(south(3)));
+    assert_eq!(teleported_to(&alice), [south(3)]);
+    assert_eq!(
+        moves(&watch),
+        [heard_move(
+            event,
+            &[1],
+            Phase::Settled,
+            false,
+            SPAWN,
+            south(3)
+        )]
+    );
+    assert!(warnings(&guard).is_empty());
+}
+
+#[test]
+fn a_changed_destination_drops_the_queued_moves_as_a_cancel_does() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    send_move(&mut server, &alice, None, Some(Rotation::new(90.0, 0.0)));
+    step(&mut server, &alice, east(2));
+    let events = asked(&guard);
+    assert_eq!(events.len(), 2);
+    rule(
+        &mut server,
+        1,
+        events[0],
+        vec![verdict(1, false, Some(south(3)))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(south(3)));
+    assert_eq!(
+        confirm_teleports(&mut server, &alice),
+        [(south(3), Rotation::default())]
+    );
+    answer(&mut server, 1, events[1], false);
+    wait_out_the_deadline(&mut server);
+    assert_eq!(server.player_location(alice.id), Some(south(3)));
+    assert!(warnings(&guard).is_empty());
+    assert_eq!(
+        moves(&watch),
+        [
+            heard_move(events[0], &[1], Phase::Settled, false, SPAWN, south(3)),
+            heard_move(events[1], &[1], Phase::Settled, true, east(1), east(2)),
+        ]
+    );
+}
+
+#[test]
+fn a_destination_set_to_where_the_player_was_going_is_a_plain_move() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    step(&mut server, &alice, east(2));
+    let events = asked(&guard);
+    rule(
+        &mut server,
+        1,
+        events[0],
+        vec![verdict(1, false, Some(east(1)))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    answer(&mut server, 1, events[1], false);
+    assert_eq!(server.player_location(alice.id), Some(east(2)));
+    assert!(teleported_to(&alice).is_empty());
+}
+
+#[test]
+fn a_destination_outside_the_world_is_refused_and_cancels_the_move() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let event = asked(&guard)[0];
+    let nowhere = Vec3::new(f64::NAN, 64.0, 0.5);
+    rule(
+        &mut server,
+        1,
+        event,
+        vec![verdict(1, false, Some(nowhere))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(
+        warnings(&guard),
+        [format!(
+            "patch of event {event} was refused, the event is cancelled: position NaN 64 0.5 is outside the world"
+        )]
+    );
+    assert_eq!(
+        moves(&watch),
+        [heard_move(
+            event,
+            &[1],
+            Phase::Settled,
+            true,
+            SPAWN,
+            east(1)
+        )]
+    );
+}
+
+#[test]
+fn verdicts_fold_by_handler_priority_across_plugins() {
+    for (highest, expected) in [(Some(south(5)), south(5)), (None, south(4))] {
+        let mut server = server(PluginSettings::default());
+        let alice = join(&mut server, "Alice");
+        let zeta = connect_with(
+            &mut server,
+            1,
+            "zeta",
+            vec![decider(1, Priority::Lowest), decider(2, Priority::Highest)],
+        );
+        let alpha = connect_with(&mut server, 2, "alpha", vec![decider(1, Priority::Normal)]);
+        alice.link.take();
+        step(&mut server, &alice, east(1));
+        let decide_events: Vec<Heard> = moves(&zeta);
+        assert_eq!(decide_events[0].handlers, [1, 2]);
+        let event = decide_events[0].id;
+        rule(
+            &mut server,
+            1,
+            event,
+            vec![
+                verdict(1, false, Some(south(3))),
+                verdict(2, false, highest),
+            ],
+        );
+        rule(
+            &mut server,
+            2,
+            event,
+            vec![verdict(1, false, Some(south(4)))],
+        );
+        assert_eq!(server.player_location(alice.id), Some(expected));
+        assert!(warnings(&zeta).is_empty());
+        assert!(warnings(&alpha).is_empty());
+    }
+}
+
+#[test]
+fn a_verdict_for_a_handler_that_was_not_asked_is_ignored_with_a_warning() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let event = asked(&guard)[0];
+    rule(
+        &mut server,
+        1,
+        event,
+        vec![
+            verdict(9, true, None),
+            verdict(1, false, None),
+            verdict(1, true, None),
+        ],
+    );
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    assert!(teleported_to(&alice).is_empty());
+    assert_eq!(
+        warnings(&guard),
+        [
+            format!("handler 9 was not asked to decide event {event}"),
+            format!("handler 1 answered event {event} more than once"),
+        ]
     );
 }
