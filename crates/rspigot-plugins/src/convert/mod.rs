@@ -265,12 +265,12 @@ mod tests {
 
     #[test]
     fn an_order_or_question_not_supported_yet_is_dropped() {
-        let hide = body(from_plugin::Body::Player(v1::PlayerOrder {
+        let open = body(from_plugin::Body::Player(v1::PlayerOrder {
             player: STEVE.into(),
-            order: Some(player_order::Order::HidePlayer(STEVE.into())),
+            order: Some(player_order::Order::OpenInventory(1)),
         }));
         assert!(matches!(
-            from_plugin(hide),
+            from_plugin(open),
             Err(Malformed::Unsupported("player order"))
         ));
         let clear = body(from_plugin::Body::CustomInventory(

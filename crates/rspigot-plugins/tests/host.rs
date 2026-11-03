@@ -337,9 +337,7 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
     }));
     plugin.say(from_plugin::Body::Player(v1::PlayerOrder {
         player: "00000000-0000-0000-0000-000000000001".to_owned(),
-        order: Some(player_order::Order::HidePlayer(
-            "00000000-0000-0000-0000-000000000002".to_owned(),
-        )),
+        order: Some(player_order::Order::OpenInventory(1)),
     }));
     plugin.say(from_plugin::Body::Hello(hello("welcome")));
     plugin.say(from_plugin::Body::Decision(v1::Decision {
