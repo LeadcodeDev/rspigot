@@ -225,6 +225,9 @@ impl<L: ClientLink> Server<L> {
             }
             PlayerOrder::HidePlayer(target) => self.hide_player(connection, id, target),
             PlayerOrder::ShowPlayer(target) => self.show_player(connection, id, target),
+            PlayerOrder::OpenInventory(inventory) => {
+                self.open_plugin_menu(connection, id, inventory);
+            }
             PlayerOrder::CloseInventory => {
                 self.close_open_menu(id, true);
             }

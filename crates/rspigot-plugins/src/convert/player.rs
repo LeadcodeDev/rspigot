@@ -58,7 +58,7 @@ pub(super) fn order(order: v1::PlayerOrder) -> Result<Order, Malformed> {
         },
         Wire::HidePlayer(target) => PlayerOrder::HidePlayer(id(target)?),
         Wire::ShowPlayer(target) => PlayerOrder::ShowPlayer(id(target)?),
-        Wire::OpenInventory(_) => return Err(Malformed::Unsupported("player order")),
+        Wire::OpenInventory(inventory) => PlayerOrder::OpenInventory(inventory),
     };
     Ok(Order::Player { player, order })
 }

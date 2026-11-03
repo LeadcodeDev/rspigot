@@ -3,6 +3,7 @@ mod decisions;
 mod entity;
 mod inventory;
 mod items;
+mod menus;
 mod orders;
 mod player;
 mod registry;
@@ -25,9 +26,11 @@ use crate::events::Direction;
 
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
+pub use menus::MAX_PLUGIN_INVENTORIES;
+pub(crate) use menus::{PluginInventories, PluginMenu};
 pub use orders::{
-    BlockOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order, ParticleDataSpec,
-    ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
+    BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
+    ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub(crate) use registry::Registry;
 pub use targets::MAX_TARGET_DISTANCE;
@@ -38,6 +41,8 @@ pub enum EventKind {
     PlayerJoin,
     PlayerLeave,
     PlayerMove,
+    InventoryClick,
+    InventoryClose,
 }
 
 impl EventKind {
@@ -160,6 +165,12 @@ pub struct InventoryState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CustomInventoryState {
+    pub items: Vec<Option<ItemSpec>>,
+    pub viewers: Vec<PlayerSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ServerState {
     pub max_players: u32,
     pub online: u32,
@@ -217,6 +228,27 @@ pub enum TargetHit {
     Entity(EntityView),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ClickedSlot {
+    Menu(u16),
+    Player(i32),
+    Outside,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ClickKind {
+    Left,
+    Right,
+    ShiftLeft,
+    ShiftRight,
+    NumberKey(u8),
+    SwapOffhand,
+    Drop,
+    ControlDrop,
+    DoubleClick,
+    Middle,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventPayload {
     PlayerJoin {
@@ -230,6 +262,18 @@ pub enum EventPayload {
         from: Vec3,
         to: Vec3,
     },
+    InventoryClick {
+        player: PlayerSnapshot,
+        inventory: u64,
+        slot: ClickedSlot,
+        kind: ClickKind,
+        item: Option<ItemSpec>,
+    },
+    InventoryClose {
+        player: PlayerSnapshot,
+        inventory: u64,
+        by_player: bool,
+    },
 }
 
 impl EventPayload {
@@ -238,6 +282,8 @@ impl EventPayload {
             Self::PlayerJoin { .. } => EventKind::PlayerJoin,
             Self::PlayerLeave { .. } => EventKind::PlayerLeave,
             Self::PlayerMove { .. } => EventKind::PlayerMove,
+            Self::InventoryClick { .. } => EventKind::InventoryClick,
+            Self::InventoryClose { .. } => EventKind::InventoryClose,
         }
     }
 }
@@ -264,6 +310,7 @@ pub enum Answer {
     Entity(EntityDetails),
     Spawned(EntityView),
     Target(Option<TargetHit>),
+    CustomInventory(CustomInventoryState),
     Refused(String),
     NotFound,
 }
@@ -327,6 +374,7 @@ pub enum Question {
         position: Vec3,
         item: ItemSpec,
     },
+    CustomInventory(u64),
 }
 
 #[cfg(test)]
@@ -391,6 +439,8 @@ mod tests {
         assert!(EventKind::PlayerMove.decidable());
         assert!(!EventKind::PlayerJoin.decidable());
         assert!(!EventKind::PlayerLeave.decidable());
+        assert!(!EventKind::InventoryClick.decidable());
+        assert!(!EventKind::InventoryClose.decidable());
     }
 
     #[test]
