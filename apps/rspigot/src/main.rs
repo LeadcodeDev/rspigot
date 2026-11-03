@@ -6,7 +6,7 @@ mod logging;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use rspigot_anvil::{AnvilOptions, AnvilStore, Compression, DimensionLayout};
@@ -89,7 +89,11 @@ fn main() -> anyhow::Result<()> {
     if let Some(online) = args.online_mode {
         files.properties.set("online-mode", &online.to_string());
     }
-    let admin = files::read_admin_lists(&args.root, files.properties.bool("white-list"));
+    let admin = files::read_admin_lists(
+        &args.root,
+        files.properties.bool("white-list"),
+        SystemTime::now(),
+    );
     if admin.whitelist_enabled && admin.whitelist.is_empty() && admin.operators.is_empty() {
         tracing::warn!(
             "The whitelist is enabled and empty: no player can join. Run \"whitelist add <name>\" or set white-list=false in server.properties."

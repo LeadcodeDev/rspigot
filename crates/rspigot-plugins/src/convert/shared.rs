@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use rspigot_core::plugins::{
     EffectSpec, ItemSpec, ParticleDataSpec, ParticleSpec, SoundSpec, TitleSpec,
 };
@@ -8,6 +10,27 @@ use super::Malformed;
 
 pub(super) fn required<T>(field: Option<T>) -> Result<T, Malformed> {
     field.ok_or(Malformed::Empty)
+}
+
+pub(super) fn expiry(ms: Option<i64>) -> Result<Option<SystemTime>, Malformed> {
+    ms.map(time).transpose()
+}
+
+fn time(ms: i64) -> Result<SystemTime, Malformed> {
+    let offset = Duration::from_millis(ms.unsigned_abs());
+    let time = if ms < 0 {
+        UNIX_EPOCH.checked_sub(offset)
+    } else {
+        UNIX_EPOCH.checked_add(offset)
+    };
+    time.ok_or(Malformed::Time(ms))
+}
+
+pub(super) fn wire_time(time: SystemTime) -> i64 {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => i64::try_from(after.as_millis()).unwrap_or(i64::MAX),
+        Err(before) => i64::try_from(before.duration().as_millis()).map_or(i64::MIN, |ms| -ms),
+    }
 }
 
 pub(super) const fn vec3(vec: v1::Vec3) -> Vec3 {

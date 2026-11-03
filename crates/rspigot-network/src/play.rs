@@ -43,6 +43,7 @@ pub async fn run<V: SessionVerifier>(
             profile,
             settings,
             link,
+            address: session.addr.ip(),
         })
         .is_err()
     {

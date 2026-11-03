@@ -34,6 +34,8 @@ pub(crate) enum Malformed {
     Unsupported(&'static str),
     #[error("unknown {field} value {value}")]
     Enum { field: &'static str, value: i32 },
+    #[error("{0} ms is not a time the server can hold")]
+    Time(i64),
 }
 
 pub(crate) fn intro(hello: v1::Hello) -> Result<PluginIntro, Malformed> {
@@ -116,6 +118,8 @@ fn question(asked: v1::Question) -> Result<FromPlugin, Malformed> {
         question::Question::Server(_) => Question::Server,
         question::Question::Whitelist(_) => Question::Whitelist,
         question::Question::Operators(_) => Question::Operators,
+        question::Question::Bans(_) => Question::Bans,
+        question::Question::IpBans(_) => Question::IpBans,
         question::Question::World(_) => Question::World,
         question::Question::Block(pos) => Question::Block(shared::block_pos(pos)),
         question::Question::Entities(query) => entity::query(query)?,
@@ -191,6 +195,8 @@ fn wire_answer(answer: Answer) -> answer::Body {
         Answer::Inventory(state) => answer::Body::Inventory(inventory::wire_state(state)),
         Answer::Server(state) => answer::Body::Server(server::wire_state(state)),
         Answer::Names(names) => answer::Body::Listed(server::wire_names(names)),
+        Answer::Bans(bans) => answer::Body::Bans(server::wire_bans(bans)),
+        Answer::IpBans(bans) => answer::Body::Bans(server::wire_ip_bans(bans)),
         Answer::World(state) => answer::Body::World(world::wire_state(state)),
         Answer::Block(state) => answer::Body::Block(block::wire_state(state)),
         Answer::Entities(views) => answer::Body::Entities(v1::EntityList {
@@ -277,12 +283,12 @@ mod tests {
             from_plugin(clear),
             Err(Malformed::Unsupported("custom inventory order"))
         ));
-        let bans = body(from_plugin::Body::Question(v1::Question {
+        let custom = body(from_plugin::Body::Question(v1::Question {
             request: 1,
-            question: Some(question::Question::Bans(v1::Empty {})),
+            question: Some(question::Question::CustomInventory(1)),
         }));
         assert!(matches!(
-            from_plugin(bans),
+            from_plugin(custom),
             Err(Malformed::Unsupported("question"))
         ));
     }

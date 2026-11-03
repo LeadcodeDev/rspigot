@@ -162,6 +162,7 @@ fn join(server: &mut Server<Link>, name: &str) -> Player {
         },
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
     let mut player = Player {

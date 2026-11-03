@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use rspigot_domain::effect::ActiveEffects;
 use rspigot_domain::item::Inventory;
 use rspigot_domain::menu::InventoryMenu;
@@ -16,6 +18,7 @@ pub struct Player<L> {
     pub id: PlayerId,
     pub profile: GameProfile,
     pub link: L,
+    pub address: IpAddr,
     pub entity_id: EntityId,
     pub position: Vec3,
     pub rotation: Rotation,

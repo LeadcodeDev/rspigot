@@ -271,6 +271,20 @@ pub fn build_tree(operator: bool) -> CommandTree {
             let node = b.literal(whitelist, action, false);
             b.argument(node, "targets", ArgumentParser::GameProfile, true);
         }
+        let ban = b.literal(root, "ban", false);
+        let banned = b.argument(ban, "targets", ArgumentParser::GameProfile, true);
+        b.argument(banned, "reason", ArgumentParser::Message, true);
+        let ban_ip = b.literal(root, "ban-ip", false);
+        let address = b.argument(ban_ip, "target", ArgumentParser::Word, true);
+        b.argument(address, "reason", ArgumentParser::Message, true);
+        let pardon = b.literal(root, "pardon", false);
+        b.argument(pardon, "targets", ArgumentParser::GameProfile, true);
+        let pardon_ip = b.literal(root, "pardon-ip", false);
+        b.argument(pardon_ip, "target", ArgumentParser::Word, true);
+        let banlist = b.literal(root, "banlist", true);
+        for list in ["ips", "players"] {
+            b.literal(banlist, list, true);
+        }
         b.literal(root, "save-all", true);
         b.literal(root, "stop", true);
     }
@@ -298,6 +312,9 @@ mod tests {
         assert!(names.contains(&"gamemode"));
         assert!(names.contains(&"tp"));
         assert!(names.contains(&"summon"));
+        for name in ["ban", "ban-ip", "pardon", "pardon-ip", "banlist"] {
+            assert!(names.contains(&name), "{name}");
+        }
         let summon_entity = tree.nodes.iter().find(|n| {
             matches!(&n.kind, CommandNodeKind::Argument { name, suggests, .. }
                 if name == "entity" && suggests.as_deref() == Some("minecraft:summonable_entities"))
@@ -319,5 +336,10 @@ mod tests {
             .iter()
             .any(|n| n.kind == CommandNodeKind::Literal("stop".to_owned()));
         assert!(!has_stop);
+        let has_ban = tree
+            .nodes
+            .iter()
+            .any(|n| n.kind == CommandNodeKind::Literal("ban".to_owned()));
+        assert!(!has_ban);
     }
 }

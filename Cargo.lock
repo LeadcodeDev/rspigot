@@ -1487,6 +1487,7 @@ version = "0.1.0"
 name = "rspigot-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "crossbeam-channel",
  "parking_lot",
  "proptest",

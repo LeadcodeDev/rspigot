@@ -1,5 +1,6 @@
 use std::fmt::Display;
 use std::ops::RangeInclusive;
+use std::time::SystemTime;
 
 use rspigot_blocks::BlockKind;
 use rspigot_data::registries::{static_entries, static_index};
@@ -63,6 +64,15 @@ pub(super) fn name_of(name: &str) -> Result<&str, String> {
         Err("name cannot be empty".to_owned())
     } else {
         Ok(name)
+    }
+}
+
+pub(super) fn expiry_of(expires: Option<SystemTime>) -> Result<Option<SystemTime>, String> {
+    match expires {
+        Some(time) if crate::admin::utc(time).is_none() => {
+            Err("expiry is outside the dates a ban can store".to_owned())
+        }
+        _ => Ok(expires),
     }
 }
 
