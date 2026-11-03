@@ -308,6 +308,8 @@ pub enum PlayerOrder {
     Chat(String),
     PlaySound(SoundSpec),
     SpawnParticle(ParticleSpec),
+    HidePlayer(PlayerId),
+    ShowPlayer(PlayerId),
     CloseInventory,
     UpdateInventory,
     Ban {
@@ -354,6 +356,8 @@ impl PlayerOrder {
             Self::Chat(_) => "player.chat",
             Self::PlaySound(_) => "player.play_sound",
             Self::SpawnParticle(_) => "player.spawn_particle",
+            Self::HidePlayer(_) => "player.hide_player",
+            Self::ShowPlayer(_) => "player.show_player",
             Self::CloseInventory => "player.close_inventory",
             Self::UpdateInventory => "player.update_inventory",
             Self::Ban { .. } => "player.ban",

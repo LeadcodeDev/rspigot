@@ -55,9 +55,9 @@ pub(super) fn order(order: v1::PlayerOrder) -> Result<Order, Malformed> {
             reason: terms.reason,
             expires: shared::expiry(terms.expires_ms)?,
         },
-        Wire::HidePlayer(_) | Wire::ShowPlayer(_) | Wire::OpenInventory(_) => {
-            return Err(Malformed::Unsupported("player order"));
-        }
+        Wire::HidePlayer(target) => PlayerOrder::HidePlayer(id(target)?),
+        Wire::ShowPlayer(target) => PlayerOrder::ShowPlayer(id(target)?),
+        Wire::OpenInventory(_) => return Err(Malformed::Unsupported("player order")),
     };
     Ok(Order::Player { player, order })
 }
@@ -94,7 +94,11 @@ pub(super) fn wire_state(state: PlayerState) -> v1::PlayerState {
         ping: state.ping,
         locale: state.locale,
         address: state.address.to_string(),
-        ..v1::PlayerState::default()
+        hidden: state
+            .hidden
+            .into_iter()
+            .map(|hidden| hidden.0.hyphenated().to_string())
+            .collect(),
     }
 }
 
@@ -309,6 +313,7 @@ mod tests {
             ping: 43,
             locale: "fr_fr".into(),
             address: IpAddr::from([203, 0, 113, 7]),
+            hidden: Vec::new(),
         }
     }
 
@@ -350,6 +355,32 @@ mod tests {
                 address: "203.0.113.7".into(),
                 hidden: Vec::new(),
             }
+        );
+    }
+
+    #[test]
+    fn hide_and_show_convert() {
+        const ALEX: &str = "00000000-0000-0000-0000-000000000002";
+        let alex = PlayerId(Uuid::from_u128(2));
+        assert_eq!(
+            convert(player_order::Order::HidePlayer(ALEX.into())).unwrap(),
+            PlayerOrder::HidePlayer(alex)
+        );
+        assert_eq!(
+            convert(player_order::Order::ShowPlayer(ALEX.into())).unwrap(),
+            PlayerOrder::ShowPlayer(alex)
+        );
+        assert!(matches!(
+            convert(player_order::Order::HidePlayer("alex".into())),
+            Err(Malformed::Player(raw)) if raw == "alex"
+        ));
+        let hiding = PlayerState {
+            hidden: vec![alex, PlayerId(Uuid::from_u128(3))],
+            ..state()
+        };
+        assert_eq!(
+            wire_state(hiding).hidden,
+            [ALEX, "00000000-0000-0000-0000-000000000003"]
         );
     }
 
