@@ -223,6 +223,8 @@ impl<L: ClientLink> Server<L> {
                 let particle = resolve::particle_of(&spec)?;
                 self.push(Audience::One(id), ClientEvent::Particle(particle));
             }
+            PlayerOrder::HidePlayer(target) => self.hide_player(connection, id, target),
+            PlayerOrder::ShowPlayer(target) => self.show_player(connection, id, target),
             PlayerOrder::CloseInventory => {
                 self.close_open_menu(id, true);
             }
@@ -261,6 +263,44 @@ impl<L: ClientLink> Server<L> {
             ClientEvent::TitleText(resolve::text(&title.title)),
         );
         Ok(())
+    }
+
+    fn hide_player(&mut self, connection: u64, viewer: PlayerId, target: PlayerId) {
+        if viewer == target {
+            return;
+        }
+        let Some(entity) = self.players.get(&target).map(|player| player.entity_id) else {
+            return;
+        };
+        let Some(plugin) = self.plugins.name(connection) else {
+            return;
+        };
+        if !self.visibility.hide(plugin, viewer, target) {
+            return;
+        }
+        if let Some(player) = self.players.get_mut(&viewer) {
+            if player.tracked.remove(&entity) {
+                player.link.send(ClientEvent::RemoveEntities(vec![entity]));
+            }
+            player
+                .link
+                .send(ClientEvent::PlayerInfoRemove(vec![target]));
+        }
+    }
+
+    fn show_player(&mut self, connection: u64, viewer: PlayerId, target: PlayerId) {
+        let Some(plugin) = self.plugins.name(connection) else {
+            return;
+        };
+        if !self.visibility.show(plugin, viewer, target) {
+            return;
+        }
+        if let (Some(viewer), Some(target)) = (self.players.get(&viewer), self.players.get(&target))
+        {
+            viewer
+                .link
+                .send(ClientEvent::PlayerInfo(vec![Self::list_entry(target)]));
+        }
     }
 
     fn send_abilities(&mut self, id: PlayerId) {
