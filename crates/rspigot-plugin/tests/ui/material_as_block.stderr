@@ -1,0 +1,13 @@
+error[E0308]: mismatched types
+ --> tests/ui/material_as_block.rs:4:53
+  |
+4 |     world.block(BlockPos { x: 0, y: 64, z: 0 }).set(Material::Diamond);
+  |                                                 --- ^^^^^^^^^^^^^^^^^ expected `BlockType`, found `Material`
+  |                                                 |
+  |                                                 arguments to this method are incorrect
+  |
+note: method defined here
+ --> src/block.rs
+  |
+  |     pub fn set(&self, kind: BlockType) {
+  |            ^^^
