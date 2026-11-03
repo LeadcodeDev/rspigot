@@ -561,13 +561,13 @@ async fn an_old_event_is_not_decided_after_a_reconnect() {
 }
 
 #[tokio::test]
-async fn an_event_the_plugin_cannot_handle_yet_is_skipped() {
+async fn an_event_the_plugin_cannot_read_is_skipped() {
     let mut host = Host::start().await;
     let _plugin = launch(&host, None);
     let mut session = host.knock().await.accept();
 
     let closed = event::Payload::InventoryClose(v1::InventoryClose {
-        player: Some(steve()),
+        player: None,
         inventory: 1,
         by_player: true,
     });
