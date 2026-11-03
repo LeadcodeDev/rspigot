@@ -40,33 +40,74 @@ impl NamedColor {
         }
     }
 
+    pub fn from_name(name: &str) -> Option<Self> {
+        NAMED_COLORS.into_iter().find(|color| color.name() == name)
+    }
+
     pub fn from_legacy_code(code: char) -> Option<Self> {
-        Some(match code.to_ascii_lowercase() {
-            '0' => Self::Black,
-            '1' => Self::DarkBlue,
-            '2' => Self::DarkGreen,
-            '3' => Self::DarkAqua,
-            '4' => Self::DarkRed,
-            '5' => Self::DarkPurple,
-            '6' => Self::Gold,
-            '7' => Self::Gray,
-            '8' => Self::DarkGray,
-            '9' => Self::Blue,
-            'a' => Self::Green,
-            'b' => Self::Aqua,
-            'c' => Self::Red,
-            'd' => Self::LightPurple,
-            'e' => Self::Yellow,
-            'f' => Self::White,
-            _ => return None,
-        })
+        let index = usize::try_from(code.to_digit(16)?).ok()?;
+        NAMED_COLORS.get(index).copied()
+    }
+
+    pub fn legacy_code(self) -> char {
+        char::from(LEGACY_CODES[self as usize])
     }
 }
+
+const NAMED_COLORS: [NamedColor; 16] = [
+    NamedColor::Black,
+    NamedColor::DarkBlue,
+    NamedColor::DarkGreen,
+    NamedColor::DarkAqua,
+    NamedColor::DarkRed,
+    NamedColor::DarkPurple,
+    NamedColor::Gold,
+    NamedColor::Gray,
+    NamedColor::DarkGray,
+    NamedColor::Blue,
+    NamedColor::Green,
+    NamedColor::Aqua,
+    NamedColor::Red,
+    NamedColor::LightPurple,
+    NamedColor::Yellow,
+    NamedColor::White,
+];
+const LEGACY_CODES: &[u8; 16] = b"0123456789abcdef";
+const FLAG_CODES: [char; 5] = ['l', 'o', 'n', 'm', 'k'];
+const SECTION: char = '§';
+const RGB_MAX: u32 = 0xFF_FFFF;
+const SPIGOT_RESET: Style = Style {
+    color: None,
+    bold: Some(false),
+    italic: Some(false),
+    underlined: Some(false),
+    strikethrough: Some(false),
+    obfuscated: Some(false),
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Named(NamedColor),
     Rgb(u32),
+}
+
+impl Color {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.strip_prefix('#') {
+            Some(hex) => u32::from_str_radix(hex, 16)
+                .ok()
+                .filter(|rgb| *rgb <= RGB_MAX)
+                .map(Self::Rgb),
+            None => NamedColor::from_name(name).map(Self::Named),
+        }
+    }
+
+    pub fn serialize(self) -> String {
+        match self {
+            Self::Named(named) => named.name().to_owned(),
+            Self::Rgb(rgb) => format!("#{:06X}", rgb & RGB_MAX),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -77,6 +118,71 @@ pub struct Style {
     pub underlined: Option<bool>,
     pub strikethrough: Option<bool>,
     pub obfuscated: Option<bool>,
+}
+
+impl Style {
+    pub(crate) const fn flags(&self) -> [Option<bool>; 5] {
+        [
+            self.bold,
+            self.italic,
+            self.underlined,
+            self.strikethrough,
+            self.obfuscated,
+        ]
+    }
+
+    pub(crate) const fn from_parts(
+        color: Option<Color>,
+        [bold, italic, underlined, strikethrough, obfuscated]: [Option<bool>; 5],
+    ) -> Self {
+        Self {
+            color,
+            bold,
+            italic,
+            underlined,
+            strikethrough,
+            obfuscated,
+        }
+    }
+
+    fn inherit(&self, parent: &Self) -> Self {
+        let mut flags = self.flags();
+        for (flag, inherited) in flags.iter_mut().zip(parent.flags()) {
+            *flag = flag.or(inherited);
+        }
+        Self::from_parts(self.color.or(parent.color), flags)
+    }
+
+    fn write_change(&self, next: &Self, out: &mut String) {
+        let adds_flags = self.color == next.color
+            && self
+                .flags()
+                .into_iter()
+                .zip(next.flags())
+                .all(|(was, is)| was == is || is == Some(true));
+        let kept = if adds_flags {
+            self.flags()
+        } else {
+            match next.color {
+                Some(Color::Named(color)) => {
+                    out.push(SECTION);
+                    out.push(color.legacy_code());
+                }
+                Some(Color::Rgb(_)) => {}
+                None => {
+                    out.push(SECTION);
+                    out.push('r');
+                }
+            }
+            [None; 5]
+        };
+        for ((kept, is), code) in kept.into_iter().zip(next.flags()).zip(FLAG_CODES) {
+            if is == Some(true) && kept != Some(true) {
+                out.push(SECTION);
+                out.push(code);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,11 +239,36 @@ impl Component {
     }
 
     pub fn from_legacy(input: &str) -> Self {
-        parse_legacy(input, |c| c == '§' || c == '&')
+        parse_legacy(input, |c| c == '§' || c == '&', &Style::default())
     }
 
     pub fn from_section_codes(input: &str) -> Self {
-        parse_legacy(input, |c| c == '§')
+        parse_legacy(input, |c| c == '§', &SPIGOT_RESET)
+    }
+
+    pub fn to_legacy(&self) -> String {
+        let mut out = String::new();
+        let mut last = Style::default();
+        self.write_legacy(&Style::default(), &mut last, &mut out);
+        out
+    }
+
+    fn write_legacy(&self, parent: &Style, last: &mut Style, out: &mut String) {
+        let style = self.style.inherit(parent);
+        let content = match &self.content {
+            Content::Text(text) => text,
+            Content::Translatable { key, .. } => key,
+        };
+        if !content.is_empty() {
+            if style != *last {
+                last.write_change(&style, out);
+                *last = style.clone();
+            }
+            out.push_str(content);
+        }
+        for child in &self.extra {
+            child.write_legacy(&style, last, out);
+        }
     }
 
     pub fn render(&self, translate: &impl Fn(&str) -> Option<&'static str>) -> String {
@@ -188,7 +319,7 @@ impl Component {
     }
 }
 
-fn parse_legacy(input: &str, is_marker: impl Fn(char) -> bool) -> Component {
+fn parse_legacy(input: &str, is_marker: impl Fn(char) -> bool, reset: &Style) -> Component {
     let mut root = Component::text("");
     let mut current = Style::default();
     let mut buffer = String::new();
@@ -203,7 +334,7 @@ fn parse_legacy(input: &str, is_marker: impl Fn(char) -> bool) -> Component {
                     extra: Vec::new(),
                 });
             }
-            apply_legacy(&mut current, code);
+            apply_legacy(&mut current, code, reset);
         } else {
             buffer.push(ch);
         }
@@ -262,11 +393,11 @@ fn is_legacy_code(c: char) -> bool {
     matches!(c.to_ascii_lowercase(), '0'..='9' | 'a'..='f' | 'k'..='o' | 'r')
 }
 
-fn apply_legacy(style: &mut Style, code: char) {
+fn apply_legacy(style: &mut Style, code: char, reset: &Style) {
     if let Some(color) = NamedColor::from_legacy_code(code) {
         *style = Style {
             color: Some(Color::Named(color)),
-            ..Style::default()
+            ..reset.clone()
         };
         return;
     }
@@ -276,7 +407,7 @@ fn apply_legacy(style: &mut Style, code: char) {
         'm' => style.strikethrough = Some(true),
         'n' => style.underlined = Some(true),
         'o' => style.italic = Some(true),
-        _ => *style = Style::default(),
+        _ => *style = reset.clone(),
     }
 }
 
@@ -326,5 +457,96 @@ mod tests {
         let plain = Component::from_section_codes("R&D &aok");
         assert_eq!(plain, Component::text("R&D &aok"));
         assert_eq!(Component::from_section_codes(""), Component::text(""));
+    }
+
+    #[test]
+    fn to_legacy_round_trips_section_strings() {
+        for s in [
+            "plain",
+            "§6Excalibur",
+            "§6§lBold gold",
+            "§6Gold §lbold",
+            "§lA§6B",
+            "§6A§rB",
+        ] {
+            assert_eq!(Component::from_section_codes(s).to_legacy(), s);
+        }
+    }
+
+    #[test]
+    fn section_codes_reset_like_spigot() {
+        let spigot_reset = Style {
+            color: None,
+            bold: Some(false),
+            italic: Some(false),
+            underlined: Some(false),
+            strikethrough: Some(false),
+            obfuscated: Some(false),
+        };
+        let plain = Component::from_section_codes("§rPlain");
+        assert_eq!(plain.content, Content::Text("Plain".to_owned()));
+        assert_eq!(plain.style, spigot_reset);
+        let gold = Component::from_section_codes("§6Gold");
+        assert_eq!(
+            gold.style,
+            Style {
+                color: Some(Color::Named(NamedColor::Gold)),
+                ..spigot_reset.clone()
+            }
+        );
+        let bold = Component::from_section_codes("§r§lBold");
+        assert_eq!(
+            bold.style,
+            Style {
+                bold: Some(true),
+                ..spigot_reset
+            }
+        );
+        assert_eq!(Component::from_legacy("§rPlain"), Component::text("Plain"));
+        assert_eq!(
+            Component::from_legacy("&6Gold").style,
+            Style {
+                color: Some(Color::Named(NamedColor::Gold)),
+                ..Style::default()
+            }
+        );
+        for s in ["§rPlain", "§r§lBold", "A§rB", "§lA§rB"] {
+            assert_eq!(Component::from_section_codes(s).to_legacy(), s);
+        }
+        let reset_then_gold = Component::from_section_codes("§r§6Gold");
+        assert_eq!(reset_then_gold, gold);
+        assert_eq!(
+            Component::from_section_codes(&reset_then_gold.to_legacy()),
+            reset_then_gold
+        );
+    }
+
+    #[test]
+    fn to_legacy_writes_inherited_styles_and_translation_keys() {
+        let nested = Component::text("")
+            .color(NamedColor::Aqua)
+            .append(Component::text("A").bold())
+            .append(Component::translatable("item.minecraft.stick", Vec::new()));
+        assert_eq!(nested.to_legacy(), "§b§lA§bitem.minecraft.stick");
+        let mut rgb = Component::text("C");
+        rgb.style.color = Some(Color::Rgb(0x123456));
+        rgb.style.italic = Some(true);
+        assert_eq!(rgb.to_legacy(), "§oC");
+    }
+
+    #[test]
+    fn named_colors_keep_their_name_and_legacy_code() {
+        for code in ('0'..='9').chain('a'..='f') {
+            let color = NamedColor::from_legacy_code(code).unwrap();
+            assert_eq!(color.legacy_code(), code);
+            assert_eq!(NamedColor::from_name(color.name()), Some(color));
+            assert_eq!(Color::parse(color.name()), Some(Color::Named(color)));
+        }
+        assert_eq!(Color::parse("#00FF7f"), Some(Color::Rgb(0x00FF7F)));
+        assert_eq!(Color::Rgb(0x00FF7F).serialize(), "#00FF7F");
+        assert_eq!(Color::Named(NamedColor::Gold).serialize(), "gold");
+        assert_eq!(Color::parse("#1000000"), None);
+        assert_eq!(Color::parse("#-1"), None);
+        assert_eq!(Color::parse("golden"), None);
     }
 }

@@ -1,4 +1,6 @@
-use rspigot_core::plugins::{EffectSpec, ParticleDataSpec, ParticleSpec, SoundSpec, TitleSpec};
+use rspigot_core::plugins::{
+    EffectSpec, ItemSpec, ParticleDataSpec, ParticleSpec, SoundSpec, TitleSpec,
+};
 use rspigot_domain::{Rotation, Vec3};
 use rspigot_plugin_protocol::v1::{self, particle};
 
@@ -88,5 +90,35 @@ pub(super) fn title(title: v1::Title) -> TitleSpec {
         fade_in: title.fade_in,
         stay: title.stay,
         fade_out: title.fade_out,
+    }
+}
+
+pub(super) fn item(item: v1::Item) -> ItemSpec {
+    ItemSpec {
+        key: item.key,
+        count: item.count,
+        name: item.name,
+        lore: item.lore,
+        enchantments: item
+            .enchantments
+            .into_iter()
+            .map(|enchant| (enchant.key, enchant.level))
+            .collect(),
+        components: item.components,
+    }
+}
+
+pub(super) fn wire_item(item: ItemSpec) -> v1::Item {
+    v1::Item {
+        key: item.key,
+        count: item.count,
+        name: item.name,
+        lore: item.lore,
+        enchantments: item
+            .enchantments
+            .into_iter()
+            .map(|(key, level)| v1::Enchant { key, level })
+            .collect(),
+        components: item.components,
     }
 }
