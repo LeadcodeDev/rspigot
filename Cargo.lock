@@ -1587,6 +1587,7 @@ dependencies = [
 name = "rspigot-plugin"
 version = "0.1.0"
 dependencies = [
+ "rspigot-data",
  "rspigot-plugin-macros",
  "rspigot-plugin-protocol",
  "thiserror",

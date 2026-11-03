@@ -1,0 +1,11 @@
+error[E0599]: no variant, associated function, or constant named `DiamondSwrod` found for enum `Material` in the current scope
+ --> tests/ui/misspelled_key.rs:2:45
+  |
+2 |     let _ = rspigot_plugin::keys::Material::DiamondSwrod;
+  |                                             ^^^^^^^^^^^^ variant, associated function, or constant not found in `Material`
+  |
+help: there is a variant with a similar name
+  |
+2 -     let _ = rspigot_plugin::keys::Material::DiamondSwrod;
+2 +     let _ = rspigot_plugin::keys::Material::DiamondSword;
+  |
