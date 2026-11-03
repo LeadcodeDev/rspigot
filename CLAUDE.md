@@ -13,4 +13,4 @@ Plugin SDK typed keys (`crates/rspigot-plugin/src/keys`): regenerate with `pytho
 Rules: no `async-trait`, no comments in code, static dispatch first, `thiserror` per crate, `anyhow` only in `apps/rspigot`. Stacked PRs, one per crate, in dependency order.
 
 Verify: `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`.
-Run: `cargo run --release -p rspigot` (listens on 25565, files in the working directory).
+Run: from `example/server`, `cargo run --release -p rspigot` (listens on 25565, files in the working directory, ignored by git). Example plugins go in `example/plugins/<name>`.

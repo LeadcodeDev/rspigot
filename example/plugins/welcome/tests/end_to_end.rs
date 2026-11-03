@@ -295,7 +295,7 @@ fn a_plugin_greets_a_player_and_keeps_them_in_place() {
     core.run_until("the welcome plugin connects", |core| core.welcome.is_some());
 
     let mut alice = join(&mut core.server, "Alice");
-    core.run_until("Alice is welcomed", |_| alice.was_told("Welcome!"));
+    core.run_until("Alice is welcomed", |_| alice.was_told("Welcome Alice!"));
 
     alice.log.clear();
     step(&mut core.server, &alice, EAST);

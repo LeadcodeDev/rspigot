@@ -1,6 +1,6 @@
 # welcome
 
-An example plugin: it says "Welcome!" to every player who joins and cancels every move, so players stay where they are.
+An example plugin: it says "Welcome <name>!" to every player who joins and cancels every move, so players stay where they are.
 
 Start the server in one terminal (it writes its files, `plugins.yml` included, in the directory it runs from):
 

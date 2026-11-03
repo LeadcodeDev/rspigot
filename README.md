@@ -9,7 +9,7 @@ cargo build --release -p rspigot
 ./target/release/rspigot
 ```
 
-The server creates `server.properties`, `spigot.yml`, `bukkit.yml`, `ops.json`, `banned-players.json` and `banned-ips.json` in the working directory on first start, then listens on port 25565. Like vanilla 26.3, `white-list` defaults to `true`: run `whitelist add <name>` in the console (or set `white-list=false`) before joining. Operators from `ops.json` always get in. `online-mode=false` skips Mojang authentication.
+The server creates `server.properties`, `spigot.yml`, `bukkit.yml`, `ops.json`, `banned-players.json` and `banned-ips.json` in the working directory on first start, then listens on port 25565. For local testing, run it from `example/server`, which git ignores. Like vanilla 26.3, `white-list` defaults to `true`: run `whitelist add <name>` in the console (or set `white-list=false`) before joining. Operators from `ops.json` always get in. `online-mode=false` skips Mojang authentication.
 
 Options: `--port <n>`, `--world-dir <dir>`, `--online-mode <true|false>`. Type `help` in the console for commands; `stop` or Ctrl-C saves the world and exits.
 

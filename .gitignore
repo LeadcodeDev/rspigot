@@ -12,3 +12,5 @@
 /whitelist.json
 /plugins.yml
 /logs
+/example/server/*
+!/example/server/README.md
