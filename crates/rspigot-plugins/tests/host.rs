@@ -7,7 +7,7 @@ use std::time::Duration;
 use rspigot_core::events::{ClientEvent, Inbound};
 use rspigot_core::plugins::{
     Access, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerSnapshot, PluginIntro,
-    Priority, ToPlugin,
+    Priority, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{ClientLink, PluginOutbox};
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -344,7 +344,11 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
     plugin.say(from_plugin::Body::Hello(hello("welcome")));
     plugin.say(from_plugin::Body::Decision(v1::Decision {
         event: 7,
-        cancel: true,
+        verdicts: vec![v1::Verdict {
+            handler: 1,
+            cancel: true,
+            patch: None,
+        }],
     }));
     let Seen::Message {
         connection,
@@ -358,7 +362,11 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
         message,
         FromPlugin::Decision {
             event: 7,
-            cancel: true
+            verdicts: vec![Verdict {
+                handler: 1,
+                cancel: true,
+                patch: None
+            }]
         }
     );
 }
@@ -377,7 +385,7 @@ async fn a_bad_introduction_is_refused_with_a_status() {
 
     let decision = from_plugin::Body::Decision(v1::Decision {
         event: 1,
-        cancel: true,
+        verdicts: Vec::new(),
     });
     assert_eq!(
         refusal(Plugin::open(host.address, decision).await),
