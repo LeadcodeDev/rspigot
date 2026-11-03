@@ -23,15 +23,14 @@ impl Registry {
         intro: PluginIntro,
         outbox: Box<dyn PluginOutbox>,
         tick: u64,
-    ) -> Option<Box<dyn PluginOutbox>> {
+    ) -> Option<(u64, Box<dyn PluginOutbox>)> {
         let taken = self
             .connected
             .iter()
             .find(|(_, plugin)| plugin.intro.name == intro.name)
             .map(|(id, _)| *id);
-        let replaced = taken
-            .and_then(|id| self.connected.remove(&id))
-            .map(|plugin| plugin.outbox);
+        let replaced =
+            taken.and_then(|id| self.connected.remove(&id).map(|plugin| (id, plugin.outbox)));
         self.connected.insert(
             connection,
             Connected {
@@ -458,9 +457,9 @@ mod tests {
             Box::new(second.clone()),
             9,
         );
-        replaced
-            .expect("the first outbox is handed back")
-            .send(ToPlugin::Replaced);
+        let (old, outbox) = replaced.expect("the first outbox is handed back");
+        assert_eq!(old, 1);
+        outbox.send(ToPlugin::Replaced);
         assert_eq!(first.received(), [ToPlugin::Replaced]);
         assert!(second.received().is_empty());
         assert!(!registry.is_current(1));

@@ -77,6 +77,12 @@ impl<L: ClientLink> Server<L> {
             ServerOrder::IpBanRemove(address) => {
                 CommandContext::pardon_address(self, address_of(&address)?);
             }
+            ServerOrder::CreateInventory {
+                id,
+                rows,
+                title,
+                locked,
+            } => self.create_plugin_inventory(connection, id, rows, &title, locked)?,
         }
         Ok(())
     }

@@ -4,7 +4,7 @@ use rspigot_domain::chunk::BlockEntity;
 use rspigot_domain::container_menu::{ContainerMenu, MenuKind};
 use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::entity::save::{item_stack_from_nbt, item_stack_to_nbt};
-use rspigot_domain::item::{ItemStack, Slot, split};
+use rspigot_domain::item::{Inventory, ItemStack, Slot, split};
 use rspigot_domain::menu::{Clicker, MenuEffect, OUTSIDE, RemoteUpdate};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::spawn::placement::is_redstone_conductor;
@@ -15,6 +15,7 @@ use rspigot_nbt::{Compound, Tag};
 
 use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
+use crate::player::Player;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 use crate::{beacon, campfire, cooking, lectern};
@@ -72,10 +73,45 @@ pub(crate) struct OpenMenu {
     pub data: Vec<i16>,
 }
 
-impl OpenMenu {
-    fn next_state(&mut self) -> i32 {
-        self.state_id = self.state_id.wrapping_add(1) & 0x7FFF;
-        self.state_id
+pub(crate) fn next_window<L>(player: &mut Player<L>) -> i32 {
+    player.window_counter = player.window_counter % WINDOWS as u8 + 1;
+    i32::from(player.window_counter)
+}
+
+fn next_state(state_id: &mut i32) -> i32 {
+    *state_id = state_id.wrapping_add(1) & 0x7FFF;
+    *state_id
+}
+
+pub(crate) fn sync_menu_view<L: ClientLink>(
+    link: &L,
+    window: i32,
+    state_id: &mut i32,
+    menu: &mut ContainerMenu,
+    items: &[Slot],
+    inventory: &Inventory,
+    full: bool,
+) {
+    if full {
+        let (slots, carried) = menu.sync_all(items, inventory);
+        link.send(ClientEvent::ContainerContent {
+            window,
+            state_id: next_state(state_id),
+            slots,
+            carried,
+        });
+        return;
+    }
+    for update in menu.changes(items, inventory) {
+        match update {
+            RemoteUpdate::Slot(slot, stack) => link.send(ClientEvent::ContainerSlot {
+                window,
+                state_id: next_state(state_id),
+                slot: slot as i16,
+                stack,
+            }),
+            RemoteUpdate::Carried(stack) => link.send(ClientEvent::CursorItem(stack)),
+        }
     }
 }
 
@@ -480,8 +516,7 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
-        player.window_counter = player.window_counter % WINDOWS as u8 + 1;
-        let window = i32::from(player.window_counter);
+        let window = next_window(player);
         let mut open = OpenMenu {
             window,
             menu: ContainerMenu::new(opening.kind),
@@ -494,19 +529,20 @@ impl<L: ClientLink> Server<L> {
             },
             data: initial_data.clone(),
         };
-        let (slots, carried) = open.menu.sync_all(&items, &player.inventory);
-        let state_id = open.next_state();
         player.link.send(ClientEvent::OpenScreen {
             window,
             menu: opening.kind.protocol_id(),
             title: Component::translatable(opening.title, Vec::new()),
         });
-        player.link.send(ClientEvent::ContainerContent {
+        sync_menu_view(
+            &player.link,
             window,
-            state_id,
-            slots,
-            carried,
-        });
+            &mut open.state_id,
+            &mut open.menu,
+            &items,
+            &player.inventory,
+            true,
+        );
         for (property, value) in initial_data.into_iter().enumerate() {
             player.link.send(ClientEvent::ContainerData {
                 window,
@@ -721,32 +757,15 @@ impl<L: ClientLink> Server<L> {
         let Some(open) = player.open_menu.as_mut() else {
             return;
         };
-        let window = open.window;
-        if full {
-            let (slots, carried) = open.menu.sync_all(&items, &player.inventory);
-            let state_id = open.next_state();
-            player.link.send(ClientEvent::ContainerContent {
-                window,
-                state_id,
-                slots,
-                carried,
-            });
-            return;
-        }
-        for update in open.menu.changes(&items, &player.inventory) {
-            match update {
-                RemoteUpdate::Slot(slot, stack) => {
-                    let state_id = open.next_state();
-                    player.link.send(ClientEvent::ContainerSlot {
-                        window,
-                        state_id,
-                        slot: slot as i16,
-                        stack,
-                    });
-                }
-                RemoteUpdate::Carried(stack) => player.link.send(ClientEvent::CursorItem(stack)),
-            }
-        }
+        sync_menu_view(
+            &player.link,
+            open.window,
+            &mut open.state_id,
+            &mut open.menu,
+            &items,
+            &player.inventory,
+            full,
+        );
     }
 
     fn sync_viewers(&mut self, pos: BlockPos, except: Option<PlayerId>) {
@@ -767,6 +786,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn close_open_menu(&mut self, id: PlayerId, notify_client: bool) -> bool {
+        if self.close_plugin_menu(id, notify_client, false) {
+            return true;
+        }
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -791,6 +813,14 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_open_menu_close(&mut self, id: PlayerId, window: i32) -> bool {
+        let plugin = self
+            .players
+            .get(&id)
+            .and_then(|player| player.plugin_menu.as_ref())
+            .is_some_and(|open| open.window == window);
+        if plugin {
+            return self.close_plugin_menu(id, false, true);
+        }
         let matches = self
             .players
             .get(&id)
