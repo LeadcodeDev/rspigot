@@ -1,8 +1,9 @@
 use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
-    Access, Event, EventKind, FromPlugin, GameMode, Handler, Hello, Phase, PlayerMove,
-    PlayerSnapshot, Priority, Rotation, ToPlugin, Vec3, event, from_plugin, to_plugin,
+    Access, Decision, Event, EventKind, FromPlugin, GameMode, Handler, Hello, Patch, Phase,
+    PlayerMove, PlayerMovePatch, PlayerSnapshot, Priority, Rotation, ToPlugin, Vec3, Verdict,
+    event, from_plugin, patch, to_plugin,
 };
 
 fn steve() -> PlayerSnapshot {
@@ -67,4 +68,60 @@ fn a_hello_and_an_event_survive_encoding() {
     };
     let decoded = ToPlugin::decode(event.encode_to_vec().as_slice()).unwrap();
     assert_eq!(decoded, event);
+}
+
+#[test]
+fn the_protocol_is_version_three() {
+    assert_eq!(PROTOCOL_VERSION, 3);
+}
+
+#[test]
+fn a_decision_carries_one_verdict_per_handler_with_its_patch() {
+    let decision = FromPlugin {
+        body: Some(from_plugin::Body::Decision(Decision {
+            event: 7,
+            verdicts: vec![
+                Verdict {
+                    handler: 2,
+                    cancel: false,
+                    patch: Some(Patch {
+                        change: Some(patch::Change::PlayerMove(PlayerMovePatch {
+                            to: Some(Vec3 {
+                                x: 4.5,
+                                y: 70.0,
+                                z: -1.5,
+                            }),
+                        })),
+                    }),
+                },
+                Verdict {
+                    handler: 4,
+                    cancel: true,
+                    patch: None,
+                },
+                Verdict {
+                    handler: 5,
+                    cancel: false,
+                    patch: Some(Patch {
+                        change: Some(patch::Change::PlayerMove(PlayerMovePatch { to: None })),
+                    }),
+                },
+            ],
+        })),
+    };
+    let decoded = FromPlugin::decode(decision.encode_to_vec().as_slice()).unwrap();
+    assert_eq!(decoded, decision);
+}
+
+#[test]
+fn a_patch_shares_its_field_number_with_the_event_payload() {
+    let moved = Event {
+        payload: Some(event::Payload::PlayerMove(PlayerMove::default())),
+        ..Event::default()
+    };
+    let patched = Patch {
+        change: Some(patch::Change::PlayerMove(PlayerMovePatch::default())),
+    };
+    assert_eq!(moved.encode_to_vec()[0] >> 3, 12);
+    assert_eq!(patched.encode_to_vec()[0] >> 3, 12);
 }

@@ -448,12 +448,43 @@ pub mod event {
     }
 }
 #[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PlayerMovePatch {
+    #[prost(message, optional, tag = "1")]
+    pub to: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct Patch {
+    #[prost(oneof = "patch::Change", tags = "12")]
+    pub change: ::core::option::Option<patch::Change>,
+}
+/// Nested message and enum types in `Patch`.
+pub mod patch {
+    #[allow(clippy::all)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+    pub enum Change {
+        #[prost(message, tag = "12")]
+        PlayerMove(super::PlayerMovePatch),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct Verdict {
+    #[prost(uint32, tag = "1")]
+    pub handler: u32,
+    #[prost(bool, tag = "2")]
+    pub cancel: bool,
+    #[prost(message, optional, tag = "3")]
+    pub patch: ::core::option::Option<Patch>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Decision {
     #[prost(uint64, tag = "1")]
     pub event: u64,
-    #[prost(bool, tag = "2")]
-    pub cancel: bool,
+    #[prost(message, repeated, tag = "3")]
+    pub verdicts: ::prost::alloc::vec::Vec<Verdict>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
