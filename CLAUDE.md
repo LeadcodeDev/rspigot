@@ -10,6 +10,8 @@ Plugin contract (`crates/rspigot-plugin-protocol/proto`): regenerate the Rust co
 
 Plugin SDK typed keys (`crates/rspigot-plugin/src/keys`): regenerate with `python3 -I tools/gen_plugin_keys.py`; `--check` fails when they are stale.
 
+Plugin events (`tools/plugin-events`): `python3 -I tools/gen_plugin_events.py` then the protocol generator; `--check` fails when stale, `--check-dump <event-types.json>` when the jar has an event the catalog lacks.
+
 Rules: no `async-trait`, no comments in code, static dispatch first, `thiserror` per crate, `anyhow` only in `apps/rspigot`. Stacked PRs, one per crate, in dependency order.
 
 Verify: `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`.
