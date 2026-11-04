@@ -7,9 +7,10 @@ use std::time::Duration;
 use common::*;
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
-use rspigot_core::events::Inbound;
+use rspigot_core::events::{Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
     ChunkLoad, ChunkPopulate, ChunkUnload, ChunkUnloadPatch, EntitiesLoad, EntitiesUnload,
+    EntityDamageByEntityPatch,
 };
 use rspigot_core::plugins::{
     Answer, ChunkRef, EffectSpec, EntityOrder, EventKind, EventPatch, EventPayload, HandlerSpec,
@@ -466,5 +467,66 @@ fn an_unloading_chunk_settles_the_waiting_events_of_its_entities_before_saving_t
     assert_eq!(
         saved.get_list("active_effects").map(|list| list.len()),
         Some(1)
+    );
+}
+
+fn stored(world: &World, pos: ChunkPos) -> Vec<Compound> {
+    world
+        .disk
+        .entities
+        .lock()
+        .map(|entities| entities.get(&pos).cloned().unwrap_or_default())
+        .unwrap_or_default()
+}
+
+#[test]
+fn an_unloading_chunk_settles_a_death_of_its_mob_held_in_a_player_lane() {
+    let mut world = world_deciding_for(
+        vec![
+            deciding(1, EventKind::EntityDamageByEntity),
+            deciding(2, EventKind::EntityDeath),
+        ],
+        0,
+        1_000,
+    );
+    world.go_far();
+    let cow = match world.s.ask(Question::Spawn {
+        kind: "minecraft:cow".into(),
+        position: Vec3::new(201.5, 64.0, 200.5),
+    }) {
+        Answer::Spawned(view) => view,
+        other => panic!("expected a cow, got {other:?}"),
+    };
+    let alice = world.s.players[0].clone();
+    send_input(&mut world.s.server, &alice, PlayerInput::Attack(cow.id));
+    let hit = last_asked(&world.s.plugin, EventKind::EntityDamageByEntity);
+    rule_on(
+        &mut world.s.server,
+        1,
+        hit.id,
+        false,
+        Some(EventPatch::EntityDamageByEntity(
+            EntityDamageByEntityPatch {
+                damage: Some(100.0),
+            },
+        )),
+    );
+    assert_eq!(asked_for(&world.s.plugin, EventKind::EntityDeath).len(), 1);
+    world.go_home();
+    world.wait_unload();
+    assert!(world.disk.saved_soon(FAR));
+    let saved = stored(&world, FAR);
+    assert!(
+        saved
+            .iter()
+            .any(|nbt| nbt.get_str("id") == Some("minecraft:item")),
+        "the loot of the cow is saved with its chunk: {saved:?}"
+    );
+    assert!(
+        saved
+            .iter()
+            .filter(|nbt| nbt.get_str("id") == Some("minecraft:cow"))
+            .all(|nbt| nbt.get_f64("Health").is_some_and(|health| health <= 0.0)),
+        "the cow is not saved alive: {saved:?}"
     );
 }

@@ -514,9 +514,8 @@ impl<L: ClientLink> Server<L> {
 
     fn save_chunk_entities(&mut self, pos: ChunkPos, unload: bool) {
         if unload {
-            for id in self.entities.store.in_chunk(pos).to_vec() {
-                self.settle_lane(Lane::Entity(id), false);
-            }
+            let leaving = self.entities.store.in_chunk(pos).to_vec();
+            self.settle_acting_on(&leaving);
         }
         let world_uuid = self.world.level.uuid;
         let ids = self.entities.store.in_chunk(pos).to_vec();

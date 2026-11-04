@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::{EntityId, Rotation, Vec3};
 
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
@@ -444,13 +444,30 @@ impl<L: ClientLink> Server<L> {
         let dropped = self.decisions.drop_pending(lane);
         self.notify_undone(dropped, Phase::Settled);
         while let Some(next) = self.decisions.flush(lane, logins) {
-            match next {
-                Flushed::Ready(ready) => self.settle(*ready),
-                Flushed::Due(due) => {
-                    self.decisions.enter(lane);
-                    self.fire_head(lane, Some(due.event), due.then);
-                    self.decisions.leave();
-                }
+            self.settle_flushed(lane, next);
+        }
+    }
+
+    pub(crate) fn settle_acting_on(&mut self, entities: &[EntityId]) {
+        while let Some(lane) = self.decisions.lane_where(|lane, then| {
+            entities
+                .iter()
+                .any(|id| lane == Lane::Entity(*id) || then.acts_on(*id))
+        }) {
+            let Some(next) = self.decisions.flush(lane, false) else {
+                break;
+            };
+            self.settle_flushed(lane, next);
+        }
+    }
+
+    fn settle_flushed(&mut self, lane: Lane, next: Flushed) {
+        match next {
+            Flushed::Ready(ready) => self.settle(*ready),
+            Flushed::Due(due) => {
+                self.decisions.enter(lane);
+                self.fire_head(lane, Some(due.event), due.then);
+                self.decisions.leave();
             }
         }
     }

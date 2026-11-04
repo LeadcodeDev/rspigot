@@ -965,6 +965,40 @@ impl Continuation {
         matches!(self, Self::PlayerMove(_))
     }
 
+    pub(crate) fn acts_on(&self, id: EntityId) -> bool {
+        match self {
+            Self::Spawn(step) => {
+                matches!(step.birth.then, Spawned::Converted { old, .. } if old == id)
+            }
+            Self::Hurt(step) => {
+                matches!(step.victim, Struck::Mob(victim) | Struck::Item(victim) if victim == id)
+            }
+            Self::MobDeath(step) => step.victim == id,
+            Self::Potion(PotionStep { holder, .. })
+            | Self::Combust(CombustStep { target: holder, .. })
+            | Self::Knock(KnockStep { target: holder, .. }) => *holder == Holder::Mob(id),
+            Self::ItemDespawn(item) | Self::Regrow(item) => *item == id,
+            Self::PickupItem(step) => step.item == id || step.collector == id,
+            Self::ChangeBlock(step) => match &step.change {
+                Grief::Fall { .. } => false,
+                Grief::Land(landing) => landing.falling == id,
+                Grief::Graze { sheep, .. } => *sheep == id,
+            },
+            Self::EggBreak { mob, .. } => *mob == id,
+            Self::EntityExplode(step) => step.discard == Some(id),
+            Self::Prime(step) => step.creeper == id,
+            Self::Relocate(step) => step.entity == id,
+            Self::ProjectileHit { arrow, target } => *arrow == id || *target == id,
+            Self::Aim(step) => step.mob == id,
+            Self::Breed(step) => step.parent == id || step.partner == id,
+            Self::Love(step) => step.target == id,
+            Self::Dye(step) => step.target == id,
+            Self::Shear(step) => step.target == id,
+            Self::InteractEntity(step) => step.target == id,
+            _ => false,
+        }
+    }
+
     pub(crate) fn same_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Velocity(one), Self::Velocity(other)) => one.player == other.player,

@@ -541,6 +541,14 @@ impl Decisions {
         }
     }
 
+    pub(crate) fn lane_where(&self, matches: impl Fn(Lane, &Continuation) -> bool) -> Option<Lane> {
+        self.lanes
+            .iter()
+            .filter(|(lane, queue)| queue.iter().any(|queued| matches(**lane, queued.then())))
+            .map(|(lane, _)| *lane)
+            .min()
+    }
+
     pub(crate) fn first_lane(&self) -> Option<Lane> {
         self.lanes.keys().min().copied()
     }
