@@ -27,6 +27,7 @@ mod spawns;
 pub(crate) mod steps;
 mod targets;
 mod visibility;
+mod vitals;
 mod world;
 
 use std::net::IpAddr;

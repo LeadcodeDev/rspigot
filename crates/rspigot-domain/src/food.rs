@@ -91,14 +91,34 @@ impl FoodData {
         health: f32,
         max_health: f32,
     ) -> FoodEffect {
-        if self.exhaustion > EXHAUSTION_DROP {
-            self.exhaustion -= EXHAUSTION_DROP;
-            if self.saturation > 0.0 {
-                self.saturation = (self.saturation - 1.0).max(0.0);
-            } else if difficulty != Difficulty::Peaceful {
-                self.food = (self.food - 1).max(0);
-            }
+        if let Some(level) = self.tick_exhaustion(difficulty) {
+            self.food = level;
         }
+        self.tick_regeneration(difficulty, natural_regeneration, health, max_health)
+    }
+
+    pub fn tick_exhaustion(&mut self, difficulty: Difficulty) -> Option<i32> {
+        if self.exhaustion <= EXHAUSTION_DROP {
+            return None;
+        }
+        self.exhaustion -= EXHAUSTION_DROP;
+        if self.saturation > 0.0 {
+            self.saturation = (self.saturation - 1.0).max(0.0);
+            None
+        } else if difficulty != Difficulty::Peaceful {
+            Some((self.food - 1).max(0))
+        } else {
+            None
+        }
+    }
+
+    pub fn tick_regeneration(
+        &mut self,
+        difficulty: Difficulty,
+        natural_regeneration: bool,
+        health: f32,
+        max_health: f32,
+    ) -> FoodEffect {
         let hurt = health > 0.0 && health < max_health;
         if natural_regeneration && self.saturation > 0.0 && hurt && self.food >= MAX_FOOD {
             self.tick_timer += 1;
@@ -140,6 +160,21 @@ impl FoodData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hunger_proposes_the_lower_level_without_writing_it() {
+        let mut food = FoodData::restore(12, 0.0, 4.5, 0);
+        assert_eq!(food.tick_exhaustion(Difficulty::Normal), Some(11));
+        assert_eq!(food.food, 12);
+        assert!((food.exhaustion - 0.5).abs() < 1e-6);
+        let mut fed = FoodData::restore(12, 2.0, 4.5, 0);
+        assert_eq!(fed.tick_exhaustion(Difficulty::Normal), None);
+        assert_eq!(fed.saturation, 1.0);
+        let mut calm = FoodData::restore(12, 0.0, 4.5, 0);
+        assert_eq!(calm.tick_exhaustion(Difficulty::Peaceful), None);
+        let mut starving = FoodData::restore(0, 0.0, 4.5, 0);
+        assert_eq!(starving.tick_exhaustion(Difficulty::Hard), Some(0));
+    }
 
     fn run(
         food: &mut FoodData,

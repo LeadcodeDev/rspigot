@@ -99,17 +99,20 @@ EntityDamage = "every hurt of a player, a mob or an item entity, asked before th
 EntityDamageByEntity = "player and mob melee, sweeps, arrows (the damager is the arrow), creeper explosions and falling blocks; ENTITY_SWEEP_ATTACK never comes out, as in Spigot 26.3"
 EntityDamageByBlock = "lava with its block, the void with no block and stalagmites with their tip; a plugin explosion without a source is BLOCK_EXPLOSION with no block; lava and void are asked once per victim while one waits"
 EntityDeath = "mob deaths, also when the loot is empty; the mob dies at once and its loot, equipment drops and experience wait on a snapshot until the event settles; the settled drops spawn as items, each firing ItemSpawn, then the orbs fire EntitySpawn; PlayerDeath also reaches its handlers"
+EntityRegainHealth = "players only: SATIATED from food, REGEN in peaceful, MAGIC from instant health and MAGIC_REGEN from regeneration; mobs never heal yet; a cancelled satiated heal still costs its exhaustion, as in Spigot"
+EntityExhaustion = "players who are not invulnerable: DAMAGED, UNKNOWN for an attack, HUNGER_EFFECT, REGEN and BLOCK_MINED; there is no movement or jump exhaustion yet; every exhaustion is asked in turn"
+FoodLevelChange = "hunger from exhaustion and the saturation effect; eating and cakes do not exist yet; a cancel keeps the food and resends the health packet"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
     "EntityBreed", "EntityChangeBlock",
     "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity",
-    "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
+    "EntityEnterLoveMode", "EntityExplode", "EntityInteract",
     "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
-    "EntityPotionEffect", "EntityRegainHealth", "EntityShootBow",
+    "EntityPotionEffect", "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
-    "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
+    "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
     "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",

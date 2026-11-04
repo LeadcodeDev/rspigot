@@ -7,6 +7,7 @@ use rspigot_domain::player::PlayerId;
 
 use crate::events::ClientEvent;
 use crate::health::DamageSource;
+use crate::plugins::events::{EntityExhaustionReason, EntityRegainHealthRegainReason};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -84,7 +85,7 @@ impl<L: ClientLink> Server<L> {
                     .get(&id)
                     .is_some_and(|p| p.vitals.health < crate::health::max_health(p));
                 if hurt {
-                    self.heal_player(id, 1.0);
+                    self.heal_player(id, 1.0, EntityRegainHealthRegainReason::MagicRegen);
                 }
             }
             EffectKind::Poison => {
@@ -96,18 +97,26 @@ impl<L: ClientLink> Server<L> {
                 self.hurt(id, &DamageSource::new(DamageType::Wither), 1.0);
             }
             EffectKind::InstantHealth => {
-                self.heal_player(id, HEAL_BASE.wrapping_shl(shift).max(0) as f32);
+                self.heal_player(
+                    id,
+                    HEAL_BASE.wrapping_shl(shift).max(0) as f32,
+                    EntityRegainHealthRegainReason::Magic,
+                );
             }
             EffectKind::InstantDamage => {
                 let amount = HARM_BASE.wrapping_shl(shift) as f32;
                 self.hurt(id, &DamageSource::new(DamageType::Magic), amount);
             }
             EffectKind::Hunger => {
-                self.exhaust(id, HUNGER_EXHAUSTION * (f32::from(amplifier) + 1.0));
+                self.exhaust(
+                    id,
+                    HUNGER_EXHAUSTION * (f32::from(amplifier) + 1.0),
+                    EntityExhaustionReason::HungerEffect,
+                );
             }
             EffectKind::Saturation => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    player.vitals.food.eat(i32::from(amplifier) + 1, 1.0);
+                if let Some(old) = self.players.get(&id).map(|p| p.vitals.food.food) {
+                    self.change_food(id, old + i32::from(amplifier) + 1, Some(old));
                 }
             }
             EffectKind::Absorption => {

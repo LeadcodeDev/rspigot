@@ -763,6 +763,18 @@ impl<L: ClientLink> Server<L> {
                 self.finish_mob_death(*step, patch_of!(patch, EntityDeath));
                 Vec::new()
             }
+            Continuation::Regain(step) => {
+                self.finish_regain(step, cancelled, patch_of!(patch, EntityRegainHealth));
+                Vec::new()
+            }
+            Continuation::Exhaust(step) => {
+                self.finish_exhaust(step, cancelled, patch_of!(patch, EntityExhaustion));
+                Vec::new()
+            }
+            Continuation::Food(step) => {
+                self.finish_food(step, cancelled, patch_of!(patch, FoodLevelChange));
+                Vec::new()
+            }
         }
     }
 

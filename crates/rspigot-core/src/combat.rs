@@ -15,6 +15,7 @@ use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, Hand};
 use crate::health::{DamageSource, attributes};
 use crate::mobs::{MIN_KNOCKBACK_DIRECTION, knockback_velocity};
+use crate::plugins::events::EntityExhaustionReason;
 use crate::plugins::{AfterHurt, AttackFollow, Struck, SweepFollow};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -406,7 +407,7 @@ impl<L: ClientLink> Server<L> {
         if victim.living {
             self.damage_weapon(id);
         }
-        self.exhaust(id, ATTACK_EXHAUSTION);
+        self.exhaust(id, ATTACK_EXHAUSTION, EntityExhaustionReason::Unknown);
     }
 
     fn sweep_attack(

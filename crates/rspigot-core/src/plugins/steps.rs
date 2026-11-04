@@ -593,6 +593,25 @@ impl HurtStep {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RegainStep {
+    pub(crate) player: PlayerId,
+    pub(crate) amount: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExhaustStep {
+    pub(crate) player: PlayerId,
+    pub(crate) amount: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FoodStep {
+    pub(crate) player: PlayerId,
+    pub(crate) level: i32,
+    pub(crate) from: Option<i32>,
+}
+
 #[derive(Debug)]
 pub(crate) struct LootStep {
     pub(crate) victim: EntityId,
@@ -663,6 +682,9 @@ pub(crate) enum Continuation {
     EntityDrop(Box<Entity>),
     Hurt(Box<HurtStep>),
     MobDeath(Box<LootStep>),
+    Regain(RegainStep),
+    Exhaust(ExhaustStep),
+    Food(FoodStep),
 }
 
 impl Continuation {
@@ -722,6 +744,9 @@ impl Continuation {
             Self::EntityDrop(_) => EventKind::EntityDropItem,
             Self::Hurt(step) => step.kind,
             Self::MobDeath(_) => EventKind::EntityDeath,
+            Self::Regain(_) => EventKind::EntityRegainHealth,
+            Self::Exhaust(_) => EventKind::EntityExhaustion,
+            Self::Food(_) => EventKind::FoodLevelChange,
         }
     }
 
