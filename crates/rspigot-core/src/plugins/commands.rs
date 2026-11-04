@@ -3,12 +3,16 @@ use crate::events::ClientEvent;
 use crate::plugins::decisions::{Continuation, Lane};
 use crate::plugins::events::{ServerCommand, ServerCommandPatch, TabComplete, TabCompletePatch};
 use crate::plugins::steps::SuggestStep;
-use crate::plugins::{EventPayload, SenderView};
+use crate::plugins::{EventKind, EventPayload, SenderView};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn console_line(&mut self, line: String) {
+        if !self.listened(EventKind::ServerCommand) {
+            self.finish_server_command(line, ServerCommandPatch::default());
+            return;
+        }
         let command = line.clone();
         self.fire(
             Lane::Console,
@@ -31,6 +35,10 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn ask_tab_complete(&mut self, buffer: &str, step: SuggestStep) {
+        if !self.listened(EventKind::TabComplete) {
+            self.finish_tab_complete(step, false, TabCompletePatch::default());
+            return;
+        }
         let player = step.player;
         let buffer = buffer.to_owned();
         let completions = step.matches.clone();
