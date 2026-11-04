@@ -571,3 +571,32 @@ fn a_pre_login_decider_refuses_with_its_message() {
         Ok(PreLoginVerdict::Refused("full moon".to_owned()))
     );
 }
+
+#[test]
+fn a_player_leaving_with_a_plugin_menu_open_closes_it_before_the_quit() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            observe(1, EventKind::InventoryClose),
+            observe(2, EventKind::PlayerLeave),
+        ],
+    );
+    let alice = s.players[0].clone();
+    s.act(rspigot_core::plugins::Order::Server(
+        rspigot_core::plugins::ServerOrder::CreateInventory {
+            id: 7,
+            rows: 1,
+            title: "Menu".to_owned(),
+            locked: true,
+        },
+    ));
+    s.act(to(&alice, PlayerOrder::OpenInventory(7)));
+    s.server.handle(Inbound::Leave { player: alice.id });
+    assert_eq!(
+        fired_kinds(&s.plugin),
+        [
+            (Phase::Settled, EventKind::InventoryClose),
+            (Phase::Settled, EventKind::PlayerLeave),
+        ]
+    );
+}

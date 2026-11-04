@@ -533,3 +533,38 @@ fn a_cancelled_book_take_leaves_the_book_on_the_lectern() {
             .any(|item| item.key == "minecraft:writable_book")
     );
 }
+
+#[test]
+fn taking_a_book_into_a_full_inventory_fires_the_take_then_the_drop() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            observe(1, EventKind::PlayerTakeLecternBook),
+            observe(2, EventKind::PlayerDropItem),
+        ],
+    );
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice lectern 1");
+    use_on(&mut s, &alice, FLOOR, 1);
+    console(&mut s, "give Alice writable_book 1");
+    use_on(&mut s, &alice, ABOVE, 2);
+    for _ in 0..36 {
+        console(&mut s, "give Alice stone 64");
+    }
+    alice.link.take();
+    use_on(&mut s, &alice, ABOVE, 3);
+    let window = window_opened(&alice).expect("the lectern opened");
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::ContainerButtonClick { window, button: 3 },
+    );
+    assert_eq!(
+        fired_kinds(&s.plugin),
+        [
+            (Phase::Settled, EventKind::PlayerTakeLecternBook),
+            (Phase::Settled, EventKind::PlayerDropItem),
+        ]
+    );
+    assert_eq!(s.server.items_on_ground(), 1);
+}

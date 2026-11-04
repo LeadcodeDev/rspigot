@@ -471,3 +471,16 @@ fn a_cancelled_or_outdated_swap_changes_nothing() {
     assert_eq!(slot(&mut s, &alice, 0), None);
     assert_eq!(slot(&mut s, &alice, 40), None);
 }
+
+#[test]
+fn a_held_slot_change_of_a_player_who_died_meanwhile_is_sent_back() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerItemHeld)]);
+    let alice = s.players[0].clone();
+    send_input(&mut s.server, &alice, PlayerInput::HeldSlot(4));
+    let asked = last_asked(&s.plugin, EventKind::PlayerItemHeld);
+    s.act(to(&alice, PlayerOrder::SetHealth(0.0)));
+    alice.link.take();
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(selected(&mut s, &alice), 0);
+    assert_eq!(held_slots(&alice), [0]);
+}
