@@ -407,6 +407,11 @@ pub(crate) struct ExplodeStep {
     pub(crate) explosion_yield: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TimeStep {
+    pub(crate) skipped: i64,
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -460,6 +465,7 @@ pub(crate) enum Continuation {
     Exp(ExpStep),
     Explode(Box<ExplodeStep>),
     ChunkUnload(ChunkPos),
+    TimeSkip(TimeStep),
 }
 
 impl Continuation {
@@ -512,6 +518,7 @@ impl Continuation {
             Self::Exp(_) => EventKind::BlockExp,
             Self::Explode(_) => EventKind::BlockExplode,
             Self::ChunkUnload(_) => EventKind::ChunkUnload,
+            Self::TimeSkip(_) => EventKind::TimeSkip,
         }
     }
 

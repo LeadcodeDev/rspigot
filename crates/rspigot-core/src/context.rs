@@ -21,7 +21,7 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::{ClientEvent, GameEvent};
 use crate::mobs::ServerRandom;
-use crate::plugins::events::PlayerTeleportCause;
+use crate::plugins::events::{PlayerTeleportCause, TimeSkipReason};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -111,9 +111,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_day_time(&mut self, time: i64) {
-        self.world.level.day_time = time;
-        let event = self.time_event();
-        self.push(Audience::All, event);
+        self.change_day_time(time, None);
+    }
+
+    fn skip_day_time(&mut self, time: i64) {
+        self.change_day_time(time, Some(TimeSkipReason::Command));
     }
 
     fn give(&mut self, player: PlayerId, item: ItemId, count: u32) -> bool {
@@ -444,20 +446,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_world_spawn(&mut self, pos: BlockPos) {
-        self.world.level.spawn = Some(pos);
-        self.world.spawn = pos.center();
-        self.push(
-            Audience::All,
-            ClientEvent::SpawnPosition {
-                dimension: self.world.dimension.key.clone(),
-                pos,
-                yaw: self.world.level.spawn_angle,
-                pitch: 0.0,
-            },
-        );
+        self.change_spawn(pos);
     }
 
     fn save_all(&mut self) -> usize {
+        self.world_saving();
         self.save_all_entities();
         self.persist_all_players();
         let count = self.world.chunks.save_dirty(&self.workers);

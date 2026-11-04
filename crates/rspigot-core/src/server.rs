@@ -144,20 +144,10 @@ impl<L: ClientLink> Server<L> {
             zoom_seed: hashed_seed(level.seed),
             difficulty: config.difficulty,
         }));
-        let center = spawn.chunk();
-        for dx in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
-            for dz in -config.spawn_chunk_radius..=config.spawn_chunk_radius {
-                chunks.add_ticket(
-                    ChunkPos::new(center.x + dx, center.z + dz),
-                    Priority::URGENT,
-                    &workers,
-                );
-            }
-        }
         let admin = config.admin.clone();
         status.update(|s| s.max_players = config.max_players);
         let spawning = Spawning::new(level.seed, &dimension);
-        Self {
+        let mut server = Self {
             world: World {
                 dimension,
                 chunks,
@@ -191,7 +181,20 @@ impl<L: ClientLink> Server<L> {
             tick: 0,
             tps: TpsMeter::new(),
             config,
+        };
+        server.world_initialised();
+        let center = spawn.chunk();
+        let radius = server.config.spawn_chunk_radius;
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                server.world.chunks.add_ticket(
+                    ChunkPos::new(center.x + dx, center.z + dz),
+                    Priority::URGENT,
+                    &server.workers,
+                );
+            }
         }
+        server
     }
 
     pub fn with_player_store<S: PlayerStore>(mut self, store: Arc<S>) -> Self {
@@ -767,7 +770,7 @@ impl<L: ClientLink> Server<L> {
         if self.world.level.daylight_cycle {
             self.world.level.day_time += 1;
         }
-        for pos in self.world.chunks.tick(&self.workers) {
+        for pos in self.world.chunks.tick() {
             self.ask_chunk_unload(pos);
         }
         self.handle_chunk_events();
@@ -936,6 +939,7 @@ impl<L: ClientLink> Server<L> {
             self.remove_player(id, false);
         }
         self.outbox.clear();
+        self.world_saving_at_shutdown();
         tracing::info!(
             "Saving chunks for level '{}'/{}",
             self.world.level.name,

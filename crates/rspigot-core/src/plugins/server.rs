@@ -707,6 +707,12 @@ impl<L: ClientLink> Server<L> {
                 self.finish_chunk_unload(pos, patch_of!(patch, ChunkUnload));
                 Vec::new()
             }
+            Continuation::TimeSkip(step) => {
+                if !cancelled {
+                    self.finish_time_skip(step, patch_of!(patch, TimeSkip));
+                }
+                Vec::new()
+            }
         }
     }
 
@@ -720,7 +726,8 @@ impl<L: ClientLink> Server<L> {
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_), Undo::SendBack(_)) => {}
+            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::World, Undo::SendBack(_)) => {
+            }
         }
     }
 

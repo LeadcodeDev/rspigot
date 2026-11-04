@@ -225,7 +225,7 @@ impl ChunkManager {
         }
     }
 
-    pub fn tick(&mut self, workers: &ChunkWorkers) -> Vec<ChunkPos> {
+    pub fn tick(&mut self) -> Vec<ChunkPos> {
         self.now += 1;
         let now = self.now;
         let mut expired: Vec<ChunkPos> = self
@@ -238,7 +238,6 @@ impl ChunkManager {
         if self.config.autosave_interval_ticks > 0
             && now.is_multiple_of(self.config.autosave_interval_ticks)
         {
-            self.save_dirty(workers);
             self.events.autosaved = true;
         }
         expired
@@ -552,10 +551,10 @@ mod tests {
         assert_eq!(drain(&mut manager, &workers, 1), vec![pos]);
         assert!(manager.is_loaded(pos));
         manager.remove_ticket(pos);
-        assert!(manager.tick(&workers).is_empty());
-        assert!(manager.tick(&workers).is_empty());
+        assert!(manager.tick().is_empty());
+        assert!(manager.tick().is_empty());
         assert!(manager.is_loaded(pos));
-        assert_eq!(manager.tick(&workers), [pos]);
+        assert_eq!(manager.tick(), [pos]);
         assert!(manager.is_loaded(pos));
         assert!(manager.unload(pos, true, &workers));
         assert!(!manager.is_loaded(pos));
@@ -579,10 +578,10 @@ mod tests {
         manager.add_ticket(pos, Priority(1), &workers);
         drain(&mut manager, &workers, 1);
         manager.remove_ticket(pos);
-        manager.tick(&workers);
+        manager.tick();
         manager.add_ticket(pos, Priority(1), &workers);
         for _ in 0..10 {
-            assert!(manager.tick(&workers).is_empty());
+            assert!(manager.tick().is_empty());
         }
         assert!(!manager.unload_due(pos));
         assert!(!manager.unload(pos, true, &workers));
@@ -597,9 +596,7 @@ mod tests {
         manager.add_ticket(pos, Priority(1), &workers);
         drain(&mut manager, &workers, 1);
         manager.remove_ticket(pos);
-        let due = (0..3)
-            .flat_map(|_| manager.tick(&workers))
-            .collect::<Vec<_>>();
+        let due = (0..3).flat_map(|_| manager.tick()).collect::<Vec<_>>();
         assert_eq!(due, [pos]);
         assert!(manager.unload(pos, false, &workers));
         assert_eq!(manager.take_events().unloaded, [pos]);

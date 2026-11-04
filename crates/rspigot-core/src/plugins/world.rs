@@ -7,6 +7,7 @@ use crate::config::GameRules;
 use crate::events::{ClientEvent, GameEvent, SoundSource};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
+use crate::plugins::events::TimeSkipReason;
 use crate::plugins::resolve::{self, expiry_of, finite_not_negative, name_of};
 use crate::plugins::{GameRule, ServerOrder, ServerState, WorldOrder, WorldState};
 use crate::ports::ClientLink;
@@ -99,7 +100,7 @@ impl<L: ClientLink> Server<L> {
             WorldOrder::SetTime(time) => {
                 let full_time = self.world.level.day_time;
                 let margin = time.wrapping_sub(full_time).rem_euclid(DAY_TICKS);
-                CommandContext::set_day_time(self, full_time.wrapping_add(margin));
+                self.change_day_time(full_time.wrapping_add(margin), Some(TimeSkipReason::Custom));
             }
             WorldOrder::SetWeather(weather) => CommandContext::set_weather(self, weather),
             WorldOrder::SetDifficulty(difficulty) => {

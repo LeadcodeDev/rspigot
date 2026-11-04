@@ -148,6 +148,7 @@ fn main() -> anyhow::Result<()> {
     .with_player_store(Arc::clone(&store));
     let spawn_chunks = server.wait_for_spawn(Duration::from_secs(60));
     tracing::info!("Preparing spawn area: {spawn_chunks} chunks");
+    server.world_loaded();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(files.spigot.int("settings.netty-threads", 4).clamp(1, 64) as usize)
         .thread_name("netty-worker")

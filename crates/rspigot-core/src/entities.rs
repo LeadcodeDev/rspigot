@@ -463,6 +463,8 @@ impl<L: ClientLink> Server<L> {
             self.save_chunk_entities(pos, true);
         }
         if events.autosaved {
+            self.world_saving();
+            self.world.chunks.save_dirty(&self.workers);
             self.save_all_entities();
             self.persist_all_players();
         }

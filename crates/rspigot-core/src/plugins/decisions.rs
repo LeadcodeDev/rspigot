@@ -13,6 +13,7 @@ pub(crate) enum Lane {
     Login(u64),
     Block(BlockPos),
     Chunk(ChunkPos),
+    World,
 }
 
 impl From<PlayerId> for Lane {

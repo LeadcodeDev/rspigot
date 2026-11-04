@@ -10,6 +10,7 @@ pub mod events;
 mod inputs;
 mod inventory;
 mod items;
+mod levels;
 mod menus;
 mod objects;
 mod orders;
