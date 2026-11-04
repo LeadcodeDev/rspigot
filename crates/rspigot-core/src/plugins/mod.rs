@@ -27,6 +27,7 @@ mod registry;
 mod resolve;
 mod server;
 mod session;
+mod shots;
 mod spawns;
 pub(crate) mod steps;
 mod targets;

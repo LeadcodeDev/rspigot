@@ -415,6 +415,27 @@ pub(crate) struct ExplodeStep {
     pub(crate) discard: Option<EntityId>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shooter {
+    Player(PlayerId),
+    Mob(EntityId),
+}
+
+#[derive(Debug)]
+pub(crate) struct Draw {
+    pub(crate) weapon: Option<ItemStack>,
+    pub(crate) ammo: Option<ItemStack>,
+    pub(crate) hand: Hand,
+    pub(crate) force: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct ShotStep {
+    pub(crate) shooter: Shooter,
+    pub(crate) force: f32,
+    pub(crate) arrow: Entity,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PrimeStep {
     pub(crate) creeper: EntityId,
@@ -797,6 +818,8 @@ pub(crate) enum Continuation {
     EntityExplode(Box<ExplodeStep>),
     Prime(PrimeStep),
     Relocate(RelocateStep),
+    Shoot(Box<ShotStep>),
+    ProjectileHit { arrow: EntityId, target: EntityId },
 }
 
 impl Continuation {
@@ -870,6 +893,8 @@ impl Continuation {
             Self::EntityExplode(_) => EventKind::EntityExplode,
             Self::Prime(_) => EventKind::ExplosionPrime,
             Self::Relocate(_) => EventKind::EntityTeleport,
+            Self::Shoot(_) => EventKind::EntityShootBow,
+            Self::ProjectileHit { .. } => EventKind::ProjectileHit,
         }
     }
 
@@ -909,6 +934,13 @@ impl Continuation {
             }
             (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
             (Self::Prime(one), Self::Prime(other)) => one.creeper == other.creeper,
+            (
+                Self::ProjectileHit { arrow, target },
+                Self::ProjectileHit {
+                    arrow: other_arrow,
+                    target: other_target,
+                },
+            ) => arrow == other_arrow && target == other_target,
             (Self::PickupItem(one), Self::PickupItem(other)) => {
                 one.player == other.player && one.item == other.item
             }
@@ -929,7 +961,7 @@ impl Continuation {
             Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
             Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
             Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
-            Self::EggBreak { .. } | Self::Prime(_) => true,
+            Self::EggBreak { .. } | Self::Prime(_) | Self::ProjectileHit { .. } => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)

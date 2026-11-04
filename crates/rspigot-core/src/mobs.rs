@@ -993,7 +993,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn living_entity_alive(&self, id: EntityId) -> bool {
+    pub(crate) fn living_entity_alive(&self, id: EntityId) -> bool {
         if let Some(player) = self.players.values().find(|p| p.entity_id == id) {
             return !player.vitals.is_dead();
         }

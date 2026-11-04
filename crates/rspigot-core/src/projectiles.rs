@@ -12,10 +12,12 @@ use rspigot_domain::{EntityId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 use rspigot_items::{EquipmentSlot, ItemKind};
 
+use crate::events::Hand;
 use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
-use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause, PlayerPickupArrow};
+use crate::plugins::events::{EntityRemoveCause, PlayerPickupArrow};
 use crate::plugins::steps::ArrowStep;
+use crate::plugins::steps::{Draw, Shooter};
 use crate::plugins::{
     AfterHurt, ArrowFollow, Combuster, Continuation, EventPayload, Holder, spec_of,
 };
@@ -34,6 +36,7 @@ const PLAYER_WIDTH: f64 = 0.6;
 const STOP_SQR: f64 = 1.0e-7;
 const DEFLECT_SCALE: f64 = 0.2;
 const ARROW_FIRE_SECONDS: f32 = 5.0;
+const SKELETON_FORCE: f32 = 0.8;
 
 #[derive(Debug, Clone, Copy)]
 struct ArrowHit {
@@ -81,6 +84,7 @@ impl<L: ClientLink> Server<L> {
             .flatten()
             .cloned();
         let projectile = held.unwrap_or_else(arrow::default_item);
+        let weapon_view = weapon.clone();
         let origin = entity.base.position;
         let eye = entity.base.eye_y();
         let owner_uuid = entity.base.uuid;
@@ -109,10 +113,17 @@ impl<L: ClientLink> Server<L> {
             MOB_ARROW_SPEED,
             uncertainty,
         );
-        self.add_entity(
-            Entity::new(base, EntityState::Arrow(Box::new(state))),
-            CreatureSpawnReason::Default,
-        );
+        let arrow = Entity::new(base, EntityState::Arrow(Box::new(state)));
+        let draw = Draw {
+            weapon: weapon_view,
+            ammo: None,
+            hand: Hand::Main,
+            force: SKELETON_FORCE,
+        };
+        self.shoot_bow(Shooter::Mob(shooter), draw, arrow);
+    }
+
+    pub(crate) fn skeleton_sound(&mut self, shooter: EntityId) {
         let mut random = self.mob_random(shooter);
         let pitch = 1.0 / (random.next_float() * 0.4 + 0.8);
         self.store_mob_random(shooter, random);
@@ -263,6 +274,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn tick_arrow(&mut self, id: EntityId) {
+        if self.arrow_waits(id) {
+            return;
+        }
         let despawn = self.config.mobs.arrow_despawn_rate;
         let in_rain = self
             .entities
@@ -367,7 +381,10 @@ impl<L: ClientLink> Server<L> {
                 if self.entities.store.get(id).is_none() {
                     return;
                 }
-                self.arrow_hit_entity(id, hit.target);
+                self.ask_projectile_hit(id, hit.target);
+                if self.arrow_waits(id) {
+                    return;
+                }
             }
             if let Some(entity) = self.entities.store.get_mut(id) {
                 entity.base.needs_sync = true;
@@ -380,6 +397,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn arrow_hit_block(&mut self, id: EntityId, hit: raycast::BlockHit) {
+        self.notice_block_hit(id, hit.pos, hit.face);
         let state_at = self.world.chunks.block(hit.pos).unwrap_or_default();
         if state_at.is_air() {
             return;
@@ -401,7 +419,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn arrow_hit_entity(&mut self, id: EntityId, target: EntityId) {
+    pub(crate) fn arrow_hit_entity(&mut self, id: EntityId, target: EntityId) {
         let Some(Entity {
             base,
             state: EntityState::Arrow(state),

@@ -116,6 +116,8 @@ SheepRegrowWool = "after the grazing of a sheep settled, also when it was cancel
 EntityTeleport = "/tp of a non-player entity asks twice, the command then Entity.teleport, and only the second destination counts, as in Spigot; the plugin teleport order asks once; there are no portals, pearls, endermen or shulkers yet"
 ExplosionPrime = "creepers once their fuse ends, one ask per creeper while it waits; a cancel resets the fuse and the creeper lives; the settled radius and fire are the explosion's, a fire flag now sets fire to the crater"
 EntityExplode = "explosions with a source or causing entity, after the entities were hurt and pushed; a cancel breaks and sends nothing but keeps the hurts, the push and the fire; the creeper leaves with EXPLODE once it settled"
+ProjectileHit = "arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit is only announced, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers"
+EntityShootBow = "the drawn bow of a player, whose arrow is spent before the event as in Spigot, and skeletons; a cancel discards the arrow, the player still hears the shot, the skeleton does not; set_projectile to another entity launches nothing; there is no crossbow, Infinity or bow wear"
 
 [states]
 ready = [
@@ -123,11 +125,10 @@ ready = [
     "EntityBreed",
     "EntityEnterLoveMode",
     "EntityPoseChange",
-    "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen",
-    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
+    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing",
     "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
     "SmithItem", "TabComplete",
 ]

@@ -823,6 +823,14 @@ impl<L: ClientLink> Server<L> {
                 self.finish_relocate(step, cancelled, patch_of!(patch, EntityTeleport));
                 Vec::new()
             }
+            Continuation::Shoot(step) => {
+                self.finish_shot(*step, cancelled, patch_of!(patch, EntityShootBow));
+                Vec::new()
+            }
+            Continuation::ProjectileHit { arrow, target } => {
+                self.finish_projectile_hit(arrow, target, cancelled);
+                Vec::new()
+            }
         }
     }
 
