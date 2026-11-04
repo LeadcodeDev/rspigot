@@ -1,5 +1,7 @@
+import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +29,14 @@ OUTPUTS = [
     "crates/rspigot-plugin/EVENTS.md",
     "crates/rspigot-plugin/tests/every_event.rs",
 ]
+
+
+def load_extract():
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location("extract", REPO / "tools" / "plugin-events" / "extract.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def generator(root, *arguments):
@@ -96,6 +106,23 @@ class Generator(unittest.TestCase):
         self.assertEqual(failed.returncode, 1)
         self.assertIn("ChunkLoad must have exactly one state", failed.stderr)
 
+    def test_a_deprecated_or_retired_event_leaves_its_numbers_reserved(self):
+        catalog = self.catalog()
+        sheared = next(event for event in catalog["events"] if event["name"] == "SheepRegrowWool")
+        sheared["deprecated"] = True
+        catalog["retired"] = [{"java": "org.example.GoneEvent", "name": "Gone", "number": 900, "fields": {}}]
+        self.write_catalog(catalog)
+        overrides = self.root / INPUTS[1]
+        overrides.write_text(overrides.read_text().replace('"SheepRegrowWool", ', ""))
+        self.assertEqual(generator(self.root).returncode, 0)
+        proto = (self.root / OUTPUTS[0]).read_text()
+        number = sheared["number"]
+        self.assertNotIn("SHEEP_REGROW_WOOL", proto)
+        self.assertRegex(proto, rf"enum EventKind {{[^}}]* reserved {number}, 900; }}")
+        for message in ("Event", "Patch"):
+            body = re.search(rf"^message {message} {{\n(.*?)^}}", proto, re.S | re.M)[1]
+            self.assertIn(f"reserved {number + 9}, 909;", body)
+
     @unittest.skipUnless(DUMP.exists(), "the API dump is not on this machine")
     def test_check_dump_passes_on_the_api_dump_and_fails_when_the_catalog_lacks_an_event(self):
         self.assertEqual(generator(self.root, "--check-dump", str(DUMP)).returncode, 0)
@@ -105,6 +132,34 @@ class Generator(unittest.TestCase):
         failed = generator(self.root, "--check-dump", str(DUMP))
         self.assertEqual(failed.returncode, 1)
         self.assertIn("org.bukkit.event.entity.EntityDamageByEntityEvent", failed.stderr)
+
+
+class Numbering(unittest.TestCase):
+    def setUp(self):
+        self.extract = load_extract()
+
+    def test_a_deprecated_or_removed_event_keeps_its_number_and_a_new_one_gets_a_fresh_number(self):
+        previous = {"events": [
+            {"java": "org.bukkit.event.player.PlayerJoinEvent", "number": 1, "fields": {"player": 1}},
+            {"java": "org.example.AlphaEvent", "number": 6, "fields": {"alpha": 1}},
+            {"java": "org.example.BravoEvent", "number": 7, "fields": {"bravo": 1}},
+        ]}
+        names = ["org.bukkit.event.player.PlayerJoinEvent", "org.example.AlphaEvent", "org.example.CharlieEvent"]
+        numbers = self.extract.number_events(names, {"org.example.AlphaEvent"}, previous)
+        self.assertEqual(numbers["org.example.AlphaEvent"], 6)
+        self.assertEqual(numbers["org.bukkit.event.player.PlayerJoinEvent"], 1)
+        self.assertEqual(numbers["org.example.CharlieEvent"], 8)
+        retired = self.extract.retired_events(previous, names)
+        self.assertEqual(retired, [{"java": "org.example.BravoEvent", "name": "Bravo", "number": 7, "fields": {"bravo": 1}}])
+        charlie = {"java": "org.example.CharlieEvent", "number": 8, "fields": {}}
+        later = {"events": previous["events"][:2] + [charlie], "retired": retired}
+        names = names + ["org.example.DeltaEvent"]
+        numbers = self.extract.number_events(names, {"org.example.AlphaEvent"}, later)
+        self.assertEqual((numbers["org.example.CharlieEvent"], numbers["org.example.DeltaEvent"]), (8, 9))
+        self.assertEqual(self.extract.retired_events(later, names), retired)
+        back = self.extract.number_events(names + ["org.example.BravoEvent"], set(), later)
+        self.assertEqual(back["org.example.BravoEvent"], 7)
+        self.assertEqual(self.extract.retired_events(later, names + ["org.example.BravoEvent"]), [])
 
 
 if __name__ == "__main__":

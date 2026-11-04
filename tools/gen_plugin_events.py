@@ -403,6 +403,16 @@ class Model:
         self.results = overrides.get("results", {})
         self.used_results = set()
         self.build()
+        self.reserved = self.reserved_numbers()
+
+    def reserved_numbers(self):
+        reserved = {record["number"] for record in self.catalog["events"] if record["deprecated"] and record.get("number")}
+        reserved |= {record["number"] for record in self.catalog.get("retired", [])}
+        live = {record["number"] for record in self.catalog["events"] if not record["deprecated"]}
+        clashing = reserved & live
+        if clashing:
+            fail(f"the retired event numbers {sorted(clashing)} are given to live events")
+        return sorted(reserved)
 
     def enum_leaf(self, java):
         if java not in self.enums:
@@ -818,6 +828,8 @@ def emit_proto(model):
     w('import "rspigot/plugin/v1/types.proto";')
     w()
     kinds = " ".join(f"EVENT_KIND_{screaming(event.name)} = {event.number};" for event in sorted(model.events, key=lambda e: e.number))
+    if model.reserved:
+        kinds += f" reserved {', '.join(str(number) for number in model.reserved)};"
     w(f"enum EventKind {{ EVENT_KIND_UNSPECIFIED = 0; {kinds} }}")
     for definition in model.ordered_enums():
         prefix = screaming(definition.name)
@@ -843,14 +855,19 @@ def emit_proto(model):
             body = " ".join(f"{proto_patch(f)} {f.name} = {f.number};" for f in event.patched)
             w(f"message {event.name}Patch {{ {body} }}")
     w()
+    payloads = ", ".join(str(number + PAYLOAD_OFFSET) for number in model.reserved)
     w("message Event {")
     w("  uint64 id = 1; repeated uint32 handlers = 2; Phase phase = 3; bool cancelled = 4;")
+    if payloads:
+        w(f"  reserved {payloads};")
     w("  oneof payload {")
     for event in sorted(model.events, key=lambda e: e.number):
         w(f"    {event.name} {event.snake} = {event.payload_number};")
     w("  }")
     w("}")
     w("message Patch {")
+    if payloads:
+        w(f"  reserved {payloads};")
     w("  oneof change {")
     for event in sorted(model.events, key=lambda e: e.number):
         if event.patched:
