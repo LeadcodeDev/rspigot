@@ -323,6 +323,12 @@ enum Queued {
 }
 
 impl Queued {
+    const fn event(&self) -> u64 {
+        match self {
+            Self::Asked(event, _) | Self::Due(event, _) => *event,
+        }
+    }
+
     const fn then(&self) -> &Continuation {
         match self {
             Self::Asked(_, pending) => &pending.then,
@@ -545,8 +551,9 @@ impl Decisions {
         self.lanes
             .iter()
             .filter(|(lane, queue)| queue.iter().any(|queued| matches(**lane, queued.then())))
-            .map(|(lane, _)| *lane)
+            .filter_map(|(lane, queue)| Some((queue.front()?.event(), *lane)))
             .min()
+            .map(|(_, lane)| lane)
     }
 
     pub(crate) fn first_lane(&self) -> Option<Lane> {
@@ -946,6 +953,24 @@ mod tests {
         assert!(decisions.in_flight(lane, |then| then.kind() == EventKind::PlayerJoin));
         assert!(!decisions.in_flight(lane, Continuation::is_move));
         assert!(!decisions.in_flight(Lane::Login(1), |_| true));
+    }
+
+    #[test]
+    fn the_matching_lane_to_settle_first_is_the_one_whose_head_is_oldest() {
+        let alice = PlayerId::offline("Alice");
+        let mob = Lane::Entity(rspigot_domain::EntityId(7));
+        let mut decisions = Decisions::default();
+        decisions.defer(
+            5,
+            alice.into(),
+            Continuation::Notice(EventKind::EntityRemove),
+        );
+        decisions.defer(3, mob, Continuation::Notice(EventKind::EntityRemove));
+        decisions.defer(4, Lane::World, Continuation::Notice(EventKind::WorldSave));
+        let removal = |_: Lane, then: &Continuation| then.kind() == EventKind::EntityRemove;
+        assert_eq!(decisions.lane_where(removal), Some(mob));
+        let _ = decisions.flush(mob, false);
+        assert_eq!(decisions.lane_where(removal), Some(Lane::Player(alice)));
     }
 
     #[test]
