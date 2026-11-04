@@ -364,7 +364,7 @@ fn player_kills_a_cow_and_collects_its_loot_and_experience() {
     let cow = summon(
         &mut server,
         &mut alice,
-        "/summon cow 0.5 64 2.5 {}",
+        "/summon cow 0.5 64 2.5 {NoAI:1b}",
         Kind::Cow,
     );
     alice.drain();
