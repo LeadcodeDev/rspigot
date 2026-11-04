@@ -596,7 +596,6 @@ impl<L: ClientLink> Server<L> {
             .filter_map(|slot| Some((slot, player.inventory.get(slot).cloned()?)))
             .collect();
         let text = crate::console::console_text(&message);
-        let damage_source = self.damage_view(source);
         let forgotten = self.decisions.forget(id);
         self.notify_undone(forgotten, Phase::Settled);
         let payload = {
@@ -613,7 +612,7 @@ impl<L: ClientLink> Server<L> {
                         .collect()
                 };
                 Some(EventPayload::PlayerDeath(PlayerDeath {
-                    damage_source,
+                    damage_source: server.damage_view(source),
                     death_message: Some(text),
                     dropped_exp: experience,
                     drops,
