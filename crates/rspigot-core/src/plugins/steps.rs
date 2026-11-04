@@ -17,7 +17,7 @@ use crate::plugins::clicks::{CreativePacket, CreativeStep, DragStep, WindowClick
 use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 use crate::plugins::furnaces::{ExtractStep, FurnaceStep};
 use crate::plugins::prepare::PrepareStep;
-use crate::plugins::windows::{ClosePacket, OpenStep, PluginOpenStep};
+use crate::plugins::windows::{ButtonPacket, ClosePacket, OpenStep, PluginOpenStep};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Held {
@@ -879,6 +879,7 @@ pub(crate) enum Continuation {
     Open(Box<OpenStep>),
     OpenPlugin(PluginOpenStep),
     Close(ClosePacket),
+    Button(ButtonPacket),
     CreativeSlot(Box<CreativePacket>),
     Creative(Box<CreativeStep>),
 }
@@ -968,6 +969,7 @@ impl Continuation {
             Self::Prepare(kind, _) => *kind,
             Self::Open(_) | Self::OpenPlugin(_) => EventKind::InventoryOpen,
             Self::Close(_) => EventKind::InventoryClose,
+            Self::Button(_) => EventKind::InventoryClick,
             Self::CreativeSlot(_) | Self::Creative(_) => EventKind::InventoryCreative,
         }
     }

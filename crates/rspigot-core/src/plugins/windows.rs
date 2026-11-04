@@ -29,6 +29,13 @@ pub(crate) struct ClosePacket {
     pub(crate) window: i32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ButtonPacket {
+    pub(crate) player: PlayerId,
+    pub(crate) window: i32,
+    pub(crate) button: i32,
+}
+
 impl<L: ClientLink> Server<L> {
     pub(crate) fn ask_open(&mut self, id: PlayerId, pos: BlockPos, open: OpenMenu) {
         let payload = self.listened(EventKind::InventoryOpen).then(|| {
@@ -109,6 +116,17 @@ impl<L: ClientLink> Server<L> {
                     by_player,
                 }))
             },
+        );
+    }
+
+    pub(crate) fn press_button(&mut self, id: PlayerId, window: i32, button: i32) {
+        self.fire_deferred(
+            id,
+            Continuation::Button(ButtonPacket {
+                player: id,
+                window,
+                button,
+            }),
         );
     }
 

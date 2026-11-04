@@ -53,6 +53,10 @@ impl<L: ClientLink> Server<L> {
             Continuation::Login(key) => self.login_at_head(key).map(Continuation::Login),
             Continuation::Window(packet) => self.click_at_head(*packet),
             Continuation::CreativeSlot(packet) => self.creative_at_head(*packet),
+            Continuation::Button(packet) => {
+                self.handle_container_button(packet.player, packet.window, packet.button);
+                None
+            }
             Continuation::Close(packet) => {
                 self.close_at_head(packet);
                 None

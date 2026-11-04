@@ -120,7 +120,7 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
             PlayerInput::ContainerClose(window) => self.handle_container_close(id, window),
             PlayerInput::ContainerButtonClick { window, button } => {
-                self.handle_container_button(id, window, button);
+                self.press_button(id, window, button);
             }
             PlayerInput::SetBeacon { primary, secondary } => {
                 self.handle_set_beacon(id, primary, secondary);

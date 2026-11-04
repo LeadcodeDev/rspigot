@@ -1118,3 +1118,62 @@ fn every_row_of_the_click_table_is_classified_as_spigot_does() {
         }
     }
 }
+
+#[test]
+fn a_menu_button_waits_behind_a_parked_click_on_the_result() {
+    let mut s = scene_with(&["Alice"], deciding_clicks());
+    let alice = s.players[0].clone();
+    let cutter = BlockPos::new(-2, 64, 2);
+    set_block(&mut s, cutter, "minecraft:stonecutter");
+    give(&mut s, &alice, 0, "minecraft:stone", 2);
+    alice.link.take();
+    let mut view = open_block(&mut s, &alice, cutter);
+    let take = pickup(&mut view, 29, ("minecraft:stone", 2));
+    send_click(&mut s, &alice, &mut view, take);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let put = predict(
+        &mut view,
+        press(0, 0, ClickInput::Pickup),
+        &[(0, stack("minecraft:stone", 2))],
+        None,
+    );
+    send_click(&mut s, &alice, &mut view, put);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let window = view.window;
+    let press_button = |s: &mut Scene, button: i32| {
+        s.server.handle(rspigot_core::events::Inbound::Input {
+            player: alice.id,
+            input: rspigot_core::events::PlayerInput::ContainerButtonClick { window, button },
+        });
+        s.server.deliver();
+    };
+    press_button(&mut s, 0);
+    refresh(&alice, &mut view);
+    let first = view.at(1).expect("the first cut shows");
+    let take = pickup(&mut view, 1, first);
+    send_click(&mut s, &alice, &mut view, take);
+    let parked = last_asked(&s.plugin, EventKind::InventoryClick);
+    let seen = click_of(&parked)
+        .current_item
+        .expect("the click sees the cut");
+    press_button(&mut s, 1);
+    rule_on(&mut s.server, 1, parked.id, false, None);
+    refresh(&alice, &mut view);
+    assert_eq!(
+        view.held()
+            .map(|(key, count)| (key.to_owned(), i32::from(count))),
+        Some((seen.key, seen.count))
+    );
+}

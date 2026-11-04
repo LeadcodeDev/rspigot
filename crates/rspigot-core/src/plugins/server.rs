@@ -852,7 +852,9 @@ impl<L: ClientLink> Server<L> {
                 self.finish_plugin_open(step, cancelled);
                 Vec::new()
             }
-            Continuation::Close(_) | Continuation::CreativeSlot(_) => Vec::new(),
+            Continuation::Close(_) | Continuation::CreativeSlot(_) | Continuation::Button(_) => {
+                Vec::new()
+            }
             Continuation::Creative(step) => {
                 self.finish_creative(*step, Writes::of(patch));
                 Vec::new()
