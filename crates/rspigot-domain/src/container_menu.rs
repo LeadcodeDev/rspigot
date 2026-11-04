@@ -466,7 +466,7 @@ impl ClickView for Look<'_> {
     }
 
     fn may_pickup(&self, _: usize) -> bool {
-        self.kind != MenuKind::Lectern
+        true
     }
 
     fn may_place(&self, slot: usize, stack: &ItemStack) -> bool {
@@ -482,7 +482,7 @@ impl ClickView for Look<'_> {
     }
 
     fn container_limit(&self, slot: usize) -> u32 {
-        if matches!(self.kind, MenuKind::Beacon | MenuKind::Lectern) && slot == 0 {
+        if self.kind == MenuKind::Beacon && slot == 0 {
             1
         } else {
             CONTAINER_MAX_STACK
@@ -1444,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn a_slot_that_cannot_be_picked_up_classifies_every_take_as_nothing() {
+    fn the_lectern_slot_classifies_like_any_slot_spigot_can_pick_up_from() {
         use crate::click::{ClickAction, ClickType};
         let menu = ContainerMenu::new(MenuKind::Lectern);
         let container = vec![Some(stack("minecraft:written_book", 1))];
@@ -1455,19 +1455,19 @@ mod tests {
         };
         assert_eq!(
             classify(ClickInput::Pickup, 0),
-            (ClickType::Left, ClickAction::Nothing)
+            (ClickType::Left, ClickAction::PickupAll)
         );
         assert_eq!(
             classify(ClickInput::QuickMove, 0),
-            (ClickType::ShiftLeft, ClickAction::Nothing)
+            (ClickType::ShiftLeft, ClickAction::MoveToOtherInventory)
         );
         assert_eq!(
             classify(ClickInput::Swap, 0),
-            (ClickType::NumberKey, ClickAction::Nothing)
+            (ClickType::NumberKey, ClickAction::HotbarSwap)
         );
         assert_eq!(
             classify(ClickInput::Throw, 0),
-            (ClickType::Drop, ClickAction::Nothing)
+            (ClickType::Drop, ClickAction::DropOneSlot)
         );
     }
 

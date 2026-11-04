@@ -333,6 +333,15 @@ impl<L: ClientLink> Server<L> {
         contents.get(smithing::RESULT).cloned().flatten()
     }
 
+    fn at_lectern(&self, id: PlayerId, window: Window) -> bool {
+        matches!(window, Window::Container(_))
+            && self
+                .players
+                .get(&id)
+                .and_then(|player| player.open_menu.as_ref())
+                .is_some_and(|open| open.menu.kind() == MenuKind::Lectern)
+    }
+
     fn click_heard(&self) -> bool {
         [
             EventKind::InventoryClick,
@@ -592,9 +601,10 @@ impl<L: ClientLink> Server<L> {
             act = false;
             full = true;
         } else {
-            if let (Some(item), Some(slot)) = (
+            if let (Some(item), Some(slot), false) = (
                 writes.current_item.and_then(written),
                 menu_index(step.click.slot),
+                self.at_lectern(id, window),
             ) {
                 self.write_window_slot(id, window, slot, item);
             }
