@@ -226,7 +226,7 @@ fn clearing_buildable_refuses_the_place_before_it_is_asked() {
     );
     assert_eq!(kind_at(&mut s, ABOVE), "minecraft:air");
     assert!(settled_for(&s.plugin, EventKind::BlockPlace).is_empty());
-    assert_eq!(packets(&alice.link.take()), ["update 2 64 0 air", "ack 3"]);
+    assert_eq!(packets(&alice.link.take()), ["ack 3"]);
 }
 
 #[test]

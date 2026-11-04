@@ -42,10 +42,11 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn finish_can_build(&mut self, step: BuildStep, patch: BlockCanBuildPatch) {
         let using = step.using;
         let buildable = patch.buildable.unwrap_or(step.buildable);
-        if !buildable
-            || !self.still_using(&using)
-            || self.world.chunks.block(step.target) != Some(step.old)
-        {
+        if !buildable {
+            self.ack_block(using.player, using.sequence);
+            return;
+        }
+        if !self.still_using(&using) || self.world.chunks.block(step.target) != Some(step.old) {
             self.refuse_block(using.player, step.target, using.sequence);
             return;
         }
