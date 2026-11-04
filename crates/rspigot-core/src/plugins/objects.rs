@@ -15,7 +15,8 @@ use crate::plugins::events::{
     PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use crate::plugins::steps::{
-    BookStep, DigStep, DropSource, DropStep, InteractStep, Launch, UseOnStep, UseStep, WearStep,
+    Aim, BookStep, ClickStep, DigStep, DropSource, DropStep, FinishStep, InteractStep, Launch,
+    UseOnStep, UseStep, WearStep,
 };
 use crate::plugins::targets::{Punched, direction_of};
 use crate::plugins::{Access, EntityView, EventKind, EventPayload, LecternData, spec_of};
@@ -115,24 +116,57 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn ask_use_item_on(&mut self, step: UseOnStep) {
+    pub(crate) fn click_block(&mut self, step: ClickStep) {
         let id = step.player;
-        let click = Click {
-            action: Action::RightClickBlock,
-            hand: Some(step.hand),
-            stack: step.stack.clone(),
-            block: Some((step.pos, step.face)),
-            clicked_position: Some(step.cursor),
-            use_interacted_block: if step.block_denied {
-                EventResult::Deny
-            } else {
-                EventResult::Allow
-            },
+        self.fire_deferred(id, Continuation::ClickBlock(Box::new(step)));
+    }
+
+    pub(crate) fn click_block_at_head(&mut self, step: ClickStep) -> Option<UseOnStep> {
+        let id = step.player;
+        let slot = self.hand_slot_of(id, step.hand)?;
+        let player = self.players.get(&id)?;
+        let game_mode = player.game_mode;
+        let stack = player.inventory.get(slot).cloned();
+        let Some(clicked) = self.world.chunks.block(step.pos) else {
+            self.push(
+                Audience::One(id),
+                ClientEvent::BlockChangedAck(step.sequence),
+            );
+            return None;
         };
-        let payload = self.click_payload(id, click);
-        self.fire(id, Continuation::UseItemOn(Box::new(step)), move |_| {
-            payload
-        });
+        let block_denied =
+            game_mode == GameMode::Spectator && !crate::containers::opens_menu(clicked);
+        Some(UseOnStep {
+            player: id,
+            hand: step.hand,
+            slot,
+            pos: step.pos,
+            face: step.face,
+            cursor: step.cursor,
+            sequence: step.sequence,
+            stack,
+            clicked,
+            game_mode,
+            block_denied,
+        })
+    }
+
+    pub(crate) fn use_on_payload(&self, step: &UseOnStep) -> Option<EventPayload> {
+        self.click_payload(
+            step.player,
+            Click {
+                action: Action::RightClickBlock,
+                hand: Some(step.hand),
+                stack: step.stack.clone(),
+                block: Some((step.pos, step.face)),
+                clicked_position: Some(step.cursor),
+                use_interacted_block: if step.block_denied {
+                    EventResult::Deny
+                } else {
+                    EventResult::Allow
+                },
+            },
+        )
     }
 
     pub(super) fn finish_use_item_on(&mut self, step: UseOnStep, patch: PlayerInteractPatch) {
@@ -192,51 +226,76 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn use_item(&mut self, id: PlayerId, hand: Hand, sequence: i32, rotation: Rotation) {
-        let Some(stack) = self
-            .hand_slot_of(id, hand)
-            .and_then(|slot| self.players.get(&id)?.inventory.get(slot).cloned())
-        else {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
+        self.fire_deferred(
+            id,
+            Continuation::UseItem(UseStep {
+                player: id,
+                hand,
+                sequence,
+                rotation,
+                aim: None,
+            }),
+        );
+    }
+
+    fn held_in(&self, id: PlayerId, hand: Hand) -> Option<ItemStack> {
+        let slot = self.hand_slot_of(id, hand)?;
+        self.players.get(&id)?.inventory.get(slot).cloned()
+    }
+
+    pub(crate) fn use_item_at_head(&mut self, step: UseStep) -> Option<UseStep> {
+        let id = step.player;
+        let Some(stack) = self.held_in(id, step.hand) else {
+            self.push(
+                Audience::One(id),
+                ClientEvent::BlockChangedAck(step.sequence),
+            );
+            return None;
         };
-        let hit = self.look_block(id, rotation);
+        let hit = self.look_block(id, step.rotation);
         let memo = self
             .players
             .get_mut(&id)
             .and_then(|player| player.use_memo.take());
-        let step = UseStep {
-            player: id,
-            hand,
-            sequence,
-        };
         if let (Some(hit), Some(memo)) = (hit, memo)
             && memo.pos == hit.pos
-            && memo.hand == hand
+            && memo.hand == step.hand
             && memo.item == Some(stack.item)
         {
             self.finish_use_item(step, memo.use_item != EventResult::Deny);
-            return;
+            return None;
         }
-        let click = match hit {
-            Some(hit) => Click {
+        Some(UseStep {
+            aim: hit.map(|hit| Aim {
+                pos: hit.pos,
+                face: direction_of(hit.face),
+                clicked: corner_offset(hit.location, hit.pos),
+            }),
+            ..step
+        })
+    }
+
+    pub(crate) fn use_payload(&self, step: &UseStep) -> Option<EventPayload> {
+        let stack = self.held_in(step.player, step.hand);
+        let click = match step.aim {
+            Some(aim) => Click {
                 action: Action::RightClickBlock,
-                hand: Some(hand),
-                stack: Some(stack),
-                block: Some((hit.pos, direction_of(hit.face))),
-                clicked_position: Some(corner_offset(hit.location, hit.pos)),
+                hand: Some(step.hand),
+                stack,
+                block: Some((aim.pos, aim.face)),
+                clicked_position: Some(aim.clicked),
                 use_interacted_block: EventResult::Deny,
             },
             None => Click {
                 action: Action::RightClickAir,
-                hand: Some(hand),
-                stack: Some(stack),
+                hand: Some(step.hand),
+                stack,
                 block: None,
                 clicked_position: None,
                 use_interacted_block: EventResult::Deny,
             },
         };
-        let payload = self.click_payload(id, click);
-        self.fire(id, Continuation::UseItem(step), move |_| payload);
+        self.click_payload(step.player, click)
     }
 
     pub(super) fn finish_use_item(&mut self, step: UseStep, item_ok: bool) {
@@ -296,6 +355,18 @@ impl<L: ClientLink> Server<L> {
             game_mode,
         };
         self.fire(id, Continuation::Dig(step), move |_| payload);
+    }
+
+    pub(crate) fn finish_digging(&mut self, step: FinishStep) {
+        let refused = self
+            .players
+            .get_mut(&step.player)
+            .and_then(|player| player.dig_refused.take());
+        if refused == Some(step.pos) {
+            self.refuse_block(step.player, step.pos, step.sequence);
+        } else {
+            self.dig_block(step.player, false, step.pos, step.sequence);
+        }
     }
 
     pub(super) fn finish_dig(&mut self, step: DigStep, patch: PlayerInteractPatch) {
@@ -416,29 +487,54 @@ impl<L: ClientLink> Server<L> {
         thrower: bool,
         predicted: bool,
     ) {
-        let Some(launch) = self.launch_from(id) else {
+        let Some(step) = self.drop_step(id, stack, source, thrower, predicted) else {
             return;
         };
-        let item_drop = EntityView {
-            id: launch.base.id,
-            uuid: launch.base.uuid,
-            kind: Kind::Item.name().to_owned(),
-            position: launch.base.position,
-        };
-        let step = DropStep {
+        let base = &step.launch.base;
+        let (entity, uuid, position) = (base.id, base.uuid, base.position);
+        self.fire(id, Continuation::Drop(Box::new(step)), move |server| {
+            Some(EventPayload::PlayerDropItem(PlayerDropItem {
+                item_drop: EntityView {
+                    id: entity,
+                    uuid,
+                    kind: Kind::Item.name().to_owned(),
+                    position,
+                },
+                player: server.snapshot_of(id)?,
+            }))
+        });
+    }
+
+    pub(crate) fn drop_step(
+        &mut self,
+        id: PlayerId,
+        stack: ItemStack,
+        source: DropSource,
+        thrower: bool,
+        predicted: bool,
+    ) -> Option<DropStep> {
+        let launch = self.launch_from(id)?;
+        Some(DropStep {
             player: id,
             stack,
             source,
             launch,
             thrower,
             predicted,
-        };
-        self.fire(id, Continuation::Drop(Box::new(step)), move |server| {
-            Some(EventPayload::PlayerDropItem(PlayerDropItem {
-                item_drop,
-                player: server.snapshot_of(id)?,
-            }))
-        });
+        })
+    }
+
+    pub(crate) fn drop_payload_of(&self, step: &DropStep) -> Option<EventPayload> {
+        let base = &step.launch.base;
+        Some(EventPayload::PlayerDropItem(PlayerDropItem {
+            item_drop: EntityView {
+                id: base.id,
+                uuid: base.uuid,
+                kind: Kind::Item.name().to_owned(),
+                position: base.position,
+            },
+            player: self.snapshot_of(step.player)?,
+        }))
     }
 
     fn launch_from(&mut self, id: PlayerId) -> Option<Launch> {

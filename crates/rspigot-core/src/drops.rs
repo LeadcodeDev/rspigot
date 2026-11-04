@@ -5,7 +5,8 @@ use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use uuid::Uuid;
 
-use crate::plugins::steps::{DropSource, Launch};
+use crate::plugins::Continuation;
+use crate::plugins::steps::{DropSource, DropStep, Launch, SelectedDrop};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -68,15 +69,25 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn drop_selected(&mut self, id: PlayerId, all: bool) {
-        let Some(player) = self.players.get(&id) else {
-            return;
-        };
+        self.fire_deferred(
+            id,
+            Continuation::DropSelected(SelectedDrop { player: id, all }),
+        );
+    }
+
+    pub(crate) fn drop_selected_at_head(&mut self, step: SelectedDrop) -> Option<DropStep> {
+        let player = self.players.get(&step.player)?;
         let slot = HOTBAR_START + usize::from(player.inventory.selected_hotbar);
         let mut held: Slot = player.inventory.get(slot).cloned();
-        let amount = if all { u32::MAX } else { 1 };
-        if let Some(stack) = split(&mut held, amount) {
-            self.ask_drop(id, stack, DropSource::Selected { slot }, true, true);
-        }
+        let amount = if step.all { u32::MAX } else { 1 };
+        let stack = split(&mut held, amount)?;
+        self.drop_step(
+            step.player,
+            stack,
+            DropSource::Selected { slot },
+            true,
+            true,
+        )
     }
 
     pub(crate) fn drop_creative(&mut self, id: PlayerId, stack: Slot) {

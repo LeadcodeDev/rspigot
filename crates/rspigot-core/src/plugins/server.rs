@@ -587,6 +587,9 @@ impl<L: ClientLink> Server<L> {
                 self.finish_shear(*step);
                 Vec::new()
             }
+            Continuation::ClickBlock(_)
+            | Continuation::FinishDig(_)
+            | Continuation::DropSelected(_) => Vec::new(),
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()

@@ -13,9 +13,9 @@ use crate::events::{
     ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
 use crate::loot::{self, LootContext, LootEntity};
-use crate::plugins::Held;
 use crate::plugins::events::PlayerRespawnReason;
-use crate::plugins::steps::UseOnStep;
+use crate::plugins::steps::{ClickStep, FinishStep, UseOnStep};
+use crate::plugins::{Continuation, Held};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -317,17 +317,14 @@ impl<L: ClientLink> Server<L> {
         }
         match action {
             DigAction::Start => self.start_digging(id, pos, face, sequence),
-            DigAction::Finish => {
-                let refused = self
-                    .players
-                    .get_mut(&id)
-                    .and_then(|player| player.dig_refused.take());
-                if refused == Some(pos) {
-                    self.refuse_block(id, pos, sequence);
-                } else {
-                    self.dig_block(id, false, pos, sequence);
-                }
-            }
+            DigAction::Finish => self.fire_deferred(
+                id,
+                Continuation::FinishDig(FinishStep {
+                    player: id,
+                    pos,
+                    sequence,
+                }),
+            ),
             DigAction::Cancel => {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
             }
@@ -439,32 +436,13 @@ impl<L: ClientLink> Server<L> {
         cursor: Vec3,
         sequence: i32,
     ) {
-        let Some(slot) = self.hand_slot_of(id, hand) else {
-            return;
-        };
-        let Some(player) = self.players.get(&id) else {
-            return;
-        };
-        let game_mode = player.game_mode;
-        let stack = player.inventory.get(slot).cloned();
-        let Some(clicked) = self.world.chunks.block(pos) else {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        };
-        let block_denied =
-            game_mode == GameMode::Spectator && !crate::containers::opens_menu(clicked);
-        self.ask_use_item_on(UseOnStep {
+        self.click_block(ClickStep {
             player: id,
             hand,
-            slot,
             pos,
             face,
             cursor,
             sequence,
-            stack,
-            clicked,
-            game_mode,
-            block_denied,
         });
     }
 

@@ -768,3 +768,43 @@ fn repeated_anti_cheat_triggers_ask_one_kick_at_a_time() {
     );
     assert_eq!(asked_for(&s.plugin, EventKind::PlayerKick).len(), 2);
 }
+
+#[test]
+fn a_login_waiting_behind_a_duplicate_kick_computes_its_refusal_once_the_kick_applies() {
+    let config = rspigot_core::config::GameConfig {
+        view_distance: 3,
+        chunk_workers: 2,
+        spawn_protection: 0,
+        max_players: 1,
+        ..rspigot_core::config::GameConfig::default()
+    };
+    let mut server = rspigot_core::server::Server::new(
+        config,
+        rspigot_core::config::LevelData::default(),
+        std::sync::Arc::new(NoStore),
+        std::sync::Arc::new(Floor),
+        rspigot_core::status::StatusBoard::new(1),
+    );
+    server.wait_for_spawn(std::time::Duration::from_secs(10));
+    let first = join(&mut server, "Alice");
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![
+            deciding(1, EventKind::PlayerKick),
+            observe(2, EventKind::PlayerLogin),
+        ],
+    );
+    let second = arrive(&mut server, "Alice");
+    let kick = last_asked(&plugin, EventKind::PlayerKick);
+    rule_on(&mut server, 1, kick.id, false, None);
+    let login = settled_for(&plugin, EventKind::PlayerLogin);
+    let EventPayload::PlayerLogin(PlayerLogin { result, .. }) = &login[0].payload else {
+        panic!("expected a login");
+    };
+    assert_eq!(*result, PlayerLoginResult::Allowed);
+    assert!(first.link.disconnected_with().is_some());
+    assert!(second.link.is_connected());
+    assert_eq!(server.players_online(), 1);
+}

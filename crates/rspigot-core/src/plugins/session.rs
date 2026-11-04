@@ -133,18 +133,32 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn ask_login(&mut self, arrival: Arrival<L>) {
         let id = arrival.profile.id;
+        let key = self.park_arrival(arrival);
+        self.fire_deferred(id, Continuation::Login(key));
+    }
+
+    pub(crate) fn login_at_head(&mut self, key: u64) -> Option<u64> {
+        let arrival = self.arrival(key)?;
+        let (profile, address) = (arrival.profile.clone(), arrival.address);
+        let refusal = self.refusal(&profile, address);
+        self.arrival_mut(key)?.refusal = refusal;
+        Some(key)
+    }
+
+    pub(crate) fn login_payload(&self, key: u64) -> Option<EventPayload> {
+        let arrival = self.arrival(key)?;
         let (result, kick_message) = arrival
             .refusal
             .as_ref()
             .map_or((PlayerLoginResult::Allowed, String::new()), |refusal| {
                 (refusal.result, legacy_of(&refusal.reason))
             });
-        let payload = EventPayload::PlayerLogin(PlayerLogin {
+        Some(EventPayload::PlayerLogin(PlayerLogin {
             address: arrival.address,
             hostname: String::new(),
             kick_message,
             player: PlayerSnapshot {
-                id,
+                id: arrival.profile.id,
                 name: arrival.profile.name.clone(),
                 entity_id: 0,
                 world: self.world.dimension.key.to_string(),
@@ -154,9 +168,7 @@ impl<L: ClientLink> Server<L> {
             },
             real_address: arrival.address,
             result,
-        });
-        let key = self.park_arrival(arrival);
-        self.fire(id, Continuation::Login(key), move |_| Some(payload));
+        }))
     }
 
     pub(super) fn finish_login(&mut self, key: u64, patch: PlayerLoginPatch) {

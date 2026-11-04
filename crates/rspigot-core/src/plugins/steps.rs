@@ -141,9 +141,35 @@ pub(crate) struct UseOnStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct ClickStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) pos: BlockPos,
+    pub(crate) face: Direction,
+    pub(crate) cursor: Vec3,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Aim {
+    pub(crate) pos: BlockPos,
+    pub(crate) face: Direction,
+    pub(crate) clicked: Vec3,
+}
+
+#[derive(Debug)]
 pub(crate) struct UseStep {
     pub(crate) player: PlayerId,
     pub(crate) hand: Hand,
+    pub(crate) sequence: i32,
+    pub(crate) rotation: Rotation,
+    pub(crate) aim: Option<Aim>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FinishStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
     pub(crate) sequence: i32,
 }
 
@@ -176,6 +202,12 @@ pub(crate) struct Launch {
     pub(crate) base: EntityBase,
     pub(crate) velocity: Vec3,
     pub(crate) yaw: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct SelectedDrop {
+    pub(crate) player: PlayerId,
+    pub(crate) all: bool,
 }
 
 #[derive(Debug)]
@@ -260,10 +292,13 @@ pub(crate) enum Continuation {
     HeldSlot(HeldStep),
     Swing(SwingStep),
     Swap(Box<SwapStep>),
+    ClickBlock(Box<ClickStep>),
     UseItemOn(Box<UseOnStep>),
     UseItem(UseStep),
     Dig(DigStep),
+    FinishDig(FinishStep),
     InteractEntity(Box<InteractStep>),
+    DropSelected(SelectedDrop),
     Drop(Box<DropStep>),
     ItemDamage(Box<WearStep>),
     TakeBook(Box<BookStep>),
@@ -299,9 +334,13 @@ impl Continuation {
             Self::HeldSlot(_) => EventKind::PlayerItemHeld,
             Self::Swing(_) => EventKind::PlayerAnimation,
             Self::Swap(_) => EventKind::PlayerSwapHandItems,
-            Self::UseItemOn(_) | Self::UseItem(_) | Self::Dig(_) => EventKind::PlayerInteract,
+            Self::ClickBlock(_)
+            | Self::UseItemOn(_)
+            | Self::UseItem(_)
+            | Self::Dig(_)
+            | Self::FinishDig(_) => EventKind::PlayerInteract,
             Self::InteractEntity(_) => EventKind::PlayerInteractAtEntity,
-            Self::Drop(_) => EventKind::PlayerDropItem,
+            Self::DropSelected(_) | Self::Drop(_) => EventKind::PlayerDropItem,
             Self::ItemDamage(_) => EventKind::PlayerItemDamage,
             Self::TakeBook(_) => EventKind::PlayerTakeLecternBook,
             Self::ExpCooldown(_) => EventKind::PlayerExpCooldownChange,

@@ -462,6 +462,14 @@ impl<L: ClientLink> Server<L> {
         self.arrivals.remove(&key)
     }
 
+    pub(crate) fn arrival(&self, key: u64) -> Option<&Arrival<L>> {
+        self.arrivals.get(&key)
+    }
+
+    pub(crate) fn arrival_mut(&mut self, key: u64) -> Option<&mut Arrival<L>> {
+        self.arrivals.get_mut(&key)
+    }
+
     fn join(
         &mut self,
         profile: GameProfile,
@@ -476,19 +484,17 @@ impl<L: ClientLink> Server<L> {
                 Component::translatable("multiplayer.disconnect.duplicate_login", Vec::new()),
             );
         }
-        let address = address.to_canonical();
-        let refusal = self.refusal(&profile, address);
         self.ask_login(Arrival {
             profile,
             settings,
             link,
-            address,
+            address: address.to_canonical(),
             session,
-            refusal,
+            refusal: None,
         });
     }
 
-    fn refusal(&mut self, profile: &GameProfile, address: IpAddr) -> Option<Refusal> {
+    pub(crate) fn refusal(&mut self, profile: &GameProfile, address: IpAddr) -> Option<Refusal> {
         let now = self.prune_expired_bans();
         if let Some(ban) = self.admin.profile_ban(profile, now) {
             let reason = ban_reason("multiplayer.disconnect.banned", ban);

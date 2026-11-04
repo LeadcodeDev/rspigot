@@ -581,3 +581,93 @@ fn a_drop_settled_after_the_player_left_does_not_duplicate_the_item() {
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert_eq!(s.server.items_on_ground(), 1);
 }
+
+#[test]
+fn a_finish_sent_before_its_left_click_settles_is_refused_by_a_cancel() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerInteract)]);
+    let alice = s.players[0].clone();
+    dig(&mut s, &alice, DigAction::Start, FLOOR);
+    let asked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    dig(&mut s, &alice, DigAction::Finish, FLOOR);
+    assert!(!block_is_air(&mut s, FLOOR));
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert!(!block_is_air(&mut s, FLOOR));
+}
+
+#[test]
+fn a_use_sent_before_its_block_click_settles_reads_the_click_memo() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerInteract)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice bow 1");
+    use_on(&mut s, &alice, FLOOR, 1);
+    let asked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::UseItem {
+            hand: Hand::Main,
+            sequence: 2,
+            rotation: Rotation::new(-90.0, 39.0),
+        },
+    );
+    assert_eq!(asked_for(&s.plugin, EventKind::PlayerInteract).len(), 1);
+    alice.link.take();
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        results(EventResult::Allow, EventResult::Deny),
+    );
+    assert_eq!(asked_for(&s.plugin, EventKind::PlayerInteract).len(), 1);
+    assert!(
+        alice
+            .link
+            .take()
+            .iter()
+            .any(|event| matches!(event, ClientEvent::BlockChangedAck(2)))
+    );
+}
+
+#[test]
+fn a_drop_sent_before_its_slot_change_settles_drops_from_the_new_slot() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerItemHeld)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 1");
+    console(&mut s, "give Alice gold_ingot 1");
+    send_input(&mut s.server, &alice, PlayerInput::HeldSlot(1));
+    let held = last_asked(&s.plugin, EventKind::PlayerItemHeld);
+    drop_one(&mut s, &alice);
+    rule_on(&mut s.server, 1, held.id, false, None);
+    let slots = inventory(&mut s, &alice);
+    assert_eq!(slots[0], Some(ItemSpec::of("minecraft:diamond", 1)));
+    assert_eq!(slots[1], None);
+    assert_eq!(s.server.items_on_ground(), 1);
+}
+
+#[test]
+fn a_block_click_sent_before_its_slot_change_settles_uses_the_new_slot() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PlayerItemHeld),
+            observe(2, EventKind::PlayerInteract),
+        ],
+    );
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice stone 1");
+    console(&mut s, "give Alice dirt 1");
+    send_input(&mut s.server, &alice, PlayerInput::HeldSlot(1));
+    let held = last_asked(&s.plugin, EventKind::PlayerItemHeld);
+    use_on(&mut s, &alice, FLOOR, 1);
+    rule_on(&mut s.server, 1, held.id, false, None);
+    let heard = settled_for(&s.plugin, EventKind::PlayerInteract);
+    assert_eq!(
+        interact_of(&heard[0]).item,
+        Some(ItemSpec::of("minecraft:dirt", 1))
+    );
+    match s.ask(Question::Block(ABOVE)) {
+        Answer::Block(state) => assert_eq!(state.kind, "minecraft:dirt"),
+        other => panic!("expected a block, got {other:?}"),
+    }
+}

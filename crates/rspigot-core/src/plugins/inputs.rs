@@ -39,8 +39,20 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn at_head(&self, then: Continuation) -> Option<Continuation> {
+    pub(crate) fn at_head(&mut self, then: Continuation) -> Option<Continuation> {
         match then {
+            Continuation::Login(key) => self.login_at_head(key).map(Continuation::Login),
+            Continuation::ClickBlock(step) => self
+                .click_block_at_head(*step)
+                .map(|step| Continuation::UseItemOn(Box::new(step))),
+            Continuation::UseItem(step) => self.use_item_at_head(step).map(Continuation::UseItem),
+            Continuation::DropSelected(step) => self
+                .drop_selected_at_head(step)
+                .map(|step| Continuation::Drop(Box::new(step))),
+            Continuation::FinishDig(step) => {
+                self.finish_digging(step);
+                None
+            }
             Continuation::Input(step) => {
                 let player = self.players.get(&step.player)?;
                 (player.last_input != step.state).then_some(Continuation::Input(step))
@@ -70,6 +82,10 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn head_payload(&self, then: &Continuation) -> Option<EventPayload> {
         Some(match then {
+            Continuation::Login(key) => return self.login_payload(*key),
+            Continuation::UseItemOn(step) => return self.use_on_payload(step),
+            Continuation::UseItem(step) => return self.use_payload(step),
+            Continuation::Drop(step) => return self.drop_payload_of(step),
             Continuation::Input(step) => EventPayload::PlayerInput(Pressed {
                 input: pressed(step.state),
                 player: self.snapshot_of(step.player)?,
