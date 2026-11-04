@@ -13,6 +13,7 @@ use crate::server::{Audience, Server};
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn world_initialised(&mut self) {
+        self.drain_startup();
         self.fire(
             Lane::World,
             Continuation::Notice(EventKind::WorldInit),
@@ -25,6 +26,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub fn world_loaded(&mut self) {
+        self.drain_startup();
         self.fire(
             Lane::World,
             Continuation::Notice(EventKind::WorldLoad),

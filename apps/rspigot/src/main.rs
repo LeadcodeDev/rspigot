@@ -137,18 +137,6 @@ fn main() -> anyhow::Result<()> {
     let (inbound, game_inbox) = crossbeam_channel::unbounded::<Inbound<NetLink>>();
     let (admin_updates, admin_inbox) = crossbeam_channel::unbounded();
     files::spawn_admin_writer(args.root.clone(), admin_inbox);
-    let mut server: Server<NetLink> = Server::new(
-        game_config,
-        level,
-        Arc::clone(&store),
-        generator,
-        status.clone(),
-    )
-    .with_admin_sink(admin_updates)
-    .with_player_store(Arc::clone(&store));
-    let spawn_chunks = server.wait_for_spawn(Duration::from_secs(60));
-    tracing::info!("Preparing spawn area: {spawn_chunks} chunks");
-    server.world_loaded();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(files.spigot.int("settings.netty-threads", 4).clamp(1, 64) as usize)
         .thread_name("netty-worker")
@@ -159,22 +147,38 @@ fn main() -> anyhow::Result<()> {
         .block_on(tokio::net::TcpListener::bind(plugin_address))
         .with_context(|| format!("binding the plugin port {plugin_address}"))?;
     let (stop, stopped) = tokio::sync::watch::channel(false);
-    let network = runtime.spawn(rspigot_network::run(
-        network_config,
-        verifier,
-        status,
-        inbound.clone(),
-        stopped.clone(),
-    ));
     let plugins = runtime.spawn({
-        let serve =
-            rspigot_plugins::serve(plugin_listener, plugin_host.token, inbound.clone(), stopped);
+        let serve = rspigot_plugins::serve(
+            plugin_listener,
+            plugin_host.token,
+            inbound.clone(),
+            stopped.clone(),
+        );
         async move {
             if let Err(error) = serve.await {
                 tracing::error!("The plugin host stopped: {error}");
             }
         }
     });
+    let mut server: Server<NetLink> = Server::new(
+        game_config,
+        level,
+        Arc::clone(&store),
+        generator,
+        status.clone(),
+    )
+    .with_admin_sink(admin_updates)
+    .with_player_store(Arc::clone(&store))
+    .with_startup_inbox(game_inbox.clone());
+    let spawn_chunks = server.start(Duration::from_secs(60));
+    tracing::info!("Preparing spawn area: {spawn_chunks} chunks");
+    let network = runtime.spawn(rspigot_network::run(
+        network_config,
+        verifier,
+        status,
+        inbound.clone(),
+        stopped,
+    ));
     let signal_inbox = inbound.clone();
     runtime.spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {

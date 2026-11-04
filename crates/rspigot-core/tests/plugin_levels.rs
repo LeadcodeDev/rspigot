@@ -298,3 +298,45 @@ fn a_weather_command_sent_while_another_waits_reads_the_sky_when_its_turn_comes(
     let state = world_state(&mut s);
     assert!(!state.raining && !state.thundering);
 }
+
+#[test]
+fn a_plugin_connected_before_startup_hears_the_startup_events() {
+    let (sender, inbox) = crossbeam_channel::unbounded::<Inbound<Link>>();
+    let mailbox = Mailbox::default();
+    sender
+        .send(Inbound::PluginConnected {
+            connection: 1,
+            intro: rspigot_core::plugins::PluginIntro {
+                name: "early".to_owned(),
+                version: "1.0.0".to_owned(),
+                handlers: vec![
+                    observe(1, EventKind::WorldInit),
+                    observe(2, EventKind::ChunkLoad),
+                    observe(3, EventKind::WorldLoad),
+                ],
+            },
+            outbox: Box::new(mailbox.clone()),
+        })
+        .expect("open");
+    let mut server = rspigot_core::server::Server::new(
+        rspigot_core::config::GameConfig {
+            view_distance: 3,
+            chunk_workers: 2,
+            spawn_protection: 0,
+            ..rspigot_core::config::GameConfig::default()
+        },
+        rspigot_core::config::LevelData::default(),
+        std::sync::Arc::new(NoStore),
+        std::sync::Arc::new(Floor),
+        rspigot_core::status::StatusBoard::new(20),
+    )
+    .with_startup_inbox(inbox);
+    server.start(std::time::Duration::from_secs(10));
+    let kinds: Vec<EventKind> = fired(&mailbox)
+        .into_iter()
+        .map(|fired| fired.payload.kind())
+        .collect();
+    assert_eq!(kinds.first(), Some(&EventKind::WorldInit));
+    assert_eq!(kinds.last(), Some(&EventKind::WorldLoad));
+    assert!(kinds.contains(&EventKind::ChunkLoad));
+}

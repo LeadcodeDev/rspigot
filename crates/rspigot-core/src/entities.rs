@@ -441,6 +441,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_chunk_events(&mut self) {
+        self.drain_startup();
         let events = self.world.chunks.take_events();
         for (pos, generation) in events.entities_saved {
             if self

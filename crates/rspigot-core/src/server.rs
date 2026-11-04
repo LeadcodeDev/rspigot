@@ -112,6 +112,7 @@ pub struct Server<L> {
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
     arrivals: FxHashMap<u64, Arrival<L>>,
+    startup: Option<Receiver<Inbound<L>>>,
     arrival_counter: u64,
     login_counter: u64,
     clock: fn() -> SystemTime,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
             arrivals: FxHashMap::default(),
+            startup: None,
             arrival_counter: 0,
             login_counter: 0,
             clock: SystemTime::now,
@@ -182,7 +184,6 @@ impl<L: ClientLink> Server<L> {
             tps: TpsMeter::new(),
             config,
         };
-        server.world_initialised();
         let center = spawn.chunk();
         let radius = server.config.spawn_chunk_radius;
         for dx in -radius..=radius {
@@ -205,6 +206,29 @@ impl<L: ClientLink> Server<L> {
     pub fn with_admin_sink(mut self, sink: Sender<AdminLists>) -> Self {
         self.admin_sink = Some(sink);
         self
+    }
+
+    pub fn with_startup_inbox(mut self, inbox: Receiver<Inbound<L>>) -> Self {
+        self.startup = Some(inbox);
+        self
+    }
+
+    pub(crate) fn drain_startup(&mut self) {
+        let Some(inbox) = self.startup.take() else {
+            return;
+        };
+        let waiting: Vec<Inbound<L>> = queued(&inbox).collect();
+        for message in waiting {
+            self.handle(message);
+        }
+        self.startup = Some(inbox);
+    }
+
+    pub fn start(&mut self, timeout: Duration) -> usize {
+        self.world_initialised();
+        let loaded = self.wait_for_spawn(timeout);
+        self.world_loaded();
+        loaded
     }
 
     pub fn with_clock(mut self, clock: fn() -> SystemTime) -> Self {
@@ -246,6 +270,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub fn run(mut self, inbound: &Receiver<Inbound<L>>) -> LevelData {
+        self.startup = None;
         let tick_length = Duration::from_millis(50);
         let results = self.workers.results().clone();
         let mut next_tick = Instant::now();
