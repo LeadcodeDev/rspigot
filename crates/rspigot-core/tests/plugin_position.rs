@@ -711,3 +711,45 @@ fn a_respawn_nobody_listens_to_does_not_revive_a_player_whose_death_waits() {
     send_input(&mut s.server, &alice, PlayerInput::Respawn);
     assert_eq!(s.server.player_is_dead(alice.id), Some(false));
 }
+
+#[test]
+fn the_new_experience_of_a_death_is_given_at_respawn_and_its_dropped_experience_spawns_orbs() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+    let alice = s.players[0].clone();
+    s.act(to(&alice, PlayerOrder::GiveLevels(30)));
+    kill(&mut s, &alice);
+    let (event, death) = death_of(&s);
+    assert!(death.dropped_exp > 0);
+    rule_on(
+        &mut s.server,
+        1,
+        event,
+        false,
+        Some(EventPatch::PlayerDeath(PlayerDeathPatch {
+            new_exp: Some(50),
+            ..PlayerDeathPatch::default()
+        })),
+    );
+    assert!(
+        !s.server
+            .entities_of(rspigot_entities::EntityKind::ExperienceOrb)
+            .is_empty()
+    );
+    send_input(&mut s.server, &alice, PlayerInput::Respawn);
+    let (level, _, total) = s
+        .server
+        .player_experience(alice.id)
+        .expect("Alice is online");
+    assert_eq!((level, total), (4, 50));
+}
+
+#[test]
+fn a_plugin_teleport_settled_after_its_player_died_does_not_move_them() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerTeleport)]);
+    let alice = s.players[0].clone();
+    s.act(to(&alice, PlayerOrder::Teleport(at(9.5, 0.5))));
+    let asked = last_asked(&s.plugin, EventKind::PlayerTeleport);
+    kill(&mut s, &alice);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(s.server.player_location(alice.id), Some(SPAWN));
+}

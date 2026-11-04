@@ -9,9 +9,9 @@ use rspigot_core::console::console_text;
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput, PreLoginVerdict};
 use rspigot_core::plugins::events::{
     AsyncPlayerPreLogin, AsyncPlayerPreLoginPatch, AsyncPlayerPreLoginResult, MainHand,
-    PlayerChangedMainHand, PlayerDeathPatch, PlayerJoin, PlayerJoinPatch, PlayerKick,
-    PlayerKickPatch, PlayerLeave, PlayerLeavePatch, PlayerLocaleChange, PlayerLogin,
-    PlayerLoginPatch, PlayerLoginResult,
+    PlayerChangedMainHand, PlayerCommandSend, PlayerCommandSendPatch, PlayerDeathPatch, PlayerJoin,
+    PlayerJoinPatch, PlayerKick, PlayerKickPatch, PlayerLeave, PlayerLeavePatch,
+    PlayerLocaleChange, PlayerLogin, PlayerLoginPatch, PlayerLoginResult,
 };
 use rspigot_core::plugins::{EventKind, EventPatch, EventPayload, Phase, PlayerOrder};
 use rspigot_core::ports::ClientLink;
@@ -807,4 +807,91 @@ fn a_login_waiting_behind_a_duplicate_kick_computes_its_refusal_once_the_kick_ap
     assert!(first.link.disconnected_with().is_some());
     assert!(second.link.is_connected());
     assert_eq!(server.players_online(), 1);
+}
+
+fn command_roots(player: &Player) -> Vec<Vec<String>> {
+    player
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::Commands(tree) => Some(
+                tree.nodes[tree.root]
+                    .children
+                    .iter()
+                    .filter_map(|child| match &tree.nodes[*child].kind {
+                        rspigot_core::commands::CommandNodeKind::Literal(name) => {
+                            Some(name.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_command_send_decider_prunes_the_roots_and_fires_again_at_operator_changes_and_respawn() {
+    let mut s = scene_with(&[], vec![deciding(1, EventKind::PlayerCommandSend)]);
+    let alice = join(&mut s.server, "Alice");
+    let asked = last_asked(&s.plugin, EventKind::PlayerCommandSend);
+    let EventPayload::PlayerCommandSend(PlayerCommandSend { commands, .. }) = &asked.payload else {
+        panic!("expected a command send");
+    };
+    assert!(commands.contains(&"help".to_owned()));
+    assert!(commands.len() > 1);
+    alice.link.take();
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
+            commands: Some(vec!["help".to_owned()]),
+        })),
+    );
+    assert_eq!(command_roots(&alice), [vec!["help".to_owned()]]);
+    let fires = |s: &Scene| asked_for(&s.plugin, EventKind::PlayerCommandSend).len();
+    for (line, expected) in [("op Alice", 2), ("deop Alice", 3)] {
+        s.server.handle(Inbound::Console(line.to_owned()));
+        s.server.deliver();
+        assert_eq!(fires(&s), expected, "{line}");
+        let asked = last_asked(&s.plugin, EventKind::PlayerCommandSend);
+        rule_on(&mut s.server, 1, asked.id, false, None);
+    }
+    s.act(to(&alice, PlayerOrder::SetHealth(0.0)));
+    assert_eq!(s.server.player_is_dead(alice.id), Some(true));
+    send_input(&mut s.server, &alice, PlayerInput::Respawn);
+    assert_eq!(s.server.player_is_dead(alice.id), Some(false));
+    assert_eq!(fires(&s), 4);
+}
+
+#[test]
+fn a_kick_settled_after_its_client_went_away_does_not_disconnect_twice() {
+    let mut s = scene_with(
+        &["Alice", "Bob"],
+        vec![
+            deciding(1, EventKind::PlayerKick),
+            observe(2, EventKind::PlayerLeave),
+        ],
+    );
+    let alice = s.players[0].clone();
+    s.act(to(&alice, PlayerOrder::Kick("Bye".into())));
+    let kick = last_asked(&s.plugin, EventKind::PlayerKick);
+    alice.link.disconnect(Component::text("gone"));
+    s.tick(1);
+    assert_eq!(s.server.players_online(), 1);
+    assert_eq!(
+        alice.link.disconnected_with(),
+        Some(Component::text("gone"))
+    );
+    assert_eq!(settled_for(&s.plugin, EventKind::PlayerLeave).len(), 1);
+    rule_on(&mut s.server, 1, kick.id, false, None);
+    assert_eq!(
+        alice.link.disconnected_with(),
+        Some(Component::text("gone"))
+    );
+    assert_eq!(settled_for(&s.plugin, EventKind::PlayerLeave).len(), 1);
 }

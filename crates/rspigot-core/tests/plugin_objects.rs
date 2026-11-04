@@ -887,3 +887,49 @@ fn a_denied_click_with_a_door_in_hand_resends_the_two_blocks_it_would_fill() {
     assert!(updates.contains(&ABOVE), "{updates:?}");
     assert!(block_is_air(&mut s, ABOVE));
 }
+
+#[test]
+fn a_wear_whose_slot_changed_while_it_waited_is_dropped() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerItemDamage)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice stone_sword 1");
+    let cow = cow_near(&mut s);
+    send_input(&mut s.server, &alice, PlayerInput::Attack(cow));
+    let asked = last_asked(&s.plugin, EventKind::PlayerItemDamage);
+    console(&mut s, "clear Alice");
+    console(&mut s, "give Alice iron_sword 1");
+    let fresh = damage_of(&mut s, &alice);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(damage_of(&mut s, &alice), fresh);
+    assert_eq!(
+        inventory(&mut s, &alice)[0]
+            .as_ref()
+            .map(|item| item.key.clone()),
+        Some("minecraft:iron_sword".to_owned())
+    );
+}
+
+#[test]
+fn a_book_take_whose_menu_closed_while_it_waited_leaves_the_book() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![deciding(1, EventKind::PlayerTakeLecternBook)],
+    );
+    let alice = s.players[0].clone();
+    let window = lectern_with_a_book(&mut s, &alice);
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::ContainerButtonClick { window, button: 3 },
+    );
+    let asked = last_asked(&s.plugin, EventKind::PlayerTakeLecternBook);
+    send_input(&mut s.server, &alice, PlayerInput::ContainerClose(window));
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert!(
+        !inventory(&mut s, &alice)
+            .iter()
+            .flatten()
+            .any(|item| item.key == "minecraft:writable_book")
+    );
+    assert_eq!(s.server.items_on_ground(), 0);
+}

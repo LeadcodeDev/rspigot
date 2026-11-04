@@ -187,3 +187,42 @@ fn a_busy_lane_without_an_arrow_listener_still_picks_up_arrows() {
     s.server.deliver();
     assert_eq!(arrows_held(&mut s, &alice), 1);
 }
+
+#[test]
+fn a_shear_whose_shears_left_the_hand_while_it_waited_keeps_the_wool() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerShearEntity)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice shears 1");
+    let sheep = summoned(&mut s, "summon sheep 1.5 64 0.5 {NoAI:1b}", Kind::Sheep);
+    shear(&mut s, &alice, sheep);
+    let asked = last_asked(&s.plugin, EventKind::PlayerShearEntity);
+    console(&mut s, "clear Alice");
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(wool_on_the_ground(&s), 0);
+}
+
+#[test]
+fn an_arrow_taken_by_another_player_while_the_pickup_waited_is_not_given_twice() {
+    let mut s = scene_with(
+        &["Alice", "Bob"],
+        vec![deciding(1, EventKind::PlayerPickupArrow)],
+    );
+    let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
+    landed_arrow(&mut s);
+    walk_to(&mut s, &alice, Vec3::new(2.5, 64.0, 0.5));
+    walk_to(&mut s, &bob, Vec3::new(2.5, 64.0, 0.5));
+    s.server.tick();
+    s.server.deliver();
+    let asked = asked_for(&s.plugin, EventKind::PlayerPickupArrow);
+    assert_eq!(asked.len(), 2);
+    let picker = |fired: &Fired| match &fired.payload {
+        EventPayload::PlayerPickupArrow(PlayerPickupArrow { player, .. }) => player.id,
+        other => panic!("expected an arrow pickup, got {other:?}"),
+    };
+    let (bobs, alices): (Vec<&Fired>, Vec<&Fired>) =
+        asked.iter().partition(|fired| picker(fired) == bob.id);
+    rule_on(&mut s.server, 1, bobs[0].id, false, None);
+    rule_on(&mut s.server, 1, alices[0].id, false, None);
+    assert_eq!(arrows_held(&mut s, &bob), 1);
+    assert_eq!(arrows_held(&mut s, &alice), 0);
+}
