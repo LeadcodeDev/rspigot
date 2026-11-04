@@ -63,6 +63,8 @@ PlayerItemBreak = "after the PlayerItemDamage of the same wear"
 PlayerExpCooldownChange = "PICKUP_ORB only, as no plugin order sets the cooldown; a negative cooldown blocks the pickup for good, as in Spigot"
 PlayerExpChange = "orb pickups only; the amount is the orb value since there is no Mending yet"
 PlayerLevelChange = "compared once per tick at the experience sync, from any cause, never at respawn"
+PlayerPickupArrow = "arrows that allow pickup only; asked only when a deciding handler exists, once per arrow at a time; the item handle never enters the world"
+PlayerShearEntity = "sheep only; saddles are sheared without the event, as in Spigot"
 
 [states]
 ready = [
@@ -78,10 +80,10 @@ ready = [
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
-    "PlayerPickupArrow", "PlayerShearEntity", "PluginDisable", "PluginEnable", "PrepareItemCraft",
-    "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand", "ServerListPing",
-    "ServerLoad", "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete",
-    "ThunderChange", "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
+    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
+    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
+    "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete", "ThunderChange", "TimeSkip",
+    "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
 ]
 
 [states.blocked]

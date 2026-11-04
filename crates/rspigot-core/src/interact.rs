@@ -16,6 +16,9 @@ use rspigot_items::{EquipmentSlot, ItemKind};
 use crate::events::{Animation, ClientEvent, EquipmentSlot as WireSlot, Hand};
 use crate::loot::{self, LootContext};
 use crate::mob_actions::new_mob;
+use crate::plugins::events::{EquipmentSlot as Slot, PlayerShearEntity};
+use crate::plugins::steps::ShearStep;
+use crate::plugins::{Continuation, EventPayload, Lane, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -554,6 +557,66 @@ impl<L: ClientLink> Server<L> {
         if species::is_sheared(&entity.base) || entity.is_baby() {
             return Interaction::Consume;
         }
+        let Some(stack) = self.held(id, hand) else {
+            return Interaction::Pass;
+        };
+        let item = spec_of(&stack);
+        let mut then = Continuation::Shear(Box::new(ShearStep {
+            player: id,
+            target,
+            hand,
+            stack,
+            parked: false,
+        }));
+        let parked = self.parks(Lane::Player(id), &then);
+        if let Continuation::Shear(step) = &mut then {
+            step.parked = parked;
+        }
+        self.fire(id, then, move |server| {
+            Some(EventPayload::PlayerShearEntity(PlayerShearEntity {
+                entity: server.entity_view(target)?,
+                hand: match hand {
+                    Hand::Main => Slot::Hand,
+                    Hand::Off => Slot::OffHand,
+                },
+                item,
+                player: server.snapshot_of(id)?,
+            }))
+        });
+        if parked {
+            Interaction::Consume
+        } else {
+            Interaction::ServerOnly
+        }
+    }
+
+    pub(crate) fn finish_shear(&mut self, step: ShearStep) {
+        let ready = self.entities.store.get(step.target).is_some_and(|entity| {
+            !entity.base.is_removed()
+                && !species::is_sheared(&entity.base)
+                && !entity.is_baby()
+                && entity
+                    .living()
+                    .is_some_and(|living| !living::is_dead_or_dying(&entity.base, living))
+        });
+        let able = self
+            .players
+            .get(&step.player)
+            .is_some_and(|player| !player.vitals.is_dead());
+        if !ready || !able || self.held(step.player, step.hand).as_ref() != Some(&step.stack) {
+            return;
+        }
+        self.shear_now(step.player, step.target, step.hand);
+        if step.parked {
+            self.player_swing(step.player, step.hand, true);
+            self.refresh_hands(step.player);
+        }
+    }
+
+    fn shear_now(&mut self, id: PlayerId, target: EntityId, hand: Hand) {
+        let Some(entity) = self.entities.store.get(target) else {
+            return;
+        };
         let position = entity.base.position;
         let facts = crate::mobs::loot_facts_of(entity);
         self.play_sound(
@@ -596,7 +659,6 @@ impl<L: ClientLink> Server<L> {
             species::set_sheared(&mut entity.base, true);
         }
         self.hurt_held(id, hand, 1);
-        Interaction::ServerOnly
     }
 
     fn animal_interact(

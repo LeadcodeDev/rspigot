@@ -223,6 +223,22 @@ pub(crate) struct OrbStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct ArrowStep {
+    pub(crate) player: PlayerId,
+    pub(crate) collector: EntityId,
+    pub(crate) arrow: EntityId,
+}
+
+#[derive(Debug)]
+pub(crate) struct ShearStep {
+    pub(crate) player: PlayerId,
+    pub(crate) target: EntityId,
+    pub(crate) hand: Hand,
+    pub(crate) stack: ItemStack,
+    pub(crate) parked: bool,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -256,6 +272,8 @@ pub(crate) enum Continuation {
     TakeBook(Box<BookStep>),
     ExpCooldown(CooldownStep),
     ExpChange(OrbStep),
+    PickupArrow(ArrowStep),
+    Shear(Box<ShearStep>),
 }
 
 impl Continuation {
@@ -291,6 +309,8 @@ impl Continuation {
             Self::TakeBook(_) => EventKind::PlayerTakeLecternBook,
             Self::ExpCooldown(_) => EventKind::PlayerExpCooldownChange,
             Self::ExpChange(_) => EventKind::PlayerExpChange,
+            Self::PickupArrow(_) => EventKind::PlayerPickupArrow,
+            Self::Shear(_) => EventKind::PlayerShearEntity,
         }
     }
 
@@ -318,12 +338,18 @@ impl Continuation {
             (Self::ItemDamage(one), Self::ItemDamage(other)) => {
                 one.player == other.player && one.slot == other.slot
             }
+            (Self::PickupArrow(one), Self::PickupArrow(other)) => {
+                one.player == other.player && one.arrow == other.arrow
+            }
             _ => false,
         }
     }
 
     pub(crate) const fn hot(&self) -> bool {
-        matches!(self, Self::Velocity(_) | Self::ItemDamage(_))
+        matches!(
+            self,
+            Self::Velocity(_) | Self::ItemDamage(_) | Self::PickupArrow(_)
+        )
     }
 }
 

@@ -14,6 +14,9 @@ use rspigot_items::{EquipmentSlot, ItemKind};
 
 use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
+use crate::plugins::events::PlayerPickupArrow;
+use crate::plugins::steps::ArrowStep;
+use crate::plugins::{Access, Continuation, EntityView, EventKind, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -601,21 +604,103 @@ impl<L: ClientLink> Server<L> {
         };
         let pickup = state.pickup;
         let item = state.item.clone();
-        let taken = match pickup {
+        match pickup {
             Pickup::Allowed => {
-                let Some(player) = self.players.get_mut(&player_id) else {
-                    return;
-                };
-                let outcome = player
-                    .inventory
-                    .insert(item.item, 1, item.item.max_stack_size());
-                outcome.remaining == 0
+                if self.can_hold(player_id, &item) {
+                    self.ask_arrow_pickup(player_id, collector, id);
+                }
             }
-            Pickup::CreativeOnly => creative,
-            Pickup::Disallowed => false,
+            Pickup::CreativeOnly if creative => self.take_arrow(player_id, collector, id, false),
+            Pickup::CreativeOnly | Pickup::Disallowed => {}
+        }
+    }
+
+    fn can_hold(&self, player: PlayerId, item: &ItemStack) -> bool {
+        self.players.get(&player).is_some_and(|player| {
+            let mut trial = player.inventory.clone();
+            trial
+                .insert(item.item, 1, item.item.max_stack_size())
+                .remaining
+                == 0
+        })
+    }
+
+    fn ask_arrow_pickup(&mut self, player: PlayerId, collector: EntityId, arrow: EntityId) {
+        let listened = self
+            .plugins
+            .listens(EventKind::PlayerPickupArrow, Access::Observe)
+            || self
+                .plugins
+                .listens(EventKind::PlayerPickupArrow, Access::Decide);
+        let item = if listened {
+            let base = self.new_entity_base(Kind::Item);
+            Some((base.id, base.uuid))
+        } else {
+            None
         };
-        if !taken {
+        let step = ArrowStep {
+            player,
+            collector,
+            arrow,
+        };
+        self.fire(player, Continuation::PickupArrow(step), move |server| {
+            let arrow = server.entity_view(arrow)?;
+            let (id, uuid) = item?;
+            Some(EventPayload::PlayerPickupArrow(PlayerPickupArrow {
+                item: EntityView {
+                    id,
+                    uuid,
+                    kind: Kind::Item.name().to_owned(),
+                    position: arrow.position,
+                },
+                arrow,
+                player: server.snapshot_of(player)?,
+                remaining: 0,
+            }))
+        });
+    }
+
+    pub(crate) fn finish_arrow_pickup(&mut self, step: ArrowStep) {
+        let Some(Entity {
+            base,
+            state: EntityState::Arrow(state),
+            ..
+        }) = self.entities.store.get(step.arrow)
+        else {
             return;
+        };
+        let lying = (arrow::in_ground(base) || base.no_physics)
+            && state.shake_time <= 0
+            && state.pickup == Pickup::Allowed
+            && !base.is_removed();
+        let item = state.item.clone();
+        let able = self.players.get(&step.player).is_some_and(|player| {
+            !player.vitals.is_dead() && player.game_mode != GameMode::Spectator
+        });
+        if lying && able && self.can_hold(step.player, &item) {
+            self.take_arrow(step.player, step.collector, step.arrow, true);
+        }
+    }
+
+    fn take_arrow(
+        &mut self,
+        player_id: PlayerId,
+        collector: EntityId,
+        id: EntityId,
+        allowed: bool,
+    ) {
+        if allowed {
+            let Some(EntityState::Arrow(state)) = self.entities.store.get(id).map(|e| &e.state)
+            else {
+                return;
+            };
+            let item = state.item.clone();
+            let Some(player) = self.players.get_mut(&player_id) else {
+                return;
+            };
+            player
+                .inventory
+                .insert(item.item, 1, item.item.max_stack_size());
         }
         let event = ClientEvent::ItemPickup {
             collected: id,
@@ -626,7 +711,7 @@ impl<L: ClientLink> Server<L> {
             player.link.send(event.clone());
         }
         self.push(Audience::TrackersExcept(id, player_id), event);
-        if pickup == Pickup::Allowed {
+        if allowed {
             self.sync_inventory(player_id);
             self.broadcast_held_item(player_id);
         }

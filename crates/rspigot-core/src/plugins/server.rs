@@ -247,8 +247,7 @@ impl<L: ClientLink> Server<L> {
         {
             return;
         }
-        let deciding =
-            !matches!(then, Continuation::Notice(_)) && self.plugins.listens(kind, Access::Decide);
+        let deciding = self.deciding(&then);
         if !deciding && !self.decisions.busy(lane) {
             let observed = if self.plugins.listens(kind, Access::Observe) {
                 describe(self)
@@ -303,6 +302,15 @@ impl<L: ClientLink> Server<L> {
             event,
             Pending::new(lane, payload, asked, deadline, until, then),
         );
+    }
+
+    fn deciding(&self, then: &Continuation) -> bool {
+        !matches!(then, Continuation::Notice(_))
+            && self.plugins.listens(then.kind(), Access::Decide)
+    }
+
+    pub(crate) fn parks(&self, lane: Lane, then: &Continuation) -> bool {
+        self.deciding(then) || self.decisions.busy(lane)
     }
 
     pub(crate) fn hold_or_apply(&mut self, id: PlayerId, held: Held) {
@@ -547,6 +555,15 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::ExpChange(step) => {
                 self.finish_exp_change(step, patch_of!(patch, PlayerExpChange));
+                Vec::new()
+            }
+            Continuation::PickupArrow(_) | Continuation::Shear(_) if cancelled => Vec::new(),
+            Continuation::PickupArrow(step) => {
+                self.finish_arrow_pickup(step);
+                Vec::new()
+            }
+            Continuation::Shear(step) => {
+                self.finish_shear(*step);
                 Vec::new()
             }
             Continuation::CommandSend(id) => {
