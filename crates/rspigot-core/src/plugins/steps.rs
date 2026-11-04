@@ -1,5 +1,4 @@
 use crossbeam_channel::Sender;
-use rspigot_domain::entity::EntityBase;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
@@ -199,7 +198,7 @@ pub(crate) enum DropSource {
 
 #[derive(Debug)]
 pub(crate) struct Launch {
-    pub(crate) base: EntityBase,
+    pub(crate) position: Vec3,
     pub(crate) velocity: Vec3,
     pub(crate) yaw: f32,
 }

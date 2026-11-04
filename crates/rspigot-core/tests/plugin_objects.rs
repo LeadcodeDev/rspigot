@@ -3,9 +3,9 @@ mod common;
 use common::*;
 use rspigot_core::events::{ClientEvent, DigAction, Direction, Hand, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
-    Action, EventResult, Face, PlayerDropItem, PlayerInteract, PlayerInteractAtEntity,
-    PlayerInteractPatch, PlayerItemBreak, PlayerItemDamage, PlayerItemDamagePatch,
-    PlayerTakeLecternBook,
+    Action, EventResult, Face, PlayerDropItem, PlayerDropItemPatch, PlayerInteract,
+    PlayerInteractAtEntity, PlayerInteractPatch, PlayerItemBreak, PlayerItemDamage,
+    PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use rspigot_core::plugins::{
     Answer, EventKind, EventPatch, EventPayload, ItemSpec, Phase, Question,
@@ -342,16 +342,16 @@ fn drop_one(s: &mut Scene, player: &Player) {
 }
 
 #[test]
-fn a_cancelled_drop_keeps_the_item_and_an_allowed_one_spawns_the_announced_entity() {
+fn a_cancelled_drop_keeps_the_item_and_an_allowed_one_spawns_its_stack() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDropItem)]);
     let alice = s.players[0].clone();
     console(&mut s, "give Alice diamond 3");
     drop_one(&mut s, &alice);
     let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
-    let EventPayload::PlayerDropItem(PlayerDropItem { item_drop, .. }) = &asked.payload else {
+    let EventPayload::PlayerDropItem(PlayerDropItem { item, .. }) = &asked.payload else {
         panic!("expected a drop");
     };
-    assert_eq!(item_drop.kind, "minecraft:item");
+    assert_eq!(*item, ItemSpec::of("minecraft:diamond", 1));
     assert_eq!(s.server.items_on_ground(), 0);
     rule_on(&mut s.server, 1, asked.id, true, None);
     assert_eq!(s.server.items_on_ground(), 0);
@@ -361,18 +361,39 @@ fn a_cancelled_drop_keeps_the_item_and_an_allowed_one_spawns_the_announced_entit
     );
     drop_one(&mut s, &alice);
     let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
-    let EventPayload::PlayerDropItem(PlayerDropItem { item_drop, .. }) = &asked.payload else {
-        panic!("expected a drop");
-    };
-    let announced = item_drop.id;
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert_eq!(s.server.items_on_ground(), 1);
-    assert!(
-        s.server
-            .entities_of(Kind::Item)
-            .iter()
-            .any(|item| item.id == announced)
+    assert_eq!(
+        inventory(&mut s, &alice)[0],
+        Some(ItemSpec::of("minecraft:diamond", 2))
     );
+}
+
+#[test]
+fn a_changed_drop_stack_is_the_one_thrown() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDropItem)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 3");
+    let entities_before = s.server.entities_of(Kind::Item).len();
+    drop_one(&mut s, &alice);
+    assert_eq!(s.server.entities_of(Kind::Item).len(), entities_before);
+    let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::PlayerDropItem(PlayerDropItemPatch {
+            item: Some(ItemSpec::of("minecraft:gold_ingot", 2)),
+        })),
+    );
+    let thrown: Vec<String> = s
+        .server
+        .ground_items()
+        .iter()
+        .filter_map(|(_, stack)| Some(format!("{} {}", stack.item.kind()?.name(), stack.count)))
+        .collect();
+    assert_eq!(thrown, ["minecraft:gold_ingot 2"]);
     assert_eq!(
         inventory(&mut s, &alice)[0],
         Some(ItemSpec::of("minecraft:diamond", 2))

@@ -16,7 +16,7 @@ use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
 use crate::plugins::events::PlayerPickupArrow;
 use crate::plugins::steps::ArrowStep;
-use crate::plugins::{Access, Continuation, EntityView, EventKind, EventPayload};
+use crate::plugins::{Continuation, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -626,34 +626,19 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn ask_arrow_pickup(&mut self, player: PlayerId, collector: EntityId, arrow: EntityId) {
-        let listened = self
-            .plugins
-            .listens(EventKind::PlayerPickupArrow, Access::Observe)
-            || self
-                .plugins
-                .listens(EventKind::PlayerPickupArrow, Access::Decide);
-        let item = if listened {
-            let base = self.new_entity_base(Kind::Item);
-            Some((base.id, base.uuid))
-        } else {
-            None
-        };
         let step = ArrowStep {
             player,
             collector,
             arrow,
         };
         self.fire(player, Continuation::PickupArrow(step), move |server| {
-            let arrow = server.entity_view(arrow)?;
-            let (id, uuid) = item?;
+            let entity = server.entities.store.get(arrow)?;
+            let EntityState::Arrow(state) = &entity.state else {
+                return None;
+            };
             Some(EventPayload::PlayerPickupArrow(PlayerPickupArrow {
-                item: EntityView {
-                    id,
-                    uuid,
-                    kind: Kind::Item.name().to_owned(),
-                    position: arrow.position,
-                },
-                arrow,
+                arrow: server.entity_view(arrow)?,
+                item: spec_of(&state.item),
                 player: server.snapshot_of(player)?,
                 remaining: 0,
             }))

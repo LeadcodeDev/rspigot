@@ -565,7 +565,7 @@ impl<L: ClientLink> Server<L> {
                 Vec::new()
             }
             Continuation::Drop(step) => {
-                self.finish_drop(*step, cancelled);
+                self.finish_drop(*step, cancelled, patch_of!(patch, PlayerDropItem));
                 Vec::new()
             }
             Continuation::ItemDamage(step) => {

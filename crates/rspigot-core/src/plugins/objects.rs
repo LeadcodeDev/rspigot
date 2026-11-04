@@ -5,13 +5,12 @@ use rspigot_domain::entity::reward::{damage_value, max_damage, set_damage_value}
 use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT, same_item_same_components};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
-use rspigot_entities::EntityKind as Kind;
 
 use crate::events::{Animation, ClientEvent, Direction, EntityStatus, EquipmentSlot, Hand};
 use crate::plugins::decisions::Continuation;
 use crate::plugins::events::{
-    Action, EquipmentSlot as Slot, EventResult, Face, PlayerDropItem, PlayerInteract,
-    PlayerInteractAtEntity, PlayerInteractPatch, PlayerItemBreak, PlayerItemDamage,
+    Action, EquipmentSlot as Slot, EventResult, Face, PlayerDropItem, PlayerDropItemPatch,
+    PlayerInteract, PlayerInteractAtEntity, PlayerInteractPatch, PlayerItemBreak, PlayerItemDamage,
     PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use crate::plugins::steps::{
@@ -19,7 +18,7 @@ use crate::plugins::steps::{
     UseOnStep, UseStep, WearRequest, WearStep,
 };
 use crate::plugins::targets::{Punched, direction_of};
-use crate::plugins::{Access, EntityView, EventKind, EventPayload, LecternData, spec_of};
+use crate::plugins::{Access, EventKind, EventPayload, LecternData, spec_of, stack_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -65,6 +64,13 @@ pub(crate) fn settled_results(initial: EventResult, patch: &PlayerInteractPatch)
     let block = patch.use_interacted_block.unwrap_or(initial);
     let item = patch.use_item_in_hand.unwrap_or(EventResult::Default);
     (block != EventResult::Deny, item != EventResult::Deny)
+}
+
+fn settled_drop(patch: PlayerDropItemPatch, dropped: ItemStack) -> Option<ItemStack> {
+    match patch.item.as_ref().map(stack_of) {
+        Some(Ok(stack)) => stack,
+        Some(Err(_)) | None => Some(dropped),
+    }
 }
 
 fn corner_offset(hit: Vec3, pos: BlockPos) -> Vec3 {
@@ -497,16 +503,10 @@ impl<L: ClientLink> Server<L> {
         let Some(step) = self.drop_step(id, stack, source, thrower, predicted) else {
             return;
         };
-        let base = &step.launch.base;
-        let (entity, uuid, position) = (base.id, base.uuid, base.position);
+        let dropped = step.stack.clone();
         self.fire(id, Continuation::Drop(Box::new(step)), move |server| {
             Some(EventPayload::PlayerDropItem(PlayerDropItem {
-                item_drop: EntityView {
-                    id: entity,
-                    uuid,
-                    kind: Kind::Item.name().to_owned(),
-                    position,
-                },
+                item: spec_of(&dropped),
                 player: server.snapshot_of(id)?,
             }))
         });
@@ -532,14 +532,8 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn drop_payload_of(&self, step: &DropStep) -> Option<EventPayload> {
-        let base = &step.launch.base;
         Some(EventPayload::PlayerDropItem(PlayerDropItem {
-            item_drop: EntityView {
-                id: base.id,
-                uuid: base.uuid,
-                kind: Kind::Item.name().to_owned(),
-                position: base.position,
-            },
+            item: spec_of(&step.stack),
             player: self.snapshot_of(step.player)?,
         }))
     }
@@ -560,21 +554,25 @@ impl<L: ClientLink> Server<L> {
         let yaw = self.rng.random::<f32>() * 360.0;
         let rolls: [f32; 4] = std::array::from_fn(|_| self.rng.random::<f32>());
         let velocity = thrown_velocity(rotation.yaw, rotation.pitch, rolls);
-        let mut base = self.new_entity_base(Kind::Item);
-        base.position = position;
-        base.old_position = position;
         Some(Launch {
-            base,
+            position,
             velocity,
             yaw,
         })
     }
 
-    pub(super) fn finish_drop(&mut self, step: DropStep, cancelled: bool) {
+    pub(super) fn finish_drop(
+        &mut self,
+        step: DropStep,
+        cancelled: bool,
+        patch: PlayerDropItemPatch,
+    ) {
         let id = step.player;
         let Some(player) = self.players.get_mut(&id) else {
-            if !matches!(step.source, DropSource::Selected { .. }) {
-                self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            if !matches!(step.source, DropSource::Selected { .. })
+                && let Some(thrown) = settled_drop(patch, step.stack)
+            {
+                self.throw(step.launch, thrown, step.thrower.then_some(id.0));
             }
             return;
         };
@@ -602,12 +600,16 @@ impl<L: ClientLink> Server<L> {
             player.menu.set_remote(slot, left);
             player.vitals.attack_ticker = 0;
             self.swing_for_drop(id, step.predicted);
-            self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            if let Some(thrown) = settled_drop(patch, step.stack) {
+                self.throw(step.launch, thrown, step.thrower.then_some(id.0));
+            }
             self.broadcast_equipment_changes(id, before);
             return;
         }
         self.swing_for_drop(id, step.predicted);
-        self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+        if let Some(thrown) = settled_drop(patch, step.stack) {
+            self.throw(step.launch, thrown, step.thrower.then_some(id.0));
+        }
     }
 
     fn swing_for_drop(&mut self, id: PlayerId, predicted: bool) {

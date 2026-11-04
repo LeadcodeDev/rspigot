@@ -56,14 +56,14 @@ PlayerSwapHandItems = "the items are those after the swap; an outdated swap is r
 PlayerInteract = "LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result only notify; no PHYSICAL block exists yet"
 PlayerInteractAtEntity = "one fire per entity click, settled once for both handler types"
 PlayerInteractEntity = "reached through PlayerInteractAtEntity, as Spigot never builds it alone"
-PlayerDropItem = "the item entity is announced by its handle and spawned once settled"
+PlayerDropItem = "carries the dropped stack, which a deciding handler may replace; the item entity spawns once settled"
 PlayerItemDamage = "fires with 0 for creative players and unbreakable items; every wear is a distinct event, read when it reaches the head of the lane"
 PlayerTakeLecternBook = "the book stays on the lectern until the event settles"
 PlayerItemBreak = "after the PlayerItemDamage of the same wear"
 PlayerExpCooldownChange = "PICKUP_ORB only, as no plugin order sets the cooldown; a negative cooldown blocks the pickup for good, as in Spigot"
 PlayerExpChange = "orb pickups only; the amount is the orb value since there is no Mending yet"
 PlayerLevelChange = "compared once per tick at the experience sync, from any cause, never at respawn"
-PlayerPickupArrow = "arrows that allow pickup only; asked only when a deciding handler exists, once per arrow at a time; the item handle never enters the world"
+PlayerPickupArrow = "arrows that allow pickup only; not asked again for an arrow while a deciding handler answers for it; carries the stack the arrow gives, read-only"
 PlayerShearEntity = "sheep only; saddles are sheared without the event, as in Spigot"
 
 [states]
@@ -264,6 +264,18 @@ getters = ["iterator"]
 rename = { iterator = "players" }
 extra = [
     { name = "hidden_players", java = "java.util.List<java.util.UUID>", patch = true, number = 100, reason = "Spigot reads back the players removed through iterator(): they leave the sample and the count" },
+]
+
+[events.PlayerDropItem]
+omit = { getItemDrop = "the item entity does not exist until the drop applies; item carries its stack" }
+extra = [
+    { name = "item", java = "org.bukkit.inventory.ItemStack", patch = true, number = 100, reason = "Spigot reads getItemDrop().getItemStack() back after the event" },
+]
+
+[events.PlayerPickupArrow]
+omit = { getItem = "the item entity never enters the world; item carries its stack" }
+extra = [
+    { name = "item", java = "org.bukkit.inventory.ItemStack", number = 100, reason = "the stack the arrow gives, read-only: a plugin out of process cannot write through the item handle" },
 ]
 
 [events.AsyncPlayerChat]

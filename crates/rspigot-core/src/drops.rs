@@ -118,10 +118,13 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn throw(&mut self, launch: Launch, stack: ItemStack, thrower: Option<Uuid>) {
         let Launch {
-            mut base,
+            position,
             velocity,
             yaw,
         } = launch;
+        let mut base = self.new_entity_base(rspigot_entities::EntityKind::Item);
+        base.position = position;
+        base.old_position = position;
         base.set_yaw(yaw);
         base.velocity = velocity;
         let mut state = ItemState::new(&mut base, stack, THROWN_PICKUP_DELAY);

@@ -76,7 +76,7 @@ fn an_arrow_pickup_is_asked_once_at_a_time_and_a_cancel_leaves_it_on_the_ground(
         panic!("expected an arrow pickup");
     };
     assert_eq!(seen.id, arrow);
-    assert_eq!(item.kind, "minecraft:item");
+    assert_eq!(*item, ItemSpec::of("minecraft:arrow", 1));
     assert_eq!(*remaining, 0);
     rule_on(&mut s.server, 1, asked[0].id, true, None);
     assert_eq!(arrows_held(&mut s, &alice), 0);
