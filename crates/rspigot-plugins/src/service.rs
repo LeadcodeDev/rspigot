@@ -241,8 +241,15 @@ impl<L: ClientLink> Session<L> {
                 None => ControlFlow::Break(None),
             },
             () = self.replies.closed() => ControlFlow::Break(None),
-            () = stopped(&mut self.stop) => ControlFlow::Break(None),
+            () = stopped(&mut self.stop) => self.flush(),
         }
+    }
+
+    fn flush(&mut self) -> Ending {
+        while let Ok(message) = self.from_core.try_recv() {
+            self.reply(message)?;
+        }
+        ControlFlow::Break(None)
     }
 
     fn forward(&self, message: v1::FromPlugin) -> Ending {

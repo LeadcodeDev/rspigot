@@ -293,6 +293,13 @@ impl Furnace {
     }
 
     pub fn experience(&self, next_float: &mut impl FnMut() -> f32) -> Vec<i32> {
+        self.owed(next_float)
+            .into_iter()
+            .filter(|whole| *whole > 0)
+            .collect()
+    }
+
+    pub fn owed(&self, next_float: &mut impl FnMut() -> f32) -> Vec<i32> {
         self.recipes_used
             .iter()
             .filter_map(|(id, uses)| {
@@ -303,7 +310,7 @@ impl Furnace {
                 if fraction != 0.0 && next_float() < fraction {
                     whole += 1;
                 }
-                (whole > 0).then_some(whole)
+                Some(whole)
             })
             .collect()
     }
@@ -596,6 +603,7 @@ mod tests {
             furnace
         };
         assert_eq!(exact.experience(&mut || 0.0), Vec::<i32>::new());
+        assert_eq!(furnace.owed(&mut || 0.5), vec![0, 2]);
     }
 
     #[test]

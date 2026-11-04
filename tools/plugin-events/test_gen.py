@@ -101,10 +101,11 @@ class Generator(unittest.TestCase):
 
     def test_an_event_without_a_state_fails_the_generation(self):
         overrides = self.root / INPUTS[1]
-        overrides.write_text(overrides.read_text().replace('"ChunkLoad", ', ""))
+        stateless = [line for line in overrides.read_text().splitlines(keepends=True) if not line.startswith("PlayerJoin = ")]
+        overrides.write_text("".join(stateless))
         failed = generator(self.root, "--check")
         self.assertEqual(failed.returncode, 1)
-        self.assertIn("ChunkLoad must have exactly one state", failed.stderr)
+        self.assertIn("PlayerJoin must have exactly one state", failed.stderr)
 
     def test_a_deprecated_or_retired_event_leaves_its_numbers_reserved(self):
         catalog = self.catalog()

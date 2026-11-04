@@ -1,7 +1,8 @@
 use rspigot_core::plugins::{
-    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, EnchantOffer, HolderRef,
-    Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location, LootContext,
-    MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
+    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
+    HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
+    LootContext, MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade,
+    TrialSpawnerData,
 };
 use rspigot_domain::EntityId;
 use rspigot_plugin_protocol::v1::{
@@ -185,6 +186,20 @@ pub(super) fn wire_lectern_data(lectern: LecternData) -> v1::LecternData {
         book: lectern.book.map(wire_item),
         page: lectern.page,
     }
+}
+
+pub(super) fn wire_dropped_item(dropped: DroppedItem) -> v1::DroppedItem {
+    v1::DroppedItem {
+        entity: Some(entity::wire_view(dropped.entity)),
+        item: Some(wire_item(dropped.item)),
+    }
+}
+
+pub(super) fn dropped_item(dropped: v1::DroppedItem) -> Result<DroppedItem, Malformed> {
+    Ok(DroppedItem {
+        entity: entity::view(required(dropped.entity)?)?,
+        item: shared::item(required(dropped.item)?),
+    })
 }
 
 pub(super) fn wire_sign_data(sign: SignData) -> v1::SignData {

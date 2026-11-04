@@ -1,11 +1,13 @@
 use crossbeam_channel::Sender;
+use rspigot_domain::entity::EntityBase;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
-use rspigot_domain::{BlockPos, BlockStateId, EntityId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
 use crate::commands::CommandSender;
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
+use crate::explosion::BlockInteraction;
 use crate::plugins::EventKind;
 use crate::plugins::events::PlayerTeleportCause;
 
@@ -166,13 +168,6 @@ pub(crate) struct UseStep {
 }
 
 #[derive(Debug)]
-pub(crate) struct FinishStep {
-    pub(crate) player: PlayerId,
-    pub(crate) pos: BlockPos,
-    pub(crate) sequence: i32,
-}
-
-#[derive(Debug)]
 pub(crate) struct DigStep {
     pub(crate) player: PlayerId,
     pub(crate) pos: BlockPos,
@@ -199,6 +194,13 @@ pub(crate) enum DropSource {
 #[derive(Debug)]
 pub(crate) struct Launch {
     pub(crate) position: Vec3,
+    pub(crate) velocity: Vec3,
+    pub(crate) yaw: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct Announced {
+    pub(crate) base: EntityBase,
     pub(crate) velocity: Vec3,
     pub(crate) yaw: f32,
 }
@@ -275,6 +277,157 @@ pub(crate) struct ShearStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct DamageStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) state: BlockStateId,
+    pub(crate) held: Option<ItemStack>,
+    pub(crate) insta: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct BreakStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) state: BlockStateId,
+    pub(crate) game_mode: GameMode,
+    pub(crate) held: Option<ItemStack>,
+    pub(crate) refused: bool,
+    pub(crate) exp: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct FinishStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct AbortStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct DropItemsStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) drops: Vec<(Announced, ItemStack)>,
+    pub(crate) exp: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Change {
+    pub(crate) pos: BlockPos,
+    pub(crate) old: BlockStateId,
+    pub(crate) new: BlockStateId,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ToolEffects {
+    pub(crate) sound: &'static str,
+    pub(crate) particle: Option<i32>,
+    pub(crate) damage: i32,
+    pub(crate) face: Direction,
+}
+
+#[derive(Debug)]
+pub(crate) struct UseItem {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) stack: ItemStack,
+    pub(crate) against: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) game_mode: GameMode,
+}
+
+#[derive(Debug)]
+pub(crate) struct BuildStep {
+    pub(crate) using: UseItem,
+    pub(crate) target: BlockPos,
+    pub(crate) old: BlockStateId,
+    pub(crate) state: BlockStateId,
+    pub(crate) linked: Option<(BlockPos, BlockStateId)>,
+    pub(crate) buildable: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct PlaceStep {
+    pub(crate) using: UseItem,
+    pub(crate) changes: Vec<Change>,
+    pub(crate) build: bool,
+    pub(crate) tool: Option<ToolEffects>,
+    pub(crate) loot: Vec<ItemStack>,
+    pub(crate) forced: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PhysicsStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) state: BlockStateId,
+}
+
+#[derive(Debug)]
+pub(crate) struct CookStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) slot: usize,
+    pub(crate) source: ItemStack,
+    pub(crate) result: ItemStack,
+}
+
+#[derive(Debug)]
+pub(crate) struct CampfireStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) held: ItemStack,
+    pub(crate) game_mode: GameMode,
+    pub(crate) cooking_slot: usize,
+    pub(crate) total: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExpStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) amount: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct ExplodeStep {
+    pub(crate) center: Vec3,
+    pub(crate) radius: f32,
+    pub(crate) interaction: BlockInteraction,
+    pub(crate) source: Option<EntityId>,
+    pub(crate) blocks: Vec<BlockPos>,
+    pub(crate) knocked: Vec<(PlayerId, Vec3)>,
+    pub(crate) explosion_yield: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TimeStep {
+    pub(crate) skipped: i64,
+    pub(crate) applied: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Sky {
+    pub(crate) raining: bool,
+    pub(crate) thundering: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WeatherStep {
+    pub(crate) rain: Option<bool>,
+    pub(crate) thunder: Option<bool>,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -303,7 +456,6 @@ pub(crate) enum Continuation {
     UseItemOn(Box<UseOnStep>),
     UseItem(UseStep),
     Dig(DigStep),
-    FinishDig(FinishStep),
     InteractEntity(Box<InteractStep>),
     DropSelected(SelectedDrop),
     Drop(Box<DropStep>),
@@ -314,6 +466,24 @@ pub(crate) enum Continuation {
     ExpChange(OrbStep),
     PickupArrow(ArrowStep),
     Shear(Box<ShearStep>),
+    Damage(Box<DamageStep>),
+    Break(Box<BreakStep>),
+    Finish(FinishStep),
+    Abort(AbortStep),
+    DropItems(Box<DropItemsStep>),
+    CanBuild(Box<BuildStep>),
+    Place(Box<PlaceStep>),
+    MultiPlace(Box<PlaceStep>),
+    Physics(PhysicsStep),
+    Cook(Box<CookStep>),
+    CampfireStart(Box<CampfireStep>),
+    Exp(ExpStep),
+    Explode(Box<ExplodeStep>),
+    ChunkUnload(ChunkPos),
+    TimeSkip(TimeStep),
+    SetWeather(Sky),
+    Weather(WeatherStep),
+    Thunder(bool),
 }
 
 impl Continuation {
@@ -342,11 +512,9 @@ impl Continuation {
             Self::HeldSlot(_) => EventKind::PlayerItemHeld,
             Self::Swing(_) => EventKind::PlayerAnimation,
             Self::Swap(_) => EventKind::PlayerSwapHandItems,
-            Self::ClickBlock(_)
-            | Self::UseItemOn(_)
-            | Self::UseItem(_)
-            | Self::Dig(_)
-            | Self::FinishDig(_) => EventKind::PlayerInteract,
+            Self::ClickBlock(_) | Self::UseItemOn(_) | Self::UseItem(_) | Self::Dig(_) => {
+                EventKind::PlayerInteract
+            }
             Self::InteractEntity(_) => EventKind::PlayerInteractAtEntity,
             Self::DropSelected(_) | Self::Drop(_) => EventKind::PlayerDropItem,
             Self::Wear(_) | Self::ItemDamage(_) => EventKind::PlayerItemDamage,
@@ -355,6 +523,22 @@ impl Continuation {
             Self::ExpChange(_) => EventKind::PlayerExpChange,
             Self::PickupArrow(_) => EventKind::PlayerPickupArrow,
             Self::Shear(_) => EventKind::PlayerShearEntity,
+            Self::Damage(_) => EventKind::BlockDamage,
+            Self::Break(_) | Self::Finish(_) => EventKind::BlockBreak,
+            Self::Abort(_) => EventKind::BlockDamageAbort,
+            Self::DropItems(_) => EventKind::BlockDropItem,
+            Self::CanBuild(_) => EventKind::BlockCanBuild,
+            Self::Place(_) => EventKind::BlockPlace,
+            Self::MultiPlace(_) => EventKind::BlockMultiPlace,
+            Self::Physics(_) => EventKind::BlockPhysics,
+            Self::Cook(_) => EventKind::BlockCook,
+            Self::CampfireStart(_) => EventKind::CampfireStart,
+            Self::Exp(_) => EventKind::BlockExp,
+            Self::Explode(_) => EventKind::BlockExplode,
+            Self::ChunkUnload(_) => EventKind::ChunkUnload,
+            Self::TimeSkip(_) => EventKind::TimeSkip,
+            Self::SetWeather(_) | Self::Weather(_) => EventKind::WeatherChange,
+            Self::Thunder(_) => EventKind::ThunderChange,
         }
     }
 
@@ -382,12 +566,17 @@ impl Continuation {
             (Self::PickupArrow(one), Self::PickupArrow(other)) => {
                 one.player == other.player && one.arrow == other.arrow
             }
+            (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
+            (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
             _ => false,
         }
     }
 
     pub(crate) const fn may_skip(&self) -> bool {
-        matches!(self, Self::Velocity(_) | Self::PickupArrow(_))
+        matches!(
+            self,
+            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
+        )
     }
 }
 

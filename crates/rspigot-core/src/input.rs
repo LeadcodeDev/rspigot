@@ -12,9 +12,9 @@ use crate::chests;
 use crate::events::{
     ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
-use crate::loot::{self, LootContext, LootEntity};
+use crate::loot::{self, LootContext};
 use crate::plugins::events::PlayerRespawnReason;
-use crate::plugins::steps::{ClickStep, FinishStep, UseOnStep};
+use crate::plugins::steps::{AbortStep, BuildStep, ClickStep, FinishStep, UseItem, UseOnStep};
 use crate::plugins::{Continuation, Held};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -301,7 +301,7 @@ impl<L: ClientLink> Server<L> {
         if let Some(state) = self.world.chunks.block(pos) {
             self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
         }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        self.ack_block(id, sequence);
     }
 
     fn handle_dig(
@@ -319,64 +319,26 @@ impl<L: ClientLink> Server<L> {
             DigAction::Start => self.start_digging(id, pos, face, sequence),
             DigAction::Finish => self.fire_deferred(
                 id,
-                Continuation::FinishDig(FinishStep {
+                Continuation::Finish(FinishStep {
                     player: id,
                     pos,
                     sequence,
                 }),
             ),
-            DigAction::Cancel => {
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
-            }
+            DigAction::Cancel => self.fire_deferred(
+                id,
+                Continuation::Abort(AbortStep {
+                    player: id,
+                    pos,
+                    sequence,
+                }),
+            ),
             DigAction::SwapHands => self.swap_hands(id),
             DigAction::DropItem => self.handle_drop_action(id, false),
             DigAction::DropStack => self.handle_drop_action(id, true),
             DigAction::ReleaseUseItem => self.release_use_item(id),
             DigAction::Stab => self.send_inventory(id),
         }
-    }
-
-    pub(crate) fn dig_block(&mut self, id: PlayerId, start: bool, pos: BlockPos, sequence: i32) {
-        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
-            return;
-        };
-        let Some(state) = self.world.chunks.block(pos) else {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        };
-        let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
-        let breaks = match (start, mode) {
-            (true, GameMode::Creative) => true,
-            (true, GameMode::Survival) => hardness == 0.0,
-            (false, GameMode::Survival) => true,
-            _ => false,
-        };
-        if breaks {
-            let unbreakable = mode == GameMode::Survival && hardness < 0.0;
-            if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
-                self.refuse_block(id, pos, sequence);
-                return;
-            }
-            self.set_block(pos, BlockStateId::AIR);
-            if mode == GameMode::Survival {
-                self.drop_block_loot(id, pos, state);
-                self.wear_tool_for_mining(id, hardness);
-            }
-        }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-    }
-
-    fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
-        let tool = self
-            .players
-            .get(&id)
-            .and_then(|p| p.inventory.held().cloned());
-        if !loot::tool_is_correct(tool.as_ref(), state) {
-            return;
-        }
-        let breaker = LootEntity::of(rspigot_entities::EntityKind::Player);
-        let context = LootContext::block(state, tool.as_ref(), Some(&breaker));
-        self.pop_block_loot(pos, &context);
     }
 
     pub(crate) fn break_block_naturally(&mut self, pos: BlockPos) -> bool {
@@ -414,7 +376,8 @@ impl<L: ClientLink> Server<L> {
                     self.pop_book(at, book);
                 }
                 self.mob_paths_block_changed(pos, old, state);
-                self.notify_neighbours(pos);
+                self.on_place(pos);
+                self.ask_physics(pos, state);
                 self.push(
                     Audience::ChunkViewers(pos.chunk()),
                     ClientEvent::BlockUpdate { pos, state },
@@ -478,8 +441,9 @@ impl<L: ClientLink> Server<L> {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
                 return;
             }
-            if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            if !(sneaking && holding)
+                && self.place_food_on_campfire(id, hand, slot, pos, clicked, sequence)
+            {
                 return;
             }
             if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
@@ -502,9 +466,8 @@ impl<L: ClientLink> Server<L> {
             game_mode,
         };
         if let Some(held) = &stack
-            && self.use_tool_on_block(id, held, &usage)
+            && self.use_tool_on_block(id, held, &usage, slot, sequence)
         {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
         let kind = stack.as_ref().and_then(|s| BlockKind::from_item(s.item.0));
@@ -524,11 +487,11 @@ impl<L: ClientLink> Server<L> {
         };
         let target_ok = self.world.chunks.block(target).is_some_and(is_replaceable)
             && self.world.dimension.height.contains(target.y);
-        if !target_ok
-            || !self.within_reach(id, target)
-            || self.is_protected(id, target)
-            || self.intersects_player(target)
-        {
+        let Some(old) = self.world.chunks.block(target).filter(|_| target_ok) else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
+        if !self.within_reach(id, target) || self.is_protected(id, target) {
             self.refuse_block(id, target, sequence);
             return;
         }
@@ -551,17 +514,26 @@ impl<L: ClientLink> Server<L> {
         };
         let chunks = &self.world.chunks;
         let state = chests::placed_state(state, target, face, sneaking, |at| chunks.block(at));
-        self.set_block(target, state);
-        if let Some(linked) = placement.linked {
-            let other = target.offset(0, i32::from(linked.dy), 0);
-            if self.world.chunks.block(other).is_some_and(is_replaceable) {
-                self.set_block(other, linked.state);
-            }
-        }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-        if game_mode == GameMode::Survival {
-            self.consume_one(id, slot, stack);
-        }
+        let linked = placement
+            .linked
+            .map(|linked| (target.offset(0, i32::from(linked.dy), 0), linked.state));
+        let buildable = !self.intersects_player(target);
+        self.ask_can_build(BuildStep {
+            using: UseItem {
+                player: id,
+                hand,
+                slot,
+                stack,
+                against: pos,
+                sequence,
+                game_mode,
+            },
+            target,
+            old,
+            state,
+            linked,
+            buildable,
+        });
     }
 
     fn resync_denied_block(
@@ -612,7 +584,7 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    fn intersects_player(&self, pos: BlockPos) -> bool {
+    pub(crate) fn intersects_player(&self, pos: BlockPos) -> bool {
         self.players.values().any(|p| {
             p.game_mode != GameMode::Spectator && {
                 let feet = p.position.block();
@@ -829,7 +801,7 @@ fn places_two_blocks(stack: &ItemStack) -> bool {
     })
 }
 
-fn is_replaceable(state: BlockStateId) -> bool {
+pub(crate) fn is_replaceable(state: BlockStateId) -> bool {
     state.flags().contains(StateFlags::REPLACEABLE)
 }
 

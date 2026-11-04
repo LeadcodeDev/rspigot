@@ -60,6 +60,7 @@ pub trait CommandContext {
     fn day_time(&self) -> i64;
     fn game_time(&self) -> i64;
     fn set_day_time(&mut self, time: i64);
+    fn skip_day_time(&mut self, time: i64);
     fn give(&mut self, player: PlayerId, item: ItemId, count: u32) -> bool;
     fn clear_inventory(&mut self, player: PlayerId) -> u32;
     fn kick(&mut self, player: PlayerId, reason: Component);
@@ -857,7 +858,7 @@ fn time<C: CommandContext>(ctx: &mut C, sender: CommandSender, args: &[&str]) ->
                 return usage(ctx, sender, "/time add <ticks>");
             };
             let now = ctx.day_time() + ticks;
-            ctx.set_day_time(now);
+            ctx.skip_day_time(now);
             ctx.reply(
                 sender,
                 Component::translatable(
@@ -1711,6 +1712,9 @@ mod tests {
             0
         }
         fn set_day_time(&mut self, time: i64) {
+            self.day_time = time;
+        }
+        fn skip_day_time(&mut self, time: i64) {
             self.day_time = time;
         }
         fn give(&mut self, _: PlayerId, _: ItemId, _: u32) -> bool {

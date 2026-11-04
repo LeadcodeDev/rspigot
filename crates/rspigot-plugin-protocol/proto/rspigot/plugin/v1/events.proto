@@ -61,8 +61,8 @@ enum VillagerCareerChangeReason { VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED = 0;
 
 message BlockPosList { repeated BlockPos values = 1; }
 message CommandSenderList { repeated CommandSender values = 1; }
+message DroppedItemList { repeated DroppedItem values = 1; }
 message EntitySnapshotDoubleEntry { EntitySnapshot key = 1; double value = 2; }
-message EntitySnapshotList { repeated EntitySnapshot values = 1; }
 message ItemList { repeated Item values = 1; }
 message NullableBlockPos { BlockPos value = 1; }
 message NullableEntitySnapshot { EntitySnapshot value = 1; }
@@ -111,8 +111,8 @@ message BlockDispense { BlockPos block = 1; Item item = 2; Vec3 velocity = 3; }
 message BlockDispensePatch { Item item = 2; Vec3 velocity = 3; }
 message BlockDispenseLoot { BlockPos block = 1; repeated Item dispensed_loot = 2; PlayerSnapshot player = 3; }
 message BlockDispenseLootPatch { ItemList dispensed_loot = 2; }
-message BlockDropItem { BlockPos block = 1; BlockSnapshot block_state = 2; repeated EntitySnapshot items = 3; PlayerSnapshot player = 4; }
-message BlockDropItemPatch { EntitySnapshotList items = 3; }
+message BlockDropItem { BlockPos block = 1; BlockSnapshot block_state = 2; repeated DroppedItem items = 3; PlayerSnapshot player = 4; }
+message BlockDropItemPatch { DroppedItemList items = 3; }
 message BlockExp { BlockPos block = 1; int32 exp_to_drop = 2; }
 message BlockExpPatch { optional int32 exp_to_drop = 2; }
 message BlockExplode { BlockPos block = 1; repeated BlockPos block_list = 2; BlockSnapshot exploded_block_state = 3; ExplosionResult explosion_result = 4; float explosion_yield = 5; }
@@ -123,12 +123,12 @@ message BlockForm { BlockPos block = 1; BlockSnapshot new_state = 2; }
 message BlockFromTo { BlockPos block = 1; Face face = 2; BlockPos to_block = 3; }
 message BlockGrow { BlockPos block = 1; BlockSnapshot new_state = 2; }
 message BlockIgnite { BlockPos block = 1; BlockIgniteCause cause = 2; BlockPos igniting_block = 3; EntitySnapshot igniting_entity = 4; PlayerSnapshot player = 5; }
-message BlockMultiPlace { BlockPos block = 1; BlockPos block_against = 2; BlockPos block_placed = 3; BlockSnapshot block_replaced_state = 4; bool build = 5; EquipmentSlot hand = 6; Item item_in_hand = 7; PlayerSnapshot player = 8; repeated BlockSnapshot replaced_block_states = 9; }
+message BlockMultiPlace { BlockPos block = 1; BlockPos block_against = 2; BlockPos block_placed = 3; BlockSnapshot block_replaced_state = 4; bool build = 5; EquipmentSlot hand = 6; Item item_in_hand = 7; PlayerSnapshot player = 8; repeated BlockSnapshot replaced_block_states = 9; BlockSnapshot placed_state = 100; repeated BlockSnapshot placed_states = 101; }
 message BlockMultiPlacePatch { optional bool build = 5; }
 message BlockPhysics { BlockPos block = 1; string changed_type = 2; BlockPos source_block = 3; }
 message BlockPistonExtend { BlockPos block = 1; repeated BlockPos blocks = 2; Face direction = 3; bool sticky = 5; }
 message BlockPistonRetract { BlockPos block = 1; repeated BlockPos blocks = 2; Face direction = 3; bool sticky = 5; }
-message BlockPlace { BlockPos block = 1; BlockPos block_against = 2; BlockPos block_placed = 3; BlockSnapshot block_replaced_state = 4; bool build = 5; EquipmentSlot hand = 6; Item item_in_hand = 7; PlayerSnapshot player = 8; }
+message BlockPlace { BlockPos block = 1; BlockPos block_against = 2; BlockPos block_placed = 3; BlockSnapshot block_replaced_state = 4; bool build = 5; EquipmentSlot hand = 6; Item item_in_hand = 7; PlayerSnapshot player = 8; BlockSnapshot placed_state = 100; }
 message BlockPlacePatch { optional bool build = 5; }
 message BlockReceiveGame { BlockPos block = 1; EntitySnapshot entity = 2; string event = 3; }
 message BlockRedstone { BlockPos block = 1; int32 new_current = 2; int32 old_current = 3; }

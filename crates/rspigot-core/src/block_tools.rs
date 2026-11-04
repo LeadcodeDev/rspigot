@@ -4,16 +4,16 @@ use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::item::{ItemStack, OFFHAND_SLOT};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::{BlockPos, BlockStateId};
-use rspigot_entities::{EntityKind, SoundSource};
+use rspigot_entities::EntityKind;
 use rspigot_items::ItemKind;
 
-use crate::events::{ClientEvent, Direction, Hand};
+use crate::events::{Direction, Hand};
 use crate::loot::{self, LootContext, LootEntity};
+use crate::plugins::steps::{Change, PlaceStep, ToolEffects, UseItem};
 use crate::ports::ClientLink;
-use crate::server::{Audience, Server};
+use crate::server::Server;
 
 const CLICKED_FACE: &str = "clicked_face";
-const LEVEL_EVENT_RANGE: f64 = 64.0;
 
 pub(crate) struct ToolUse {
     pub hand: Hand,
@@ -147,6 +147,8 @@ impl<L: ClientLink> Server<L> {
         id: PlayerId,
         held: &ItemStack,
         usage: &ToolUse,
+        slot: usize,
+        sequence: i32,
     ) -> bool {
         let Some(groups) = tool_groups(held) else {
             return false;
@@ -169,46 +171,51 @@ impl<L: ClientLink> Server<L> {
             return false;
         };
         let group = found.group;
-        if let (Some(table), Some(_)) = (group.loot, group.drop_strategy) {
-            self.drop_transformation_loot(held, usage, table);
-        }
-        self.set_block(usage.pos, found.state);
-        self.play_sound(
-            Some(id),
-            usage.pos.center(),
-            group.sound,
-            SoundSource::Blocks,
-            1.0,
-            1.0,
-        );
-        if let Some(event) = group.particle.and_then(particle_event) {
-            self.push(
-                Audience::Nearby {
-                    position: usage.pos.center(),
-                    range: LEVEL_EVENT_RANGE,
-                    except: Some(id),
-                },
-                ClientEvent::LevelEvent {
-                    event,
-                    pos: usage.pos,
-                    data: 0,
-                },
-            );
-        }
-        self.hurt_and_break(id, usage.hand, i32::from(group.damage));
+        let loot = match (group.loot, group.drop_strategy) {
+            (Some(table), Some(_)) => self.transformation_loot(held, usage, table),
+            _ => Vec::new(),
+        };
+        let build = !self.is_protected(id, usage.pos);
+        self.ask_place(PlaceStep {
+            using: UseItem {
+                player: id,
+                hand: usage.hand,
+                slot,
+                stack: held.clone(),
+                against: usage.pos,
+                sequence,
+                game_mode: usage.game_mode,
+            },
+            changes: vec![Change {
+                pos: usage.pos,
+                old: usage.clicked,
+                new: found.state,
+            }],
+            build,
+            tool: Some(ToolEffects {
+                sound: group.sound,
+                particle: group.particle.and_then(particle_event),
+                damage: i32::from(group.damage),
+                face: usage.face,
+            }),
+            loot,
+            forced: false,
+        });
         true
     }
 
-    fn drop_transformation_loot(&mut self, held: &ItemStack, usage: &ToolUse, table: &str) {
+    fn transformation_loot(
+        &mut self,
+        held: &ItemStack,
+        usage: &ToolUse,
+        table: &str,
+    ) -> Vec<ItemStack> {
         let Some(table) = rspigot_data::loot::table(table) else {
-            return;
+            return Vec::new();
         };
         let player = LootEntity::of(EntityKind::Player);
         let context = LootContext::block(usage.clicked, Some(held), Some(&player));
-        let step = usage.face.offset();
-        for stack in loot::table_drops(table, &context, &mut self.rng) {
-            self.spawn_item_from_face(usage.pos, step, stack);
-        }
+        loot::table_drops(table, &context, &mut self.rng)
     }
 }
 

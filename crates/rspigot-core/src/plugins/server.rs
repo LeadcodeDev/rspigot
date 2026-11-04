@@ -15,8 +15,8 @@ use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTel
 use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
-    Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
-    Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
+    Access, Answer, EffectSpec, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec,
+    Location, Order, Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -218,6 +218,35 @@ impl<L: ClientLink> Server<L> {
         self.fire_head(lane, None, then);
     }
 
+    pub(crate) fn fire_refused(
+        &mut self,
+        lane: impl Into<Lane>,
+        then: Continuation,
+        describe: impl FnOnce(&Self) -> Option<EventPayload>,
+    ) {
+        let lane = lane.into();
+        let observed = self.plugins.listens(then.kind(), Access::Observe);
+        if !observed || !self.decisions.busy(lane) {
+            if observed && let Some(payload) = describe(self) {
+                let event = self.next_event_id();
+                self.notify_plugins(event, &payload, true, Phase::Settled);
+            }
+            self.run_refused(then);
+            return;
+        }
+        let Some(payload) = describe(self) else {
+            self.run_refused(then);
+            return;
+        };
+        let event = self.next_event_id();
+        let tick = self.current_tick();
+        let until = tick.saturating_add(self.config.plugins.late_cancel_ticks);
+        self.decisions.queue(
+            event,
+            Pending::new(lane, payload, Vec::new(), tick, until, then).refused(),
+        );
+    }
+
     fn fire_head(&mut self, lane: Lane, order: Option<u64>, then: Continuation) {
         let Some(then) = self.at_head(then) else {
             return;
@@ -314,6 +343,15 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn listened(&self, kind: EventKind) -> bool {
+        self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
+    }
+
+    fn run_refused(&mut self, then: Continuation) {
+        let dropped = self.conclude(then, true, None, Vec::new());
+        self.notify_undone(dropped, Phase::Settled);
+    }
+
     fn run_now(&mut self, then: Continuation) {
         let dropped = self.conclude(then, false, None, Vec::new());
         self.notify_undone(dropped, Phase::Settled);
@@ -326,6 +364,10 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn parks(&self, lane: Lane, then: &Continuation) -> bool {
         self.deciding(then) || self.decisions.busy(lane)
+    }
+
+    pub(crate) fn asks(&self, then: &Continuation) -> bool {
+        self.deciding(then)
     }
 
     pub(crate) fn hold_or_apply(&mut self, id: PlayerId, held: Held) {
@@ -429,6 +471,10 @@ impl<L: ClientLink> Server<L> {
             Settlement::Cancelled(written) => (true, written),
             Settlement::Applied(patch) => (false, patch),
         };
+        if self.stale(&then) {
+            self.decisions.remember(event, record);
+            return;
+        }
         if let Some(patch) = patch.clone() {
             patch.settle(&mut payload);
         }
@@ -602,20 +648,103 @@ impl<L: ClientLink> Server<L> {
                 Vec::new()
             }
             Continuation::ClickBlock(_)
-            | Continuation::FinishDig(_)
             | Continuation::DropSelected(_)
-            | Continuation::Wear(_) => Vec::new(),
+            | Continuation::Wear(_)
+            | Continuation::SetWeather(_) => Vec::new(),
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
             }
+            Continuation::Damage(step) => {
+                self.finish_damage(*step, cancelled, patch_of!(patch, BlockDamage));
+                Vec::new()
+            }
+            Continuation::Break(step) => {
+                self.finish_break(*step, cancelled, patch_of!(patch, BlockBreak));
+                Vec::new()
+            }
+            Continuation::Finish(_) => Vec::new(),
+            Continuation::Abort(step) => {
+                self.finish_abort(&step);
+                Vec::new()
+            }
+            Continuation::DropItems(step) => {
+                self.finish_drop_items(*step, cancelled, patch_of!(patch, BlockDropItem));
+                Vec::new()
+            }
+            Continuation::CanBuild(step) => {
+                self.finish_can_build(*step, patch_of!(patch, BlockCanBuild));
+                Vec::new()
+            }
+            Continuation::Place(step) => {
+                let build = patch_of!(patch, BlockPlace).build;
+                self.finish_place(*step, cancelled, build);
+                Vec::new()
+            }
+            Continuation::MultiPlace(step) => {
+                let build = patch_of!(patch, BlockMultiPlace).build;
+                self.finish_place(*step, cancelled, build);
+                Vec::new()
+            }
+            Continuation::Physics(step) => {
+                if !cancelled {
+                    self.finish_physics(step);
+                }
+                Vec::new()
+            }
+            Continuation::Cook(step) => {
+                if !cancelled {
+                    self.finish_cook(*step, patch_of!(patch, BlockCook));
+                }
+                Vec::new()
+            }
+            Continuation::CampfireStart(step) => {
+                self.finish_campfire_start(*step, patch_of!(patch, CampfireStart));
+                Vec::new()
+            }
+            Continuation::Exp(step) => {
+                self.finish_block_exp(step, patch_of!(patch, BlockExp));
+                Vec::new()
+            }
+            Continuation::Explode(step) => {
+                if !cancelled {
+                    self.finish_explosion(*step, patch_of!(patch, BlockExplode));
+                }
+                Vec::new()
+            }
+            Continuation::ChunkUnload(pos) => {
+                self.finish_chunk_unload(pos, patch_of!(patch, ChunkUnload));
+                Vec::new()
+            }
+            Continuation::TimeSkip(step) => {
+                if !cancelled {
+                    self.finish_time_skip(step, patch_of!(patch, TimeSkip));
+                }
+                Vec::new()
+            }
+            Continuation::Weather(step) => {
+                self.finish_weather(step, cancelled);
+                Vec::new()
+            }
+            Continuation::Thunder(to) => {
+                self.finish_thunder(to, cancelled);
+                Vec::new()
+            }
+        }
+    }
+
+    fn stale(&self, then: &Continuation) -> bool {
+        match then {
+            Continuation::ChunkUnload(pos) => !self.world.chunks.unload_due(*pos),
+            _ => false,
         }
     }
 
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_), Undo::SendBack(_)) => {}
+            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::World, Undo::SendBack(_)) => {
+            }
         }
     }
 
@@ -798,11 +927,166 @@ fn recipients(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use rspigot_domain::chunk::ChunkColumn;
     use rspigot_domain::player::GameMode;
+    use rspigot_domain::text::Component;
+    use rspigot_domain::world::Dimension;
+    use rspigot_domain::{BiomeId, ChunkPos, Identifier};
+    use rspigot_nbt::Compound;
 
     use super::*;
-    use crate::plugins::events::{Action, EventResult, Face, PlayerInteract};
-    use crate::plugins::{EventKind, Priority};
+    use crate::config::{GameConfig, LevelData};
+    use crate::events::Inbound;
+    use crate::plugins::events::{Action, EventResult, Face, PlayerInteract, WorldSave};
+    use crate::plugins::steps::WeatherStep;
+    use crate::plugins::{EventKind, PluginIntro, Priority};
+    use crate::ports::{ChunkGenerator, ChunkStore, EntityStore, PluginOutbox, StoreError};
+    use crate::status::StatusBoard;
+
+    struct Quiet;
+
+    impl ClientLink for Quiet {
+        fn send(&self, _: ClientEvent) {}
+
+        fn disconnect(&self, _: Component) {}
+
+        fn is_connected(&self) -> bool {
+            true
+        }
+    }
+
+    impl PluginOutbox for Quiet {
+        fn send(&self, _: ToPlugin) {}
+    }
+
+    impl ChunkStore for Quiet {
+        fn load(&self, _: &Identifier, _: ChunkPos) -> Result<Option<ChunkColumn>, StoreError> {
+            Ok(None)
+        }
+
+        fn save(&self, _: &Identifier, _: &ChunkColumn) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        fn flush(&self) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl EntityStore for Quiet {
+        fn load_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+        ) -> Result<Option<Vec<Compound>>, StoreError> {
+            Ok(None)
+        }
+
+        fn save_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+            _: &[Compound],
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl ChunkGenerator for Quiet {
+        fn generate(&self, dimension: &Dimension, pos: ChunkPos) -> ChunkColumn {
+            ChunkColumn::empty(pos, dimension.height, BiomeId(0))
+        }
+
+        fn spawn_point(&self, _: &Dimension) -> Vec3 {
+            Vec3::new(0.5, 64.0, 0.5)
+        }
+    }
+
+    fn quiet_server() -> Server<Quiet> {
+        let config = GameConfig {
+            chunk_workers: 1,
+            spawn_chunk_radius: 0,
+            ..GameConfig::default()
+        };
+        Server::new(
+            config,
+            LevelData::default(),
+            Arc::new(Quiet),
+            Arc::new(Quiet),
+            StatusBoard::new(1),
+        )
+    }
+
+    fn observing(server: &mut Server<Quiet>, kind: EventKind) {
+        server.handle(Inbound::PluginConnected {
+            connection: 1,
+            intro: PluginIntro {
+                name: "watch".to_owned(),
+                version: "1.0.0".to_owned(),
+                handlers: vec![HandlerSpec {
+                    id: 1,
+                    event: kind,
+                    access: Access::Observe,
+                    priority: Priority::Normal,
+                    ignore_cancelled: false,
+                }],
+            },
+            outbox: Box::new(Quiet),
+        });
+    }
+
+    fn busy_world(server: &mut Server<Quiet>) {
+        let save = EventPayload::WorldSave(WorldSave {
+            world: "minecraft:overworld".to_owned(),
+        });
+        let waiting = Asked {
+            connection: 9,
+            handler: 1,
+            kind: EventKind::WorldSave,
+        };
+        server.decisions.queue(
+            1,
+            Pending::new(
+                Lane::World,
+                save,
+                vec![waiting],
+                u64::MAX,
+                u64::MAX,
+                Continuation::Notice(EventKind::WorldSave),
+            ),
+        );
+        assert!(server.decisions.busy(Lane::World));
+    }
+
+    fn storm() -> Continuation {
+        Continuation::Weather(WeatherStep {
+            rain: Some(true),
+            thunder: Some(true),
+        })
+    }
+
+    #[test]
+    fn a_refused_event_with_nothing_to_describe_still_runs_its_continuation() {
+        let mut server = quiet_server();
+        observing(&mut server, EventKind::WeatherChange);
+        busy_world(&mut server);
+        server.fire_refused(Lane::World, storm(), |_| None);
+        assert!(!server.world.level.raining);
+        assert!(server.world.level.thundering);
+    }
+
+    #[test]
+    fn a_refused_event_nobody_listens_to_runs_at_once_on_a_busy_lane() {
+        let mut server = quiet_server();
+        busy_world(&mut server);
+        server.fire_refused(Lane::World, storm(), |_| {
+            panic!("an event nobody listens to is never described")
+        });
+        assert!(!server.world.level.raining);
+        assert!(server.world.level.thundering);
+    }
 
     fn listener(connection: u64, id: u32, ignore_cancelled: bool) -> (u64, HandlerSpec) {
         (

@@ -64,6 +64,7 @@ struct Pending {
 
 #[derive(Debug, Default)]
 pub struct ChunkEvents {
+    pub loaded: Vec<(ChunkPos, bool)>,
     pub entity_loads: Vec<(ChunkPos, Vec<Compound>)>,
     pub entities_saved: Vec<(ChunkPos, u64)>,
     pub unloaded: Vec<ChunkPos>,
@@ -187,6 +188,9 @@ impl ChunkManager {
             } => {
                 let pending = self.pending.remove(&pos)?;
                 self.events
+                    .loaded
+                    .push((pos, source == ChunkSource::Generated));
+                self.events
                     .entity_loads
                     .push((pos, entities.unwrap_or_default()));
                 match source {
@@ -221,30 +225,43 @@ impl ChunkManager {
         }
     }
 
-    pub fn tick(&mut self, workers: &ChunkWorkers) {
+    pub fn tick(&mut self) -> Vec<ChunkPos> {
         self.now += 1;
         let now = self.now;
-        let expired: Vec<ChunkPos> = self
+        let mut expired: Vec<ChunkPos> = self
             .loaded
             .iter()
             .filter(|(_, l)| l.tickets == 0 && l.unload_at.is_some_and(|at| at <= now))
             .map(|(pos, _)| *pos)
             .collect();
-        for pos in expired {
-            if let Some(loaded) = self.loaded.remove(&pos) {
-                if loaded.dirty {
-                    self.submit_save(loaded.chunk, workers);
-                }
-                self.events.unloaded.push(pos);
-                self.stats.unloaded += 1;
-            }
-        }
+        expired.sort_unstable();
         if self.config.autosave_interval_ticks > 0
             && now.is_multiple_of(self.config.autosave_interval_ticks)
         {
-            self.save_dirty(workers);
             self.events.autosaved = true;
         }
+        expired
+    }
+
+    pub fn unload_due(&self, pos: ChunkPos) -> bool {
+        self.loaded
+            .get(&pos)
+            .is_some_and(|l| l.tickets == 0 && l.unload_at.is_some_and(|at| at <= self.now))
+    }
+
+    pub fn unload(&mut self, pos: ChunkPos, save: bool, workers: &ChunkWorkers) -> bool {
+        if !self.unload_due(pos) {
+            return false;
+        }
+        let Some(loaded) = self.loaded.remove(&pos) else {
+            return false;
+        };
+        if save && loaded.dirty {
+            self.submit_save(loaded.chunk, workers);
+        }
+        self.events.unloaded.push(pos);
+        self.stats.unloaded += 1;
+        true
     }
 
     fn submit_save(&self, chunk: Arc<ChunkColumn>, workers: &ChunkWorkers) {
@@ -258,9 +275,17 @@ impl ChunkManager {
     }
 
     pub fn save_dirty(&mut self, workers: &ChunkWorkers) -> usize {
+        self.save_dirty_except(workers, |_| false)
+    }
+
+    pub fn save_dirty_except(
+        &mut self,
+        workers: &ChunkWorkers,
+        skipped: impl Fn(ChunkPos) -> bool,
+    ) -> usize {
         let mut count = 0;
-        for loaded in self.loaded.values_mut() {
-            if loaded.dirty {
+        for (pos, loaded) in &mut self.loaded {
+            if loaded.dirty && !skipped(*pos) {
                 loaded.dirty = false;
                 workers.submit(
                     Priority::BACKGROUND,
@@ -534,11 +559,14 @@ mod tests {
         assert_eq!(drain(&mut manager, &workers, 1), vec![pos]);
         assert!(manager.is_loaded(pos));
         manager.remove_ticket(pos);
-        manager.tick(&workers);
-        manager.tick(&workers);
+        assert!(manager.tick().is_empty());
+        assert!(manager.tick().is_empty());
         assert!(manager.is_loaded(pos));
-        manager.tick(&workers);
+        assert_eq!(manager.tick(), [pos]);
+        assert!(manager.is_loaded(pos));
+        assert!(manager.unload(pos, true, &workers));
         assert!(!manager.is_loaded(pos));
+        assert!(!manager.unload(pos, true, &workers));
         let deadline = Instant::now() + Duration::from_secs(10);
         while store.saved.lock().map(|s| s.is_empty()).unwrap_or(true) && Instant::now() < deadline
         {
@@ -558,12 +586,30 @@ mod tests {
         manager.add_ticket(pos, Priority(1), &workers);
         drain(&mut manager, &workers, 1);
         manager.remove_ticket(pos);
-        manager.tick(&workers);
+        manager.tick();
         manager.add_ticket(pos, Priority(1), &workers);
         for _ in 0..10 {
-            manager.tick(&workers);
+            assert!(manager.tick().is_empty());
         }
+        assert!(!manager.unload_due(pos));
+        assert!(!manager.unload(pos, true, &workers));
         assert!(manager.is_loaded(pos));
+        workers.shutdown();
+    }
+
+    #[test]
+    fn an_unload_without_a_save_drops_the_changes_of_its_chunk() {
+        let (mut manager, workers, store) = setup();
+        let pos = ChunkPos::new(3, 4);
+        manager.add_ticket(pos, Priority(1), &workers);
+        drain(&mut manager, &workers, 1);
+        manager.remove_ticket(pos);
+        let due = (0..3).flat_map(|_| manager.tick()).collect::<Vec<_>>();
+        assert_eq!(due, [pos]);
+        assert!(manager.unload(pos, false, &workers));
+        assert_eq!(manager.take_events().unloaded, [pos]);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(store.saved.lock().map(|s| s.is_empty()).unwrap_or(false));
         workers.shutdown();
     }
 

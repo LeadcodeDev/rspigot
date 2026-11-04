@@ -667,3 +667,22 @@ async fn stopping_the_host_disconnects_its_plugins() {
     within(host.served).await.unwrap().unwrap();
     assert!(within(waiting).await.unwrap().is_err());
 }
+
+#[tokio::test]
+async fn what_the_core_sent_before_a_stop_reaches_the_plugin() {
+    let mut host = Host::start(None).await;
+    let mut plugin = Plugin::accepted(host.address, hello("welcome")).await;
+    assert!(matches!(
+        host.next().await,
+        Seen::Connected { connection: 1, .. }
+    ));
+    for round in 0..50 {
+        host.tell(1, ToPlugin::Warning(format!("last words {round}")));
+    }
+    host.stop.send(true).unwrap();
+    let mut heard = 0;
+    while let Ok(Some(_)) = within(plugin.hears.message()).await {
+        heard += 1;
+    }
+    assert_eq!(heard, 50);
+}

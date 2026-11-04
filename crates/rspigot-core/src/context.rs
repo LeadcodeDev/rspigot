@@ -19,9 +19,9 @@ use crate::admin::{AdminLists, Ban, BanEntry, IpBanEntry, ListEntry};
 use crate::chunks::{ChunkJob, Priority};
 use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
-use crate::events::{ClientEvent, GameEvent};
+use crate::events::ClientEvent;
 use crate::mobs::ServerRandom;
-use crate::plugins::events::PlayerTeleportCause;
+use crate::plugins::events::{PlayerTeleportCause, TimeSkipReason};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -111,9 +111,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_day_time(&mut self, time: i64) {
-        self.world.level.day_time = time;
-        let event = self.time_event();
-        self.push(Audience::All, event);
+        self.change_day_time(time, None);
+    }
+
+    fn skip_day_time(&mut self, time: i64) {
+        self.change_day_time(time, Some(TimeSkipReason::Command));
     }
 
     fn give(&mut self, player: PlayerId, item: ItemId, count: u32) -> bool {
@@ -416,48 +418,15 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_weather(&mut self, weather: Weather) {
-        let was_raining = self.world.level.raining;
-        self.world.level.raining = weather != Weather::Clear;
-        self.world.level.thundering = weather == Weather::Thunder;
-        if was_raining != self.world.level.raining {
-            let event = if self.world.level.raining {
-                GameEvent::StartRaining
-            } else {
-                GameEvent::StopRaining
-            };
-            self.push(Audience::All, ClientEvent::GameEvent(event));
-        }
-        let rain = if self.world.level.raining { 1.0 } else { 0.0 };
-        let thunder = if self.world.level.thundering {
-            1.0
-        } else {
-            0.0
-        };
-        self.push(
-            Audience::All,
-            ClientEvent::GameEvent(GameEvent::RainLevelChange(rain)),
-        );
-        self.push(
-            Audience::All,
-            ClientEvent::GameEvent(GameEvent::ThunderLevelChange(thunder)),
-        );
+        self.change_weather(weather != Weather::Clear, weather == Weather::Thunder);
     }
 
     fn set_world_spawn(&mut self, pos: BlockPos) {
-        self.world.level.spawn = Some(pos);
-        self.world.spawn = pos.center();
-        self.push(
-            Audience::All,
-            ClientEvent::SpawnPosition {
-                dimension: self.world.dimension.key.clone(),
-                pos,
-                yaw: self.world.level.spawn_angle,
-                pitch: 0.0,
-            },
-        );
+        self.change_spawn(pos);
     }
 
     fn save_all(&mut self) -> usize {
+        self.world_saving();
         self.save_all_entities();
         self.persist_all_players();
         let count = self.world.chunks.save_dirty(&self.workers);

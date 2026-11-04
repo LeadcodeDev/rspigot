@@ -19,6 +19,7 @@ use crate::events::{
     ClientEvent, EntityKind, EntityStatus, EquipmentSlot, MetadataEntry, MetadataValue,
 };
 use crate::player::Player;
+use crate::plugins::{Continuation, Lane};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -441,6 +442,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_chunk_events(&mut self) {
+        self.drain_startup();
         let events = self.world.chunks.take_events();
         for (pos, generation) in events.entities_saved {
             if self
@@ -452,13 +454,24 @@ impl<L: ClientLink> Server<L> {
                 self.entities.pending_saves.remove(&pos);
             }
         }
+        for (pos, new_chunk) in events.loaded {
+            self.chunk_loaded(pos, new_chunk);
+        }
         for (pos, entities) in events.entity_loads {
             self.load_chunk_entities(pos, entities);
+            self.entities_loaded(pos);
         }
         for pos in events.unloaded {
             self.save_chunk_entities(pos, true);
         }
         if events.autosaved {
+            self.world_saving();
+            let decisions = &self.decisions;
+            self.world.chunks.save_dirty_except(&self.workers, |pos| {
+                decisions.in_flight(Lane::Chunk(pos), |then| {
+                    matches!(then, Continuation::ChunkUnload(_))
+                })
+            });
             self.save_all_entities();
             self.persist_all_players();
         }
@@ -496,13 +509,14 @@ impl<L: ClientLink> Server<L> {
     fn save_chunk_entities(&mut self, pos: ChunkPos, unload: bool) {
         let world_uuid = self.world.level.uuid;
         let ids = self.entities.store.in_chunk(pos).to_vec();
-        let saved: Vec<Compound> = ids
+        let (kept, saved): (Vec<EntityId>, Vec<Compound>) = ids
             .iter()
             .filter_map(|id| self.entities.store.get(*id))
-            .filter_map(|entity| save::save_entity(entity, world_uuid))
-            .collect();
+            .filter_map(|entity| Some((entity.base.id, save::save_entity(entity, world_uuid)?)))
+            .unzip();
         let merge = !unload && !self.world.chunks.is_loaded(pos);
         if unload {
+            self.entities_unloading(pos, &kept);
             for id in ids {
                 self.remove_entity(id, RemovalReason::UnloadedToChunk);
             }

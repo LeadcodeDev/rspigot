@@ -455,7 +455,11 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
         EventPayload::BlockDropItem(event) => event::Payload::BlockDropItem(v1::BlockDropItem {
             block: Some(shared::wire_block_pos(event.block)),
             block_state: Some(contract::wire_block_snapshot(event.block_state)),
-            items: event.items.into_iter().map(entity::wire_view).collect(),
+            items: event
+                .items
+                .into_iter()
+                .map(contract::wire_dropped_item)
+                .collect(),
             player: Some(player::wire_player(event.player)),
         }),
         EventPayload::BlockExp(event) => event::Payload::BlockExp(v1::BlockExp {
@@ -523,6 +527,12 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
                     .into_iter()
                     .map(contract::wire_block_snapshot)
                     .collect(),
+                placed_state: Some(contract::wire_block_snapshot(event.placed_state)),
+                placed_states: event
+                    .placed_states
+                    .into_iter()
+                    .map(contract::wire_block_snapshot)
+                    .collect(),
             })
         }
         EventPayload::BlockPhysics(event) => event::Payload::BlockPhysics(v1::BlockPhysics {
@@ -563,6 +573,7 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
             hand: equipment_slot_to_wire(event.hand) as i32,
             item_in_hand: Some(shared::wire_item(event.item_in_hand)),
             player: Some(player::wire_player(event.player)),
+            placed_state: Some(contract::wire_block_snapshot(event.placed_state)),
         }),
         EventPayload::BlockReceiveGame(event) => {
             event::Payload::BlockReceiveGame(v1::BlockReceiveGame {
@@ -2202,7 +2213,7 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 .map(|list| {
                     list.values
                         .into_iter()
-                        .map(entity::view)
+                        .map(contract::dropped_item)
                         .collect::<Result<Vec<_>, _>>()
                 })
                 .transpose()?,

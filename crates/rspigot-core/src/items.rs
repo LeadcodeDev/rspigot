@@ -6,6 +6,7 @@ use rspigot_domain::{BlockPos, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::events::ClientEvent;
+use crate::plugins::steps::Announced;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -28,6 +29,11 @@ fn touches_player(position: Vec3, player: Vec3) -> bool {
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn spawn_item(&mut self, pos: BlockPos, stack: ItemStack) {
+        let launch = self.block_drop_launch(pos);
+        self.drop_launched(launch, stack);
+    }
+
+    pub(crate) fn block_drop_launch(&mut self, pos: BlockPos) -> Announced {
         let offset = |rng: &mut rand::rngs::StdRng| rng.random_range(-0.25..0.25);
         let position = Vec3::new(
             f64::from(pos.x) + 0.5 + offset(&mut self.rng),
@@ -39,7 +45,27 @@ impl<L: ClientLink> Server<L> {
             0.2,
             self.rng.random::<f64>() * 0.2 - 0.1,
         );
-        self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack);
+        let mut base = self.new_entity_base(Kind::Item);
+        base.position = position;
+        base.old_position = position;
+        let yaw = self.rng.random::<f32>() * 360.0;
+        Announced {
+            base,
+            velocity,
+            yaw,
+        }
+    }
+
+    pub(crate) fn drop_launched(&mut self, launch: Announced, stack: ItemStack) {
+        let Announced {
+            mut base,
+            velocity,
+            yaw,
+        } = launch;
+        base.set_yaw(yaw);
+        base.velocity = velocity;
+        let state = ItemState::new(&mut base, stack, i32::from(PICKUP_DELAY));
+        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
     }
 
     pub(crate) fn spawn_item_from_face(

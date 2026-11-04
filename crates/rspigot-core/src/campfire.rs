@@ -8,6 +8,9 @@ use rspigot_nbt::{Compound, Tag};
 
 use crate::containers::{read_items, write_items};
 use crate::events::{Animation, ClientEvent, Hand};
+use crate::plugins::events::{BlockCookPatch, CampfireStart, CampfireStartPatch};
+use crate::plugins::steps::{CampfireStep, CookStep};
+use crate::plugins::{Continuation, EventPayload, Lane, spec_of, stack_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -59,7 +62,7 @@ fn update_tag(campfire: &Campfire) -> Compound {
 }
 
 impl<L: ClientLink> Server<L> {
-    fn campfire_at(&self, pos: BlockPos) -> Option<Campfire> {
+    pub(crate) fn campfire_at(&self, pos: BlockPos) -> Option<Campfire> {
         self.world
             .chunks
             .get(pos.chunk())
@@ -88,6 +91,26 @@ impl<L: ClientLink> Server<L> {
                 data: update_tag(campfire),
             },
         );
+    }
+
+    pub(crate) fn has_block_entity(&self, pos: BlockPos) -> bool {
+        self.world
+            .chunks
+            .get(pos.chunk())
+            .is_some_and(|chunk| chunk.block_entity(pos).is_some())
+    }
+
+    pub(crate) fn block_entity_update(&self, pos: BlockPos) -> Option<ClientEvent> {
+        let entity = self.world.chunks.get(pos.chunk())?.block_entity(pos)?;
+        if entity.kind.as_str() != "minecraft:campfire" {
+            return None;
+        }
+        let campfire = read_campfire(&entity.data);
+        Some(ClientEvent::BlockEntityUpdate {
+            pos,
+            kind: ENTITY,
+            data: update_tag(&campfire),
+        })
     }
 
     pub(crate) fn campfire_items_lost_by(
@@ -130,21 +153,60 @@ impl<L: ClientLink> Server<L> {
         let Some(mut campfire) = self.campfire_at(pos) else {
             return;
         };
-        let before = campfire.clone();
-        let done = if is_lit(state) {
-            campfire.cook()
-        } else {
-            campfire.cool();
-            Vec::new()
-        };
-        if campfire == before {
+        if !is_lit(state) {
+            if campfire.cool() {
+                self.store_campfire(pos, &campfire);
+            }
             return;
         }
-        self.store_campfire(pos, &campfire);
-        if campfire.items != before.items {
-            self.send_campfire_update(pos, &campfire);
+        let mut changed = false;
+        for slot in 0..SLOTS {
+            if self.cooking(pos, slot) {
+                continue;
+            }
+            changed |= campfire.items[slot].is_some();
+            let Some((source, result)) = campfire.advance(slot) else {
+                continue;
+            };
+            self.store_campfire(pos, &campfire);
+            self.ask_cook(CookStep {
+                pos,
+                slot,
+                source,
+                result,
+            });
+            let Some(current) = self.campfire_at(pos) else {
+                return;
+            };
+            campfire = current;
+            changed = false;
         }
-        self.drop_contents(pos, done);
+        if changed {
+            self.store_campfire(pos, &campfire);
+        }
+    }
+
+    pub(crate) fn finish_cook(&mut self, step: CookStep, patch: BlockCookPatch) {
+        let pos = step.pos;
+        let lit = self
+            .world
+            .chunks
+            .block(pos)
+            .is_some_and(|state| is_campfire(state) && is_lit(state));
+        let Some(mut campfire) = self.campfire_at(pos).filter(|_| lit) else {
+            return;
+        };
+        if campfire.items[step.slot].as_ref() != Some(&step.source) {
+            return;
+        }
+        let result = match patch.result {
+            Some(spec) => stack_of(&spec).unwrap_or(Some(step.result)),
+            None => Some(step.result),
+        };
+        campfire.items[step.slot] = None;
+        self.store_campfire(pos, &campfire);
+        self.send_campfire_update(pos, &campfire);
+        self.drop_contents(pos, result.into_iter().collect());
     }
 
     pub(crate) fn place_food_on_campfire(
@@ -154,6 +216,7 @@ impl<L: ClientLink> Server<L> {
         slot: usize,
         pos: BlockPos,
         clicked: BlockStateId,
+        sequence: i32,
     ) -> bool {
         if !is_campfire(clicked) {
             return false;
@@ -161,8 +224,7 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get(&id) else {
             return false;
         };
-        let mode = player.game_mode;
-        let entity = player.entity_id;
+        let game_mode = player.game_mode;
         let Some(held) = player
             .inventory
             .get(slot)
@@ -171,30 +233,85 @@ impl<L: ClientLink> Server<L> {
         else {
             return false;
         };
-        if mode == GameMode::Spectator {
+        if game_mode == GameMode::Spectator {
             return false;
         }
         self.ensure_container_entity(pos, clicked);
-        let Some(mut campfire) = self.campfire_at(pos) else {
+        let found = self
+            .campfire_at(pos)
+            .and_then(|campfire| Some((campfire.free_slot()?, Campfire::recipe(&held)?)));
+        let Some((cooking_slot, recipe)) = found else {
+            self.ack_block(id, sequence);
             return true;
         };
-        if !campfire.place(&held) {
-            return true;
-        }
-        self.store_campfire(pos, &campfire);
-        self.send_campfire_update(pos, &campfire);
-        if mode != GameMode::Creative {
-            self.consume_one(id, slot, held);
-        }
-        let swing = ClientEvent::EntityAnimation {
-            entity,
-            animation: match hand {
-                Hand::Main => Animation::SwingMainArm,
-                Hand::Off => Animation::SwingOffHand,
+        let total = i32::from(recipe.cooking_time);
+        let recipe_id = recipe.id;
+        let step = CampfireStep {
+            player: id,
+            hand,
+            slot,
+            pos,
+            sequence,
+            held,
+            game_mode,
+            cooking_slot,
+            total,
+        };
+        self.fire(
+            id,
+            Continuation::CampfireStart(Box::new(step)),
+            move |server| {
+                let held = server.players.get(&id)?.inventory.get(slot)?;
+                Some(EventPayload::CampfireStart(CampfireStart {
+                    block: pos,
+                    recipe: recipe_id.to_owned(),
+                    source: spec_of(held),
+                    total_cook_time: total,
+                }))
             },
-        };
-        self.push(Audience::One(id), swing.clone());
-        self.push(Audience::Trackers(entity), swing);
+        );
         true
+    }
+
+    pub(crate) fn finish_campfire_start(&mut self, step: CampfireStep, patch: CampfireStartPatch) {
+        let id = step.player;
+        let holding = self.players.get(&id).is_some_and(|player| {
+            player.game_mode == step.game_mode
+                && player.inventory.get(step.slot) == Some(&step.held)
+        });
+        let still = self.world.chunks.block(step.pos).is_some_and(is_campfire);
+        let free = self
+            .campfire_at(step.pos)
+            .filter(|campfire| campfire.items[step.cooking_slot].is_none());
+        let (true, true, Some(mut campfire)) = (holding, still, free) else {
+            self.ack_block(id, step.sequence);
+            return;
+        };
+        let total = patch.total_cook_time.unwrap_or(step.total);
+        campfire.put(step.cooking_slot, &step.held, total);
+        self.store_campfire(step.pos, &campfire);
+        self.send_campfire_update(step.pos, &campfire);
+        if step.game_mode != GameMode::Creative {
+            self.consume_one(id, step.slot, step.held);
+        }
+        if let Some(entity) = self.players.get(&id).map(|player| player.entity_id) {
+            let swing = ClientEvent::EntityAnimation {
+                entity,
+                animation: match step.hand {
+                    Hand::Main => Animation::SwingMainArm,
+                    Hand::Off => Animation::SwingOffHand,
+                },
+            };
+            self.push(Audience::One(id), swing.clone());
+            self.push(Audience::Trackers(entity), swing);
+        }
+        self.ack_block(id, step.sequence);
+    }
+
+    fn cooking(&self, pos: BlockPos, slot: usize) -> bool {
+        self.decisions.in_flight(
+            Lane::Block(pos),
+            |then| matches!(then, Continuation::Cook(step) if step.slot == slot),
+        )
     }
 }
