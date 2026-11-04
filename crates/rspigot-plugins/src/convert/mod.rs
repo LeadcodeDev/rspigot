@@ -61,6 +61,7 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
         Ok(v1::EventKind::PlayerMove) => EventKind::PlayerMove,
         Ok(v1::EventKind::InventoryClick) => EventKind::InventoryClick,
         Ok(v1::EventKind::InventoryClose) => EventKind::InventoryClose,
+        Ok(v1::EventKind::EntityInteract) => EventKind::EntityInteract,
         Ok(v1::EventKind::Unspecified) | Err(_) => return Err(unknown("event", handler.event)),
     };
     let access = match v1::Access::try_from(handler.access) {
@@ -193,6 +194,12 @@ fn wire_payload(payload: EventPayload) -> event::Payload {
             inventory,
             by_player,
         } => custom_inventory::wire_close(player, inventory, by_player),
+        EventPayload::EntityInteract {
+            player,
+            entity,
+            hand,
+            sneaking,
+        } => entity::wire_interact(player, entity, hand, sneaking),
     }
 }
 
