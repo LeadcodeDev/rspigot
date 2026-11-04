@@ -13,7 +13,7 @@ use std::time::Duration;
 
 pub use cache::ChunkPacketCache;
 pub use link::NetLink;
-pub use listener::run;
+pub use listener::{run, serve};
 
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {

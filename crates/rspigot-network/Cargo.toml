@@ -12,6 +12,7 @@ rspigot-data = { workspace = true }
 rspigot-domain = { workspace = true }
 rspigot-nbt = { workspace = true }
 rspigot-protocol = { workspace = true }
+base64 = "0.22"
 bytes = "1"
 crossbeam-channel = "0.5"
 parking_lot = "0.12"

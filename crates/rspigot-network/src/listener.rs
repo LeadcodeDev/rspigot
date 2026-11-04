@@ -56,10 +56,21 @@ pub async fn run<V: SessionVerifier>(
     verifier: Arc<V>,
     status: StatusBoard,
     game: Sender<Inbound<NetLink>>,
+    shutdown: watch::Receiver<bool>,
+) -> io::Result<()> {
+    let listener = TcpListener::bind(config.bind).await?;
+    serve(listener, config, verifier, status, game, shutdown).await
+}
+
+pub async fn serve<V: SessionVerifier>(
+    listener: TcpListener,
+    config: NetworkConfig,
+    verifier: Arc<V>,
+    status: StatusBoard,
+    game: Sender<Inbound<NetLink>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
     let key = ServerKey::generate().map_err(|e| io::Error::other(e.to_string()))?;
-    let listener = TcpListener::bind(config.bind).await?;
     tracing::info!("Starting Minecraft server on {}", config.bind);
     if !config.online_mode {
         tracing::warn!("**** SERVER IS RUNNING IN OFFLINE/INSECURE MODE!");
