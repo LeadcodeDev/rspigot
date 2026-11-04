@@ -441,6 +441,15 @@ impl<L: ClientLink> Server<L> {
                 }
                 Vec::new()
             }
+            Continuation::Chat(_) | Continuation::Command(_) if cancelled => Vec::new(),
+            Continuation::Chat(step) => {
+                self.finish_chat(step, patch_of!(patch, AsyncPlayerChat));
+                Vec::new()
+            }
+            Continuation::Command(step) => {
+                self.finish_command(step, patch_of!(patch, PlayerCommandPreprocess));
+                Vec::new()
+            }
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
@@ -583,7 +592,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn online_snapshots(&self) -> Vec<PlayerSnapshot> {
+    pub(crate) fn online_snapshots(&self) -> Vec<PlayerSnapshot> {
         let mut online: Vec<PlayerSnapshot> = self
             .players
             .values()

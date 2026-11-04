@@ -1,4 +1,5 @@
 mod block;
+mod chat;
 mod contract;
 mod decisions;
 mod entity;

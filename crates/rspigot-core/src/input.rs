@@ -164,16 +164,6 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn run_player_command(&mut self, id: PlayerId, command: &str) {
-        let name = self
-            .players
-            .get(&id)
-            .map(|p| p.profile.name.clone())
-            .unwrap_or_default();
-        tracing::info!("{name} issued server command: /{command}");
-        crate::commands::execute(self, crate::commands::CommandSender::Player(id), command);
-    }
-
     fn handle_move(
         &mut self,
         id: PlayerId,
@@ -300,21 +290,6 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         self.broadcast_chat(id, message);
-    }
-
-    pub(crate) fn broadcast_chat(&mut self, id: PlayerId, message: &str) {
-        let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) else {
-            return;
-        };
-        tracing::info!("<{name}> {message}");
-        self.push(
-            Audience::All,
-            ClientEvent::PlayerChat {
-                sender: id,
-                sender_name: Component::text(name),
-                message: message.to_owned(),
-            },
-        );
     }
 
     pub(crate) fn within_reach(&self, id: PlayerId, pos: BlockPos) -> bool {

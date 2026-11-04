@@ -45,6 +45,12 @@ pub(crate) struct SettingsStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct ChatStep {
+    pub(crate) player: PlayerId,
+    pub(crate) message: String,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -55,6 +61,8 @@ pub(crate) enum Continuation {
     Kick(KickStep),
     Settings(SettingsStep),
     CommandSend(PlayerId),
+    Chat(ChatStep),
+    Command(ChatStep),
 }
 
 impl Continuation {
@@ -69,6 +77,8 @@ impl Continuation {
             Self::Kick(_) => EventKind::PlayerKick,
             Self::Settings(step) => step.kind,
             Self::CommandSend(_) => EventKind::PlayerCommandSend,
+            Self::Chat(_) => EventKind::AsyncPlayerChat,
+            Self::Command(_) => EventKind::PlayerCommandPreprocess,
         }
     }
 

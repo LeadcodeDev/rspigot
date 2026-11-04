@@ -515,12 +515,23 @@ pub fn rule_on(
     cancel: bool,
     patch: Option<EventPatch>,
 ) {
+    judge(server, connection, event, 1, cancel, patch);
+}
+
+pub fn judge(
+    server: &mut Server<Link>,
+    connection: u64,
+    event: u64,
+    handler: u32,
+    cancel: bool,
+    patch: Option<EventPatch>,
+) {
     server.handle(Inbound::PluginMessage {
         connection,
         message: FromPlugin::Decision {
             event,
             verdicts: vec![Verdict {
-                handler: 1,
+                handler,
                 cancel,
                 patch,
             }],

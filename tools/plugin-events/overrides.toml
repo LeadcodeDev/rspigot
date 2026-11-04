@@ -37,32 +37,33 @@ PlayerKick = "every server-side disconnect of a player in game, never at shutdow
 PlayerLocaleChange = "at join when the locale is not en_us and on every settings packet that changes it"
 PlayerChangedMainHand = "carries the old hand, as the Spigot bytecode does"
 PlayerCommandSend = "at join, at respawn and when the operator status changes; only root commands can be removed"
+AsyncPlayerChat = "from chat packets and plugin chat orders; the display name is the profile name and there is no chat visibility or text filter"
+PlayerCommandPreprocess = "from command packets and plugin chat orders starting with /, not from perform_command"
 
 [states]
 ready = [
-    "AsyncPlayerChat", "BlockBreak", "BlockCanBuild", "BlockCook", "BlockDamage",
-    "BlockDamageAbort", "BlockDropItem", "BlockExp", "BlockExplode", "BlockMultiPlace",
-    "BlockPhysics", "BlockPlace", "BroadcastMessage", "CampfireStart", "ChunkLoad",
-    "ChunkPopulate", "ChunkUnload", "CraftItem", "CreatureSpawn", "EntitiesLoad", "EntitiesUnload",
-    "EntityBreed", "EntityChangeBlock", "EntityCombust", "EntityCombustByBlock",
-    "EntityCombustByEntity", "EntityDamage", "EntityDamageByBlock", "EntityDamageByEntity",
-    "EntityDeath", "EntityDropItem", "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode",
-    "EntityInteract", "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem",
-    "EntityPoseChange", "EntityPotionEffect", "EntityRegainHealth", "EntityRemove",
-    "EntityShootBow", "EntitySpawn", "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport",
-    "ExplosionPrime", "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt",
-    "FurnaceStartSmelt", "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",
-    "ItemSpawn", "PlayerAnimation", "PlayerCommandPreprocess", "PlayerDeath", "PlayerDropItem",
-    "PlayerExpChange", "PlayerExpCooldownChange", "PlayerGameModeChange", "PlayerHideEntity",
-    "PlayerInput", "PlayerInteract", "PlayerInteractAtEntity", "PlayerInteractEntity",
-    "PlayerItemBreak", "PlayerItemDamage", "PlayerItemHeld", "PlayerLevelChange",
-    "PlayerPickupArrow", "PlayerRespawn", "PlayerShearEntity", "PlayerShowEntity",
-    "PlayerSwapHandItems", "PlayerTakeLecternBook", "PlayerTeleport", "PlayerToggleFlight",
-    "PlayerToggleSneak", "PlayerToggleSprint", "PlayerVelocity", "PluginDisable", "PluginEnable",
-    "PrepareItemCraft", "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand",
-    "ServerListPing", "ServerLoad", "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange",
-    "TabComplete", "ThunderChange", "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad",
-    "WorldSave",
+    "BlockBreak", "BlockCanBuild", "BlockCook", "BlockDamage", "BlockDamageAbort", "BlockDropItem",
+    "BlockExp", "BlockExplode", "BlockMultiPlace", "BlockPhysics", "BlockPlace",
+    "BroadcastMessage", "CampfireStart", "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem",
+    "CreatureSpawn", "EntitiesLoad", "EntitiesUnload", "EntityBreed", "EntityChangeBlock",
+    "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity", "EntityDamage",
+    "EntityDamageByBlock", "EntityDamageByEntity", "EntityDeath", "EntityDropItem",
+    "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
+    "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
+    "EntityPotionEffect", "EntityRegainHealth", "EntityRemove", "EntityShootBow", "EntitySpawn",
+    "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
+    "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
+    "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
+    "PlayerAnimation", "PlayerDeath", "PlayerDropItem", "PlayerExpChange",
+    "PlayerExpCooldownChange", "PlayerGameModeChange", "PlayerHideEntity", "PlayerInput",
+    "PlayerInteract", "PlayerInteractAtEntity", "PlayerInteractEntity", "PlayerItemBreak",
+    "PlayerItemDamage", "PlayerItemHeld", "PlayerLevelChange", "PlayerPickupArrow",
+    "PlayerRespawn", "PlayerShearEntity", "PlayerShowEntity", "PlayerSwapHandItems",
+    "PlayerTakeLecternBook", "PlayerTeleport", "PlayerToggleFlight", "PlayerToggleSneak",
+    "PlayerToggleSprint", "PlayerVelocity", "PluginDisable", "PluginEnable", "PrepareItemCraft",
+    "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand", "ServerListPing",
+    "ServerLoad", "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete",
+    "ThunderChange", "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
 ]
 
 [states.blocked]
