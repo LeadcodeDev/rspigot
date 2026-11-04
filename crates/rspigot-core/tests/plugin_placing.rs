@@ -417,3 +417,50 @@ fn the_roots_of_a_tilled_rooted_dirt_drop_only_when_the_place_applies() {
     assert_eq!(kind_at(&mut s, FLOOR), "minecraft:dirt");
     assert_eq!(s.server.items_on_ground(), 1);
 }
+
+#[test]
+fn spawn_protection_tests_the_clicked_block_not_the_placed_one() {
+    let mut server = configured(|config| config.spawn_protection = 1);
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![
+            deciding(1, EventKind::BlockCanBuild),
+            observe(2, EventKind::BlockPlace),
+        ],
+    );
+    let alice = join(&mut server, "Alice");
+    let mut s = Scene {
+        server,
+        plugin,
+        players: vec![alice.clone()],
+    };
+    console(&mut s, "give Alice stone 4");
+    let inside = BlockPos::new(1, 64, 0);
+    let outside = BlockPos::new(2, 64, 0);
+    s.act(Order::Block {
+        pos: inside,
+        order: BlockOrder::Set("minecraft:stone".to_owned()),
+    });
+    stream_chunk_of(&mut s, inside);
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos: inside,
+            face: Direction::East,
+            cursor: Vec3::new(1.0, 0.5, 0.5),
+            inside_block: false,
+            sequence: 1,
+        },
+    );
+    let asked = last_asked(&s.plugin, EventKind::BlockCanBuild);
+    let _bob = join(&mut s.server, "Bob");
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    let placed = place_of(&settled_for(&s.plugin, EventKind::BlockPlace)[0]);
+    assert_eq!(placed.block, outside);
+    assert!(!placed.build);
+    assert_eq!(kind_at(&mut s, outside), "minecraft:air");
+}
