@@ -348,3 +348,25 @@ fn daylight_combusts_an_undead_without_a_combuster() {
     assert_eq!(burn.entity_type, "minecraft:zombie");
     assert_eq!(burn.duration, 8.0);
 }
+
+#[test]
+fn a_shutdown_settles_the_waiting_events_of_an_entity_lane() {
+    let mut s = waiting_scene(vec![
+        deciding(1, EventKind::EntityPotionEffect),
+        observe(2, EventKind::EntityPotionEffect),
+    ]);
+    let cow = spawn(&mut s, "minecraft:cow", Vec3::new(2.5, 64.0, 2.5));
+    s.act(Order::Entity {
+        entity: cow.id,
+        order: EntityOrder::AddEffect(effect("minecraft:slowness", 200, 0)),
+    });
+    assert_eq!(asked_for(&s.plugin, EventKind::EntityPotionEffect).len(), 1);
+    assert!(settled_for(&s.plugin, EventKind::EntityPotionEffect).is_empty());
+    let (sender, inbound) = crossbeam_channel::unbounded();
+    sender.send(Inbound::Shutdown).expect("open");
+    let Scene { server, plugin, .. } = s;
+    let _ = server.run(&inbound);
+    let settled = settled_for(&plugin, EventKind::EntityPotionEffect);
+    assert_eq!(settled.len(), 1);
+    assert!(!settled[0].cancelled);
+}
