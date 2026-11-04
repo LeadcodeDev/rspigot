@@ -26,6 +26,8 @@ use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
 const MINING_EXHAUSTION: f32 = 0.005;
+const FINISH_PROGRESS: f32 = 0.7;
+const NO_SEQUENCE: i32 = -1;
 const CORRECT_TOOL_DIVISOR: f32 = 30.0;
 const WRONG_TOOL_DIVISOR: f32 = 100.0;
 const HASTE_PER_LEVEL: f32 = 0.2;
@@ -152,7 +154,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn ack_block(&mut self, id: PlayerId, sequence: i32) {
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        if sequence > NO_SEQUENCE {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        }
     }
 
     pub(crate) fn start_destroying(&mut self, id: PlayerId, pos: BlockPos, sequence: i32) {
@@ -241,14 +245,17 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn finish_digging(&mut self, step: FinishStep) {
         let (id, pos, sequence) = (step.player, step.pos, step.sequence);
+        let now = self.current_tick();
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        let started = player.mining.take_if(|mining| mining.pos == pos).is_some();
+        let started = player.mining.take_if(|mining| mining.pos == pos);
         let game_mode = player.game_mode;
-        let held = player.inventory.held().cloned();
         let state = self.world.chunks.block(pos);
-        let Some(state) = state.filter(|_| started && game_mode == GameMode::Survival) else {
+        let Some((state, mining)) = state
+            .zip(started)
+            .filter(|_| game_mode == GameMode::Survival)
+        else {
             self.refuse_block(id, pos, sequence);
             return;
         };
@@ -256,6 +263,64 @@ impl<L: ClientLink> Server<L> {
             self.ack_block(id, sequence);
             return;
         }
+        let elapsed = now.saturating_sub(mining.since);
+        if self.destroy_progress(id, state) * (elapsed as f32 + 1.0) < FINISH_PROGRESS {
+            if let Some(player) = self.players.get_mut(&id)
+                && player.delayed_destroy.is_none()
+            {
+                player.delayed_destroy = Some(mining);
+            }
+            self.ack_block(id, sequence);
+            return;
+        }
+        self.break_mined(id, pos, sequence, state);
+    }
+
+    pub(crate) fn tick_delayed_destroys(&mut self) {
+        let now = self.current_tick();
+        let delayed: Vec<(PlayerId, Mining)> = self
+            .players
+            .values()
+            .filter_map(|player| Some((player.id, player.delayed_destroy?)))
+            .collect();
+        for (id, mining) in delayed {
+            let state = self.world.chunks.block(mining.pos);
+            let due = state.filter(|state| !state.is_air()).map(|state| {
+                let elapsed = now.saturating_sub(mining.since);
+                (
+                    state,
+                    self.destroy_progress(id, state) * (elapsed as f32 + 1.0) >= 1.0,
+                )
+            });
+            match due {
+                Some((_, false)) => {}
+                Some((state, true)) => {
+                    if let Some(player) = self.players.get_mut(&id) {
+                        player.delayed_destroy = None;
+                    }
+                    if self
+                        .players
+                        .get(&id)
+                        .is_some_and(|player| player.game_mode == GameMode::Survival)
+                    {
+                        self.break_mined(id, mining.pos, NO_SEQUENCE, state);
+                    }
+                }
+                None => {
+                    if let Some(player) = self.players.get_mut(&id) {
+                        player.delayed_destroy = None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn break_mined(&mut self, id: PlayerId, pos: BlockPos, sequence: i32, state: BlockStateId) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        let game_mode = player.game_mode;
+        let held = player.inventory.held().cloned();
         if hardness_of(state) < 0.0 || !self.within_reach(id, pos) || self.is_protected(id, pos) {
             self.refuse_block(id, pos, sequence);
             return;

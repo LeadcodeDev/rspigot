@@ -57,6 +57,7 @@ pub struct Player<L> {
     pub kick_leave_message: Option<String>,
     pub last_input: crate::events::InputState,
     pub(crate) mining: Option<crate::plugins::Mining>,
+    pub(crate) delayed_destroy: Option<crate::plugins::Mining>,
     pub(crate) use_memo: Option<crate::plugins::UseMemo>,
 }
 

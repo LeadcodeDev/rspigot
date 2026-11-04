@@ -601,6 +601,7 @@ fn breaking_the_chest_closes_the_window() {
             sequence: 4,
         },
     });
+    world.wait_to_finish();
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
@@ -1139,6 +1140,7 @@ fn breaking_one_half_makes_the_other_a_single_chest_and_closes_the_window() {
             sequence: 4,
         },
     });
+    world.wait_to_finish();
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
@@ -1502,6 +1504,7 @@ fn breaking_one_copper_half_makes_the_other_a_single_copper_chest() {
             sequence: 4,
         },
     });
+    world.wait_to_finish();
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
@@ -1662,6 +1665,7 @@ fn breaking_a_station_closes_its_window_and_returns_the_items() {
             sequence: 4,
         },
     });
+    world.wait_to_finish();
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
@@ -1695,7 +1699,31 @@ fn on_the_ground(world: &World, name: &str) -> Vec<u32> {
         .collect()
 }
 
+const MINING_TICKS: usize = 360;
+
 impl World {
+    fn wait_to_finish(&mut self) {
+        self.wait(MINING_TICKS);
+        let teleport = self.alice.log.iter().rev().find_map(|event| match event {
+            ClientEvent::Teleport { id, .. } => Some(*id),
+            _ => None,
+        });
+        if let Some(teleport) = teleport {
+            self.server.handle(Inbound::Input {
+                player: self.alice.id,
+                input: PlayerInput::TeleportConfirm(teleport),
+            });
+        }
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::Move {
+                position: None,
+                rotation: None,
+                on_ground: true,
+            },
+        });
+    }
+
     fn step_away(&mut self) {
         self.console("tp Alice 6 64 2");
     }
@@ -1710,6 +1738,7 @@ impl World {
                 sequence: 4,
             },
         });
+        self.wait_to_finish();
         self.server.handle(Inbound::Input {
             player: self.alice.id,
             input: PlayerInput::Dig {
@@ -2980,6 +3009,9 @@ fn breaking_a_furnace_asks_block_exp_after_the_break_and_pays_the_settled_amount
     world.close(WINDOW);
     let before = experience_of_everyone(&world);
     for action in [DigAction::Start, DigAction::Finish] {
+        if action == DigAction::Finish {
+            world.wait_to_finish();
+        }
         world.server.handle(Inbound::Input {
             player: world.alice.id,
             input: PlayerInput::Dig {

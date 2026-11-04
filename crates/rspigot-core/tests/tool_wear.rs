@@ -280,6 +280,8 @@ fn broke_main_hand_item(player: &Player) -> bool {
     })
 }
 
+const MINING_TICKS: usize = 8;
+
 impl World {
     fn dig(&mut self, pos: BlockPos, action: DigAction) {
         self.server.handle(Inbound::Input {
@@ -295,7 +297,18 @@ impl World {
     }
 
     fn mine(&mut self, pos: BlockPos) {
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::Move {
+                position: None,
+                rotation: None,
+                on_ground: true,
+            },
+        });
         self.dig(pos, DigAction::Start);
+        for _ in 0..MINING_TICKS {
+            self.server.tick();
+        }
         self.dig(pos, DigAction::Finish);
     }
 }

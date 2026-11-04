@@ -617,6 +617,7 @@ impl<L: ClientLink> Server<L> {
             kick_leave_message: None,
             last_input: Default::default(),
             mining: None,
+            delayed_destroy: None,
             use_memo: None,
         };
         if let Some(save) = &saved {
@@ -805,6 +806,7 @@ impl<L: ClientLink> Server<L> {
         self.world.chunks.relight();
         self.send_entity_changes();
         self.tick_health();
+        self.tick_delayed_destroys();
         self.tick_spawning();
         self.tick_entities();
         self.collect_items();

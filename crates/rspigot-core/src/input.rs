@@ -301,7 +301,7 @@ impl<L: ClientLink> Server<L> {
         if let Some(state) = self.world.chunks.block(pos) {
             self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
         }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        self.ack_block(id, sequence);
     }
 
     fn handle_dig(

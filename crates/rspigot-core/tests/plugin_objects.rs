@@ -440,7 +440,17 @@ fn mine_with_a_pickaxe(s: &mut Scene, player: &Player) {
 }
 
 fn mine_at(s: &mut Scene, player: &Player, pos: BlockPos) {
+    send_input(
+        &mut s.server,
+        player,
+        PlayerInput::Move {
+            position: None,
+            rotation: None,
+            on_ground: true,
+        },
+    );
     dig(s, player, DigAction::Start, pos);
+    s.tick(10);
     dig(s, player, DigAction::Finish, pos);
 }
 

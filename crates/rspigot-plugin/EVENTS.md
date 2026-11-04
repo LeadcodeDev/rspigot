@@ -19,7 +19,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `BatToggleSleepEvent` | `BatToggleSleep` | yes | - | - | not fired yet: needs sleeping |
 | `BellResonateEvent` | `BellResonate` | no | - | - | not fired yet: needs redstone (#55) |
 | `BellRingEvent` | `BellRing` | yes | - | - | not fired yet: needs redstone (#55) |
-| `BlockBreakEvent` | `BlockBreak` | yes | `set_drop_items`, `set_exp_to_drop` | - | fired: creative starts, insta mines and finished survival digs; exp_to_drop starts at 0 since no block gives experience yet; a creative tool that cannot break blocks makes it born cancelled |
+| `BlockBreakEvent` | `BlockBreak` | yes | `set_drop_items`, `set_exp_to_drop` | - | fired: creative starts, insta mines and finished survival digs; a finish below 0.7 progress breaks later, once the progress reaches 1; exp_to_drop starts at 0 since no block gives experience yet; a creative tool that cannot break blocks makes it born cancelled |
 | `BlockBrushEvent` | `BlockBrush` | yes | - | - | not fired yet: needs its mechanic |
 | `BlockBurnEvent` | `BlockBurn` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `BlockCanBuildEvent` | `BlockCanBuild` | no | `set_buildable` | - | fired: for every block item placement that has a state to place; buildable starts as the player obstruction test, mobs are not checked |

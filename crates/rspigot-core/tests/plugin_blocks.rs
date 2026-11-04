@@ -38,9 +38,24 @@ fn dig(s: &mut Scene, player: &Player, action: DigAction, pos: BlockPos, sequenc
     );
 }
 
+const DIRT_TICKS: u32 = 10;
+
 fn mine(s: &mut Scene, player: &Player, pos: BlockPos) {
     dig(s, player, DigAction::Start, pos, 1);
+    s.tick(DIRT_TICKS);
     dig(s, player, DigAction::Finish, pos, 2);
+}
+
+fn stand(s: &mut Scene, player: &Player) {
+    send_input(
+        &mut s.server,
+        player,
+        PlayerInput::Move {
+            position: None,
+            rotation: None,
+            on_ground: true,
+        },
+    );
 }
 
 fn kind_at(s: &mut Scene, pos: BlockPos) -> String {
@@ -55,6 +70,7 @@ fn dirt_scene(handlers: Vec<rspigot_core::plugins::HandlerSpec>) -> (Scene, Play
     let alice = s.players[0].clone();
     set(&mut s, DIRT, "minecraft:dirt");
     stream_chunk_of(&mut s, DIRT);
+    stand(&mut s, &alice);
     alice.link.take();
     (s, alice)
 }
@@ -159,6 +175,7 @@ fn a_cancelled_break_resends_the_block_its_neighbours_then_acks() {
         observe(2, EventKind::BlockBreak),
     ]);
     dig(&mut s, &alice, DigAction::Start, DIRT, 1);
+    s.tick(DIRT_TICKS);
     alice.link.take();
     dig(&mut s, &alice, DigAction::Finish, DIRT, 2);
     assert_eq!(
@@ -190,8 +207,7 @@ fn a_cancelled_break_resends_the_block_its_neighbours_then_acks() {
 #[test]
 fn an_accepted_break_updates_the_block_before_its_ack() {
     let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockBreak)]);
-    dig(&mut s, &alice, DigAction::Start, DIRT, 1);
-    dig(&mut s, &alice, DigAction::Finish, DIRT, 2);
+    mine(&mut s, &alice, DIRT);
     alice.link.take();
     let asked = last_asked(&s.plugin, EventKind::BlockBreak);
     rule_on(&mut s.server, 1, asked.id, false, None);
@@ -301,14 +317,21 @@ fn a_cancelled_damage_resyncs_the_block_and_leaves_no_session() {
 #[test]
 fn a_finish_sent_while_the_damage_waits_is_judged_once_it_settles() {
     let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockDamage)]);
-    mine(&mut s, &alice, DIRT);
+    dig(&mut s, &alice, DigAction::Start, DIRT, 1);
+    dig(&mut s, &alice, DigAction::Finish, DIRT, 2);
     assert_eq!(kind_at(&mut s, DIRT), "minecraft:dirt");
     let asked = last_asked(&s.plugin, EventKind::BlockDamage);
     rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(kind_at(&mut s, DIRT), "minecraft:dirt");
+    assert_eq!(
+        block_updates_and_acks(&alice.link.take()),
+        ["ack 1", "ack 2"]
+    );
+    s.tick(15);
     assert_eq!(kind_at(&mut s, DIRT), "minecraft:air");
     assert_eq!(
         block_updates_and_acks(&alice.link.take()),
-        ["ack 1", "update 2 63 0 air", "ack 2"]
+        ["update 2 63 0 air"]
     );
 }
 
@@ -463,9 +486,9 @@ fn a_drop_patch_keeps_only_the_listed_items_and_a_cancel_keeps_the_experience() 
 #[test]
 fn a_block_without_drops_still_fires_an_empty_drop_event() {
     let (mut s, alice) = dirt_scene(vec![observe(1, EventKind::BlockDropItem)]);
-    let stone = BlockPos::new(3, 63, 0);
-    assert_eq!(kind_at(&mut s, stone), "minecraft:stone");
-    mine(&mut s, &alice, stone);
+    let glass = BlockPos::new(3, 63, 0);
+    set(&mut s, glass, "minecraft:glass");
+    mine(&mut s, &alice, glass);
     let dropped = drop_of(&settled_for(&s.plugin, EventKind::BlockDropItem)[0]);
     assert!(dropped.items.is_empty());
     assert_eq!(s.server.items_on_ground(), 0);
@@ -526,4 +549,64 @@ fn a_cancelled_break_of_a_campfire_resends_its_block_entity_between_two_acks() {
     assert_eq!(order[0], "update 2 63 0");
     assert_eq!(order[7..], ["ack 6", "entity 2 63 0", "ack 6"]);
     assert_eq!(kind_at(&mut s, DIRT), "minecraft:campfire");
+}
+
+const STONE: BlockPos = BlockPos::new(3, 63, 0);
+
+fn pickaxe_scene() -> (Scene, Player) {
+    let (mut s, alice) = dirt_scene(vec![observe(1, EventKind::BlockBreak)]);
+    console(&mut s, "give Alice iron_pickaxe");
+    alice.link.take();
+    (s, alice)
+}
+
+#[test]
+fn a_finish_below_the_progress_threshold_breaks_the_block_once_the_progress_is_due() {
+    let (mut s, alice) = pickaxe_scene();
+    dig(&mut s, &alice, DigAction::Start, STONE, 1);
+    dig(&mut s, &alice, DigAction::Finish, STONE, 2);
+    assert_eq!(kind_at(&mut s, STONE), "minecraft:stone");
+    assert_eq!(
+        block_updates_and_acks(&alice.link.take()),
+        ["ack 1", "ack 2"]
+    );
+    s.tick(5);
+    assert_eq!(kind_at(&mut s, STONE), "minecraft:stone");
+    s.tick(5);
+    assert_eq!(kind_at(&mut s, STONE), "minecraft:air");
+    assert_eq!(settled_for(&s.plugin, EventKind::BlockBreak).len(), 1);
+    assert_eq!(
+        block_updates_and_acks(&alice.link.take()),
+        ["update 3 63 0 air"]
+    );
+}
+
+#[test]
+fn a_finish_at_the_progress_threshold_breaks_the_block_at_once() {
+    let (mut s, alice) = pickaxe_scene();
+    dig(&mut s, &alice, DigAction::Start, STONE, 1);
+    s.tick(5);
+    dig(&mut s, &alice, DigAction::Finish, STONE, 2);
+    assert_eq!(kind_at(&mut s, STONE), "minecraft:air");
+    assert_eq!(settled_for(&s.plugin, EventKind::BlockBreak).len(), 1);
+}
+
+#[test]
+fn an_insta_break_still_breaks_at_the_start() {
+    let (mut s, alice) = pickaxe_scene();
+    let flower = BlockPos::new(3, 64, 0);
+    set(&mut s, flower, "minecraft:poppy");
+    dig(&mut s, &alice, DigAction::Start, flower, 1);
+    assert_eq!(kind_at(&mut s, flower), "minecraft:air");
+}
+
+#[test]
+fn an_abort_does_not_call_off_a_delayed_destroy_as_in_the_bytecode() {
+    let (mut s, alice) = pickaxe_scene();
+    dig(&mut s, &alice, DigAction::Start, STONE, 1);
+    dig(&mut s, &alice, DigAction::Finish, STONE, 2);
+    dig(&mut s, &alice, DigAction::Cancel, STONE, 3);
+    dig(&mut s, &alice, DigAction::Start, DIRT, 4);
+    s.tick(10);
+    assert_eq!(kind_at(&mut s, STONE), "minecraft:air");
 }

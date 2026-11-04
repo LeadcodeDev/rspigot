@@ -603,7 +603,22 @@ fn door_item_places_both_halves_and_use_opens_both() {
     assert_eq!(opened, vec![Some("true"), Some("true")]);
 }
 
+const MINING_TICKS: usize = 40;
+
 fn dig(server: &mut Server<Link>, player: PlayerId, pos: BlockPos, action: DigAction) {
+    if action == DigAction::Finish {
+        server.handle(Inbound::Input {
+            player,
+            input: PlayerInput::Move {
+                position: None,
+                rotation: None,
+                on_ground: true,
+            },
+        });
+        for _ in 0..MINING_TICKS {
+            server.tick();
+        }
+    }
     server.handle(Inbound::Input {
         player,
         input: PlayerInput::Dig {
