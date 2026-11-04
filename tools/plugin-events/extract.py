@@ -317,12 +317,25 @@ def classify(classes, name):
     return "bukkit"
 
 
-def type_record(classes, name):
+def number_constants(constants, previous):
+    numbers = dict(previous or {})
+    following = max(numbers.values(), default=0) + 1
+    for constant in constants:
+        if constant not in numbers:
+            numbers[constant] = following
+            following += 1
+    return numbers
+
+
+def type_record(classes, name, previous):
     kind = classify(classes, name)
     record = {"kind": kind}
     if kind == "enum":
         constants = constants_of(classes, name)
-        record["constants"] = constants if len(constants) <= MAX_LISTED_CONSTANTS else None
+        listed = len(constants) <= MAX_LISTED_CONSTANTS
+        record["constants"] = constants if listed else None
+        if listed:
+            record["numbers"] = number_constants(constants, (previous or {}).get("numbers"))
     return record
 
 
@@ -432,7 +445,9 @@ def build(dump, jar, javap, previous):
                         used.update(leaves(type_name))
         record.update(found)
         events.append(record)
-    types = {leaf: type_record(classes, leaf) for leaf in sorted(used)}
+    old_types = previous.get("types", {})
+    kept = {leaf for leaf, record in old_types.items() if record.get("numbers")}
+    types = {leaf: type_record(classes, leaf, old_types.get(leaf)) if leaf in used else old_types[leaf] for leaf in sorted(used | kept)}
     catalog = {"source": JAR_NAME, "events": events}
     retired = retired_events(previous, names)
     if retired:

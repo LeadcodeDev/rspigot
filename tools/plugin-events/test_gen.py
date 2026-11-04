@@ -123,6 +123,26 @@ class Generator(unittest.TestCase):
             body = re.search(rf"^message {message} {{\n(.*?)^}}", proto, re.S | re.M)[1]
             self.assertIn(f"reserved {number + 9}, 909;", body)
 
+    def test_enum_numbers_come_from_the_catalog_and_a_removed_constant_is_reserved(self):
+        catalog = self.catalog()
+        action = catalog["types"]["org.bukkit.event.block.Action"]
+        action["constants"].insert(2, "MIDDLE_CLICK")
+        action["constants"].remove("PHYSICAL")
+        action["numbers"]["MIDDLE_CLICK"] = 6
+        self.write_catalog(catalog)
+        self.assertEqual(generator(self.root).returncode, 0)
+        proto = (self.root / OUTPUTS[0]).read_text()
+        self.assertIn(
+            "enum Action { ACTION_UNSPECIFIED = 0; ACTION_LEFT_CLICK_BLOCK = 1; ACTION_RIGHT_CLICK_BLOCK = 2; "
+            "ACTION_MIDDLE_CLICK = 6; ACTION_LEFT_CLICK_AIR = 3; ACTION_RIGHT_CLICK_AIR = 4; reserved 5; }",
+            proto,
+        )
+        del action["numbers"]["MIDDLE_CLICK"]
+        self.write_catalog(catalog)
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("MIDDLE_CLICK", failed.stderr)
+
     @unittest.skipUnless(DUMP.exists(), "the API dump is not on this machine")
     def test_check_dump_passes_on_the_api_dump_and_fails_when_the_catalog_lacks_an_event(self):
         self.assertEqual(generator(self.root, "--check-dump", str(DUMP)).returncode, 0)
@@ -137,6 +157,15 @@ class Generator(unittest.TestCase):
 class Numbering(unittest.TestCase):
     def setUp(self):
         self.extract = load_extract()
+
+    def test_a_constant_inserted_in_the_middle_leaves_the_others_their_numbers(self):
+        previous = {"DOWN": 1, "UP": 2, "NORTH": 3}
+        self.assertEqual(
+            self.extract.number_constants(["DOWN", "SELF", "UP", "NORTH"], previous),
+            {"DOWN": 1, "UP": 2, "NORTH": 3, "SELF": 4},
+        )
+        self.assertEqual(self.extract.number_constants(["UP", "NORTH"], previous), previous)
+        self.assertEqual(self.extract.number_constants(["A", "B"], None), {"A": 1, "B": 2})
 
     def test_a_deprecated_or_removed_event_keeps_its_number_and_a_new_one_gets_a_fresh_number(self):
         previous = {"events": [

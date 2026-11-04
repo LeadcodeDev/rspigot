@@ -323,6 +323,7 @@ class EnumDef:
     name: str
     constants: list
     numbers: dict
+    reserved: list
 
 
 @dataclass
@@ -426,8 +427,14 @@ class Model:
                 ordered = seeded + [constant for constant in constants if constant not in seeded]
             else:
                 ordered = list(constants)
-            numbers = {constant: index + 1 for index, constant in enumerate(ordered)}
-            self.enums[java] = EnumDef(java, name, ordered, numbers)
+            numbers = record.get("numbers") or {}
+            missing = [constant for constant in ordered if constant not in numbers]
+            if missing:
+                fail(f"the constants {missing} of {java} have no number, run tools/plugin-events/extract.py")
+            if len(set(numbers.values())) != len(numbers):
+                fail(f"two constants of {java} share a number")
+            reserved = sorted(number for constant, number in numbers.items() if constant not in ordered)
+            self.enums[java] = EnumDef(java, name, ordered, {constant: numbers[constant] for constant in ordered}, reserved)
         definition = self.enums[java]
         name = definition.name
         return Leaf(
@@ -834,6 +841,8 @@ def emit_proto(model):
     for definition in model.ordered_enums():
         prefix = screaming(definition.name)
         values = " ".join(f"{prefix}_{constant} = {definition.numbers[constant]};" for constant in definition.constants)
+        if definition.reserved:
+            values += f" reserved {', '.join(str(number) for number in definition.reserved)};"
         w(f"enum {definition.name} {{ {prefix}_UNSPECIFIED = 0; {values} }}")
     w()
     wrappers = {}
