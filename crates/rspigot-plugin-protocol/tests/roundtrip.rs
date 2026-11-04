@@ -1,13 +1,18 @@
 use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
-    Access, BlockPos, BlockSnapshot, BlockState, ClickKind, DamageSource, Decision,
-    EntityDamageByEntity, EntityDamageCause, EntitySnapshot, EntityTargetPatch, Event, EventKind,
-    EventResult, ExplosionResult, FromPlugin, GameMode, Handler, Hello, InventoryAction,
-    InventoryClick, InventoryRef, InventoryTypeSlotType, InventoryView, Item, ItemList, Location,
-    NullableEntitySnapshot, NullableString, Patch, Phase, PlayerDeath, PlayerDeathPatch,
-    PlayerMove, PlayerMovePatch, PlayerSnapshot, Priority, Property, Rotation, ToPlugin, Vec3,
-    Verdict, event, from_plugin, inventory_ref, patch, to_plugin,
+    Access, BlockPos, BlockPosList, BlockSnapshot, BlockState, BookMeta, BoundingBox, ChunkRef,
+    ClickKind, CommandSender, CommandSenderList, DamageSource, Decision, Effect, Empty, Enchant,
+    EnchantOffer, EntityDamageByEntity, EntityDamageCause, EntitySnapshot, EntitySnapshotList,
+    EntityTargetPatch, Event, EventKind, EventResult, ExplosionResult, FromPlugin, GameMode,
+    Handler, Hello, HolderRef, Input, InventoryAction, InventoryClick, InventoryRef,
+    InventoryTypeSlotType, InventoryView, Item, ItemList, LecternData, Location, LootContext,
+    MerchantRef, NullableBlockPos, NullableEntitySnapshot, NullableInventoryRef, NullableItem,
+    NullableLocation, NullableString, OwnerRef, Patch, Phase, PlayerDeath, PlayerDeathPatch,
+    PlayerMove, PlayerMovePatch, PlayerSnapshot, PlayerSnapshotList, PluginInfo, Priority,
+    Property, Rotation, ServerListPingPatch, SignData, SpawnerData, StringList, ToPlugin, Trade,
+    TrialSpawnerData, Vec3, Verdict, command_sender, event, from_plugin, holder_ref, inventory_ref,
+    merchant_ref, owner_ref, patch, to_plugin,
 };
 
 fn steve() -> PlayerSnapshot {
@@ -89,6 +94,12 @@ fn event(payload: event::Payload) -> ToPlugin {
 fn survives(message: &ToPlugin) {
     let decoded = ToPlugin::decode(message.encode_to_vec().as_slice()).unwrap();
     assert_eq!(&decoded, message);
+}
+
+fn round_trips<M: Message + Default + PartialEq + std::fmt::Debug>(message: &M) {
+    let encoded = message.encode_to_vec();
+    assert!(!encoded.is_empty(), "{message:?} encodes to nothing");
+    assert_eq!(&M::decode(encoded.as_slice()).unwrap(), message);
 }
 
 #[test]
@@ -271,4 +282,239 @@ fn a_patch_shares_its_field_number_with_the_event_payload() {
     assert_eq!(patched.encode_to_vec()[0] >> 3, 12);
     assert_eq!(EventKind::PlayerJoin as i32, 1);
     assert_eq!(EventKind::InventoryClose as i32, 5);
+}
+
+#[test]
+fn every_contract_type_survives_encoding() {
+    let block = BlockPos { x: 3, y: 64, z: -2 };
+    let state = BlockState {
+        block: "minecraft:oak_sign".to_owned(),
+        properties: vec![Property {
+            name: "rotation".to_owned(),
+            value: "4".to_owned(),
+        }],
+    };
+    let mut book = diamond(1);
+    book.lore = vec!["Old".to_owned(), "Dusty".to_owned()];
+    book.enchantments = vec![Enchant {
+        key: "minecraft:unbreaking".to_owned(),
+        level: 3,
+    }];
+    book.components = vec![0x0a, 0x00, 0xff, 0x7f];
+    round_trips(&book);
+    round_trips(&at(1.5));
+    round_trips(&BlockSnapshot {
+        pos: Some(block),
+        state: Some(state.clone()),
+    });
+    for owner in [
+        inventory_ref::Owner::Custom(5),
+        inventory_ref::Owner::Player(steve().uuid),
+        inventory_ref::Owner::Block(block),
+        inventory_ref::Owner::Entity(40),
+        inventory_ref::Owner::Detached(Empty {}),
+    ] {
+        round_trips(&InventoryRef {
+            owner: Some(owner),
+            size: 27,
+            kind: "CHEST".to_owned(),
+        });
+    }
+    round_trips(&InventoryView {
+        top: Some(custom(5)),
+        bottom: Some(custom(6)),
+        title: "§6Menu".to_owned(),
+        player: Some(steve()),
+    });
+    round_trips(&ChunkRef {
+        world: "minecraft:overworld".to_owned(),
+        x: -3,
+        z: 7,
+    });
+    round_trips(&DamageSource {
+        kind: "minecraft:arrow".to_owned(),
+        causing: Some(zombie()),
+        direct: Some(zombie()),
+        location: Some(Vec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        }),
+    });
+    for sender in [
+        command_sender::Sender::Player(steve()),
+        command_sender::Sender::Console(Empty {}),
+    ] {
+        round_trips(&CommandSender {
+            sender: Some(sender),
+        });
+    }
+    round_trips(&Trade {
+        result: Some(diamond(2)),
+        ingredients: vec![diamond(9), diamond(1)],
+        uses: 1,
+        max_uses: 12,
+        experience_reward: true,
+        villager_experience: 5,
+        price_multiplier: 0.05,
+        demand: -2,
+        special_price: 3,
+    });
+    round_trips(&PluginInfo {
+        name: "guard".to_owned(),
+        version: "1.2.3".to_owned(),
+    });
+    round_trips(&BoundingBox {
+        min: Some(Vec3 {
+            x: -0.5,
+            y: 0.0,
+            z: -0.5,
+        }),
+        max: Some(Vec3 {
+            x: 0.5,
+            y: 1.8,
+            z: 0.5,
+        }),
+    });
+    round_trips(&Input {
+        forward: true,
+        backward: true,
+        left: true,
+        right: true,
+        jump: true,
+        sneak: true,
+        sprint: true,
+    });
+    round_trips(&SpawnerData {
+        pos: Some(block),
+        spawned: Some("minecraft:zombie".to_owned()),
+        delay: 200,
+    });
+    round_trips(&TrialSpawnerData {
+        pos: Some(block),
+        ominous: true,
+    });
+    round_trips(&LecternData {
+        pos: Some(block),
+        book: Some(book),
+        page: 2,
+    });
+    round_trips(&SignData {
+        pos: Some(block),
+        front: vec!["Hello".to_owned(), String::new()],
+        back: vec!["Bye".to_owned()],
+        waxed: true,
+    });
+    round_trips(&EnchantOffer {
+        enchantment: "minecraft:sharpness".to_owned(),
+        level: 2,
+        cost: 14,
+    });
+    for owner in [
+        owner_ref::Owner::Player(steve()),
+        owner_ref::Owner::Entity(zombie()),
+        owner_ref::Owner::Offline(steve().uuid),
+    ] {
+        round_trips(&OwnerRef { owner: Some(owner) });
+    }
+    for holder in [
+        holder_ref::Holder::Player(steve()),
+        holder_ref::Holder::Entity(zombie()),
+        holder_ref::Holder::Block(block),
+    ] {
+        round_trips(&HolderRef {
+            holder: Some(holder),
+        });
+    }
+    for merchant in [
+        merchant_ref::Merchant::Entity(zombie()),
+        merchant_ref::Merchant::Custom(Empty {}),
+    ] {
+        round_trips(&MerchantRef {
+            merchant: Some(merchant),
+        });
+    }
+    round_trips(&BookMeta {
+        title: Some("Notes".to_owned()),
+        author: Some("Steve".to_owned()),
+        pages: vec!["one".to_owned(), "two".to_owned()],
+    });
+    round_trips(&LootContext {
+        location: Some(at(4.0)),
+        luck: 1.5,
+        killer: Some(zombie()),
+        looted: Some(zombie()),
+    });
+    round_trips(&Effect {
+        key: "minecraft:speed".to_owned(),
+        duration: 600,
+        amplifier: 1,
+        ambient: true,
+        particles: true,
+        icon: true,
+    });
+}
+
+#[test]
+fn every_wrapper_of_a_patch_survives_encoding() {
+    let block = BlockPos { x: 3, y: 64, z: -2 };
+    round_trips(&NullableBlockPos { value: Some(block) });
+    round_trips(&NullableEntitySnapshot {
+        value: Some(zombie()),
+    });
+    round_trips(&NullableInventoryRef {
+        value: Some(custom(5)),
+    });
+    round_trips(&NullableItem {
+        value: Some(diamond(1)),
+    });
+    round_trips(&NullableLocation {
+        value: Some(at(1.0)),
+    });
+    round_trips(&NullableString {
+        value: Some(String::new()),
+    });
+    round_trips(&BlockPosList {
+        values: vec![block, block],
+    });
+    round_trips(&CommandSenderList {
+        values: vec![CommandSender {
+            sender: Some(command_sender::Sender::Console(Empty {})),
+        }],
+    });
+    round_trips(&EntitySnapshotList {
+        values: vec![zombie()],
+    });
+    round_trips(&PlayerSnapshotList {
+        values: vec![steve()],
+    });
+    round_trips(&StringList {
+        values: vec!["a".to_owned(), String::new()],
+    });
+    let pinged = Patch {
+        change: Some(patch::Change::ServerListPing(ServerListPingPatch {
+            max_players: Some(0),
+            motd: Some(String::new()),
+            server_icon: Some(vec![0x89, 0x50, 0x4e, 0x47]),
+            hidden_players: Some(StringList {
+                values: vec![steve().uuid],
+            }),
+        })),
+    };
+    round_trips(&pinged);
+    let NullableString { value } = NullableString::decode(
+        NullableString {
+            value: Some(String::new()),
+        }
+        .encode_to_vec()
+        .as_slice(),
+    )
+    .unwrap();
+    assert_eq!(value, Some(String::new()));
+    assert_eq!(
+        NullableString::decode(NullableString { value: None }.encode_to_vec().as_slice())
+            .unwrap()
+            .value,
+        None
+    );
 }
