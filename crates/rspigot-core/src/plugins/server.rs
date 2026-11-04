@@ -8,7 +8,7 @@ use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::decisions::{
-    Asked, Continuation, Held, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
+    Asked, Continuation, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
 };
 use crate::plugins::events::{PlayerJoin, PlayerLeave, PlayerMove, PlayerMovePatch};
 use crate::plugins::player::SPEED_SCALE;
@@ -18,6 +18,15 @@ use crate::plugins::{
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
+
+macro_rules! patch_of {
+    ($patch:expr, $kind:ident) => {
+        match $patch {
+            Some(EventPatch::$kind(patch)) => patch,
+            _ => Default::default(),
+        }
+    };
+}
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn next_event_id(&mut self) -> u64 {
@@ -190,11 +199,53 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn fire(
         &mut self,
-        lane: PlayerId,
+        lane: impl Into<Lane>,
+        then: Continuation,
+        describe: impl FnOnce(&Self) -> Option<EventPayload>,
+    ) {
+        self.fire_as(lane.into(), None, then, describe);
+    }
+
+    pub(crate) fn fire_deferred(&mut self, lane: impl Into<Lane>, then: Continuation) {
+        let lane = lane.into();
+        if self.decisions.busy(lane) {
+            let event = self.next_event_id();
+            self.decisions.defer(event, lane, then);
+            return;
+        }
+        self.fire_head(lane, None, then);
+    }
+
+    fn fire_head(&mut self, lane: Lane, order: Option<u64>, then: Continuation) {
+        let Some(then) = self.due(then) else {
+            return;
+        };
+        let kind = then.kind();
+        let listened = self.plugins.listens(kind, Access::Observe)
+            || self.plugins.listens(kind, Access::Decide);
+        let payload = if listened {
+            self.due_payload(&then)
+        } else {
+            None
+        };
+        self.fire_as(lane, order, then, move |_| payload);
+    }
+
+    fn fire_as(
+        &mut self,
+        lane: Lane,
+        order: Option<u64>,
         then: Continuation,
         describe: impl FnOnce(&Self) -> Option<EventPayload>,
     ) {
         let kind = then.kind();
+        if then.hot()
+            && self
+                .decisions
+                .in_flight(lane, |queued| queued.same_as(&then))
+        {
+            return;
+        }
         let deciding = self.plugins.listens(kind, Access::Decide);
         if !deciding && !self.decisions.busy(lane) {
             let observed = if self.plugins.listens(kind, Access::Observe) {
@@ -202,17 +253,18 @@ impl<L: ClientLink> Server<L> {
             } else {
                 None
             };
-            self.carry_on(then, None, Vec::new());
             if let Some(payload) = observed {
-                let event = self.next_event_id();
+                let event = order.unwrap_or_else(|| self.next_event_id());
                 self.notify_plugins(event, &payload, false, Phase::Settled);
             }
+            let dropped = self.conclude(then, false, None, Vec::new());
+            self.notify_undone(dropped, Phase::Settled);
             return;
         }
         let Some(payload) = describe(self) else {
             return;
         };
-        let event = self.next_event_id();
+        let event = order.unwrap_or_else(|| self.next_event_id());
         let deciders = if deciding {
             self.plugins
                 .listeners(kind, Access::Decide, &self.config.plugins)
@@ -303,74 +355,81 @@ impl<L: ClientLink> Server<L> {
 
     fn settle_events(&mut self) {
         let tick = self.current_tick();
-        while let Some(ready) = self.decisions.next_settled(tick) {
-            self.settle(ready);
+        loop {
+            if let Some(due) = self.decisions.next_due() {
+                self.decisions.enter(due.lane);
+                self.fire_head(due.lane, Some(due.event), due.then);
+                self.decisions.leave();
+                continue;
+            }
+            match self.decisions.next_settled(tick) {
+                Some(ready) => self.settle(ready),
+                None => break,
+            }
         }
     }
 
     fn settle(&mut self, ready: Ready) {
         let Ready {
             event,
+            lane,
             mut payload,
             settlement,
             then,
             held,
             mut record,
         } = ready;
-        match settlement {
-            Settlement::Cancelled(written) => {
-                if let Some(written) = written.clone() {
-                    written.settle(&mut payload);
-                }
-                let dropped = self.call_off(then, written);
-                self.decisions.remember(event, record);
-                self.notify_plugins(event, &payload, true, Phase::Settled);
-                self.notify_undone(dropped, Phase::Settled);
-            }
-            Settlement::Applied(patch) => {
-                if let Some(patch) = patch.clone() {
-                    patch.settle(&mut payload);
-                }
-                self.notify_plugins(event, &payload, false, Phase::Settled);
-                record.applied = Some(payload);
-                self.decisions.remember(event, record);
-                let dropped = self.carry_on(then, patch, held);
-                self.notify_undone(dropped, Phase::Settled);
-            }
+        let (cancelled, patch) = match settlement {
+            Settlement::Cancelled(written) => (true, written),
+            Settlement::Applied(patch) => (false, patch),
+        };
+        if let Some(patch) = patch.clone() {
+            patch.settle(&mut payload);
         }
+        self.notify_plugins(event, &payload, cancelled, Phase::Settled);
+        if !cancelled {
+            record.applied = Some(payload);
+        }
+        self.decisions.remember(event, record);
+        self.decisions.enter(lane);
+        let dropped = self.conclude(then, cancelled, patch, held);
+        self.decisions.leave();
+        self.notify_undone(dropped, Phase::Settled);
     }
 
-    fn carry_on(
+    fn conclude(
         &mut self,
         then: Continuation,
+        cancelled: bool,
         patch: Option<EventPatch>,
         held: Vec<Held>,
     ) -> Undone {
         match then {
-            Continuation::PlayerMove(step) => {
-                let patch = match patch {
-                    Some(EventPatch::PlayerMove(patch)) => patch,
-                    _ => PlayerMovePatch::default(),
-                };
-                self.finish_move(step, patch, held)
-            }
-        }
-    }
-
-    fn call_off(&mut self, then: Continuation, written: Option<EventPatch>) -> Undone {
-        match (then, written) {
-            (Continuation::PlayerMove(step), _) => {
+            Continuation::PlayerMove(step) if cancelled => {
                 let dropped = self.decisions.drop_pending(step.player);
                 self.send_back(step.player, step.from);
                 dropped
             }
+            Continuation::PlayerMove(step) => {
+                self.finish_move(step, patch_of!(patch, PlayerMove), held)
+            }
+            Continuation::Notice(_) => Vec::new(),
         }
     }
 
-    fn undo(&mut self, lane: PlayerId, undo: Undo) {
-        match undo {
-            Undo::SendBack(position) => self.send_back(lane, position),
+    fn undo(&mut self, lane: Lane, undo: Undo) {
+        match (lane, undo) {
+            (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
+            (Lane::Login(_), Undo::SendBack(_)) => {}
         }
+    }
+
+    fn due(&self, then: Continuation) -> Option<Continuation> {
+        Some(then)
+    }
+
+    fn due_payload(&self, _then: &Continuation) -> Option<EventPayload> {
+        None
     }
 
     fn finish_move(&mut self, step: MoveStep, patch: PlayerMovePatch, held: Vec<Held>) -> Undone {

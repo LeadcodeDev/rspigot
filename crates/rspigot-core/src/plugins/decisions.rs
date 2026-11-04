@@ -1,55 +1,22 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
+use rspigot_domain::Vec3;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{Rotation, Vec3};
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 
+pub(crate) use crate::plugins::steps::{Continuation, Held, MoveStep, Undo};
 use crate::plugins::{EventKind, EventPatch, EventPayload, Verdict};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Held {
-    pub(crate) position: Option<Vec3>,
-    pub(crate) rotation: Option<Rotation>,
-    pub(crate) on_ground: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum Lane {
+    Player(PlayerId),
+    Login(u64),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct MoveStep {
-    pub(crate) player: PlayerId,
-    pub(crate) from: Vec3,
-    pub(crate) to: Vec3,
-    pub(crate) rotation: Option<Rotation>,
-    pub(crate) on_ground: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Continuation {
-    PlayerMove(MoveStep),
-}
-
-impl Continuation {
-    pub(crate) const fn kind(&self) -> EventKind {
-        match self {
-            Self::PlayerMove(_) => EventKind::PlayerMove,
-        }
+impl From<PlayerId> for Lane {
+    fn from(player: PlayerId) -> Self {
+        Self::Player(player)
     }
-
-    const fn destination(&self) -> Option<Vec3> {
-        match self {
-            Self::PlayerMove(step) => Some(step.to),
-        }
-    }
-
-    const fn undo(&self) -> Option<Undo> {
-        match self {
-            Self::PlayerMove(step) => Some(Undo::SendBack(step.from)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Undo {
-    SendBack(Vec3),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +39,7 @@ pub(crate) enum Settlement {
 }
 
 pub(crate) struct Pending {
-    lane: PlayerId,
+    lane: Lane,
     payload: EventPayload,
     asked: Vec<Asked>,
     answers: Vec<Option<Answer>>,
@@ -85,7 +52,7 @@ pub(crate) struct Pending {
 
 impl Pending {
     pub(crate) fn new(
-        lane: PlayerId,
+        lane: impl Into<Lane>,
         payload: EventPayload,
         asked: Vec<Asked>,
         deadline: u64,
@@ -99,7 +66,7 @@ impl Pending {
             }
         }
         Self {
-            lane,
+            lane: lane.into(),
             payload,
             answers: vec![None; asked.len()],
             asked,
@@ -214,6 +181,7 @@ impl Pending {
         };
         Ready {
             event,
+            lane: self.lane,
             payload: self.payload,
             settlement,
             then: self.then,
@@ -279,6 +247,7 @@ fn denied(payload: &EventPayload, patch: Option<&EventPatch>) -> bool {
 
 pub(crate) struct Ready {
     pub(crate) event: u64,
+    pub(crate) lane: Lane,
     pub(crate) payload: EventPayload,
     pub(crate) settlement: Settlement,
     pub(crate) then: Continuation,
@@ -286,8 +255,14 @@ pub(crate) struct Ready {
     pub(crate) record: Record,
 }
 
+pub(crate) struct Due {
+    pub(crate) event: u64,
+    pub(crate) lane: Lane,
+    pub(crate) then: Continuation,
+}
+
 pub(crate) struct Record {
-    lane: PlayerId,
+    lane: Lane,
     undo: Option<Undo>,
     silent: Vec<Asked>,
     answered: Vec<Asked>,
@@ -313,7 +288,7 @@ impl Record {
 pub(crate) type Undone = Vec<(u64, EventPayload)>;
 
 pub(crate) struct Rollback {
-    pub(crate) lane: PlayerId,
+    pub(crate) lane: Lane,
     pub(crate) undo: Undo,
     pub(crate) undone: Undone,
     pub(crate) dropped: Undone,
@@ -326,42 +301,106 @@ pub(crate) enum Taken {
     TooLate(&'static str),
 }
 
+enum Queued {
+    Asked(u64, Pending),
+    Due(u64, Continuation),
+}
+
+impl Queued {
+    const fn then(&self) -> &Continuation {
+        match self {
+            Self::Asked(_, pending) => &pending.then,
+            Self::Due(_, then) => then,
+        }
+    }
+
+    fn moving(&self) -> bool {
+        matches!(self, Self::Asked(_, pending) if pending.then.is_move())
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Decisions {
-    pending: BTreeMap<u64, Pending>,
+    lanes: FxHashMap<Lane, VecDeque<Queued>>,
     settled: BTreeMap<u64, Record>,
+    heads: Vec<(Lane, usize)>,
 }
 
 impl Decisions {
-    pub(crate) fn reference(&self, lane: PlayerId) -> Option<Vec3> {
-        self.pending
-            .values()
+    pub(crate) fn reference(&self, lane: impl Into<Lane>) -> Option<Vec3> {
+        self.lanes
+            .get(&lane.into())?
+            .iter()
             .rev()
-            .filter(|pending| pending.lane == lane)
-            .find_map(|pending| pending.then.destination())
+            .find_map(|queued| queued.then().destination())
     }
 
-    pub(crate) fn busy(&self, lane: PlayerId) -> bool {
-        self.pending.values().any(|pending| pending.lane == lane)
+    pub(crate) fn busy(&self, lane: impl Into<Lane>) -> bool {
+        let lane = lane.into();
+        match self.heads.iter().rev().find(|(head, _)| *head == lane) {
+            Some((_, cursor)) => *cursor > 0,
+            None => self.lanes.get(&lane).is_some_and(|queue| !queue.is_empty()),
+        }
+    }
+
+    pub(crate) fn in_flight(&self, lane: Lane, matches: impl Fn(&Continuation) -> bool) -> bool {
+        self.lanes
+            .get(&lane)
+            .is_some_and(|queue| queue.iter().any(|queued| matches(queued.then())))
     }
 
     pub(crate) fn queue(&mut self, event: u64, pending: Pending) {
-        self.pending.insert(event, pending);
+        let lane = pending.lane;
+        self.insert(lane, Queued::Asked(event, pending));
     }
 
-    pub(crate) fn hold(&mut self, lane: PlayerId, held: Held) -> Result<(), Held> {
-        match self
-            .pending
-            .values_mut()
-            .rev()
-            .find(|pending| pending.lane == lane)
-        {
+    pub(crate) fn defer(&mut self, event: u64, lane: Lane, then: Continuation) {
+        self.insert(lane, Queued::Due(event, then));
+    }
+
+    fn insert(&mut self, lane: Lane, queued: Queued) {
+        let queue = self.lanes.entry(lane).or_default();
+        match self.heads.iter_mut().rev().find(|(head, _)| *head == lane) {
+            Some((_, cursor)) => {
+                queue.insert((*cursor).min(queue.len()), queued);
+                *cursor += 1;
+            }
+            None => queue.push_back(queued),
+        }
+    }
+
+    pub(crate) fn enter(&mut self, lane: Lane) {
+        self.heads.push((lane, 0));
+    }
+
+    pub(crate) fn leave(&mut self) {
+        self.heads.pop();
+    }
+
+    pub(crate) fn hold(&mut self, lane: impl Into<Lane>, held: Held) -> Result<(), Held> {
+        let last = self.lanes.get_mut(&lane.into()).and_then(|queue| {
+            queue.iter_mut().rev().find_map(|queued| match queued {
+                Queued::Asked(_, pending) if pending.then.is_move() => Some(pending),
+                _ => None,
+            })
+        });
+        match last {
             Some(last) => {
                 last.held.push(held);
                 Ok(())
             }
             None => Err(held),
         }
+    }
+
+    fn pending_mut(&mut self, event: u64) -> Option<&mut Pending> {
+        self.lanes
+            .values_mut()
+            .flatten()
+            .find_map(|queued| match queued {
+                Queued::Asked(order, pending) if *order == event => Some(pending),
+                _ => None,
+            })
     }
 
     pub(crate) fn decide(
@@ -372,7 +411,7 @@ impl Decisions {
         tick: u64,
     ) -> (Taken, Vec<String>) {
         let mut warnings = Vec::new();
-        let taken = match self.pending.get_mut(&event) {
+        let taken = match self.pending_mut(event) {
             Some(pending) => pending.take(connection, event, verdicts, &mut warnings),
             None => self.late(connection, event, verdicts, tick, &mut warnings),
         };
@@ -417,7 +456,7 @@ impl Decisions {
         }
     }
 
-    fn roll_back(&mut self, event: u64, lane: PlayerId, undo: Undo) -> Rollback {
+    fn roll_back(&mut self, event: u64, lane: Lane, undo: Undo) -> Rollback {
         let undone = self
             .settled
             .range_mut(event..)
@@ -434,19 +473,50 @@ impl Decisions {
     }
 
     pub(crate) fn release(&mut self, present: impl Fn(u64) -> bool) {
-        for pending in self.pending.values_mut() {
-            pending.waiting.retain(|connection| present(*connection));
+        for queued in self.lanes.values_mut().flatten() {
+            if let Queued::Asked(_, pending) = queued {
+                pending.waiting.retain(|connection| present(*connection));
+            }
         }
     }
 
     pub(crate) fn next_settled(&mut self, tick: u64) -> Option<Ready> {
-        let mut seen = FxHashSet::default();
-        let event = self.pending.iter().find_map(|(event, pending)| {
-            (seen.insert(pending.lane) && pending.ready(tick)).then_some(*event)
-        })?;
-        self.pending
-            .remove(&event)
-            .map(|pending| pending.settle(event))
+        let (lane, event) = self
+            .lanes
+            .iter()
+            .filter_map(|(lane, queue)| match queue.front()? {
+                Queued::Asked(event, pending) if pending.ready(tick) => Some((*lane, *event)),
+                _ => None,
+            })
+            .min_by_key(|(_, event)| *event)?;
+        match self.pop(lane)? {
+            Queued::Asked(_, pending) => Some(pending.settle(event)),
+            Queued::Due(..) => None,
+        }
+    }
+
+    pub(crate) fn next_due(&mut self) -> Option<Due> {
+        let (lane, event) = self
+            .lanes
+            .iter()
+            .filter_map(|(lane, queue)| match queue.front()? {
+                Queued::Due(event, _) => Some((*lane, *event)),
+                Queued::Asked(..) => None,
+            })
+            .min_by_key(|(_, event)| *event)?;
+        match self.pop(lane)? {
+            Queued::Due(_, then) => Some(Due { event, lane, then }),
+            Queued::Asked(..) => None,
+        }
+    }
+
+    fn pop(&mut self, lane: Lane) -> Option<Queued> {
+        let queue = self.lanes.get_mut(&lane)?;
+        let front = queue.pop_front();
+        if queue.is_empty() {
+            self.lanes.remove(&lane);
+        }
+        front
     }
 
     pub(crate) fn remember(&mut self, event: u64, record: Record) {
@@ -457,16 +527,20 @@ impl Decisions {
         self.settled.retain(|_, record| record.kept(tick));
     }
 
-    pub(crate) fn drop_pending(&mut self, lane: PlayerId) -> Undone {
-        let events: Vec<u64> = self
-            .pending
-            .iter()
-            .filter(|(_, pending)| pending.lane == lane)
-            .map(|(event, _)| *event)
-            .collect();
-        let mut dropped = Vec::with_capacity(events.len());
-        for event in events {
-            if let Some(pending) = self.pending.remove(&event) {
+    pub(crate) fn drop_pending(&mut self, lane: impl Into<Lane>) -> Undone {
+        let lane = lane.into();
+        let Some(queue) = self.lanes.get_mut(&lane) else {
+            return Vec::new();
+        };
+        let (moves, rest): (VecDeque<Queued>, VecDeque<Queued>) =
+            std::mem::take(queue).into_iter().partition(Queued::moving);
+        *queue = rest;
+        if queue.is_empty() {
+            self.lanes.remove(&lane);
+        }
+        let mut dropped = Vec::with_capacity(moves.len());
+        for queued in moves {
+            if let Queued::Asked(event, pending) = queued {
                 self.remember(event, pending.record());
                 dropped.push((event, pending.payload));
             }
@@ -474,14 +548,22 @@ impl Decisions {
         dropped
     }
 
-    pub(crate) fn forget(&mut self, lane: PlayerId) {
-        self.pending.retain(|_, pending| pending.lane != lane);
-        self.settled.retain(|_, record| record.lane != lane);
+    pub(crate) fn forget(&mut self, lane: impl Into<Lane>) {
+        let lane = lane.into();
+        if let Some(queue) = self.lanes.get_mut(&lane) {
+            queue.retain(|queued| !queued.moving());
+            if queue.is_empty() {
+                self.lanes.remove(&lane);
+            }
+        }
+        self.settled
+            .retain(|_, record| record.lane != lane || record.undo.is_none());
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rspigot_domain::Rotation;
     use rspigot_domain::player::GameMode;
 
     use super::*;
@@ -568,7 +650,7 @@ mod tests {
         let from = Vec3::new(0.0, 64.0, 0.0);
         let silent: Vec<(u64, u32)> = silent.iter().map(|&connection| (connection, 1)).collect();
         Record {
-            lane: player,
+            lane: player.into(),
             undo: Some(Undo::SendBack(from)),
             silent: handlers(&silent),
             answered: Vec::new(),
@@ -653,6 +735,139 @@ mod tests {
         assert_eq!(settled_ids(&mut decisions, 0), [1, 2]);
         assert_eq!(decisions.reference(alice), None);
         assert!(!decisions.busy(alice));
+    }
+
+    fn notice(player: PlayerId, waiting: &[u64]) -> Pending {
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let asked = waiting
+            .iter()
+            .map(|&connection| Asked {
+                connection,
+                handler: 1,
+                kind: EventKind::PlayerJoin,
+            })
+            .collect();
+        Pending::new(
+            player,
+            EventPayload::PlayerJoin(PlayerJoin {
+                player: snapshot(player, at),
+                join_message: None,
+            }),
+            asked,
+            5,
+            20,
+            Continuation::Notice(EventKind::PlayerJoin),
+        )
+    }
+
+    #[test]
+    fn an_event_born_while_the_head_of_its_lane_applies_goes_before_the_rest_of_the_lane() {
+        let alice = PlayerId::offline("Alice");
+        let lane = Lane::Player(alice);
+        let mut decisions = Decisions::default();
+        decisions.queue(1, pending(alice, 1.0, &[]));
+        decisions.queue(2, notice(alice, &[]));
+        let head = decisions.next_settled(0).expect("the first move is ready");
+        assert_eq!(head.event, 1);
+        decisions.enter(head.lane);
+        assert!(!decisions.busy(alice));
+        decisions.queue(3, notice(alice, &[7]));
+        assert!(decisions.busy(alice));
+        decisions.queue(4, notice(alice, &[]));
+        decisions.leave();
+        assert!(decisions.busy(lane));
+        assert!(decisions.next_settled(0).is_none());
+        assert!(matches!(
+            taken(&mut decisions, 7, 3, cancel(false), 0),
+            Taken::Counted
+        ));
+        assert_eq!(settled_ids(&mut decisions, 0), [3, 4, 2]);
+    }
+
+    #[test]
+    fn a_grandchild_settles_before_the_second_child_of_its_grandparent() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, notice(alice, &[]));
+        decisions.queue(9, notice(alice, &[]));
+        let parent = decisions.next_settled(0).expect("the parent is ready");
+        decisions.enter(parent.lane);
+        decisions.queue(2, notice(alice, &[]));
+        decisions.queue(3, notice(alice, &[]));
+        decisions.leave();
+        let child = decisions.next_settled(0).expect("the first child is ready");
+        assert_eq!(child.event, 2);
+        decisions.enter(child.lane);
+        decisions.queue(4, notice(alice, &[]));
+        decisions.leave();
+        assert_eq!(settled_ids(&mut decisions, 0), [4, 3, 9]);
+    }
+
+    #[test]
+    fn a_deferred_entry_comes_out_at_the_head_of_its_lane_to_be_described() {
+        let alice = PlayerId::offline("Alice");
+        let bob = PlayerId::offline("Bob");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, pending(alice, 1.0, &[7]));
+        decisions.defer(
+            2,
+            alice.into(),
+            Continuation::Notice(EventKind::PlayerInput),
+        );
+        decisions.defer(3, bob.into(), Continuation::Notice(EventKind::PlayerInput));
+        let due = decisions.next_due().expect("Bob's entry is at the head");
+        assert_eq!((due.event, due.lane), (3, Lane::Player(bob)));
+        assert!(decisions.next_due().is_none());
+        assert!(matches!(
+            taken(&mut decisions, 7, 1, cancel(false), 0),
+            Taken::Counted
+        ));
+        assert!(decisions.next_due().is_none());
+        assert_eq!(settled_ids(&mut decisions, 0), [1]);
+        let due = decisions
+            .next_due()
+            .expect("Alice's entry reached the head");
+        assert_eq!(due.event, 2);
+        assert!(matches!(
+            due.then,
+            Continuation::Notice(EventKind::PlayerInput)
+        ));
+        assert!(!decisions.busy(alice));
+    }
+
+    #[test]
+    fn dropping_or_forgetting_a_lane_removes_its_moves_only() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, notice(alice, &[7]));
+        decisions.queue(2, pending(alice, 1.0, &[7]));
+        decisions.queue(3, notice(alice, &[7]));
+        decisions.queue(4, pending(alice, 2.0, &[7]));
+        let dropped: Vec<u64> = ids(&decisions.drop_pending(alice));
+        assert_eq!(dropped, [2, 4]);
+        assert_eq!(decisions.reference(alice), None);
+        decisions.queue(5, pending(alice, 3.0, &[7]));
+        decisions.forget(alice);
+        assert_eq!(decisions.reference(alice), None);
+        for event in [1, 3] {
+            assert!(matches!(
+                taken(&mut decisions, 7, event, cancel(false), 0),
+                Taken::Counted
+            ));
+        }
+        assert_eq!(settled_ids(&mut decisions, 0), [1, 3]);
+        assert!(!decisions.busy(alice));
+    }
+
+    #[test]
+    fn an_entry_in_flight_is_found_by_its_continuation() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, notice(alice, &[7]));
+        let lane = Lane::Player(alice);
+        assert!(decisions.in_flight(lane, |then| then.kind() == EventKind::PlayerJoin));
+        assert!(!decisions.in_flight(lane, Continuation::is_move));
+        assert!(!decisions.in_flight(Lane::Login(1), |_| true));
     }
 
     #[test]

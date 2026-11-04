@@ -12,6 +12,7 @@ mod player;
 mod registry;
 mod resolve;
 mod server;
+mod steps;
 mod targets;
 mod visibility;
 mod world;
