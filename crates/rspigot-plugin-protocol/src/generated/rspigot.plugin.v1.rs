@@ -486,6 +486,14 @@ pub struct CommandSenderList {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitySnapshotDoubleEntry {
+    #[prost(message, optional, tag = "1")]
+    pub key: ::core::option::Option<EntitySnapshot>,
+    #[prost(double, tag = "2")]
+    pub value: f64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntitySnapshotList {
     #[prost(message, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<EntitySnapshot>,
@@ -3638,6 +3646,8 @@ pub struct PotionSplash {
     pub entity: ::core::option::Option<EntitySnapshot>,
     #[prost(string, tag = "3")]
     pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "4")]
+    pub intensities: ::prost::alloc::vec::Vec<EntitySnapshotDoubleEntry>,
     #[prost(message, optional, tag = "5")]
     pub hit_block: ::core::option::Option<BlockPos>,
     #[prost(enumeration = "Face", optional, tag = "6")]
@@ -3646,6 +3656,12 @@ pub struct PotionSplash {
     pub hit_entity: ::core::option::Option<EntitySnapshot>,
     #[prost(message, optional, tag = "9")]
     pub potion: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PotionSplashPatch {
+    #[prost(message, repeated, tag = "4")]
+    pub intensities: ::prost::alloc::vec::Vec<EntitySnapshotDoubleEntry>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4858,7 +4874,7 @@ pub mod event {
 pub struct Patch {
     #[prost(
         oneof = "patch::Change",
-        tags = "10, 11, 12, 13, 16, 17, 18, 24, 27, 28, 30, 31, 32, 33, 34, 35, 36, 43, 47, 49, 53, 54, 55, 56, 60, 61, 62, 65, 66, 67, 70, 73, 75, 76, 77, 78, 79, 80, 81, 85, 86, 87, 89, 90, 95, 96, 98, 99, 102, 106, 107, 108, 109, 114, 115, 117, 118, 119, 120, 121, 122, 123, 127, 130, 131, 133, 142, 147, 153, 154, 155, 157, 160, 161, 163, 165, 166, 167, 168, 169, 171, 176, 178, 179, 181, 182, 187, 189, 190, 195, 200, 202, 204, 210, 215, 216, 218, 220, 227, 228, 229, 230, 234, 236, 237, 244, 246, 247, 249, 252, 255, 259, 260, 261, 262"
+        tags = "10, 11, 12, 13, 16, 17, 18, 24, 27, 28, 30, 31, 32, 33, 34, 35, 36, 43, 47, 49, 53, 54, 55, 56, 60, 61, 62, 65, 66, 67, 70, 73, 75, 76, 77, 78, 79, 80, 81, 85, 86, 87, 89, 90, 95, 96, 98, 99, 102, 106, 107, 108, 109, 114, 115, 117, 118, 119, 120, 121, 122, 123, 127, 130, 131, 133, 142, 147, 153, 154, 155, 157, 160, 161, 163, 165, 166, 167, 168, 169, 171, 176, 178, 179, 181, 182, 187, 189, 190, 195, 200, 202, 204, 210, 214, 215, 216, 218, 220, 227, 228, 229, 230, 234, 236, 237, 244, 246, 247, 249, 252, 255, 259, 260, 261, 262"
     )]
     pub change: ::core::option::Option<patch::Change>,
 }
@@ -5055,6 +5071,8 @@ pub mod patch {
         PlayerTeleport(super::PlayerTeleportPatch),
         #[prost(message, tag = "210")]
         PlayerVelocity(super::PlayerVelocityPatch),
+        #[prost(message, tag = "214")]
+        PotionSplash(super::PotionSplashPatch),
         #[prost(message, tag = "215")]
         PrepareAnvil(super::PrepareAnvilPatch),
         #[prost(message, tag = "216")]

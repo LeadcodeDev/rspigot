@@ -1,7 +1,7 @@
 use rspigot_domain::Vec3;
 
 use crate::plugins::resolve::position_of;
-use crate::plugins::{EventPatch, Location};
+use crate::plugins::{EntityView, EventPatch, Location};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Verdict {
@@ -27,18 +27,33 @@ pub(crate) fn vector_refusal(name: &str, vector: Vec3) -> Option<String> {
     })
 }
 
+pub(crate) fn merge_indexed<V>(
+    mut earlier: Vec<(EntityView, V)>,
+    later: Vec<(EntityView, V)>,
+) -> Vec<(EntityView, V)> {
+    for (entity, value) in later {
+        match earlier.iter_mut().find(|(known, _)| known.id == entity.id) {
+            Some(slot) => *slot = (entity, value),
+            None => earlier.push((entity, value)),
+        }
+    }
+    earlier
+}
+
 pub(crate) fn number_refusal(name: &str, value: f64) -> Option<String> {
     (!value.is_finite()).then(|| format!("{name} {value} is not finite"))
 }
 
 #[cfg(test)]
 mod tests {
-    use rspigot_domain::{Rotation, Vec3};
+    use rspigot_domain::{EntityId, Rotation};
+    use uuid::Uuid;
 
     use super::*;
     use crate::plugins::events::{
         EntityDamageByEntityPatch, EntityDamagePatch, EntityExhaustionPatch, EntityTeleportPatch,
         EventResult, InventoryClickPatch, InventoryDragPatch, PlayerMovePatch, PlayerVelocityPatch,
+        PotionSplashPatch,
     };
     use crate::plugins::{EventKind, ItemSpec};
 
@@ -125,6 +140,37 @@ mod tests {
         assert_eq!(
             teleported(Some(turned)).refusal(),
             Some("rotation NaN 0 is not finite".to_owned())
+        );
+    }
+
+    fn splashed(id: i32) -> EntityView {
+        EntityView {
+            id: EntityId(id),
+            uuid: Uuid::from_u128(u128::try_from(id).unwrap_or_default()),
+            kind: "minecraft:zombie".to_owned(),
+            position: Vec3::new(0.0, 64.0, 0.0),
+        }
+    }
+
+    fn intensities(values: &[(i32, f64)]) -> EventPatch {
+        EventPatch::PotionSplash(PotionSplashPatch {
+            intensities: values
+                .iter()
+                .map(|&(id, value)| (splashed(id), value))
+                .collect(),
+        })
+    }
+
+    #[test]
+    fn an_indexed_patch_keeps_the_last_value_written_for_each_entity() {
+        assert_eq!(
+            intensities(&[(1, 0.5), (2, 0.2)]).then(intensities(&[(1, 0.9), (3, 1.0)])),
+            intensities(&[(1, 0.9), (2, 0.2), (3, 1.0)])
+        );
+        assert_eq!(intensities(&[(1, 0.5)]).refusal(), None);
+        assert_eq!(
+            intensities(&[(1, 0.5), (2, f64::NAN)]).refusal(),
+            Some("intensities NaN is not finite".to_owned())
         );
     }
 

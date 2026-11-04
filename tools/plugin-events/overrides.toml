@@ -316,7 +316,9 @@ omit = { "getDamage(EntityDamageEvent$DamageModifier)" = "per-modifier damage is
 omit = { "getDamage(EntityDamageEvent$DamageModifier)" = "per-modifier damage is left out: rspigot applies armor and effects after the event", "getOriginalDamage(EntityDamageEvent$DamageModifier)" = "per-modifier damage is left out: rspigot applies armor and effects after the event", "isApplicable(EntityDamageEvent$DamageModifier)" = "per-modifier damage is left out: rspigot applies armor and effects after the event", "setDamage(EntityDamageEvent$DamageModifier, double)" = "per-modifier damage is left out: rspigot applies armor and effects after the event" }
 
 [events.PotionSplash]
-omit = { "getIntensity(LivingEntity)" = "per-entity intensity is left out until thrown potions exist", "setIntensity(LivingEntity, double)" = "per-entity intensity is left out until thrown potions exist" }
+indexed = [
+    { name = "intensities", getter = "getIntensity(LivingEntity)", setter = "setIntensity(LivingEntity, double)" },
+]
 
 [events.AsyncStructureGenerate]
 omit = { clearBlockTransformers = "transformers are Java callbacks", clearEntityTransformers = "transformers are Java callbacks", "removeBlockTransformer(NamespacedKey)" = "transformers are Java callbacks", "removeEntityTransformer(NamespacedKey)" = "transformers are Java callbacks" }

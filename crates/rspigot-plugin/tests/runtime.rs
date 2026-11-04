@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use fake_host::*;
 use rspigot_plugin::{
     Error, GameMode, Location, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position,
-    Rotation, listeners, run_with,
+    PotionSplash, Rotation, listeners, run_with,
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
@@ -100,6 +100,30 @@ impl Guard {
         if event.to().is_some_and(|to| to.position.y > 100.0) {
             std::future::pending::<()>().await;
         }
+    }
+}
+
+#[derive(Plugin)]
+#[plugin(name = "splasher", version = "1.0.0")]
+struct Splasher {
+    read: mpsc::UnboundedSender<Vec<f64>>,
+}
+
+#[listeners]
+impl Splasher {
+    async fn on_potion_splash(&self, event: &mut PotionSplash) {
+        let splashed = event.affected_entities().to_vec();
+        let intensities = |event: &PotionSplash| -> Vec<f64> {
+            splashed
+                .iter()
+                .map(|entity| event.intensity(entity))
+                .collect()
+        };
+        let _ = self.read.send(intensities(event));
+        event.set_intensity(&splashed[0], 0.5);
+        event.set_intensity(&splashed[1], 1.0);
+        event.set_intensity(&splashed[0], 0.25);
+        let _ = self.read.send(intensities(event));
     }
 }
 
@@ -643,4 +667,70 @@ async fn an_event_the_plugin_cannot_read_is_skipped() {
     session.say(event(1, &[1], v1::Phase::Settled, false, closed));
     session.say(event(2, &[1], v1::Phase::Settled, false, joining(steve())));
     assert_eq!(session.hear().await, message(STEVE, "Welcome, Steve!"));
+}
+
+fn splashed(entity_id: i32, kind: &str) -> v1::EntitySnapshot {
+    v1::EntitySnapshot {
+        entity_id,
+        uuid: format!("00000000-0000-0000-0000-{entity_id:012}"),
+        kind: kind.to_owned(),
+        position: Some(v1::Vec3 {
+            x: 0.0,
+            y: 64.0,
+            z: 0.0,
+        }),
+    }
+}
+
+fn intensity(entity_id: i32, value: f64) -> v1::EntitySnapshotDoubleEntry {
+    v1::EntitySnapshotDoubleEntry {
+        key: Some(splashed(entity_id, "minecraft:zombie")),
+        value,
+    }
+}
+
+#[tokio::test]
+async fn a_splash_intensity_is_patched_once_per_entity_with_the_last_value() {
+    let mut host = Host::start().await;
+    let (read, mut heard) = mpsc::unbounded_channel();
+    let _plugin = tokio::spawn(run_with(Splasher { read }, host.url.clone(), None));
+    let mut session = host.knock().await.accept();
+
+    let potion = splashed(3, "minecraft:splash_potion");
+    session.say(event(
+        4,
+        &[1],
+        v1::Phase::Decide,
+        false,
+        event::Payload::PotionSplash(v1::PotionSplash {
+            affected_entities: vec![
+                splashed(4, "minecraft:zombie"),
+                splashed(5, "minecraft:zombie"),
+            ],
+            entity: Some(potion.clone()),
+            entity_type: "minecraft:splash_potion".to_owned(),
+            intensities: vec![intensity(4, 0.75)],
+            hit_block: None,
+            hit_block_face: None,
+            hit_entity: None,
+            potion: Some(potion),
+        }),
+    ));
+    assert_eq!(
+        session.hear().await,
+        decision(
+            4,
+            vec![v1::Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(v1::Patch {
+                    change: Some(patch::Change::PotionSplash(v1::PotionSplashPatch {
+                        intensities: vec![intensity(4, 0.25), intensity(5, 1.0)],
+                    })),
+                }),
+            }]
+        )
+    );
+    assert_eq!(within(heard.recv()).await, Some(vec![0.75, 0.0]));
+    assert_eq!(within(heard.recv()).await, Some(vec![0.25, 1.0]));
 }

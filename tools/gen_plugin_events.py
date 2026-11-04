@@ -338,6 +338,7 @@ class Field:
     setter_method: str = None
     patch_nullable: bool = False
     direct: bool = False
+    index: Leaf = None
 
 
 @dataclass
@@ -521,7 +522,7 @@ class Model:
 
     def event(self, record, sdk_name, state, note, extra):
         allowed = {"getters", "rename", "collections", "omit", "unread", "revive", "applies_when_cancelled",
-                   "pairs", "extra"}
+                   "pairs", "extra", "indexed"}
         for option in extra:
             if option not in allowed:
                 fail(f"{record['name']}: unknown override `{option}`")
@@ -569,9 +570,26 @@ class Model:
                 getters.append(entry)
             elif not skipped(entry, "other"):
                 fail(f"{record['name']}.{signature(entry)} has no get/set prefix: list it under `getters` or `omit`")
+        indexed = {item["getter"]: item for item in extra.get("indexed", [])}
+        indexed_setters = {}
         for entry in record["indexed"]:
-            if not skipped(entry, "indexed"):
-                fail(f"{record['name']}.{signature(entry)} is an indexed getter: list it under `omit`")
+            sig = signature(entry)
+            if sig in indexed:
+                item = indexed[sig]
+                used_overrides.add(("indexed", sig))
+                if len(entry["params"]) != 1:
+                    fail(f"{record['name']}.{sig} must take one key")
+                key = self.leaf(entry["params"][0])
+                if key is not ENTITY:
+                    fail(f"{record['name']}.{sig} is not keyed by an entity")
+                self.check_ident(record["name"], item["name"])
+                fields[item["name"]] = Field(
+                    name=item["name"], number=numbers[entry["key"]], ty=Ty(self.leaf(entry["type"]), many=True),
+                    method=getter_method(entry["name"]), getter=entry["name"], index=key,
+                )
+                indexed_setters[item["setter"]] = fields[item["name"]]
+            elif not skipped(entry, "indexed"):
+                fail(f"{record['name']}.{sig} is an indexed getter: list it under `omit` or `indexed`")
         for entry in getters:
             if skipped(entry, "getter"):
                 continue
@@ -590,9 +608,17 @@ class Model:
             )
         by_getter = {f.getter: f for f in fields.values()}
         for entry in record["setters"]:
+            sig = signature(entry)
+            if sig in indexed_setters:
+                target = indexed_setters.pop(sig)
+                key, value = (self.leaf(param) for param in entry["params"])
+                if key is not target.index or value.proto != target.ty.leaf.proto:
+                    fail(f"{record['name']}.{sig} does not write what its indexed getter reads")
+                target.setter = entry["name"]
+                target.setter_method = "set_" + snake(stem(entry["name"]))
+                continue
             if skipped(entry, "setter"):
                 continue
-            sig = signature(entry)
             if not entry["name"].startswith("set") or len(entry["params"]) != 1:
                 fail(f"{record['name']}.{sig} is not a one-value setter: list it under `omit`")
             if sig in pairs:
@@ -664,8 +690,11 @@ class Model:
             main_result = main.name
             if not record["cancellable"]:
                 fail(f"{record['name']}: a result cancels an event that cannot be cancelled")
+        if indexed_setters:
+            fail(f"{record['name']}: the indexed setters {sorted(indexed_setters)} match nothing")
         for kind, values in (("omit", omit), ("unread", unread), ("revive", revive), ("getters", extra_getters),
-                             ("rename", rename), ("applies_when_cancelled", direct), ("pairs", pairs)):
+                             ("rename", rename), ("applies_when_cancelled", direct), ("pairs", pairs),
+                             ("indexed", indexed)):
             for value in values:
                 if (kind, value) not in used_overrides:
                     fail(f"{record['name']}: the override {kind} {value} matches nothing")
@@ -807,8 +836,14 @@ def identity(template):
     return template == "{}"
 
 
+def entry_name(f):
+    return f"{f.index.base}{f.ty.leaf.base}Entry"
+
+
 def proto_payload(f):
     leaf = f.ty.leaf
+    if f.index:
+        return f"repeated {entry_name(f)}"
     if f.ty.many:
         return f"repeated {leaf.proto}"
     if f.nullable and leaf.shape != "message":
@@ -818,6 +853,8 @@ def proto_payload(f):
 
 def proto_patch(f):
     leaf = f.ty.leaf
+    if f.index:
+        return f"repeated {entry_name(f)}"
     if f.ty.many:
         return f"{leaf.base}List"
     if f.patch_nullable:
@@ -847,8 +884,13 @@ def emit_proto(model):
     w()
     wrappers = {}
     for event in model.events:
+        for f in event.fields:
+            if f.index:
+                wrappers[entry_name(f)] = f"{f.index.proto} key = 1; {f.ty.leaf.proto} value = 2;"
         for f in event.patched:
             leaf = f.ty.leaf
+            if f.index:
+                continue
             if f.ty.many:
                 wrappers[f"{leaf.base}List"] = f"repeated {leaf.proto} values = 1;"
             elif f.patch_nullable:
@@ -888,6 +930,8 @@ def emit_proto(model):
 
 def core_type(f):
     leaf = f.ty.leaf
+    if f.index:
+        return f"Vec<({f.index.core}, {leaf.core})>"
     if f.ty.many:
         return f"Vec<{leaf.core}>"
     if f.nullable:
@@ -897,6 +941,8 @@ def core_type(f):
 
 def core_patch_type(f):
     leaf = f.ty.leaf
+    if f.index:
+        return f"Vec<({f.index.core}, {leaf.core})>"
     if f.ty.many:
         return f"Option<Vec<{leaf.core}>>"
     if f.patch_nullable:
@@ -924,6 +970,8 @@ def refusal_check(f):
     if proto not in checks:
         return None
     helper, value = checks[proto]
+    if f.index:
+        return f'self.{name}.iter().find_map(|(_, value)| {helper}("{name}", {value.format("*value")}))'
     if f.ty.many:
         each = f'|value| {helper}("{name}", {value.format("*value")})'
         return f"self.{name}.as_ref().and_then(|values| values.iter().find_map({each}))"
@@ -997,6 +1045,8 @@ def emit_core(model):
     for e in events:
         for f in e.fields:
             uses.update(f.ty.leaf.core_uses)
+            if f.index:
+                uses.update(f.index.core_uses)
         body("#[derive(Debug, Clone, PartialEq)]")
         if e.readable:
             body(f"pub struct {e.name} {{")
@@ -1019,7 +1069,10 @@ def emit_core(model):
         body("    fn then(self, later: Self) -> Self {")
         body("        Self {")
         for f in e.patched:
-            body(f"            {f.name}: later.{f.name}.or(self.{f.name}),")
+            if f.index:
+                body(f"            {f.name}: merge_indexed(self.{f.name}, later.{f.name}),")
+            else:
+                body(f"            {f.name}: later.{f.name}.or(self.{f.name}),")
         body("        }")
         body("    }")
         body()
@@ -1027,6 +1080,9 @@ def emit_core(model):
         target = "event" if settled else "_event"
         body(f"    fn settle(self, {target}: &mut {e.name}) {{")
         for f in settled:
+            if f.index:
+                body(f"        event.{f.name} = merge_indexed(std::mem::take(&mut event.{f.name}), self.{f.name});")
+                continue
             value = "Some(value)" if f.nullable and not f.patch_nullable and not f.ty.many else "value"
             body(f"        if let Some(value) = self.{f.name} {{")
             body(f"            event.{f.name} = {value};")
@@ -1156,8 +1212,10 @@ def emit_core(model):
     for use in sorted(uses):
         head(f"use {use};")
     helpers = sorted({name for e in located_events for f in e.patched for name in REFUSALS if name in (refusal_check(f) or "")})
+    if any(f.index for e in patched for f in e.patched):
+        helpers.append("merge_indexed")
     if helpers:
-        head(f"use crate::plugins::patch::{{{', '.join(helpers)}}};")
+        head(f"use crate::plugins::patch::{{{', '.join(sorted(helpers))}}};")
     head()
     return head.text() + body.text()
 
@@ -1190,6 +1248,11 @@ def host_in_closure(leaf, usage):
 def host_payload_field(f, usage):
     leaf = f.ty.leaf
     value = f"event.{f.name}"
+    if f.index:
+        key = host_out(f.index, "key", usage)
+        each = host_out(leaf, "value", usage)
+        assigned = "value" if each == "value" else f"value: {each}"
+        return f"{value}.into_iter().map(|(key, value)| v1::{pn(entry_name(f))} {{ key: Some({key}), {assigned} }}).collect()"
     if identity(leaf.host_out):
         if not f.ty.many and not f.nullable and leaf.shape == "message":
             return f"Some({value})"
@@ -1215,6 +1278,12 @@ def host_payload_field(f, usage):
 def host_patch_field(f, usage):
     leaf = f.ty.leaf
     value = f"patch.{f.name}"
+    if f.index:
+        if f.index.enum or leaf.enum:
+            fail(f"{f.name}: an indexed field cannot hold an enum")
+        key = apply(f.index.host_in, "shared::required(entry.key)?") + ("?" if f.index.host_in_try else "")
+        each = apply(leaf.host_in, "entry.value") + ("?" if leaf.host_in_try else "")
+        return f"{value}.into_iter().map(|entry| Ok(({key}, {each}))).collect::<Result<Vec<_>, Malformed>>()?"
     convert = host_in_closure(leaf, usage)
     simple_in = identity(leaf.host_in)
     tail = ".transpose()?" if leaf.host_in_try else ""
@@ -1305,6 +1374,8 @@ def emit_host(model):
 
 def sdk_type(f):
     leaf = f.ty.leaf
+    if f.index:
+        return f"Vec<({f.index.sdk}, {leaf.sdk})>"
     if f.ty.many:
         return f"Vec<{leaf.sdk}>"
     if f.nullable:
@@ -1342,6 +1413,12 @@ def sdk_getter(f):
 def sdk_in_field(f, usage):
     leaf = f.ty.leaf
     value = f"message.{f.name}"
+    if f.index:
+        usage.uses.add("crate::wire::required")
+        usage.uses.update(f.index.sdk_uses)
+        key = apply(f.index.sdk_in, f'required(entry.key, "{f.name}")?') + ("?" if f.index.sdk_in_try else "")
+        each = apply(leaf.sdk_in, "entry.value") + ("?" if leaf.sdk_in_try else "")
+        return f"{value}.into_iter().map(|entry| Ok(({key}, {each}))).collect::<Result<Vec<_>, Error>>()?"
     if leaf.enum:
         usage.into.add(leaf.enum.java)
     usage.uses.update(use for use in leaf.sdk_uses if not use.endswith("_to_wire"))
@@ -1453,12 +1530,32 @@ def emit_sdk(model):
         body("        self.id")
         body("    }")
         for f in e.readable:
+            if f.index:
+                body()
+                body(f"    pub fn {f.method}(&self, key: &{f.index.sdk}) -> {f.ty.leaf.sdk} {{")
+                body(f"        self.{f.name}.iter().find(|(known, _)| known.entity_id == key.entity_id).map(|(_, value)| *value).unwrap_or_default()")
+                body("    }")
+                continue
             returns, expression = sdk_getter(f)
             body()
             body(f"    pub fn {f.method}(&self) -> {returns} {{")
             body(f"        {expression}")
             body("    }")
         for f in e.patched:
+            if f.index:
+                body()
+                body(f"    pub fn {f.setter_method}(&mut self, key: &{f.index.sdk}, value: {f.ty.leaf.sdk}) {{")
+                body(f"        let entry = v1::{pn(entry_name(f))} {{ key: Some({apply(f.index.sdk_out, 'key')}), value }};")
+                body(f"        match self.patch.{f.name}.iter_mut().find(|known| known.key.as_ref().is_some_and(|known| known.entity_id == key.entity_id)) {{")
+                body("            Some(known) => *known = entry,")
+                body(f"            None => self.patch.{f.name}.push(entry),")
+                body("        }")
+                body(f"        match self.{f.name}.iter_mut().find(|(known, _)| known.entity_id == key.entity_id) {{")
+                body("            Some((_, known)) => *known = value,")
+                body(f"            None => self.{f.name}.push((key.clone(), value)),")
+                body("        }")
+                body("    }")
+                continue
             body()
             body(f"    pub fn {f.setter_method}(&mut self, value: {sdk_setter_type(f)}) {{")
             body(f"        self.patch.{f.name} = {sdk_out_patch(f, usage)};")
