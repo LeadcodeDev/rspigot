@@ -438,3 +438,33 @@ fn an_explosion_that_keeps_blocks_still_fires_with_its_result() {
     assert_eq!(explosions(&alice).len(), 1);
     assert_eq!(kind_at(&mut s, FLOOR), "minecraft:stone");
 }
+
+fn dirt_blast(yield_patch: Option<f32>) -> usize {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BlockExplode)]);
+    for x in 0..5 {
+        for z in -2..3 {
+            set(&mut s, BlockPos::new(x, 63, z), "minecraft:dirt");
+        }
+    }
+    explode(&mut s, BLAST, true);
+    let asked = last_asked(&s.plugin, EventKind::BlockExplode);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        yield_patch.map(|explosion_yield| {
+            EventPatch::BlockExplode(BlockExplodePatch {
+                block_list: None,
+                explosion_yield: Some(explosion_yield),
+            })
+        }),
+    );
+    s.server.items_on_ground()
+}
+
+#[test]
+fn a_lower_yield_makes_the_destroyed_blocks_drop_less() {
+    assert!(dirt_blast(None) > 0);
+    assert_eq!(dirt_blast(Some(1.0e-6)), 0);
+}
