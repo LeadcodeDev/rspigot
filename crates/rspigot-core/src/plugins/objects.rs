@@ -134,6 +134,13 @@ impl<L: ClientLink> Server<L> {
             );
             return None;
         };
+        if !self.within_reach(id, step.pos)
+            || !self.world.dimension.height.contains(step.pos.y)
+            || self.is_protected(id, step.pos)
+        {
+            self.refuse_block(id, step.pos, step.sequence);
+            return None;
+        }
         let block_denied =
             game_mode == GameMode::Spectator && !crate::containers::opens_menu(clicked);
         Some(UseOnStep {

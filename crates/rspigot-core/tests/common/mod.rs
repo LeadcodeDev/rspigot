@@ -153,13 +153,17 @@ pub fn leave_of(player: &Player) -> Inbound<Link> {
 }
 
 pub fn server(plugins: PluginSettings) -> Server<Link> {
-    let config = GameConfig {
+    configured(|config| config.plugins = plugins)
+}
+
+pub fn configured(adjust: impl FnOnce(&mut GameConfig)) -> Server<Link> {
+    let mut config = GameConfig {
         view_distance: 3,
         chunk_workers: 2,
         spawn_protection: 0,
-        plugins,
         ..GameConfig::default()
     };
+    adjust(&mut config);
     let mut server = Server::new(
         config,
         LevelData::default(),

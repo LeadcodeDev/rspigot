@@ -671,3 +671,51 @@ fn a_block_click_sent_before_its_slot_change_settles_uses_the_new_slot() {
         other => panic!("expected a block, got {other:?}"),
     }
 }
+
+fn refused_before_the_event(s: &mut Scene, player: &Player, pos: BlockPos) {
+    player.link.take();
+    use_on(s, player, pos, 7);
+    assert!(settled_for(&s.plugin, EventKind::PlayerInteract).is_empty());
+    let events = player.link.take();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, ClientEvent::BlockUpdate { pos: at, .. } if *at == pos))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, ClientEvent::BlockChangedAck(7)))
+    );
+}
+
+#[test]
+fn a_right_click_out_of_reach_is_refused_before_the_event() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::PlayerInteract)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice stone 4");
+    let far = BlockPos::new(12, 63, 0);
+    refused_before_the_event(&mut s, &alice, far);
+    assert!(block_is_air(&mut s, BlockPos::new(12, 64, 0)));
+}
+
+#[test]
+fn a_right_click_on_the_protected_spawn_is_refused_before_the_event() {
+    let mut server = configured(|config| config.spawn_protection = 16);
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![observe(1, EventKind::PlayerInteract)],
+    );
+    let alice = join(&mut server, "Alice");
+    let bob = join(&mut server, "Bob");
+    let mut s = Scene {
+        server,
+        plugin,
+        players: vec![alice.clone(), bob],
+    };
+    console(&mut s, "give Alice stone 4");
+    refused_before_the_event(&mut s, &alice, FLOOR);
+    assert!(block_is_air(&mut s, ABOVE));
+}
