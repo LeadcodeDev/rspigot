@@ -22,6 +22,7 @@ mod orders;
 mod patch;
 mod placing;
 mod player;
+mod poses;
 mod position;
 mod potions;
 mod registry;

@@ -36,6 +36,7 @@ pub(crate) struct EntityWorld {
     pub store: Entities,
     pub tracked: FxHashMap<EntityId, TrackedEntity>,
     pub mobs: crate::mobs::MobTable,
+    pub poses: FxHashMap<EntityId, rspigot_domain::entity::Pose>,
     pending_saves: FxHashMap<ChunkPos, (u64, Arc<Vec<Compound>>)>,
     stored_empty: FxHashSet<ChunkPos>,
     generation: u64,

@@ -821,6 +821,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_open_menus();
         self.tick_falling_blocks();
         self.update_tracking();
+        self.notify_poses();
         self.sync_vitals();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
@@ -846,7 +847,7 @@ impl<L: ClientLink> Server<L> {
             },
             MetadataEntry {
                 index: 6,
-                value: MetadataValue::Pose(if player.sneaking {
+                value: MetadataValue::Pose(if player.sneaking && !player.flying {
                     Pose::Crouching
                 } else {
                     Pose::Standing

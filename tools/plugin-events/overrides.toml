@@ -123,11 +123,11 @@ EntityTargetLivingEntity = "CLOSEST_PLAYER, CLOSEST_ENTITY, FORGOT_TARGET, TARGE
 EntityBreed = "cows, pigs, sheep and chickens breeding through their goal, one ask per couple while it waits; the breeder is the online player who fed the mother, then the father; bred_with is the stack left in the hand after feeding, not saved; a cancel leaves both parents in love"
 EntityEnterLoveMode = "feeding an adult cow, pig, sheep or chicken; the food is spent before the event as in Spigot, the settled ticks are written as they are"
 SheepDyeWool = "a dye used on a sheep of another colour; the sheep, its colour and the dye change once settled, a cancel resends the hands"
+EntityPoseChange = "observer only, once per tick from the pose of each living entity and player that changed since the last tick: DYING of mobs, STANDING and SNEAKING of players (sneaking only when not flying, now also in the pose sent to clients); there is no sleeping, swimming, gliding or mob-specific pose yet"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
-    "EntityPoseChange",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing",
