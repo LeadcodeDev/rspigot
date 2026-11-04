@@ -1846,6 +1846,11 @@ def emit_doc(model):
     by_result = sorted((e for e in events if e.cancels_by_result), key=lambda e: e.name)
     w(f"{', '.join(f'`{e.name}`' for e in by_result)} are cancelled through their result, as in Bukkit: `cancel()` sets {', '.join(sorted({f'`{name}`' for e in by_result for name in e.cancel_sets}))} to `Deny`, `is_cancelled()` reads the main result only, and a later handler that sets the result back lifts the cancel.")
     w()
+    listed_setters = sorted({f.setter_method for e in events for f in e.patched if listed(f) and not f.ty.array})
+    slot_setters = sorted({f"`{e.name}.{f.setter_method}`" for e in events for f in e.patched if listed(f) and f.ty.array})
+    arrays = f" An array setter ({', '.join(slot_setters)}) keeps the length of the array: it replaces elements in place, and the last handler to change an element wins it." if slot_setters else ""
+    w(f"A list setter ({', '.join(f'`{name}`' for name in listed_setters)}) sends what the handler changed in the list it received: the elements it removed and the ones it added. The server keeps the removals of every handler and appends their additions in handler order, so two plugins that each remove an element both see it gone, and an element removed by one handler and added back by a later one is there once. Moving an element inside the list changes nothing.{arrays}")
+    w()
     w("| Bukkit event | SDK type | Cancellable | Setters | Also receives | State |")
     w("|---|---|---|---|---|---|")
     for e in events:

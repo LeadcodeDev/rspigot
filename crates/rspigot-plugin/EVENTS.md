@@ -8,6 +8,8 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 
 `CraftItem`, `InventoryClick`, `InventoryCreative`, `InventoryDrag`, `PlayerInteract`, `SmithItem`, `TradeSelect` are cancelled through their result, as in Bukkit: `cancel()` sets `result`, `use_interacted_block`, `use_item_in_hand` to `Deny`, `is_cancelled()` reads the main result only, and a later handler that sets the result back lifts the cancel.
 
+A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispensed_loot`, `set_drops`, `set_hidden_players`, `set_items`, `set_items_harvested`, `set_loot`, `set_recipients`) sends what the handler changed in the list it received: the elements it removed and the ones it added. The server keeps the removals of every handler and appends their additions in handler order, so two plugins that each remove an element both see it gone, and an element removed by one handler and added back by a later one is there once. Moving an element inside the list changes nothing. An array setter (`SignChange.set_lines`) keeps the length of the array: it replaces elements in place, and the last handler to change an element wins it.
+
 | Bukkit event | SDK type | Cancellable | Setters | Also receives | State |
 |---|---|---|---|---|---|
 | `AreaEffectCloudApplyEvent` | `AreaEffectCloudApply` | yes | - | - | not fired yet: needs the mobs or objects involved |
