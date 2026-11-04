@@ -490,7 +490,7 @@ mod tests {
         EntityDamagePatch, EventResult, Face, InventoryAction, InventoryClick, InventoryClickPatch,
         InventoryTypeSlotType, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
         PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport,
-        PlayerTeleportCause, PlayerTeleportPatch,
+        PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
     };
     use crate::plugins::{
         DamageSourceView, EntityView, InventoryOwner, InventoryRef, InventoryView, Location,
@@ -1081,6 +1081,25 @@ mod tests {
             (
                 Settlement::Applied(Some(elsewhere)),
                 vec!["event 1 cannot be cancelled, the cancel of handler 1 is ignored".to_owned()]
+            )
+        );
+    }
+
+    #[test]
+    fn a_velocity_that_is_not_finite_is_dropped_and_does_not_cancel() {
+        let alice = PlayerId::offline("Alice");
+        let pushed = EventPayload::PlayerVelocity(PlayerVelocity {
+            player: snapshot(alice, Vec3::new(0.0, 64.0, 0.0)),
+            velocity: Vec3::new(0.0, 0.5, 0.0),
+        });
+        let nowhere = EventPatch::PlayerVelocity(PlayerVelocityPatch {
+            velocity: Some(Vec3::new(f64::NAN, 0.5, 0.0)),
+        });
+        assert_eq!(
+            settled(pushed, vec![ruling(false, Some(nowhere))]),
+            (
+                Settlement::Applied(None),
+                vec!["patch of event 1 was refused: velocity NaN 0.5 0 is not finite".to_owned()]
             )
         );
     }

@@ -24,7 +24,7 @@ use crate::plugins::SignData;
 use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
-use crate::plugins::patch::location_refusal;
+use crate::plugins::patch::{location_refusal, number_refusal, vector_refusal};
 use rspigot_domain::BlockPos;
 use rspigot_domain::Vec3;
 use rspigot_domain::player::GameMode;
@@ -4714,6 +4714,11 @@ impl BlockDispensePatch {
             event.velocity = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.velocity
+            .and_then(|value| vector_refusal("velocity", value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -4737,6 +4742,11 @@ impl BlockDispenseArmorPatch {
         if let Some(value) = self.velocity {
             event.velocity = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.velocity
+            .and_then(|value| vector_refusal("velocity", value))
     }
 }
 
@@ -4818,6 +4828,11 @@ impl BlockExplodePatch {
         if let Some(value) = self.explosion_yield {
             event.explosion_yield = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.explosion_yield
+            .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
     }
 }
 
@@ -5147,6 +5162,11 @@ impl EntityCombustPatch {
             event.duration = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.duration
+            .and_then(|value| number_refusal("duration", f64::from(value)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5165,6 +5185,11 @@ impl EntityCombustByBlockPatch {
         if let Some(value) = self.duration {
             event.duration = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.duration
+            .and_then(|value| number_refusal("duration", f64::from(value)))
     }
 }
 
@@ -5185,6 +5210,11 @@ impl EntityCombustByEntityPatch {
             event.duration = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.duration
+            .and_then(|value| number_refusal("duration", f64::from(value)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5203,6 +5233,11 @@ impl EntityDamagePatch {
         if let Some(value) = self.damage {
             event.damage = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.damage
+            .and_then(|value| number_refusal("damage", value))
     }
 }
 
@@ -5223,6 +5258,11 @@ impl EntityDamageByBlockPatch {
             event.damage = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.damage
+            .and_then(|value| number_refusal("damage", value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5241,6 +5281,11 @@ impl EntityDamageByEntityPatch {
         if let Some(value) = self.damage {
             event.damage = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.damage
+            .and_then(|value| number_refusal("damage", value))
     }
 }
 
@@ -5304,6 +5349,11 @@ impl EntityExhaustionPatch {
             event.exhaustion = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.exhaustion
+            .and_then(|value| number_refusal("exhaustion", f64::from(value)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5328,6 +5378,11 @@ impl EntityExplodePatch {
             event.explosion_yield = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.explosion_yield
+            .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5347,6 +5402,11 @@ impl EntityKnockbackPatch {
             event.final_knockback = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.final_knockback
+            .and_then(|value| vector_refusal("final_knockback", value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -5365,6 +5425,11 @@ impl EntityKnockbackByEntityPatch {
         if let Some(value) = self.final_knockback {
             event.final_knockback = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.final_knockback
+            .and_then(|value| vector_refusal("final_knockback", value))
     }
 }
 
@@ -5445,12 +5510,15 @@ impl EntityPortalExitPatch {
     }
 
     fn refusal(&self) -> Option<String> {
-        self.from.as_ref().and_then(location_refusal).or_else(|| {
-            self.to
-                .as_ref()
-                .and_then(Option::as_ref)
-                .and_then(location_refusal)
-        })
+        self.after
+            .and_then(|value| vector_refusal("after", value))
+            .or_else(|| self.from.as_ref().and_then(location_refusal))
+            .or_else(|| {
+                self.to
+                    .as_ref()
+                    .and_then(Option::as_ref)
+                    .and_then(location_refusal)
+            })
     }
 }
 
@@ -5489,6 +5557,11 @@ impl EntityRegainHealthPatch {
         if let Some(value) = self.amount {
             event.amount = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.amount
+            .and_then(|value| number_refusal("amount", value))
     }
 }
 
@@ -5646,6 +5719,11 @@ impl ExplosionPrimePatch {
         if let Some(value) = self.radius {
             event.radius = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.radius
+            .and_then(|value| number_refusal("radius", f64::from(value)))
     }
 }
 
@@ -6643,6 +6721,11 @@ impl PlayerVelocityPatch {
             event.velocity = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.velocity
+            .and_then(|value| vector_refusal("velocity", value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -6979,6 +7062,11 @@ impl VehicleDamagePatch {
         if let Some(value) = self.damage {
             event.damage = value;
         }
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.damage
+            .and_then(|value| number_refusal("damage", value))
     }
 }
 
@@ -8495,14 +8583,31 @@ impl EventPatch {
 
     pub(crate) fn refusal(&self) -> Option<String> {
         match self {
+            Self::BlockDispense(patch) => patch.refusal(),
+            Self::BlockDispenseArmor(patch) => patch.refusal(),
+            Self::BlockExplode(patch) => patch.refusal(),
+            Self::EntityCombust(patch) => patch.refusal(),
+            Self::EntityCombustByBlock(patch) => patch.refusal(),
+            Self::EntityCombustByEntity(patch) => patch.refusal(),
+            Self::EntityDamage(patch) => patch.refusal(),
+            Self::EntityDamageByBlock(patch) => patch.refusal(),
+            Self::EntityDamageByEntity(patch) => patch.refusal(),
+            Self::EntityExhaustion(patch) => patch.refusal(),
+            Self::EntityExplode(patch) => patch.refusal(),
+            Self::EntityKnockback(patch) => patch.refusal(),
+            Self::EntityKnockbackByEntity(patch) => patch.refusal(),
             Self::EntityPortal(patch) => patch.refusal(),
             Self::EntityPortalExit(patch) => patch.refusal(),
+            Self::EntityRegainHealth(patch) => patch.refusal(),
             Self::EntityTeleport(patch) => patch.refusal(),
+            Self::ExplosionPrime(patch) => patch.refusal(),
             Self::PlayerMove(patch) => patch.refusal(),
             Self::PlayerPortal(patch) => patch.refusal(),
             Self::PlayerRespawn(patch) => patch.refusal(),
             Self::PlayerSpawnChange(patch) => patch.refusal(),
             Self::PlayerTeleport(patch) => patch.refusal(),
+            Self::PlayerVelocity(patch) => patch.refusal(),
+            Self::VehicleDamage(patch) => patch.refusal(),
             _ => None,
         }
     }

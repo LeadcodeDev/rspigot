@@ -1,3 +1,5 @@
+use rspigot_domain::Vec3;
+
 use crate::plugins::resolve::position_of;
 use crate::plugins::{EventPatch, Location};
 
@@ -9,7 +11,24 @@ pub struct Verdict {
 }
 
 pub(crate) fn location_refusal(location: &Location) -> Option<String> {
-    position_of(location.position).err()
+    let rotation = location.rotation;
+    position_of(location.position).err().or_else(|| {
+        (!(rotation.yaw.is_finite() && rotation.pitch.is_finite()))
+            .then(|| format!("rotation {} {} is not finite", rotation.yaw, rotation.pitch))
+    })
+}
+
+pub(crate) fn vector_refusal(name: &str, vector: Vec3) -> Option<String> {
+    (!vector.is_finite()).then(|| {
+        format!(
+            "{name} {} {} {} is not finite",
+            vector.x, vector.y, vector.z
+        )
+    })
+}
+
+pub(crate) fn number_refusal(name: &str, value: f64) -> Option<String> {
+    (!value.is_finite()).then(|| format!("{name} {value} is not finite"))
 }
 
 #[cfg(test)]
@@ -18,8 +37,8 @@ mod tests {
 
     use super::*;
     use crate::plugins::events::{
-        EntityDamageByEntityPatch, EntityDamagePatch, EventResult, InventoryClickPatch,
-        InventoryDragPatch, PlayerMovePatch,
+        EntityDamageByEntityPatch, EntityDamagePatch, EntityExhaustionPatch, EntityTeleportPatch,
+        EventResult, InventoryClickPatch, InventoryDragPatch, PlayerMovePatch, PlayerVelocityPatch,
     };
     use crate::plugins::{EventKind, ItemSpec};
 
@@ -64,6 +83,54 @@ mod tests {
             location.position = nowhere;
             assert!(moving(Some(location)).refusal().is_some());
         }
+    }
+
+    #[test]
+    fn every_patched_floating_value_must_be_finite() {
+        let damage = |damage| {
+            EventPatch::EntityDamage(EntityDamagePatch {
+                damage: Some(damage),
+            })
+        };
+        assert_eq!(damage(2.5).refusal(), None);
+        assert_eq!(
+            damage(f64::NAN).refusal(),
+            Some("damage NaN is not finite".to_owned())
+        );
+        let tired = |exhaustion| {
+            EventPatch::EntityExhaustion(EntityExhaustionPatch {
+                exhaustion: Some(exhaustion),
+            })
+        };
+        assert_eq!(tired(0.5).refusal(), None);
+        assert_eq!(
+            tired(f32::INFINITY).refusal(),
+            Some("exhaustion inf is not finite".to_owned())
+        );
+        let pushed = |velocity| {
+            EventPatch::PlayerVelocity(PlayerVelocityPatch {
+                velocity: Some(velocity),
+            })
+        };
+        assert_eq!(pushed(Vec3::new(0.0, 1.0, 0.0)).refusal(), None);
+        assert_eq!(
+            pushed(Vec3::new(0.0, f64::NAN, 0.0)).refusal(),
+            Some("velocity 0 NaN 0 is not finite".to_owned())
+        );
+        let mut turned = at(1.0);
+        turned.rotation = Rotation::new(f32::NAN, 0.0);
+        let teleported = |to| {
+            EventPatch::EntityTeleport(EntityTeleportPatch {
+                from: None,
+                to: Some(to),
+            })
+        };
+        assert_eq!(teleported(None).refusal(), None);
+        assert_eq!(teleported(Some(at(1.0))).refusal(), None);
+        assert_eq!(
+            teleported(Some(turned)).refusal(),
+            Some("rotation NaN 0 is not finite".to_owned())
+        );
     }
 
     #[test]
