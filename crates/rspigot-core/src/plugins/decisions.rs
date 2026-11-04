@@ -48,6 +48,7 @@ pub(crate) struct Pending {
     until: u64,
     then: Continuation,
     held: Vec<Held>,
+    refused: bool,
 }
 
 impl Pending {
@@ -75,11 +76,17 @@ impl Pending {
             until,
             then,
             held: Vec::new(),
+            refused: false,
         }
     }
 
+    pub(crate) fn refused(mut self) -> Self {
+        self.refused = true;
+        self
+    }
+
     fn cancelled(&self) -> bool {
-        self.answers.iter().flatten().any(|answer| answer.cancel)
+        self.refused || self.answers.iter().flatten().any(|answer| answer.cancel)
     }
 
     fn ready(&self, tick: u64) -> bool {
@@ -174,7 +181,7 @@ impl Pending {
     pub(crate) fn settle(self, event: u64) -> Ready {
         let record = self.record();
         let (cancelled, patch) = fold(self.answers);
-        let settlement = if cancelled || denied(&self.payload, patch.as_ref()) {
+        let settlement = if cancelled || self.refused || denied(&self.payload, patch.as_ref()) {
             Settlement::Cancelled(patch.and_then(EventPatch::when_cancelled))
         } else {
             Settlement::Applied(patch)
@@ -804,6 +811,28 @@ mod tests {
             Taken::Counted
         ));
         assert_eq!(settled_ids(&mut decisions, 0), [3, 4, 2]);
+    }
+
+    #[test]
+    fn an_event_born_cancelled_settles_cancelled_in_its_turn_without_a_verdict() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, pending(alice, 1.0, &[7]));
+        decisions.queue(2, notice(alice, &[]).refused());
+        assert!(decisions.next_settled(0).is_none());
+        assert!(matches!(
+            taken(&mut decisions, 7, 1, cancel(false), 0),
+            Taken::Counted
+        ));
+        let first = decisions.next_settled(0).expect("the move settles");
+        assert_eq!(first.settlement, Settlement::Applied(None));
+        let second = decisions
+            .next_settled(0)
+            .expect("the refused event follows");
+        assert_eq!(
+            (second.event, second.settlement),
+            (2, Settlement::Cancelled(None))
+        );
     }
 
     #[test]

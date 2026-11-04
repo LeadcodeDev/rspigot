@@ -41,6 +41,14 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn at_head(&mut self, then: Continuation) -> Option<Continuation> {
         match then {
+            Continuation::Finish(step) => {
+                self.finish_digging(step);
+                None
+            }
+            Continuation::Abort(step) => {
+                self.finish_aborting(step);
+                None
+            }
             Continuation::Login(key) => self.login_at_head(key).map(Continuation::Login),
             Continuation::ClickBlock(step) => self
                 .click_block_at_head(*step)
@@ -49,10 +57,6 @@ impl<L: ClientLink> Server<L> {
             Continuation::DropSelected(step) => self
                 .drop_selected_at_head(step)
                 .map(|step| Continuation::Drop(Box::new(step))),
-            Continuation::FinishDig(step) => {
-                self.finish_digging(step);
-                None
-            }
             Continuation::Wear(request) => self
                 .wear_at_head(&request)
                 .map(|step| Continuation::ItemDamage(Box::new(step))),

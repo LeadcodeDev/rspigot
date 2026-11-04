@@ -295,6 +295,7 @@ impl World {
     }
 
     fn mine(&mut self, pos: BlockPos) {
+        self.dig(pos, DigAction::Start);
         self.dig(pos, DigAction::Finish);
     }
 }

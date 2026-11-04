@@ -589,6 +589,15 @@ fn breaking_the_chest_closes_the_window() {
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
+            action: DigAction::Start,
+            pos: CHEST,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
             action: DigAction::Finish,
             pos: CHEST,
             face: Direction::Up,
@@ -1118,6 +1127,15 @@ fn breaking_one_half_makes_the_other_a_single_chest_and_closes_the_window() {
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
+            action: DigAction::Start,
+            pos: RIGHT_HALF,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
             action: DigAction::Finish,
             pos: RIGHT_HALF,
             face: Direction::Up,
@@ -1472,6 +1490,15 @@ fn breaking_one_copper_half_makes_the_other_a_single_copper_chest() {
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
+            action: DigAction::Start,
+            pos: RIGHT_HALF,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
             action: DigAction::Finish,
             pos: RIGHT_HALF,
             face: Direction::Up,
@@ -1623,6 +1650,15 @@ fn breaking_a_station_closes_its_window_and_returns_the_items() {
     world.server.handle(Inbound::Input {
         player: world.alice.id,
         input: PlayerInput::Dig {
+            action: DigAction::Start,
+            pos: CHEST,
+            face: Direction::Up,
+            sequence: 4,
+        },
+    });
+    world.server.handle(Inbound::Input {
+        player: world.alice.id,
+        input: PlayerInput::Dig {
             action: DigAction::Finish,
             pos: CHEST,
             face: Direction::Up,
@@ -1659,6 +1695,15 @@ impl World {
     }
 
     fn break_at(&mut self, pos: BlockPos) {
+        self.server.handle(Inbound::Input {
+            player: self.alice.id,
+            input: PlayerInput::Dig {
+                action: DigAction::Start,
+                pos,
+                face: Direction::Up,
+                sequence: 4,
+            },
+        });
         self.server.handle(Inbound::Input {
             player: self.alice.id,
             input: PlayerInput::Dig {

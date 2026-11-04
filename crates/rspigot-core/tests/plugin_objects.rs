@@ -436,7 +436,12 @@ fn a_changed_drop_stack_is_the_one_thrown() {
 }
 
 fn mine_with_a_pickaxe(s: &mut Scene, player: &Player) {
-    dig(s, player, DigAction::Finish, BlockPos::new(3, 63, 3));
+    mine_at(s, player, BlockPos::new(3, 63, 3));
+}
+
+fn mine_at(s: &mut Scene, player: &Player, pos: BlockPos) {
+    dig(s, player, DigAction::Start, pos);
+    dig(s, player, DigAction::Finish, pos);
 }
 
 fn damage_of(s: &mut Scene, player: &Player) -> Vec<u8> {
@@ -468,7 +473,7 @@ fn a_tool_wear_is_asked_its_damage_patched_and_a_break_follows_it() {
     assert_eq!(item.key, "minecraft:stone_pickaxe");
     rule_on(&mut s.server, 1, asked.id, true, None);
     assert_eq!(damage_of(&mut s, &alice), fresh);
-    dig(&mut s, &alice, DigAction::Finish, BlockPos::new(4, 63, 3));
+    mine_at(&mut s, &alice, BlockPos::new(4, 63, 3));
     let asked = last_asked(&s.plugin, EventKind::PlayerItemDamage);
     rule_on(
         &mut s.server,

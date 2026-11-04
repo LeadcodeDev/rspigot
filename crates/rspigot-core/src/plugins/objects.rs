@@ -14,8 +14,8 @@ use crate::plugins::events::{
     PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use crate::plugins::steps::{
-    Aim, BookStep, ClickStep, DigStep, DropSource, DropStep, FinishStep, InteractStep, Launch,
-    UseOnStep, UseStep, WearRequest, WearStep,
+    Aim, BookStep, ClickStep, DigStep, DropSource, DropStep, InteractStep, Launch, UseOnStep,
+    UseStep, WearRequest, WearStep,
 };
 use crate::plugins::targets::{Punched, direction_of};
 use crate::plugins::{Access, EventKind, EventPayload, LecternData, spec_of, stack_of};
@@ -367,40 +367,23 @@ impl<L: ClientLink> Server<L> {
         });
     }
 
-    pub(crate) fn finish_digging(&mut self, step: FinishStep) {
-        let refused = self
-            .players
-            .get_mut(&step.player)
-            .and_then(|player| player.dig_refused.take());
-        if refused == Some(step.pos) {
-            self.refuse_block(step.player, step.pos, step.sequence);
-        } else {
-            self.dig_block(step.player, false, step.pos, step.sequence);
-        }
-    }
-
     pub(super) fn finish_dig(&mut self, step: DigStep, patch: PlayerInteractPatch) {
         let (block_ok, item_ok) = settled_results(EventResult::Allow, &patch);
-        let Some(player) = self.players.get_mut(&step.player) else {
+        let Some(player) = self.players.get(&step.player) else {
             return;
         };
         let unchanged = player.game_mode == step.game_mode
             && self.world.chunks.block(step.pos) == Some(step.clicked);
         let survival = player.game_mode == GameMode::Survival;
         if !unchanged || !block_ok || !item_ok && survival {
-            player.dig_refused = Some(step.pos);
             if block_ok && unchanged {
-                self.push(
-                    Audience::One(step.player),
-                    ClientEvent::BlockChangedAck(step.sequence),
-                );
+                self.ack_block(step.player, step.sequence);
             } else {
                 self.refuse_block(step.player, step.pos, step.sequence);
             }
             return;
         }
-        player.dig_refused = None;
-        self.dig_block(step.player, true, step.pos, step.sequence);
+        self.start_destroying(step.player, step.pos, step.sequence);
     }
 
     pub(crate) fn punch(&mut self, id: PlayerId, hand: Hand) {

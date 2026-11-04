@@ -587,7 +587,7 @@ impl<L: ClientLink> Server<L> {
             ender_items: vec![None; 27],
             kick_leave_message: None,
             last_input: Default::default(),
-            dig_refused: None,
+            mining: None,
             use_memo: None,
         };
         if let Some(save) = &saved {

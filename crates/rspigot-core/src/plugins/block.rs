@@ -1,7 +1,8 @@
+use rspigot_blocks::BlockKind;
 use rspigot_domain::{BlockPos, BlockStateId};
 
 use crate::plugins::resolve::{block_kind, within};
-use crate::plugins::{BlockOrder, BlockState};
+use crate::plugins::{BlockOrder, BlockSnapshot, BlockState};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -37,13 +38,29 @@ impl<L: ClientLink> Server<L> {
 
     pub(super) fn block_state(&self, pos: BlockPos) -> Option<BlockState> {
         let state = self.world.chunks.block(pos)?;
-        Some(BlockState {
-            kind: state.kind()?.name().to_owned(),
-            properties: state
-                .properties()
-                .map(|(name, value)| (name.to_owned(), value.to_owned()))
-                .collect(),
-        })
+        state.kind()?;
+        Some(data_of(state))
+    }
+}
+
+pub(crate) fn data_of(state: BlockStateId) -> BlockState {
+    BlockState {
+        kind: material_of(state).to_owned(),
+        properties: state
+            .properties()
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+            .collect(),
+    }
+}
+
+pub(crate) fn material_of(state: BlockStateId) -> &'static str {
+    state.kind().map_or("minecraft:air", BlockKind::name)
+}
+
+pub(crate) fn snapshot_of(pos: BlockPos, state: BlockStateId) -> BlockSnapshot {
+    BlockSnapshot {
+        pos,
+        state: data_of(state),
     }
 }
 

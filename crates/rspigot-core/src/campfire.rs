@@ -90,6 +90,26 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
+    pub(crate) fn has_block_entity(&self, pos: BlockPos) -> bool {
+        self.world
+            .chunks
+            .get(pos.chunk())
+            .is_some_and(|chunk| chunk.block_entity(pos).is_some())
+    }
+
+    pub(crate) fn block_entity_update(&self, pos: BlockPos) -> Option<ClientEvent> {
+        let entity = self.world.chunks.get(pos.chunk())?.block_entity(pos)?;
+        if entity.kind.as_str() != "minecraft:campfire" {
+            return None;
+        }
+        let campfire = read_campfire(&entity.data);
+        Some(ClientEvent::BlockEntityUpdate {
+            pos,
+            kind: ENTITY,
+            data: update_tag(&campfire),
+        })
+    }
+
     pub(crate) fn campfire_items_lost_by(
         &self,
         pos: BlockPos,

@@ -2,6 +2,7 @@ mod block;
 mod chat;
 mod contract;
 mod decisions;
+mod digging;
 mod entity;
 pub mod events;
 mod inputs;
@@ -39,6 +40,7 @@ pub use contract::{
     MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
 };
 pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
+pub(crate) use digging::Mining;
 pub use events::{EventKind, EventPatch, EventPayload};
 pub use items::ItemSpec;
 pub(crate) use items::{spec_of, stack_of};

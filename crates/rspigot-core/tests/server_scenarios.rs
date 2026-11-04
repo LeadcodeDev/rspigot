@@ -670,6 +670,12 @@ fn stone_mined_with_a_pickaxe_drops_cobblestone_seen_by_others() {
         &mut server,
         alice,
         BlockPos::new(3, 63, 3),
+        DigAction::Start,
+    );
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(3, 63, 3),
         DigAction::Finish,
     );
     assert_eq!(server.items_on_ground(), 1);
@@ -683,6 +689,12 @@ fn stone_mined_with_a_pickaxe_drops_cobblestone_seen_by_others() {
 fn stone_mined_by_hand_drops_nothing_and_creative_never_drops() {
     let mut server = server(vec!["alice".to_owned()]);
     let (alice, _link) = ready_player(&mut server, "Alice");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(3, 63, 3),
+        DigAction::Start,
+    );
     dig(
         &mut server,
         alice,
@@ -706,6 +718,12 @@ fn nearby_player_picks_up_the_drop_after_the_delay() {
     let mut server = server(vec!["alice".to_owned()]);
     let (alice, link) = ready_player(&mut server, "Alice");
     command(&mut server, alice, "give Alice stone_pickaxe");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(1, 63, 1),
+        DigAction::Start,
+    );
     dig(
         &mut server,
         alice,
@@ -747,6 +765,12 @@ fn unpicked_drop_despawns() {
     let (alice, link) = ready_player(&mut server, "Alice");
     command(&mut server, alice, "give Alice stone_pickaxe");
     command(&mut server, alice, "tp 0.5 64 40.5");
+    dig(
+        &mut server,
+        alice,
+        BlockPos::new(0, 63, 38),
+        DigAction::Start,
+    );
     dig(
         &mut server,
         alice,

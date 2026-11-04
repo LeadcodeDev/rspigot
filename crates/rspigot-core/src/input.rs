@@ -12,9 +12,9 @@ use crate::chests;
 use crate::events::{
     ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
-use crate::loot::{self, LootContext, LootEntity};
+use crate::loot::{self, LootContext};
 use crate::plugins::events::PlayerRespawnReason;
-use crate::plugins::steps::{ClickStep, FinishStep, UseOnStep};
+use crate::plugins::steps::{AbortStep, ClickStep, FinishStep, UseOnStep};
 use crate::plugins::{Continuation, Held};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -319,64 +319,26 @@ impl<L: ClientLink> Server<L> {
             DigAction::Start => self.start_digging(id, pos, face, sequence),
             DigAction::Finish => self.fire_deferred(
                 id,
-                Continuation::FinishDig(FinishStep {
+                Continuation::Finish(FinishStep {
                     player: id,
                     pos,
                     sequence,
                 }),
             ),
-            DigAction::Cancel => {
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
-            }
+            DigAction::Cancel => self.fire_deferred(
+                id,
+                Continuation::Abort(AbortStep {
+                    player: id,
+                    pos,
+                    sequence,
+                }),
+            ),
             DigAction::SwapHands => self.swap_hands(id),
             DigAction::DropItem => self.handle_drop_action(id, false),
             DigAction::DropStack => self.handle_drop_action(id, true),
             DigAction::ReleaseUseItem => self.release_use_item(id),
             DigAction::Stab => self.send_inventory(id),
         }
-    }
-
-    pub(crate) fn dig_block(&mut self, id: PlayerId, start: bool, pos: BlockPos, sequence: i32) {
-        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
-            return;
-        };
-        let Some(state) = self.world.chunks.block(pos) else {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        };
-        let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
-        let breaks = match (start, mode) {
-            (true, GameMode::Creative) => true,
-            (true, GameMode::Survival) => hardness == 0.0,
-            (false, GameMode::Survival) => true,
-            _ => false,
-        };
-        if breaks {
-            let unbreakable = mode == GameMode::Survival && hardness < 0.0;
-            if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
-                self.refuse_block(id, pos, sequence);
-                return;
-            }
-            self.set_block(pos, BlockStateId::AIR);
-            if mode == GameMode::Survival {
-                self.drop_block_loot(id, pos, state);
-                self.wear_tool_for_mining(id, hardness);
-            }
-        }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-    }
-
-    fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
-        let tool = self
-            .players
-            .get(&id)
-            .and_then(|p| p.inventory.held().cloned());
-        if !loot::tool_is_correct(tool.as_ref(), state) {
-            return;
-        }
-        let breaker = LootEntity::of(rspigot_entities::EntityKind::Player);
-        let context = LootContext::block(state, tool.as_ref(), Some(&breaker));
-        self.pop_block_loot(pos, &context);
     }
 
     pub(crate) fn break_block_naturally(&mut self, pos: BlockPos) -> bool {

@@ -1,4 +1,5 @@
 use crossbeam_channel::Sender;
+use rspigot_domain::entity::EntityBase;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
@@ -166,13 +167,6 @@ pub(crate) struct UseStep {
 }
 
 #[derive(Debug)]
-pub(crate) struct FinishStep {
-    pub(crate) player: PlayerId,
-    pub(crate) pos: BlockPos,
-    pub(crate) sequence: i32,
-}
-
-#[derive(Debug)]
 pub(crate) struct DigStep {
     pub(crate) player: PlayerId,
     pub(crate) pos: BlockPos,
@@ -199,6 +193,13 @@ pub(crate) enum DropSource {
 #[derive(Debug)]
 pub(crate) struct Launch {
     pub(crate) position: Vec3,
+    pub(crate) velocity: Vec3,
+    pub(crate) yaw: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct Announced {
+    pub(crate) base: EntityBase,
     pub(crate) velocity: Vec3,
     pub(crate) yaw: f32,
 }
@@ -275,6 +276,49 @@ pub(crate) struct ShearStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct DamageStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) state: BlockStateId,
+    pub(crate) held: Option<ItemStack>,
+    pub(crate) insta: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct BreakStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) state: BlockStateId,
+    pub(crate) game_mode: GameMode,
+    pub(crate) held: Option<ItemStack>,
+    pub(crate) refused: bool,
+    pub(crate) exp: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct FinishStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct AbortStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct DropItemsStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) drops: Vec<(Announced, ItemStack)>,
+    pub(crate) exp: i32,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -303,7 +347,6 @@ pub(crate) enum Continuation {
     UseItemOn(Box<UseOnStep>),
     UseItem(UseStep),
     Dig(DigStep),
-    FinishDig(FinishStep),
     InteractEntity(Box<InteractStep>),
     DropSelected(SelectedDrop),
     Drop(Box<DropStep>),
@@ -314,6 +357,11 @@ pub(crate) enum Continuation {
     ExpChange(OrbStep),
     PickupArrow(ArrowStep),
     Shear(Box<ShearStep>),
+    Damage(Box<DamageStep>),
+    Break(Box<BreakStep>),
+    Finish(FinishStep),
+    Abort(AbortStep),
+    DropItems(Box<DropItemsStep>),
 }
 
 impl Continuation {
@@ -342,11 +390,9 @@ impl Continuation {
             Self::HeldSlot(_) => EventKind::PlayerItemHeld,
             Self::Swing(_) => EventKind::PlayerAnimation,
             Self::Swap(_) => EventKind::PlayerSwapHandItems,
-            Self::ClickBlock(_)
-            | Self::UseItemOn(_)
-            | Self::UseItem(_)
-            | Self::Dig(_)
-            | Self::FinishDig(_) => EventKind::PlayerInteract,
+            Self::ClickBlock(_) | Self::UseItemOn(_) | Self::UseItem(_) | Self::Dig(_) => {
+                EventKind::PlayerInteract
+            }
             Self::InteractEntity(_) => EventKind::PlayerInteractAtEntity,
             Self::DropSelected(_) | Self::Drop(_) => EventKind::PlayerDropItem,
             Self::Wear(_) | Self::ItemDamage(_) => EventKind::PlayerItemDamage,
@@ -355,6 +401,10 @@ impl Continuation {
             Self::ExpChange(_) => EventKind::PlayerExpChange,
             Self::PickupArrow(_) => EventKind::PlayerPickupArrow,
             Self::Shear(_) => EventKind::PlayerShearEntity,
+            Self::Damage(_) => EventKind::BlockDamage,
+            Self::Break(_) | Self::Finish(_) => EventKind::BlockBreak,
+            Self::Abort(_) => EventKind::BlockDamageAbort,
+            Self::DropItems(_) => EventKind::BlockDropItem,
         }
     }
 

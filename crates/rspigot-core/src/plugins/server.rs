@@ -218,6 +218,36 @@ impl<L: ClientLink> Server<L> {
         self.fire_head(lane, None, then);
     }
 
+    pub(crate) fn fire_refused(
+        &mut self,
+        lane: impl Into<Lane>,
+        then: Continuation,
+        describe: impl FnOnce(&Self) -> Option<EventPayload>,
+    ) {
+        let lane = lane.into();
+        if !self.decisions.busy(lane) {
+            if self.plugins.listens(then.kind(), Access::Observe)
+                && let Some(payload) = describe(self)
+            {
+                let event = self.next_event_id();
+                self.notify_plugins(event, &payload, true, Phase::Settled);
+            }
+            let dropped = self.conclude(then, true, None, Vec::new());
+            self.notify_undone(dropped, Phase::Settled);
+            return;
+        }
+        let Some(payload) = describe(self) else {
+            return;
+        };
+        let event = self.next_event_id();
+        let tick = self.current_tick();
+        let until = tick.saturating_add(self.config.plugins.late_cancel_ticks);
+        self.decisions.queue(
+            event,
+            Pending::new(lane, payload, Vec::new(), tick, until, then).refused(),
+        );
+    }
+
     fn fire_head(&mut self, lane: Lane, order: Option<u64>, then: Continuation) {
         let Some(then) = self.at_head(then) else {
             return;
@@ -326,6 +356,10 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn parks(&self, lane: Lane, then: &Continuation) -> bool {
         self.deciding(then) || self.decisions.busy(lane)
+    }
+
+    pub(crate) fn asks(&self, then: &Continuation) -> bool {
+        self.deciding(then)
     }
 
     pub(crate) fn hold_or_apply(&mut self, id: PlayerId, held: Held) {
@@ -601,12 +635,28 @@ impl<L: ClientLink> Server<L> {
                 self.finish_shear(*step);
                 Vec::new()
             }
-            Continuation::ClickBlock(_)
-            | Continuation::FinishDig(_)
-            | Continuation::DropSelected(_)
-            | Continuation::Wear(_) => Vec::new(),
+            Continuation::ClickBlock(_) | Continuation::DropSelected(_) | Continuation::Wear(_) => {
+                Vec::new()
+            }
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
+                Vec::new()
+            }
+            Continuation::Damage(step) => {
+                self.finish_damage(*step, cancelled, patch_of!(patch, BlockDamage));
+                Vec::new()
+            }
+            Continuation::Break(step) => {
+                self.finish_break(*step, cancelled, patch_of!(patch, BlockBreak));
+                Vec::new()
+            }
+            Continuation::Finish(_) => Vec::new(),
+            Continuation::Abort(step) => {
+                self.finish_abort(&step);
+                Vec::new()
+            }
+            Continuation::DropItems(step) => {
+                self.finish_drop_items(*step, cancelled, patch_of!(patch, BlockDropItem));
                 Vec::new()
             }
         }

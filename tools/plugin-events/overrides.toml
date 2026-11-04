@@ -65,10 +65,14 @@ PlayerExpChange = "orb pickups only; the amount is the orb value since there is 
 PlayerLevelChange = "compared once per tick at the experience sync, from any cause, never at respawn"
 PlayerPickupArrow = "arrows that allow pickup only; not asked again for an arrow while a deciding handler answers for it; carries the stack the arrow gives, read-only"
 PlayerShearEntity = "sheep only; saddles are sheared without the event, as in Spigot"
+BlockDamage = "once per survival dig start; insta_break comes from the mining speed, and a cancel leaves no mining session so the finish is refused"
+BlockDamageAbort = "on every release in reach, and out of reach while a mining session runs"
+BlockBreak = "creative starts, insta mines and finished survival digs; exp_to_drop starts at 0 since no block gives experience yet; a creative tool that cannot break blocks makes it born cancelled"
+BlockDropItem = "after every break that keeps its drops, also when empty; the items are the handles of the item entities it will spawn"
 
 [states]
 ready = [
-    "BlockBreak", "BlockCanBuild", "BlockCook", "BlockDamage", "BlockDamageAbort", "BlockDropItem",
+    "BlockCanBuild", "BlockCook",
     "BlockExp", "BlockExplode", "BlockMultiPlace", "BlockPhysics", "BlockPlace",
     "BroadcastMessage", "CampfireStart", "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem",
     "CreatureSpawn", "EntitiesLoad", "EntitiesUnload", "EntityBreed", "EntityChangeBlock",
