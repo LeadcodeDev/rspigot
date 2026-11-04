@@ -14,7 +14,7 @@ use rspigot_nbt::Compound;
 use rustc_hash::{FxHashMap, FxHashSet};
 use uuid::Uuid;
 
-use crate::chunks::{ChunkJob, Priority};
+use crate::chunks::{ChunkJob, ChunkResult, Priority};
 use crate::events::{
     ClientEvent, EntityKind, EntityStatus, EquipmentSlot, MetadataEntry, MetadataValue,
 };
@@ -593,6 +593,23 @@ impl<L: ClientLink> Server<L> {
 
     pub fn entity_count(&self) -> usize {
         self.entities.store.len()
+    }
+
+    pub fn wait_for_entity_saves(&mut self) {
+        while !self.entities.pending_saves.is_empty() {
+            let Ok(result) = self.workers.results().recv() else {
+                return;
+            };
+            let failed = matches!(
+                &result,
+                ChunkResult::Failed { pos, .. } if self.entities.pending_saves.contains_key(pos)
+            );
+            self.world.chunks.accept(result);
+            self.handle_chunk_events();
+            if failed {
+                return;
+            }
+        }
     }
 
     pub fn saved_entity(&self, id: EntityId) -> Option<Compound> {
