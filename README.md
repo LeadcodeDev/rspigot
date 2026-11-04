@@ -27,11 +27,13 @@ The server creates `plugins.yml` in the working directory on first start:
 | `decision-ticks` | `1` | Ticks a move waits for the deciding plugins (1 to 20) |
 | `late-cancel-ticks` | `20` | Ticks after a move during which a late cancel still sends the player back (0 to 100) |
 | `order` | `[]` | Plugin names; on equal priority the first listed runs first |
-| `priorities` | `{}` | Overrides a handler's `#[priority]`, for a whole plugin (`welcome: high`) or one event (`welcome.player_move: lowest`) |
+| `priorities` | `{}` | Overrides a handler's `#[priority]`, for a whole plugin (`welcome: high`) or one event, named in snake case (`welcome.player_move: lowest`) |
 
 The server refuses to start if `host` is not a loopback address and no token is set. A plugin finds the server through `RSPIGOT_URL` (default `http://127.0.0.1:25580`) and sends `RSPIGOT_TOKEN` when the server has a token.
 
-A handler that takes `&Event` observes: the server does not wait for it and tells it the settled outcome. A handler that takes `&mut Event` decides: it may call `event.cancel()`, and the server holds the move until a decider cancels, all of them answer or `decision-ticks` pass. A cancel that misses that deadline, from a decider that had not answered yet, sends the player back if it arrives within `late-cancel-ticks`; after that it is ignored and the plugin gets a warning.
+Every Bukkit event a plugin can use (all but the deprecated and JVM-only ones) has a type in `rspigot-plugin`, named after it without the `Event` suffix (`PlayerQuitEvent` is `PlayerLeave`). [`crates/rspigot-plugin/EVENTS.md`](crates/rspigot-plugin/EVENTS.md) lists them with their setters and says which ones the server fires today. A handler reads its event through methods (`event.player()`, `event.to()`). A handler also hears the events that share its Bukkit handler list, as its own type: an `EntityDamage` handler hears an `EntityDamageByEntity`, a `PlayerMove` handler does not hear a `PlayerTeleport`.
+
+A handler that takes `&Event` observes: the server does not wait for it and tells it the settled outcome. A handler that takes `&mut Event` decides, on an event that can be cancelled or changed: it may call `event.cancel()` when the event is cancellable and the `set_` methods of the event (`set_to` on a move). The server holds the move until a decider cancels, all of them answer or `decision-ticks` pass, then folds the answers in handler order (priority, then `order`, then name): any cancel wins, otherwise the last handler to set a field wins. A cancel that misses that deadline, from a decider that had not answered yet, sends the player back if it arrives within `late-cancel-ticks`; after that it is ignored and the plugin gets a warning.
 
 Handlers take `&self`, so plugin state lives in fields behind a `Mutex` or atomics.
 `rspigot-plugin` is not published: depend on it with a path or git dependency on `crates/rspigot-plugin`.
