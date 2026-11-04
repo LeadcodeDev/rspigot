@@ -2,6 +2,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rspigot_core::status::{PlayerSample, StatusReply, StatusSnapshot};
 use rspigot_domain::text::Component;
+use rspigot_protocol::status::MAX_STATUS_JSON_CHARS;
 use serde_json::{Value, json};
 
 use crate::NetworkConfig;
@@ -60,7 +61,32 @@ pub fn status_json(config: &NetworkConfig, shown: &Shown) -> String {
     if let (Some(favicon), Some(object)) = (favicon, status.as_object_mut()) {
         object.insert("favicon".to_owned(), Value::String(favicon));
     }
-    status.to_string()
+    let rendered = status.to_string();
+    if units(&rendered) <= MAX_STATUS_JSON_CHARS {
+        return rendered;
+    }
+    if let Some(object) = status.as_object_mut() {
+        object.remove("favicon");
+    }
+    let mut keep = shown.motd.chars().count();
+    loop {
+        let rendered = status.to_string();
+        let over = units(&rendered).saturating_sub(MAX_STATUS_JSON_CHARS);
+        if over == 0 || keep == 0 {
+            return rendered;
+        }
+        keep = keep.saturating_sub(over);
+        let cut = shown
+            .motd
+            .char_indices()
+            .nth(keep)
+            .map_or(shown.motd, |(at, _)| &shown.motd[..at]);
+        status["description"] = to_json_value(&Component::text(cut));
+    }
+}
+
+fn units(text: &str) -> usize {
+    text.encode_utf16().count()
 }
 
 pub fn legacy_status(config: &NetworkConfig, shown: &Shown) -> Vec<u8> {
@@ -144,6 +170,35 @@ mod tests {
         let parsed: Value =
             serde_json::from_str(&status_json(&config, &Shown::replied(&kept))).unwrap();
         assert_eq!(parsed["favicon"], "data:image/png;base64,c2VydmVy");
+    }
+
+    #[test]
+    fn an_answer_too_long_for_the_protocol_drops_the_icon_then_cuts_the_motd() {
+        let config = NetworkConfig::default();
+        let heavy = StatusReply {
+            icon: Some(vec![7; 30_000]),
+            ..reply(None)
+        };
+        let json = status_json(&config, &Shown::replied(&heavy));
+        let parsed: Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("favicon").is_none());
+        assert_eq!(parsed["description"]["text"], "Patched");
+        let wordy = StatusReply {
+            motd: "\"é".repeat(20_000),
+            icon: Some(vec![7; 3_000]),
+            ..reply(None)
+        };
+        let json = status_json(&config, &Shown::replied(&wordy));
+        assert!(units(&json) <= MAX_STATUS_JSON_CHARS);
+        let parsed: Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("favicon").is_none());
+        let motd = parsed["description"]["text"].as_str().unwrap();
+        assert!(wordy.motd.starts_with(motd));
+        assert!(motd.len() > 10_000);
+        let small = reply(Some(vec![7; 3_000]));
+        let parsed: Value =
+            serde_json::from_str(&status_json(&config, &Shown::replied(&small))).unwrap();
+        assert!(parsed.get("favicon").is_some());
     }
 
     #[test]

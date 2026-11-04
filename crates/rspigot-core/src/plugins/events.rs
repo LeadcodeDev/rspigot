@@ -26,7 +26,7 @@ use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
 use crate::plugins::patch::{
-    icon_refusal, location_refusal, merge_indexed, number_refusal, vector_refusal,
+    icon_refusal, location_refusal, merge_indexed, number_refusal, text_refusal, vector_refusal,
 };
 use rspigot_domain::BlockPos;
 use rspigot_domain::Vec3;
@@ -6943,9 +6943,14 @@ impl ServerListPingPatch {
     }
 
     fn refusal(&self) -> Option<String> {
-        self.server_icon
+        self.motd
             .as_deref()
-            .and_then(|value| icon_refusal("server_icon", value))
+            .and_then(|value| text_refusal("motd", value, 32767))
+            .or_else(|| {
+                self.server_icon
+                    .as_deref()
+                    .and_then(|value| icon_refusal("server_icon", value))
+            })
     }
 }
 

@@ -135,7 +135,7 @@ EntityBreed = "cows, pigs, sheep and chickens breeding through their goal, one a
 EntityEnterLoveMode = "feeding an adult cow, pig, sheep or chicken; the food is spent before the event as in Spigot, the settled ticks are written as they are"
 SheepDyeWool = "a dye used on a sheep of another colour; the sheep, its colour and the dye change once settled, a cancel resends the hands"
 EntityPoseChange = "observer only, once per tick from the pose of each living entity and player that changed since the last tick: DYING of mobs, STANDING and SNEAKING of players (sneaking only when not flying, now also in the pose sent to clients); there is no sleeping, swimming, gliding or mob-specific pose yet"
-ServerListPing = "a network hook outside the tick: when no plugin listens the ping answers at once from the configuration, an observed ping answers at once, and a deciding handler makes the answer wait for the settlement within decision-ticks; hidden_players leave the sample and the count, server_icon must be a 64x64 PNG; a legacy ping has an empty hostname and no players and ignores the icon and the hidden players; the MOTD goes out as plain text, its section codes are not converted"
+ServerListPing = "a network hook outside the tick: when no plugin listens the ping answers at once from the configuration, an observed ping answers at once, and a deciding handler makes the answer wait for the settlement within decision-ticks; hidden_players leave the sample and the count, server_icon must be a 64x64 PNG; the answer is capped at 32767 characters by dropping the icon, then cutting the MOTD, and a patched MOTD or icon too long for it is refused; a legacy ping has an empty hostname and no players and ignores the icon and the hidden players; the MOTD goes out as plain text, its section codes are not converted"
 ServerLoad = "STARTUP once, when the server starts running, for the plugins connected by then; RELOAD is never fired since there is no reload"
 PluginEnable = "when a plugin connects, for the other plugins and never for the plugin itself; a plugin reconnecting under its name fires PluginDisable for its old connection first"
 PluginDisable = "when a plugin disconnects, for the plugins left, and at shutdown for every plugin in reverse connection order, heard by all the others before the connections close; never for the plugin itself"
@@ -321,6 +321,7 @@ getters = ["whichButton"]
 
 [events.ServerListPing]
 getters = ["iterator"]
+limits = { setMotd = 32767 }
 rename = { iterator = "players" }
 extra = [
     { name = "hidden_players", java = "java.util.List<java.util.UUID>", patch = true, number = 100, reason = "Spigot reads back the players removed through iterator(): they leave the sample and the count" },

@@ -340,6 +340,7 @@ class Field:
     patch_nullable: bool = False
     direct: bool = False
     index: Leaf = None
+    limit: int = None
 
 
 @dataclass
@@ -523,7 +524,7 @@ class Model:
 
     def event(self, record, sdk_name, state, note, extra):
         allowed = {"getters", "rename", "collections", "omit", "unread", "revive", "applies_when_cancelled",
-                   "pairs", "extra", "indexed"}
+                   "pairs", "extra", "indexed", "limits"}
         for option in extra:
             if option not in allowed:
                 fail(f"{record['name']}: unknown override `{option}`")
@@ -535,6 +536,7 @@ class Model:
         collections = set(extra.get("collections", []))
         direct = set(extra.get("applies_when_cancelled", []))
         pairs = extra.get("pairs", {})
+        limits = extra.get("limits", {})
         numbers = record["fields"]
         used_overrides = set()
         left_out = []
@@ -650,6 +652,14 @@ class Model:
             if entry["name"] in direct:
                 used_overrides.add(("applies_when_cancelled", entry["name"]))
                 target.direct = True
+        for setter, limit in limits.items():
+            target = next((f for f in fields.values() if f.setter == setter), None)
+            if target is None:
+                continue
+            if target.ty.many or target.ty.leaf.proto != "string" or not isinstance(limit, int) or limit < 1:
+                fail(f"{record['name']}: the limit of {setter} needs a text setter and a positive length")
+            target.limit = limit
+            used_overrides.add(("limits", setter))
         for getter in collections:
             used_overrides.add(("collections", getter))
             target = by_getter.get(getter)
@@ -695,7 +705,7 @@ class Model:
             fail(f"{record['name']}: the indexed setters {sorted(indexed_setters)} match nothing")
         for kind, values in (("omit", omit), ("unread", unread), ("revive", revive), ("getters", extra_getters),
                              ("rename", rename), ("applies_when_cancelled", direct), ("pairs", pairs),
-                             ("indexed", indexed)):
+                             ("indexed", indexed), ("limits", limits)):
             for value in values:
                 if (kind, value) not in used_overrides:
                     fail(f"{record['name']}: the override {kind} {value} matches nothing")
@@ -951,12 +961,14 @@ def core_patch_type(f):
     return f"Option<{leaf.core}>"
 
 
-REFUSALS = ("icon_refusal", "location_refusal", "number_refusal", "vector_refusal")
+REFUSALS = ("icon_refusal", "location_refusal", "number_refusal", "text_refusal", "vector_refusal")
 
 
 def refusal_check(f):
     proto = f.ty.leaf.proto
     name = f.name
+    if f.limit:
+        return f'self.{name}.as_deref().and_then(|value| text_refusal("{name}", value, {f.limit}))'
     if f.ty.leaf.id == "icon" and not f.ty.many and not f.index and not f.patch_nullable:
         return f'self.{name}.as_deref().and_then(|value| icon_refusal("{name}", value))'
     if proto == "Location":
