@@ -340,3 +340,17 @@ fn a_plugin_connected_before_startup_hears_the_startup_events() {
     assert_eq!(kinds.last(), Some(&EventKind::WorldLoad));
     assert!(kinds.contains(&EventKind::ChunkLoad));
 }
+
+#[test]
+fn a_shutdown_settles_the_pending_events_of_the_keyed_lanes_before_saving() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::TimeSkip)]);
+    let before = day_time(&mut s);
+    console(&mut s, "time add 10");
+    assert_eq!(asked_for(&s.plugin, EventKind::TimeSkip).len(), 1);
+    assert_eq!(day_time(&mut s), before);
+    let (sender, inbound) = crossbeam_channel::unbounded();
+    sender.send(Inbound::Shutdown).expect("open");
+    let Scene { server, .. } = s;
+    let level = server.run(&inbound);
+    assert_eq!(level.day_time, before + 10);
+}
