@@ -185,20 +185,29 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn window_item(&self, id: PlayerId, window: Window, slot: i16) -> Slot {
+    fn window_contents(&self, id: PlayerId, window: Window) -> Vec<Slot> {
+        match window {
+            Window::Inventory => Vec::new(),
+            Window::Container(_) => self.open_menu_items(id).unwrap_or_default(),
+            Window::Plugin(_) => self
+                .plugin_menu_items(id)
+                .map(<[Slot]>::to_vec)
+                .unwrap_or_default(),
+        }
+    }
+
+    fn window_item(&self, id: PlayerId, window: Window, slot: i16, contents: &[Slot]) -> Slot {
         let index = menu_index(slot)?;
         let player = self.players.get(&id)?;
         match window {
             Window::Inventory => player.inventory.get(index).cloned(),
             Window::Container(_) => {
                 let open = player.open_menu.as_ref()?;
-                open.menu
-                    .item(index, &self.open_items(open), &player.inventory)
+                open.menu.item(index, contents, &player.inventory)
             }
             Window::Plugin(_) => {
                 let open = player.plugin_menu.as_ref()?;
-                open.menu
-                    .item(index, self.plugin_menu_items(id)?, &player.inventory)
+                open.menu.item(index, contents, &player.inventory)
             }
         }
     }
@@ -234,6 +243,7 @@ impl<L: ClientLink> Server<L> {
         id: PlayerId,
         window: Window,
         click: &ContainerClick,
+        contents: &[Slot],
     ) -> Option<Classified> {
         let player = self.players.get(&id)?;
         let clicker = Clicker {
@@ -250,7 +260,7 @@ impl<L: ClientLink> Server<L> {
             Window::Container(_) => {
                 let open = player.open_menu.as_ref()?;
                 open.menu.classify(
-                    &self.open_items(open),
+                    contents,
                     &player.inventory,
                     click.slot,
                     click.button,
@@ -261,7 +271,7 @@ impl<L: ClientLink> Server<L> {
             Window::Plugin(_) => {
                 let open = player.plugin_menu.as_ref()?;
                 open.menu.classify(
-                    self.plugin_menu_items(id)?,
+                    contents,
                     &player.inventory,
                     click.slot,
                     click.button,
@@ -289,6 +299,49 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    fn window_recipe(
+        &self,
+        id: PlayerId,
+        window: Window,
+        contents: &[Slot],
+    ) -> Option<crafting::Recipe> {
+        let player = self.players.get(&id)?;
+        match window {
+            Window::Inventory => {
+                crafting::recipe(2, 2, &InventoryMenu::crafting_grid(&player.inventory))
+            }
+            Window::Container(_) => {
+                let open = player.open_menu.as_ref()?;
+                (open.menu.kind() == MenuKind::Crafting)
+                    .then(|| crafting::recipe(3, 3, contents.get(CRAFT_GRID)?))
+                    .flatten()
+            }
+            Window::Plugin(_) => None,
+        }
+    }
+
+    fn smithed(&self, id: PlayerId, window: Window, contents: &[Slot]) -> Slot {
+        let player = self.players.get(&id)?;
+        let open = player
+            .open_menu
+            .as_ref()
+            .filter(|_| matches!(window, Window::Container(_)))?;
+        if open.menu.kind() != MenuKind::Smithing {
+            return None;
+        }
+        contents.get(smithing::RESULT).cloned().flatten()
+    }
+
+    fn click_heard(&self) -> bool {
+        [
+            EventKind::InventoryClick,
+            EventKind::CraftItem,
+            EventKind::SmithItem,
+        ]
+        .into_iter()
+        .any(|kind| self.listened(kind))
+    }
+
     pub(crate) fn crafting_recipe(&self, id: PlayerId, window: Window) -> Option<crafting::Recipe> {
         let player = self.players.get(&id)?;
         match window {
@@ -305,21 +358,6 @@ impl<L: ClientLink> Server<L> {
             }
             Window::Plugin(_) => None,
         }
-    }
-
-    fn smithing_result(&self, id: PlayerId, window: Window) -> Slot {
-        let player = self.players.get(&id)?;
-        let open = player
-            .open_menu
-            .as_ref()
-            .filter(|_| matches!(window, Window::Container(_)))?;
-        if open.menu.kind() != MenuKind::Smithing {
-            return None;
-        }
-        self.open_items(open)
-            .get(smithing::RESULT)
-            .cloned()
-            .flatten()
     }
 
     pub(crate) fn click_at_head(&mut self, packet: WindowPacket) -> Option<Continuation> {
@@ -376,12 +414,17 @@ impl<L: ClientLink> Server<L> {
             self.apply_window_click(id, window, &click, !refused, false);
             return None;
         }
-        let classified = self.classify_click(id, window, &click)?;
+        let refused = spectator || locked;
+        if !self.click_heard() {
+            self.apply_click(id, window, &click, !refused, false);
+            return None;
+        }
+        let contents = self.window_contents(id, window);
         let recipe = (slot == 0)
-            .then(|| self.crafting_recipe(id, window))
+            .then(|| self.window_recipe(id, window, &contents))
             .flatten();
         let smithed = slot == i16::try_from(smithing::RESULT).unwrap_or(i16::MAX)
-            && self.smithing_result(id, window).is_some();
+            && self.smithed(id, window, &contents).is_some();
         let kind = if recipe.is_some() {
             EventKind::CraftItem
         } else if smithed {
@@ -389,7 +432,12 @@ impl<L: ClientLink> Server<L> {
         } else {
             EventKind::InventoryClick
         };
-        let result = if spectator || locked {
+        if !self.listened(kind) {
+            self.apply_click(id, window, &click, !refused, false);
+            return None;
+        }
+        let classified = self.classify_click(id, window, &click, &contents)?;
+        let result = if refused {
             EventResult::Deny
         } else {
             EventResult::Default
@@ -398,7 +446,7 @@ impl<L: ClientLink> Server<L> {
         let step = WindowClick {
             player: id,
             window,
-            current: self.window_item(id, window, slot),
+            current: self.window_item(id, window, slot, &contents),
             cursor: self.window_cursor(id, window),
             game_mode,
             click,
@@ -521,7 +569,8 @@ impl<L: ClientLink> Server<L> {
         let mut act = result != EventResult::Deny;
         let heard = self.listened(kind);
         let mut full = heard && matches!(kind, EventKind::CraftItem | EventKind::SmithItem);
-        let current = self.window_item(id, window, step.click.slot);
+        let contents = self.window_contents(id, window);
+        let current = self.window_item(id, window, step.click.slot, &contents);
         let cursor = self.window_cursor(id, window);
         let unchanged =
             stacks_match(&current, &step.current) && stacks_match(&cursor, &step.cursor);
@@ -539,9 +588,7 @@ impl<L: ClientLink> Server<L> {
                 self.write_window_cursor(id, window, item);
             }
         }
-        if !(act && self.shift_result(id, window, &step.click, full)) {
-            self.apply_window_click(id, window, &step.click, act, full);
-        }
+        self.apply_click(id, window, &step.click, act, full);
         let resent = matches!(window, Window::Plugin(_))
             || (heard && matches!(window, Window::Container(_)));
         if !act
@@ -550,6 +597,19 @@ impl<L: ClientLink> Server<L> {
             && step.click.button == OFFHAND_BUTTON
         {
             self.resend_offhand(id);
+        }
+    }
+
+    fn apply_click(
+        &mut self,
+        id: PlayerId,
+        window: Window,
+        click: &ContainerClick,
+        act: bool,
+        full: bool,
+    ) {
+        if !(act && self.shift_result(id, window, click, full)) {
+            self.apply_window_click(id, window, click, act, full);
         }
     }
 
@@ -786,12 +846,12 @@ impl<L: ClientLink> Server<L> {
             Window::Inventory => Some(InventoryMenu::crafting_grid(&player.inventory).to_vec()),
             Window::Container(_) => {
                 let open = player.open_menu.as_ref()?;
-                let items = self.open_items(open);
-                match open.menu.kind() {
-                    MenuKind::Crafting => items.get(CRAFT_GRID).map(<[Slot]>::to_vec),
-                    MenuKind::Smithing => items.get(..smithing::INPUTS).map(<[Slot]>::to_vec),
-                    _ => None,
-                }
+                let range = match open.menu.kind() {
+                    MenuKind::Crafting => CRAFT_GRID,
+                    MenuKind::Smithing => 0..=smithing::INPUTS - 1,
+                    _ => return None,
+                };
+                self.open_items(open).get(range).map(<[Slot]>::to_vec)
             }
             Window::Plugin(_) => None,
         }
