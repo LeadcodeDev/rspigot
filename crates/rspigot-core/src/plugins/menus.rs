@@ -309,6 +309,24 @@ impl<L: ClientLink> Server<L> {
         notify_client: bool,
         by_player: bool,
     ) -> bool {
+        let Some(key) = self
+            .players
+            .get(&id)
+            .and_then(|player| player.plugin_menu.as_ref())
+            .map(PluginMenu::key)
+        else {
+            return false;
+        };
+        let closing = self.snapshot_of(id).map(|player| {
+            let (inventory, view, viewers) = self.menu_view(key, &player);
+            InventoryClose {
+                by_player,
+                inventory,
+                player,
+                view,
+                viewers,
+            }
+        });
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -322,18 +340,8 @@ impl<L: ClientLink> Server<L> {
         }
         self.apply_menu_effects(id, effects);
         self.broadcast_equipment_changes(id, before);
-        if let Some(player) = self.snapshot_of(id) {
-            let (inventory, view, viewers) = self.menu_view(open.key(), &player);
-            self.notify_owner(
-                open.connection,
-                EventPayload::InventoryClose(InventoryClose {
-                    by_player,
-                    inventory,
-                    player,
-                    view,
-                    viewers,
-                }),
-            );
+        if let Some(closing) = closing {
+            self.notify_owner(open.connection, EventPayload::InventoryClose(closing));
         }
         true
     }
