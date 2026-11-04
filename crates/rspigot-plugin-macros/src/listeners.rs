@@ -5,24 +5,18 @@ use syn::{
     Signature, Type,
 };
 
+use crate::events::EVENTS;
+
 const NOT_A_HANDLER: &str = "a #[listeners] block only holds handlers: `async fn name(&self, event: &Event)`; put helpers in another impl block";
 const MUT_SELF: &str = "handlers take `&self`; keep state in fields behind a `Mutex` or atomics";
-const NOT_AN_EVENT: &str = "a handler takes its event as `&PlayerJoin`, `&PlayerLeave`, `&PlayerMove`, `&InventoryClick` or `&InventoryClose` to observe it, or `&mut PlayerMove` to decide on it";
+const NOT_AN_EVENT: &str = "a handler takes an rspigot_plugin event as `&Event` to observe it (for example `&PlayerJoin`), or as `&mut Event` to decide on it; the events are listed in rspigot-plugin's EVENTS.md";
 const BAD_ON_ENABLE: &str = "`on_enable` takes `&self, server: &Server`";
 const BAD_ON_DISABLE: &str = "`on_disable` takes `&self`";
-const NOT_DECIDABLE: &str =
-    "`&mut` is only allowed for events a handler can decide (cancel or change): PlayerMove";
+const NOT_DECIDABLE: &str = "`&mut` is only allowed for events a handler can decide (cancel or change); this event can only be observed with `&`";
 const IGNORE_CANCELLED_ON_DECIDER: &str =
     "`#[ignore_cancelled]` only applies to observing handlers (`&Event`)";
 const NOT_A_PRIORITY: &str = "`#[priority(...)]` takes one of Lowest, Low, Normal, High, Highest";
 const PRIORITIES: [&str; 5] = ["Lowest", "Low", "Normal", "High", "Highest"];
-const EVENTS: [(&str, bool); 5] = [
-    ("PlayerJoin", false),
-    ("PlayerLeave", false),
-    ("PlayerMove", true),
-    ("InventoryClick", false),
-    ("InventoryClose", false),
-];
 
 struct Handler {
     cfgs: Vec<Attribute>,

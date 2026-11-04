@@ -56,17 +56,18 @@ pub(crate) enum Undo {
 pub(crate) struct Asked {
     pub(crate) connection: u64,
     pub(crate) handler: u32,
+    pub(crate) kind: EventKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct Answer {
     cancel: bool,
     patch: Option<EventPatch>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Settlement {
-    Cancelled,
+    Cancelled(Option<EventPatch>),
     Applied(Option<EventPatch>),
 }
 
@@ -115,7 +116,8 @@ impl Pending {
     }
 
     fn ready(&self, tick: u64) -> bool {
-        self.cancelled() || self.waiting.is_empty() || tick >= self.deadline
+        let final_cancel = self.cancelled() && !self.payload.kind().writes_when_cancelled();
+        final_cancel || self.waiting.is_empty() || tick >= self.deadline
     }
 
     fn take(
@@ -140,15 +142,19 @@ impl Pending {
         let admitted = admit(&self.asked, connection, event, verdicts, warnings);
         let cancelled = admitted.iter().any(|(_, verdict)| verdict.cancel);
         for (slot, verdict) in admitted {
-            let mut patch = verdict.patch;
-            if let Some(misfit) = patch.filter(|patch| patch.kind() != kind) {
-                warnings.push(format!(
-                    "a {:?} patch does not fit event {event}, which is a {kind:?}",
-                    misfit.kind()
-                ));
-                patch = None;
-            }
-            if let Some(reason) = patch.and_then(|patch| patch.refusal()) {
+            let taken_as = self.asked[slot].kind;
+            let mut patch = match verdict.patch {
+                Some(patch) if patch.kind() == taken_as => patch.lift(kind),
+                Some(misfit) => {
+                    warnings.push(format!(
+                        "a {:?} patch does not fit event {event}, which is a {taken_as:?}",
+                        misfit.kind()
+                    ));
+                    None
+                }
+                None => None,
+            };
+            if let Some(reason) = patch.as_ref().and_then(EventPatch::refusal) {
                 warnings.push(format!("patch of event {event} was refused: {reason}"));
                 patch = None;
             }
@@ -213,12 +219,10 @@ fn admit(
     let mut admitted: Vec<(usize, Verdict)> = Vec::with_capacity(verdicts.len());
     for verdict in verdicts {
         let handler = verdict.handler;
-        match asked.iter().position(|ask| {
-            *ask == Asked {
-                connection,
-                handler,
-            }
-        }) {
+        match asked
+            .iter()
+            .position(|ask| ask.connection == connection && ask.handler == handler)
+        {
             None => warnings.push(format!(
                 "handler {handler} was not asked to decide event {event}"
             )),
@@ -232,17 +236,20 @@ fn admit(
 }
 
 fn fold(answers: Vec<Option<Answer>>) -> Settlement {
+    let mut cancelled = false;
     let mut patch: Option<EventPatch> = None;
     for answer in answers.into_iter().flatten() {
-        if answer.cancel {
-            return Settlement::Cancelled;
-        }
+        cancelled |= answer.cancel;
         patch = match (patch, answer.patch) {
             (Some(earlier), Some(later)) => Some(earlier.then(later)),
             (earlier, later) => later.or(earlier),
         };
     }
-    Settlement::Applied(patch)
+    if cancelled {
+        Settlement::Cancelled(patch.and_then(EventPatch::when_cancelled))
+    } else {
+        Settlement::Applied(patch)
+    }
 }
 
 pub(crate) struct Ready {
@@ -453,7 +460,11 @@ mod tests {
     use rspigot_domain::player::GameMode;
 
     use super::*;
-    use crate::plugins::{PlayerMovePatch, PlayerSnapshot};
+    use crate::plugins::events::{
+        EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch,
+        PlayerJoin, PlayerMove, PlayerMovePatch,
+    };
+    use crate::plugins::{DamageSourceView, EntityView, Location, PlayerSnapshot};
 
     fn snapshot(player: PlayerId, position: Vec3) -> PlayerSnapshot {
         PlayerSnapshot {
@@ -467,12 +478,20 @@ mod tests {
         }
     }
 
-    fn payload(player: PlayerId, from: Vec3, to: Vec3) -> EventPayload {
-        EventPayload::PlayerMove {
-            player: snapshot(player, from),
-            from,
-            to,
+    fn location(position: Vec3) -> Location {
+        Location {
+            world: "minecraft:overworld".to_owned(),
+            position,
+            rotation: Rotation::default(),
         }
+    }
+
+    fn payload(player: PlayerId, from: Vec3, to: Vec3) -> EventPayload {
+        EventPayload::PlayerMove(PlayerMove {
+            player: snapshot(player, from),
+            from: location(from),
+            to: Some(location(to)),
+        })
     }
 
     fn step(player: PlayerId, from: Vec3, to: Vec3) -> Continuation {
@@ -491,6 +510,7 @@ mod tests {
             .map(|&(connection, handler)| Asked {
                 connection,
                 handler,
+                kind: EventKind::PlayerMove,
             })
             .collect()
     }
@@ -533,7 +553,7 @@ mod tests {
             cancel,
             patch: x.map(|x| {
                 EventPatch::PlayerMove(PlayerMovePatch {
-                    to: Some(Vec3::new(x, 64.0, 0.0)),
+                    to: Some(location(Vec3::new(x, 64.0, 0.0))),
                 })
             }),
         }
@@ -715,11 +735,11 @@ mod tests {
         let mut with_a_cancel = patches.clone();
         with_a_cancel[2].1 = vec![verdict(1, true, Some(9.0))];
         let three = EventPatch::PlayerMove(PlayerMovePatch {
-            to: Some(Vec3::new(3.0, 64.0, 0.0)),
+            to: Some(location(Vec3::new(3.0, 64.0, 0.0))),
         });
         for (rulings, expected) in [
             (&patches, Settlement::Applied(Some(three))),
-            (&with_a_cancel, Settlement::Cancelled),
+            (&with_a_cancel, Settlement::Cancelled(None)),
         ] {
             for arrival in arrivals(rulings.len()) {
                 let mut decisions = Decisions::default();
@@ -735,7 +755,11 @@ mod tests {
                         decisions.remember(ready.event, ready.record);
                     }
                 }
-                assert_eq!(settled, [expected], "arrival order {arrival:?}");
+                assert_eq!(
+                    settled,
+                    std::slice::from_ref(&expected),
+                    "arrival order {arrival:?}"
+                );
             }
         }
     }
@@ -749,10 +773,15 @@ mod tests {
             1,
             Pending::new(
                 alice,
-                EventPayload::PlayerJoin {
+                EventPayload::PlayerJoin(PlayerJoin {
                     player: snapshot(alice, at),
-                },
-                handlers(&[(1, 1)]),
+                    join_message: None,
+                }),
+                vec![Asked {
+                    connection: 1,
+                    handler: 1,
+                    kind: EventKind::PlayerJoin,
+                }],
                 5,
                 20,
                 step(alice, at, at),
@@ -795,7 +824,7 @@ mod tests {
         assert!(matches!(taken, Taken::Counted));
         assert!(warnings.is_empty());
         let ready = decisions.next_settled(0).expect("the event settles");
-        assert_eq!(ready.settlement, Settlement::Cancelled);
+        assert_eq!(ready.settlement, Settlement::Cancelled(None));
     }
 
     #[test]
@@ -931,5 +960,132 @@ mod tests {
             )),
             (vec![1], vec![])
         );
+    }
+
+    fn entity(id: i32) -> EntityView {
+        EntityView {
+            id: rspigot_domain::EntityId(id),
+            uuid: uuid::Uuid::from_u128(u128::try_from(id).unwrap_or_default()),
+            kind: "minecraft:zombie".to_owned(),
+            position: Vec3::new(0.0, 64.0, 0.0),
+        }
+    }
+
+    fn hit(damage: f64) -> EventPayload {
+        EventPayload::EntityDamageByEntity(EntityDamageByEntity {
+            cause: EntityDamageCause::EntityAttack,
+            damage,
+            damage_source: DamageSourceView {
+                kind: "minecraft:player_attack".to_owned(),
+                causing: Some(entity(2)),
+                direct: Some(entity(2)),
+                location: None,
+            },
+            damager: entity(2),
+            entity: entity(1),
+            entity_type: "minecraft:zombie".to_owned(),
+            final_damage: damage,
+        })
+    }
+
+    fn damage(kind: EventKind, handler: u32, amount: f64) -> Verdict {
+        let patch = if kind == EventKind::EntityDamage {
+            EventPatch::EntityDamage(EntityDamagePatch {
+                damage: Some(amount),
+            })
+        } else {
+            EventPatch::EntityDamageByEntity(EntityDamageByEntityPatch {
+                damage: Some(amount),
+            })
+        };
+        Verdict {
+            handler,
+            cancel: false,
+            patch: Some(patch),
+        }
+    }
+
+    fn asked_in(order: &[(u64, u32, EventKind)]) -> Vec<Asked> {
+        order
+            .iter()
+            .map(|&(connection, handler, kind)| Asked {
+                connection,
+                handler,
+                kind,
+            })
+            .collect()
+    }
+
+    fn settle_hit(order: &[(u64, u32, EventKind)], arrival: &[usize]) -> (Settlement, Vec<String>) {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let mut decisions = Decisions::default();
+        decisions.queue(
+            1,
+            Pending::new(alice, hit(4.0), asked_in(order), 5, 20, step(alice, at, at)),
+        );
+        let mut warnings = Vec::new();
+        for &index in arrival {
+            let (connection, handler, kind) = order[index];
+            let amount = if kind == EventKind::EntityDamage {
+                1.0
+            } else {
+                9.0
+            };
+            let (_, said) = decisions.decide(connection, 1, vec![damage(kind, handler, amount)], 0);
+            warnings.extend(said);
+        }
+        let ready = decisions.next_settled(0).expect("the hit settles");
+        (ready.settlement, warnings)
+    }
+
+    #[test]
+    fn a_family_folds_the_patches_of_a_parent_and_a_child_handler_in_registry_order() {
+        let parent_first = [
+            (1, 1, EventKind::EntityDamage),
+            (2, 1, EventKind::EntityDamageByEntity),
+        ];
+        let child_first = [parent_first[1], parent_first[0]];
+        let by = |amount| {
+            Settlement::Applied(Some(EventPatch::EntityDamageByEntity(
+                EntityDamageByEntityPatch {
+                    damage: Some(amount),
+                },
+            )))
+        };
+        for arrival in arrivals(2) {
+            assert_eq!(settle_hit(&parent_first, &arrival), (by(9.0), Vec::new()));
+            assert_eq!(settle_hit(&child_first, &arrival), (by(1.0), Vec::new()));
+        }
+    }
+
+    #[test]
+    fn a_handler_patches_only_the_event_it_registered_for() {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let mut decisions = Decisions::default();
+        decisions.queue(
+            1,
+            Pending::new(
+                alice,
+                hit(4.0),
+                asked_in(&[(1, 1, EventKind::EntityDamage)]),
+                5,
+                20,
+                step(alice, at, at),
+            ),
+        );
+        let (_, warnings) = decisions.decide(
+            1,
+            1,
+            vec![damage(EventKind::EntityDamageByEntity, 1, 2.0)],
+            0,
+        );
+        assert_eq!(
+            warnings,
+            ["a EntityDamageByEntity patch does not fit event 1, which is a EntityDamage"]
+        );
+        let ready = decisions.next_settled(0).expect("the hit settles");
+        assert_eq!(ready.settlement, Settlement::Applied(None));
     }
 }

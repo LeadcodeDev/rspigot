@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use fake_host::*;
 use rspigot_plugin::{
-    Error, GameMode, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position, Rotation,
-    listeners, run_with,
+    Error, GameMode, Location, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position,
+    Rotation, listeners, run_with,
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
@@ -46,13 +46,12 @@ struct Guard {
 #[listeners]
 impl Guard {
     async fn on_player_join(&self, event: &PlayerJoin) {
-        event
-            .player
-            .send_message(format!("Welcome, {}!", event.player.name));
-        let state = event.player.resolve().await;
-        let online = event.player.server().players.fetch().await;
+        let player = event.player();
+        player.send_message(format!("Welcome, {}!", player.name));
+        let state = player.resolve().await;
+        let online = player.server().players.fetch().await;
         let _ = self.joins.send(Joined {
-            player: event.player.clone(),
+            player: player.clone(),
             state,
             online,
         });
@@ -60,16 +59,24 @@ impl Guard {
 
     #[priority(High)]
     async fn on_player_move(&self, event: &mut PlayerMove) {
-        let to = event.to();
+        let Some(to) = event.to().cloned() else {
+            return;
+        };
         let _ = self.marks.send(Mark::Decided {
             handler: 2,
             event: event.id(),
-            height: to.y,
+            height: to.position.y,
         });
-        if to.y > 100.0 {
+        if to.position.y > 100.0 {
             event.cancel();
-        } else if to.y > 80.0 {
-            event.set_to(Position { y: 80.0, ..to });
+        } else if to.position.y > 80.0 {
+            event.set_to(Location {
+                position: Position {
+                    y: 80.0,
+                    ..to.position
+                },
+                ..to
+            });
         }
     }
 
@@ -88,9 +95,9 @@ impl Guard {
         let _ = self.marks.send(Mark::Decided {
             handler: 4,
             event: event.id(),
-            height: event.to().y,
+            height: event.to().map_or(0.0, |to| to.position.y),
         });
-        if event.to().y > 100.0 {
+        if event.to().is_some_and(|to| to.position.y > 100.0) {
             std::future::pending::<()>().await;
         }
     }
@@ -130,22 +137,30 @@ fn launch(host: &Host, token: Option<&str>) -> Running {
 fn joining(player: v1::PlayerSnapshot) -> event::Payload {
     event::Payload::PlayerJoin(v1::PlayerJoin {
         player: Some(player),
+        join_message: Some("§eSteve joined the game".to_owned()),
     })
+}
+
+fn at(height: f64) -> v1::Location {
+    v1::Location {
+        world: "minecraft:overworld".to_owned(),
+        position: Some(v1::Vec3 {
+            x: 1.0,
+            y: height,
+            z: -3.5,
+        }),
+        rotation: Some(v1::Rotation {
+            yaw: 90.0,
+            pitch: -30.0,
+        }),
+    }
 }
 
 fn moving_to(height: f64) -> event::Payload {
     event::Payload::PlayerMove(v1::PlayerMove {
         player: Some(steve()),
-        from: Some(v1::Vec3 {
-            x: 1.0,
-            y: 64.0,
-            z: -3.5,
-        }),
-        to: Some(v1::Vec3 {
-            x: 1.0,
-            y: height,
-            z: -3.5,
-        }),
+        from: Some(at(64.0)),
+        to: Some(at(height)),
     })
 }
 
@@ -159,7 +174,7 @@ fn verdict(handler: u32, cancel: bool, height: Option<f64>) -> v1::Verdict {
         cancel,
         patch: height.map(|y| v1::Patch {
             change: Some(patch::Change::PlayerMove(v1::PlayerMovePatch {
-                to: Some(v1::Vec3 { x: 1.0, y, z: -3.5 }),
+                to: Some(at(y)),
             })),
         }),
     }
@@ -299,16 +314,8 @@ async fn a_deciding_handler_answers_its_event() {
     assert_eq!(session.hear().await, decision(9, Vec::new()));
     let stranger = event::Payload::PlayerMove(v1::PlayerMove {
         player: Some(snapshot("not a uuid", "Steve", 12)),
-        from: Some(v1::Vec3 {
-            x: 1.0,
-            y: 64.0,
-            z: -3.5,
-        }),
-        to: Some(v1::Vec3 {
-            x: 1.0,
-            y: 200.0,
-            z: -3.5,
-        }),
+        from: Some(at(64.0)),
+        to: Some(at(200.0)),
     });
     session.say(event(10, &[2, 4], v1::Phase::Decide, false, stranger));
     assert_eq!(session.hear().await, decision(10, Vec::new()));
@@ -630,9 +637,8 @@ async fn an_event_the_plugin_cannot_read_is_skipped() {
     let mut session = host.knock().await.accept();
 
     let closed = event::Payload::InventoryClose(v1::InventoryClose {
-        player: None,
-        inventory: 1,
         by_player: true,
+        ..v1::InventoryClose::default()
     });
     session.say(event(1, &[1], v1::Phase::Settled, false, closed));
     session.say(event(2, &[1], v1::Phase::Settled, false, joining(steve())));

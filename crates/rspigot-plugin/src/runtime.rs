@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::plugin_host_client::PluginHostClient;
-use rspigot_plugin_protocol::v1::{self, from_plugin, to_plugin};
+use rspigot_plugin_protocol::v1::{self, event, from_plugin, to_plugin};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -11,7 +11,7 @@ use tonic::transport::Endpoint;
 use tonic::{Code, Status, Streaming};
 
 use crate::Error;
-use crate::event::Received;
+use crate::events::EventKind;
 use crate::link::{ANSWER_TIMEOUT, Link, Outbound, message};
 use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin, Verdict};
 use crate::server::Server;
@@ -33,6 +33,32 @@ enum Queued {
 }
 
 type Queue = mpsc::UnboundedSender<Queued>;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Meta {
+    pub(crate) id: u64,
+    pub(crate) cancelled: bool,
+    pub(crate) rolled_back: bool,
+}
+
+pub(crate) struct Received {
+    pub(crate) payload: event::Payload,
+    pub(crate) meta: Meta,
+}
+
+impl Received {
+    fn from_wire(event: v1::Event) -> Result<Self, Error> {
+        let meta = Meta {
+            id: event.id,
+            cancelled: event.cancelled,
+            rolled_back: event.phase() == v1::Phase::RolledBack,
+        };
+        let payload = event
+            .payload
+            .ok_or_else(|| Error::Malformed(format!("event {} without a payload", meta.id)))?;
+        Ok(Self { payload, meta })
+    }
+}
 
 enum Ended {
     Refused(Status),
@@ -57,19 +83,18 @@ pub async fn run_with<P: Plugin>(
     let endpoint = endpoint(&url)?;
     let link = Link::default();
     let (queue, queued) = mpsc::unbounded_channel();
+    let specs = P::handlers();
+    let kinds: Vec<(u32, EventKind)> = specs.iter().map(|spec| (spec.id, spec.event)).collect();
     let hello = v1::Hello {
         protocol_version: PROTOCOL_VERSION,
         name: P::NAME.to_owned(),
         version: P::VERSION.to_owned(),
         token: token.unwrap_or_default(),
-        handlers: P::handlers()
-            .into_iter()
-            .map(HandlerSpec::to_wire)
-            .collect(),
+        handlers: specs.into_iter().map(HandlerSpec::to_wire).collect(),
     };
     let (error, ()) = tokio::join!(
         keep_connected(endpoint, url, hello, &link, queue),
-        handle_events(&plugin, &link, queued),
+        handle_events(&plugin, &link, &kinds, queued),
     );
     Err(error)
 }
@@ -235,11 +260,12 @@ fn ended(status: Status) -> Ended {
 async fn handle_events<P: Listeners>(
     plugin: &P,
     link: &Link,
+    kinds: &[(u32, EventKind)],
     mut queued: mpsc::UnboundedReceiver<Queued>,
 ) {
     while let Some(next) = queued.recv().await {
         match next {
-            Queued::Event { event, reply } => handle(plugin, link, *event, reply).await,
+            Queued::Event { event, reply } => handle(plugin, link, kinds, *event, reply).await,
             Queued::Enable(connected) => plugin.enable(&Server::new(connected)).await,
             Queued::Disable => plugin.disable().await,
         }
@@ -249,14 +275,24 @@ async fn handle_events<P: Listeners>(
 async fn handle<P: Listeners>(
     plugin: &P,
     link: &Link,
+    kinds: &[(u32, EventKind)],
     mut event: v1::Event,
     reply: mpsc::WeakUnboundedSender<v1::FromPlugin>,
 ) {
     let id = event.id;
     let handlers = std::mem::take(&mut event.handlers);
     if event.phase() != v1::Phase::Decide {
-        match Received::from_wire(event, link) {
-            Ok(received) => observe(plugin, &received, &handlers).await,
+        match Received::from_wire(event) {
+            Ok(received) => {
+                for (handler, call) in calls(&received, &handlers, kinds, link) {
+                    match call {
+                        Some(call) => {
+                            plugin.dispatch(call).await;
+                        }
+                        None => tracing::warn!("Skipped event {id} for handler {handler}"),
+                    }
+                }
+            }
             Err(error) => tracing::warn!("Skipped event {id}: {error}"),
         }
         return;
@@ -265,43 +301,53 @@ async fn handle<P: Listeners>(
         tracing::debug!("Dropped event {id}: its connection is gone");
         return;
     };
-    let verdicts = match Received::from_wire(event, link) {
-        Ok(received) => decide(plugin, &received, &handlers).await,
-        Err(error) => {
-            tracing::warn!("Let event {id} through: {error}");
-            Vec::new()
+    let mut verdicts = Vec::with_capacity(handlers.len());
+    match Received::from_wire(event) {
+        Ok(received) => {
+            for (handler, call) in calls(&received, &handlers, kinds, link) {
+                let Some(call) = call else {
+                    tracing::warn!("Let event {id} through for handler {handler}");
+                    continue;
+                };
+                let verdict = match plugin.dispatch(call).await {
+                    Outcome::Decided(verdict) => verdict,
+                    Outcome::Observed => Verdict::default(),
+                };
+                let cancelled = verdict.cancel;
+                verdicts.push(verdict.into_wire(handler));
+                if cancelled {
+                    break;
+                }
+            }
         }
-    };
+        Err(error) => tracing::warn!("Let event {id} through: {error}"),
+    }
     let _ = reply.send(message(from_plugin::Body::Decision(v1::Decision {
         event: id,
         verdicts,
     })));
 }
 
-async fn observe<P: Listeners>(plugin: &P, received: &Received, handlers: &[u32]) {
-    for &handler in handlers {
-        plugin.dispatch(received.call(handler)).await;
-    }
-}
-
-async fn decide<P: Listeners>(
-    plugin: &P,
+fn calls(
     received: &Received,
     handlers: &[u32],
-) -> Vec<v1::Verdict> {
-    let mut verdicts = Vec::with_capacity(handlers.len());
-    for &handler in handlers {
-        let verdict = match plugin.dispatch(received.call(handler)).await {
-            Outcome::Decided(verdict) => verdict,
-            Outcome::Observed => Verdict::default(),
-        };
-        let cancelled = verdict.cancel;
-        verdicts.push(verdict.into_wire(handler));
-        if cancelled {
-            break;
-        }
-    }
-    verdicts
+    kinds: &[(u32, EventKind)],
+    link: &Link,
+) -> Vec<(u32, Option<crate::Call>)> {
+    handlers
+        .iter()
+        .map(|&handler| {
+            let call = kinds
+                .iter()
+                .find(|(id, _)| *id == handler)
+                .and_then(|&(_, kind)| received.call(handler, kind, link))
+                .and_then(|call| {
+                    call.map_err(|error| tracing::warn!("Event {}: {error}", received.meta.id))
+                        .ok()
+                });
+            (handler, call)
+        })
+        .collect()
 }
 
 struct Backoff(Duration);
@@ -326,9 +372,150 @@ impl Backoff {
 
 #[cfg(test)]
 mod tests {
+    use rspigot_plugin_protocol::v1::patch;
     use tokio::time::Instant;
 
     use super::*;
+    use crate::Call;
+
+    fn snapshot() -> v1::PlayerSnapshot {
+        v1::PlayerSnapshot {
+            uuid: "00000000-0000-0000-0000-000000000001".to_owned(),
+            name: "Steve".to_owned(),
+            entity_id: 12,
+            world: "minecraft:overworld".to_owned(),
+            position: Some(v1::Vec3 {
+                x: 1.0,
+                y: 64.0,
+                z: -3.5,
+            }),
+            game_mode: v1::GameMode::Survival as i32,
+            rotation: Some(v1::Rotation {
+                yaw: 0.0,
+                pitch: 0.0,
+            }),
+        }
+    }
+
+    fn zombie() -> v1::EntitySnapshot {
+        v1::EntitySnapshot {
+            entity_id: 40,
+            uuid: "00000000-0000-0000-0000-000000000028".to_owned(),
+            kind: "minecraft:zombie".to_owned(),
+            position: Some(v1::Vec3 {
+                x: 2.0,
+                y: 64.0,
+                z: -3.5,
+            }),
+        }
+    }
+
+    fn received(payload: event::Payload) -> Received {
+        Received::from_wire(v1::Event {
+            id: 9,
+            handlers: vec![1],
+            phase: v1::Phase::Decide as i32,
+            cancelled: false,
+            payload: Some(payload),
+        })
+        .expect("an event with a payload")
+    }
+
+    #[test]
+    fn a_child_event_reaches_a_parent_handler_as_the_parent_type() {
+        let link = Link::default();
+        let hit = received(event::Payload::EntityDamageByEntity(
+            v1::EntityDamageByEntity {
+                cause: v1::EntityDamageCause::EntityAttack as i32,
+                damage: 4.0,
+                damage_source: Some(v1::DamageSource {
+                    kind: "minecraft:mob_attack".to_owned(),
+                    causing: Some(zombie()),
+                    direct: Some(zombie()),
+                    location: None,
+                }),
+                damager: Some(zombie()),
+                entity: Some(zombie()),
+                entity_type: "minecraft:zombie".to_owned(),
+                final_damage: 4.0,
+            },
+        ));
+        let Some(Ok(Call::EntityDamage { handler, mut event })) =
+            hit.call(1, EventKind::EntityDamage, &link)
+        else {
+            panic!("an EntityDamage handler hears the hit");
+        };
+        assert_eq!((handler, event.id(), event.damage()), (1, 9, 4.0));
+        event.set_damage(1.5);
+        assert_eq!(
+            Verdict::from(event).patch.map(|patch| *patch),
+            Some(v1::Patch {
+                change: Some(patch::Change::EntityDamage(v1::EntityDamagePatch {
+                    damage: Some(1.5)
+                })),
+            })
+        );
+        assert!(matches!(
+            hit.call(2, EventKind::EntityDamageByEntity, &link),
+            Some(Ok(Call::EntityDamageByEntity { handler: 2, .. }))
+        ));
+        assert!(hit.call(3, EventKind::EntityDamageByBlock, &link).is_none());
+        assert!(hit.call(4, EventKind::PlayerMove, &link).is_none());
+    }
+
+    #[test]
+    fn a_player_death_reaches_an_entity_death_handler_with_the_player_as_an_entity() {
+        let death = received(event::Payload::PlayerDeath(v1::PlayerDeath {
+            damage_source: Some(v1::DamageSource {
+                kind: "minecraft:fall".to_owned(),
+                ..v1::DamageSource::default()
+            }),
+            death_message: Some("Steve fell".to_owned()),
+            entity: Some(snapshot()),
+            entity_type: "minecraft:player".to_owned(),
+            ..v1::PlayerDeath::default()
+        }));
+        let Some(Ok(Call::EntityDeath { event, .. })) =
+            death.call(1, EventKind::EntityDeath, &Link::default())
+        else {
+            panic!("an EntityDeath handler hears the death");
+        };
+        assert_eq!(event.entity().entity_id, 12);
+        assert_eq!(event.entity().kind, crate::EntityType::Player);
+    }
+
+    #[test]
+    fn cancelling_a_player_interaction_denies_both_results() {
+        let click = received(event::Payload::PlayerInteract(v1::PlayerInteract {
+            action: v1::Action::RightClickBlock as i32,
+            block: true,
+            block_face: v1::Face::Up as i32,
+            material: "minecraft:stone".to_owned(),
+            player: Some(snapshot()),
+            use_interacted_block: v1::EventResult::Default as i32,
+            use_item_in_hand: v1::EventResult::Default as i32,
+            ..v1::PlayerInteract::default()
+        }));
+        let Some(Ok(Call::PlayerInteract { mut event, .. })) =
+            click.call(1, EventKind::PlayerInteract, &Link::default())
+        else {
+            panic!("a PlayerInteract handler hears the click");
+        };
+        assert!(!event.is_cancelled());
+        event.cancel();
+        assert!(event.is_cancelled());
+        let verdict = Verdict::from(event);
+        assert!(!verdict.cancel);
+        assert_eq!(
+            verdict.patch.map(|patch| *patch),
+            Some(v1::Patch {
+                change: Some(patch::Change::PlayerInteract(v1::PlayerInteractPatch {
+                    use_interacted_block: Some(v1::EventResult::Deny as i32),
+                    use_item_in_hand: Some(v1::EventResult::Deny as i32),
+                })),
+            })
+        );
+    }
 
     #[tokio::test(start_paused = true)]
     async fn no_acceptance_within_ten_seconds_is_a_lost_connection() {

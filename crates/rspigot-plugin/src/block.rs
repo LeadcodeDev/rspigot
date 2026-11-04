@@ -10,32 +10,6 @@ pub struct BlockPos {
     pub z: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Face {
-    Down,
-    Up,
-    North,
-    South,
-    West,
-    East,
-}
-
-impl Face {
-    pub(crate) fn from_wire(face: i32) -> Result<Self, Error> {
-        match v1::Face::try_from(face) {
-            Ok(v1::Face::Down) => Ok(Self::Down),
-            Ok(v1::Face::Up) => Ok(Self::Up),
-            Ok(v1::Face::North) => Ok(Self::North),
-            Ok(v1::Face::South) => Ok(Self::South),
-            Ok(v1::Face::West) => Ok(Self::West),
-            Ok(v1::Face::East) => Ok(Self::East),
-            Ok(v1::Face::Unspecified) | Err(_) => {
-                Err(Error::Malformed(format!("an unknown face {face}")))
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockState {
     pub kind: BlockType,
@@ -43,7 +17,7 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    fn from_wire(state: v1::BlockState) -> Result<Self, Error> {
+    pub(crate) fn from_wire(state: v1::BlockState) -> Result<Self, Error> {
         Ok(Self {
             kind: block_type(&state.block)?,
             properties: state
@@ -52,6 +26,20 @@ impl BlockState {
                 .map(|property| (property.name, property.value))
                 .collect(),
         })
+    }
+
+    pub(crate) fn to_wire(&self) -> v1::BlockState {
+        v1::BlockState {
+            block: self.kind.key().to_owned(),
+            properties: self
+                .properties
+                .iter()
+                .map(|(name, value)| v1::Property {
+                    name: name.clone(),
+                    value: value.clone(),
+                })
+                .collect(),
+        }
     }
 }
 

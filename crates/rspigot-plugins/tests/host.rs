@@ -5,9 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rspigot_core::events::{ClientEvent, Inbound};
+use rspigot_core::plugins::events::PlayerMove;
 use rspigot_core::plugins::{
-    Access, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerSnapshot, PluginIntro,
-    Priority, ToPlugin, Verdict,
+    Access, EventKind, EventPayload, FromPlugin, HandlerSpec, Location, Phase, PlayerSnapshot,
+    PluginIntro, Priority, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{ClientLink, PluginOutbox};
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -292,19 +293,27 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
             handlers: vec![2],
             phase: Phase::Decide,
             cancelled: false,
-            payload: EventPayload::PlayerMove {
+            payload: EventPayload::PlayerMove(PlayerMove {
                 player: steve(),
-                from: Vec3 {
-                    x: 1.0,
-                    y: 64.0,
-                    z: -3.5,
+                from: Location {
+                    world: "minecraft:overworld".to_owned(),
+                    position: Vec3 {
+                        x: 1.0,
+                        y: 64.0,
+                        z: -3.5,
+                    },
+                    rotation: Rotation::default(),
                 },
-                to: Vec3 {
-                    x: 2.0,
-                    y: 64.0,
-                    z: -3.5,
-                },
-            },
+                to: Some(Location {
+                    world: "minecraft:overworld".to_owned(),
+                    position: Vec3 {
+                        x: 2.0,
+                        y: 64.0,
+                        z: -3.5,
+                    },
+                    rotation: Rotation::default(),
+                }),
+            }),
         },
     );
     let Some(to_plugin::Body::Event(event)) = plugin.hear().await else {
@@ -329,7 +338,10 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
             pitch: -30.0
         })
     );
-    assert_eq!(moved.to.unwrap().x, 2.0);
+    assert_eq!(
+        moved.to.and_then(|to| to.position).map(|to| to.x),
+        Some(2.0)
+    );
 
     plugin.say(from_plugin::Body::Player(v1::PlayerOrder {
         player: "not a uuid".to_owned(),
@@ -416,7 +428,7 @@ async fn a_bad_introduction_is_refused_with_a_status() {
     );
 
     let mut unknown = with_token(hello("welcome"));
-    unknown.handlers[0].event = 42;
+    unknown.handlers[0].event = 9999;
     assert_eq!(
         refusal(Plugin::open(host.address, from_plugin::Body::Hello(unknown)).await),
         Code::InvalidArgument

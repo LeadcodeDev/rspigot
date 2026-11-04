@@ -1,0 +1,5 @@
+error: `&mut` is only allowed for events a handler can decide (cancel or change); this event can only be observed with `&`
+ --> tests/ui/mut_observe_only.rs:8:47
+  |
+8 |     async fn on_inventory_close(&self, event: &mut InventoryClose) {
+  |                                               ^^^^^^^^^^^^^^^^^^^

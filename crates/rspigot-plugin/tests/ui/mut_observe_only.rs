@@ -5,8 +5,8 @@ struct Guard;
 
 #[listeners]
 impl Guard {
-    async fn on_player_join(&self, event: &mut PlayerJoin) {
-        event.player.send_message("Welcome!");
+    async fn on_inventory_close(&self, event: &mut InventoryClose) {
+        event.player().send_message("Bye!");
     }
 }
 

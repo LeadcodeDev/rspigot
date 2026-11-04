@@ -87,6 +87,8910 @@ pub struct Effect {
     pub icon: bool,
 }
 #[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSnapshot {
+    #[prost(string, tag = "1")]
+    pub uuid: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub entity_id: i32,
+    #[prost(string, tag = "4")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub position: ::core::option::Option<Vec3>,
+    #[prost(enumeration = "GameMode", tag = "6")]
+    pub game_mode: i32,
+    #[prost(message, optional, tag = "7")]
+    pub rotation: ::core::option::Option<Rotation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitySnapshot {
+    #[prost(int32, tag = "1")]
+    pub entity_id: i32,
+    #[prost(string, tag = "2")]
+    pub uuid: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub position: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockState {
+    #[prost(string, tag = "1")]
+    pub block: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub properties: ::prost::alloc::vec::Vec<Property>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Location {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub position: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "3")]
+    pub rotation: ::core::option::Option<Rotation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockSnapshot {
+    #[prost(message, optional, tag = "1")]
+    pub pos: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub state: ::core::option::Option<BlockState>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InventoryRef {
+    #[prost(int32, tag = "6")]
+    pub size: i32,
+    #[prost(string, tag = "7")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(oneof = "inventory_ref::Owner", tags = "1, 2, 3, 4, 5")]
+    pub owner: ::core::option::Option<inventory_ref::Owner>,
+}
+/// Nested message and enum types in `InventoryRef`.
+pub mod inventory_ref {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Owner {
+        #[prost(uint64, tag = "1")]
+        Custom(u64),
+        #[prost(string, tag = "2")]
+        Player(::prost::alloc::string::String),
+        #[prost(message, tag = "3")]
+        Block(super::BlockPos),
+        #[prost(int32, tag = "4")]
+        Entity(i32),
+        #[prost(message, tag = "5")]
+        Detached(super::Empty),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryView {
+    #[prost(message, optional, tag = "1")]
+    pub top: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub bottom: ::core::option::Option<InventoryRef>,
+    #[prost(string, tag = "3")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkRef {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub x: i32,
+    #[prost(int32, tag = "3")]
+    pub z: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DamageSource {
+    #[prost(string, tag = "1")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub causing: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub direct: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub location: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandSender {
+    #[prost(oneof = "command_sender::Sender", tags = "1, 2")]
+    pub sender: ::core::option::Option<command_sender::Sender>,
+}
+/// Nested message and enum types in `CommandSender`.
+pub mod command_sender {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Sender {
+        #[prost(message, tag = "1")]
+        Player(super::PlayerSnapshot),
+        #[prost(message, tag = "2")]
+        Console(super::Empty),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Trade {
+    #[prost(message, optional, tag = "1")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, repeated, tag = "2")]
+    pub ingredients: ::prost::alloc::vec::Vec<Item>,
+    #[prost(int32, tag = "3")]
+    pub uses: i32,
+    #[prost(int32, tag = "4")]
+    pub max_uses: i32,
+    #[prost(bool, tag = "5")]
+    pub experience_reward: bool,
+    #[prost(int32, tag = "6")]
+    pub villager_experience: i32,
+    #[prost(float, tag = "7")]
+    pub price_multiplier: f32,
+    #[prost(int32, tag = "8")]
+    pub demand: i32,
+    #[prost(int32, tag = "9")]
+    pub special_price: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginInfo {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct BoundingBox {
+    #[prost(message, optional, tag = "1")]
+    pub min: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "2")]
+    pub max: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Input {
+    #[prost(bool, tag = "1")]
+    pub forward: bool,
+    #[prost(bool, tag = "2")]
+    pub backward: bool,
+    #[prost(bool, tag = "3")]
+    pub left: bool,
+    #[prost(bool, tag = "4")]
+    pub right: bool,
+    #[prost(bool, tag = "5")]
+    pub jump: bool,
+    #[prost(bool, tag = "6")]
+    pub sneak: bool,
+    #[prost(bool, tag = "7")]
+    pub sprint: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SpawnerData {
+    #[prost(message, optional, tag = "1")]
+    pub pos: ::core::option::Option<BlockPos>,
+    #[prost(string, optional, tag = "2")]
+    pub spawned: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, tag = "3")]
+    pub delay: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TrialSpawnerData {
+    #[prost(message, optional, tag = "1")]
+    pub pos: ::core::option::Option<BlockPos>,
+    #[prost(bool, tag = "2")]
+    pub ominous: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LecternData {
+    #[prost(message, optional, tag = "1")]
+    pub pos: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub book: ::core::option::Option<Item>,
+    #[prost(int32, tag = "3")]
+    pub page: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SignData {
+    #[prost(message, optional, tag = "1")]
+    pub pos: ::core::option::Option<BlockPos>,
+    #[prost(string, repeated, tag = "2")]
+    pub front: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "3")]
+    pub back: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag = "4")]
+    pub waxed: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EnchantOffer {
+    #[prost(string, tag = "1")]
+    pub enchantment: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub level: i32,
+    #[prost(int32, tag = "3")]
+    pub cost: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OwnerRef {
+    #[prost(oneof = "owner_ref::Owner", tags = "1, 2, 3")]
+    pub owner: ::core::option::Option<owner_ref::Owner>,
+}
+/// Nested message and enum types in `OwnerRef`.
+pub mod owner_ref {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Owner {
+        #[prost(message, tag = "1")]
+        Player(super::PlayerSnapshot),
+        #[prost(message, tag = "2")]
+        Entity(super::EntitySnapshot),
+        #[prost(string, tag = "3")]
+        Offline(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HolderRef {
+    #[prost(oneof = "holder_ref::Holder", tags = "1, 2, 3")]
+    pub holder: ::core::option::Option<holder_ref::Holder>,
+}
+/// Nested message and enum types in `HolderRef`.
+pub mod holder_ref {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Holder {
+        #[prost(message, tag = "1")]
+        Player(super::PlayerSnapshot),
+        #[prost(message, tag = "2")]
+        Entity(super::EntitySnapshot),
+        #[prost(message, tag = "3")]
+        Block(super::BlockPos),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MerchantRef {
+    #[prost(oneof = "merchant_ref::Merchant", tags = "1, 2")]
+    pub merchant: ::core::option::Option<merchant_ref::Merchant>,
+}
+/// Nested message and enum types in `MerchantRef`.
+pub mod merchant_ref {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Merchant {
+        #[prost(message, tag = "1")]
+        Entity(super::EntitySnapshot),
+        #[prost(message, tag = "2")]
+        Custom(super::Empty),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BookMeta {
+    #[prost(string, optional, tag = "1")]
+    pub title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub author: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "3")]
+    pub pages: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LootContext {
+    #[prost(message, optional, tag = "1")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(float, tag = "2")]
+    pub luck: f32,
+    #[prost(message, optional, tag = "3")]
+    pub killer: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub looted: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum GameMode {
+    Unspecified = 0,
+    Survival = 1,
+    Creative = 2,
+    Adventure = 3,
+    Spectator = 4,
+}
+impl GameMode {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "GAME_MODE_UNSPECIFIED",
+            Self::Survival => "GAME_MODE_SURVIVAL",
+            Self::Creative => "GAME_MODE_CREATIVE",
+            Self::Adventure => "GAME_MODE_ADVENTURE",
+            Self::Spectator => "GAME_MODE_SPECTATOR",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "GAME_MODE_UNSPECIFIED" => Some(Self::Unspecified),
+            "GAME_MODE_SURVIVAL" => Some(Self::Survival),
+            "GAME_MODE_CREATIVE" => Some(Self::Creative),
+            "GAME_MODE_ADVENTURE" => Some(Self::Adventure),
+            "GAME_MODE_SPECTATOR" => Some(Self::Spectator),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Phase {
+    Unspecified = 0,
+    Decide = 1,
+    Settled = 2,
+    RolledBack = 3,
+}
+impl Phase {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PHASE_UNSPECIFIED",
+            Self::Decide => "PHASE_DECIDE",
+            Self::Settled => "PHASE_SETTLED",
+            Self::RolledBack => "PHASE_ROLLED_BACK",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PHASE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PHASE_DECIDE" => Some(Self::Decide),
+            "PHASE_SETTLED" => Some(Self::Settled),
+            "PHASE_ROLLED_BACK" => Some(Self::RolledBack),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockPosList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitySnapshotList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NullableBlockPos {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NullableEntitySnapshot {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NullableInventoryRef {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<InventoryRef>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NullableItem {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NullableLocation {
+    #[prost(message, optional, tag = "1")]
+    pub value: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NullableString {
+    #[prost(string, optional, tag = "1")]
+    pub value: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StringList {
+    #[prost(string, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerJoin {
+    #[prost(string, optional, tag = "1")]
+    pub join_message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerJoinPatch {
+    #[prost(message, optional, tag = "1")]
+    pub join_message: ::core::option::Option<NullableString>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLeave {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, optional, tag = "2")]
+    pub quit_message: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerLeavePatch {
+    #[prost(message, optional, tag = "2")]
+    pub quit_message: ::core::option::Option<NullableString>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerMove {
+    #[prost(message, optional, tag = "1")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerMovePatch {
+    #[prost(message, optional, tag = "3")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryClick {
+    #[prost(enumeration = "InventoryAction", tag = "1")]
+    pub action: i32,
+    #[prost(enumeration = "ClickKind", tag = "2")]
+    pub click: i32,
+    #[prost(message, optional, tag = "3")]
+    pub clicked_inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<Item>,
+    #[prost(int32, tag = "6")]
+    pub hotbar_button: i32,
+    #[prost(message, optional, tag = "7")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(bool, tag = "8")]
+    pub left_click: bool,
+    #[prost(int32, tag = "9")]
+    pub raw_slot: i32,
+    #[prost(enumeration = "EventResult", tag = "10")]
+    pub result: i32,
+    #[prost(bool, tag = "11")]
+    pub right_click: bool,
+    #[prost(bool, tag = "12")]
+    pub shift_click: bool,
+    #[prost(int32, tag = "13")]
+    pub slot: i32,
+    #[prost(enumeration = "InventoryTypeSlotType", tag = "14")]
+    pub slot_type: i32,
+    #[prost(message, optional, tag = "15")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "16")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "17")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryClickPatch {
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<NullableItem>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<NullableItem>,
+    #[prost(enumeration = "EventResult", optional, tag = "10")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryClose {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "4")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(bool, tag = "100")]
+    pub by_player: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AreaEffectCloudApply {
+    #[prost(message, repeated, tag = "1")]
+    pub affected_entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ArrowBodyCountChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub new_amount: i32,
+    #[prost(int32, tag = "4")]
+    pub old_amount: i32,
+    #[prost(bool, tag = "5")]
+    pub reset: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ArrowBodyCountChangePatch {
+    #[prost(int32, optional, tag = "3")]
+    pub new_amount: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AsyncPlayerChat {
+    #[prost(string, tag = "1")]
+    pub format: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub message: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, repeated, tag = "4")]
+    pub recipients: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AsyncPlayerChatPatch {
+    #[prost(string, optional, tag = "1")]
+    pub format: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub message: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AsyncPlayerPreLogin {
+    #[prost(string, tag = "1")]
+    pub address: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub kick_message: ::prost::alloc::string::String,
+    #[prost(enumeration = "AsyncPlayerPreLoginResult", tag = "5")]
+    pub login_result: i32,
+    #[prost(string, tag = "6")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag = "8")]
+    pub transferred: bool,
+    #[prost(string, tag = "9")]
+    pub unique_id: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AsyncPlayerPreLoginPatch {
+    #[prost(string, optional, tag = "4")]
+    pub kick_message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration = "AsyncPlayerPreLoginResult", optional, tag = "5")]
+    pub login_result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AsyncStructureGenerate {
+    #[prost(message, optional, tag = "3")]
+    pub bounding_box: ::core::option::Option<BoundingBox>,
+    #[prost(enumeration = "AsyncStructureGenerateCause", tag = "4")]
+    pub cause: i32,
+    #[prost(int32, tag = "5")]
+    pub chunk_x: i32,
+    #[prost(int32, tag = "6")]
+    pub chunk_z: i32,
+    #[prost(string, tag = "11")]
+    pub structure: ::prost::alloc::string::String,
+    #[prost(string, tag = "12")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AsyncStructureSpawn {
+    #[prost(message, optional, tag = "1")]
+    pub bounding_box: ::core::option::Option<BoundingBox>,
+    #[prost(int32, tag = "2")]
+    pub chunk_x: i32,
+    #[prost(int32, tag = "3")]
+    pub chunk_z: i32,
+    #[prost(string, tag = "4")]
+    pub structure: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatToggleSleep {
+    #[prost(bool, tag = "1")]
+    pub awake: bool,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BellResonate {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub resonated_entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BellRing {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "2")]
+    pub direction: i32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockBreak {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(bool, tag = "2")]
+    pub drop_items: bool,
+    #[prost(int32, tag = "3")]
+    pub exp_to_drop: i32,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockBreakPatch {
+    #[prost(bool, optional, tag = "2")]
+    pub drop_items: ::core::option::Option<bool>,
+    #[prost(int32, optional, tag = "3")]
+    pub exp_to_drop: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockBrush {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockBurn {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub igniting_block: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockCanBuild {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_data: ::core::option::Option<BlockState>,
+    #[prost(bool, tag = "3")]
+    pub buildable: bool,
+    #[prost(string, tag = "4")]
+    pub material: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockCanBuildPatch {
+    #[prost(bool, optional, tag = "3")]
+    pub buildable: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockCook {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub source: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockCookPatch {
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDamageAbort {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub item_in_hand: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDamage {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(bool, tag = "2")]
+    pub insta_break: bool,
+    #[prost(message, optional, tag = "3")]
+    pub item_in_hand: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockDamagePatch {
+    #[prost(bool, optional, tag = "2")]
+    pub insta_break: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispenseArmor {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub target_entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispenseArmorPatch {
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispense {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispensePatch {
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispenseLoot {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub dispensed_loot: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDispenseLootPatch {
+    #[prost(message, optional, tag = "2")]
+    pub dispensed_loot: ::core::option::Option<ItemList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDropItem {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(message, repeated, tag = "3")]
+    pub items: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockDropItemPatch {
+    #[prost(message, optional, tag = "3")]
+    pub items: ::core::option::Option<EntitySnapshotList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockExp {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(int32, tag = "2")]
+    pub exp_to_drop: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockExpPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub exp_to_drop: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockExplode {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub block_list: ::prost::alloc::vec::Vec<BlockPos>,
+    #[prost(message, optional, tag = "3")]
+    pub exploded_block_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(enumeration = "ExplosionResult", tag = "4")]
+    pub explosion_result: i32,
+    #[prost(float, tag = "5")]
+    pub explosion_yield: f32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockExplodePatch {
+    #[prost(message, optional, tag = "2")]
+    pub block_list: ::core::option::Option<BlockPosList>,
+    #[prost(float, optional, tag = "5")]
+    pub explosion_yield: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockFade {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockFertilize {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockForm {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockFromTo {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "2")]
+    pub face: i32,
+    #[prost(message, optional, tag = "3")]
+    pub to_block: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockGrow {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockIgnite {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "BlockIgniteCause", tag = "2")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "3")]
+    pub igniting_block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "4")]
+    pub igniting_entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockMultiPlace {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_against: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "3")]
+    pub block_placed: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "4")]
+    pub block_replaced_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(bool, tag = "5")]
+    pub build: bool,
+    #[prost(enumeration = "EquipmentSlot", tag = "6")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "7")]
+    pub item_in_hand: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "8")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, repeated, tag = "9")]
+    pub replaced_block_states: ::prost::alloc::vec::Vec<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockMultiPlacePatch {
+    #[prost(bool, optional, tag = "5")]
+    pub build: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockPhysics {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(string, tag = "2")]
+    pub changed_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub source_block: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockPistonExtend {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockPos>,
+    #[prost(enumeration = "Face", tag = "3")]
+    pub direction: i32,
+    #[prost(bool, tag = "5")]
+    pub sticky: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockPistonRetract {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockPos>,
+    #[prost(enumeration = "Face", tag = "3")]
+    pub direction: i32,
+    #[prost(bool, tag = "5")]
+    pub sticky: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockPlace {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_against: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "3")]
+    pub block_placed: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "4")]
+    pub block_replaced_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(bool, tag = "5")]
+    pub build: bool,
+    #[prost(enumeration = "EquipmentSlot", tag = "6")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "7")]
+    pub item_in_hand: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "8")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockPlacePatch {
+    #[prost(bool, optional, tag = "5")]
+    pub build: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockReceiveGame {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub event: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockRedstone {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(int32, tag = "2")]
+    pub new_current: i32,
+    #[prost(int32, tag = "3")]
+    pub old_current: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockRedstonePatch {
+    #[prost(int32, optional, tag = "2")]
+    pub new_current: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockShearEntity {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub tool: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockSpread {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub source: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Brew {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub contents: ::core::option::Option<InventoryRef>,
+    #[prost(int32, tag = "3")]
+    pub fuel_level: i32,
+    #[prost(message, repeated, tag = "4")]
+    pub results: ::prost::alloc::vec::Vec<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BrewingStandFuel {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(bool, tag = "2")]
+    pub consuming: bool,
+    #[prost(message, optional, tag = "3")]
+    pub fuel: ::core::option::Option<Item>,
+    #[prost(int32, tag = "4")]
+    pub fuel_power: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BrewingStandFuelPatch {
+    #[prost(bool, optional, tag = "2")]
+    pub consuming: ::core::option::Option<bool>,
+    #[prost(int32, optional, tag = "4")]
+    pub fuel_power: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BrewingStart {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub source: ::core::option::Option<Item>,
+    #[prost(int32, tag = "3")]
+    pub total_brew_time: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BrewingStartPatch {
+    #[prost(int32, optional, tag = "3")]
+    pub total_brew_time: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BroadcastMessage {
+    #[prost(string, tag = "1")]
+    pub message: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub recipients: ::prost::alloc::vec::Vec<CommandSender>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BroadcastMessagePatch {
+    #[prost(string, optional, tag = "1")]
+    pub message: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CampfireStart {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(string, tag = "2")]
+    pub recipe: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub source: ::core::option::Option<Item>,
+    #[prost(int32, tag = "4")]
+    pub total_cook_time: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CampfireStartPatch {
+    #[prost(int32, optional, tag = "4")]
+    pub total_cook_time: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CauldronLevelChange {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(enumeration = "CauldronLevelChangeReason", tag = "6")]
+    pub reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkLoad {
+    #[prost(message, optional, tag = "1")]
+    pub chunk: ::core::option::Option<ChunkRef>,
+    #[prost(bool, tag = "2")]
+    pub new_chunk: bool,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkPopulate {
+    #[prost(message, optional, tag = "1")]
+    pub chunk: ::core::option::Option<ChunkRef>,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkUnload {
+    #[prost(message, optional, tag = "1")]
+    pub chunk: ::core::option::Option<ChunkRef>,
+    #[prost(bool, tag = "2")]
+    pub save_chunk: bool,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkUnloadPatch {
+    #[prost(bool, optional, tag = "2")]
+    pub save_chunk: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CraftItem {
+    #[prost(enumeration = "InventoryAction", tag = "1")]
+    pub action: i32,
+    #[prost(enumeration = "ClickKind", tag = "2")]
+    pub click: i32,
+    #[prost(message, optional, tag = "3")]
+    pub clicked_inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<Item>,
+    #[prost(int32, tag = "6")]
+    pub hotbar_button: i32,
+    #[prost(message, optional, tag = "7")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(bool, tag = "8")]
+    pub left_click: bool,
+    #[prost(int32, tag = "9")]
+    pub raw_slot: i32,
+    #[prost(string, tag = "10")]
+    pub recipe: ::prost::alloc::string::String,
+    #[prost(enumeration = "EventResult", tag = "11")]
+    pub result: i32,
+    #[prost(bool, tag = "12")]
+    pub right_click: bool,
+    #[prost(bool, tag = "13")]
+    pub shift_click: bool,
+    #[prost(int32, tag = "14")]
+    pub slot: i32,
+    #[prost(enumeration = "InventoryTypeSlotType", tag = "15")]
+    pub slot_type: i32,
+    #[prost(message, optional, tag = "16")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "17")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "18")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CraftItemPatch {
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<NullableItem>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<NullableItem>,
+    #[prost(enumeration = "EventResult", optional, tag = "11")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CrafterCraft {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(string, tag = "2")]
+    pub recipe: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub remaining_items: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub result: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CrafterCraftPatch {
+    #[prost(message, optional, tag = "4")]
+    pub result: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreatureSpawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(enumeration = "CreatureSpawnReason", tag = "4")]
+    pub spawn_reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreeperPower {
+    #[prost(enumeration = "CreeperPowerCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub lightning: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CubeMobSplit {
+    #[prost(int32, tag = "1")]
+    pub count: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CubeMobSplitPatch {
+    #[prost(int32, optional, tag = "1")]
+    pub count: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EnchantItem {
+    #[prost(message, optional, tag = "1")]
+    pub enchant_block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub enchanter: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "3")]
+    pub enchantment_hint: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "4")]
+    pub enchants_to_add: ::prost::alloc::vec::Vec<Enchant>,
+    #[prost(int32, tag = "5")]
+    pub exp_level_cost: i32,
+    #[prost(message, optional, tag = "6")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "7")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(int32, tag = "8")]
+    pub level_hint: i32,
+    #[prost(message, optional, tag = "9")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "10")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(int32, tag = "11")]
+    pub which_button: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EnchantItemPatch {
+    #[prost(int32, optional, tag = "5")]
+    pub exp_level_cost: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EnderDragonChangePhase {
+    #[prost(enumeration = "EnderDragonPhase", optional, tag = "1")]
+    pub current_phase: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EnderDragonPhase", tag = "4")]
+    pub new_phase: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EnderDragonChangePhasePatch {
+    #[prost(enumeration = "EnderDragonPhase", optional, tag = "4")]
+    pub new_phase: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitiesLoad {
+    #[prost(message, optional, tag = "1")]
+    pub chunk: ::core::option::Option<ChunkRef>,
+    #[prost(message, repeated, tag = "2")]
+    pub entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitiesUnload {
+    #[prost(message, optional, tag = "1")]
+    pub chunk: ::core::option::Option<ChunkRef>,
+    #[prost(message, repeated, tag = "2")]
+    pub entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityAirChange {
+    #[prost(int32, tag = "1")]
+    pub amount: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntityAirChangePatch {
+    #[prost(int32, optional, tag = "1")]
+    pub amount: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityBlockForm {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityBreakDoor {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_data: ::core::option::Option<BlockState>,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub to: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityBreed {
+    #[prost(message, optional, tag = "1")]
+    pub bred_with: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub breeder: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "5")]
+    pub experience: i32,
+    #[prost(message, optional, tag = "6")]
+    pub father: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "7")]
+    pub mother: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntityBreedPatch {
+    #[prost(int32, optional, tag = "5")]
+    pub experience: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityChangeBlock {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_data: ::core::option::Option<BlockState>,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub to: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityCombustByBlock {
+    #[prost(message, optional, tag = "1")]
+    pub combuster: ::core::option::Option<BlockPos>,
+    #[prost(float, tag = "2")]
+    pub duration: f32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityCombustByBlockPatch {
+    #[prost(float, optional, tag = "2")]
+    pub duration: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityCombustByEntity {
+    #[prost(message, optional, tag = "1")]
+    pub combuster: ::core::option::Option<EntitySnapshot>,
+    #[prost(float, tag = "2")]
+    pub duration: f32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityCombustByEntityPatch {
+    #[prost(float, optional, tag = "2")]
+    pub duration: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityCombust {
+    #[prost(float, tag = "1")]
+    pub duration: f32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityCombustPatch {
+    #[prost(float, optional, tag = "1")]
+    pub duration: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDamageByBlock {
+    #[prost(enumeration = "EntityDamageCause", tag = "1")]
+    pub cause: i32,
+    #[prost(double, tag = "2")]
+    pub damage: f64,
+    #[prost(message, optional, tag = "3")]
+    pub damage_source: ::core::option::Option<DamageSource>,
+    #[prost(message, optional, tag = "4")]
+    pub damager: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "5")]
+    pub damager_block_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(message, optional, tag = "6")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "7")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(double, tag = "8")]
+    pub final_damage: f64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityDamageByBlockPatch {
+    #[prost(double, optional, tag = "2")]
+    pub damage: ::core::option::Option<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDamageByEntity {
+    #[prost(enumeration = "EntityDamageCause", tag = "1")]
+    pub cause: i32,
+    #[prost(double, tag = "2")]
+    pub damage: f64,
+    #[prost(message, optional, tag = "3")]
+    pub damage_source: ::core::option::Option<DamageSource>,
+    #[prost(message, optional, tag = "4")]
+    pub damager: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "5")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "6")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(double, tag = "7")]
+    pub final_damage: f64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityDamageByEntityPatch {
+    #[prost(double, optional, tag = "2")]
+    pub damage: ::core::option::Option<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDamage {
+    #[prost(enumeration = "EntityDamageCause", tag = "1")]
+    pub cause: i32,
+    #[prost(double, tag = "2")]
+    pub damage: f64,
+    #[prost(message, optional, tag = "3")]
+    pub damage_source: ::core::option::Option<DamageSource>,
+    #[prost(message, optional, tag = "4")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "5")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(double, tag = "6")]
+    pub final_damage: f64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityDamagePatch {
+    #[prost(double, optional, tag = "2")]
+    pub damage: ::core::option::Option<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDeath {
+    #[prost(message, optional, tag = "1")]
+    pub damage_source: ::core::option::Option<DamageSource>,
+    #[prost(int32, tag = "2")]
+    pub dropped_exp: i32,
+    #[prost(message, repeated, tag = "3")]
+    pub drops: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "5")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDeathPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub dropped_exp: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "3")]
+    pub drops: ::core::option::Option<ItemList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDismount {
+    #[prost(message, optional, tag = "1")]
+    pub dismounted: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityDropItem {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub item_drop: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityEnterBlock {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityEnterLoveMode {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub human_entity: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "4")]
+    pub ticks_in_love: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntityEnterLoveModePatch {
+    #[prost(int32, optional, tag = "4")]
+    pub ticks_in_love: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityExhaustion {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(float, tag = "3")]
+    pub exhaustion: f32,
+    #[prost(enumeration = "EntityExhaustionReason", tag = "4")]
+    pub exhaustion_reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityExhaustionPatch {
+    #[prost(float, optional, tag = "3")]
+    pub exhaustion: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityExplode {
+    #[prost(message, repeated, tag = "1")]
+    pub block_list: ::prost::alloc::vec::Vec<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "ExplosionResult", tag = "4")]
+    pub explosion_result: i32,
+    #[prost(message, optional, tag = "5")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(float, tag = "6")]
+    pub explosion_yield: f32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityExplodePatch {
+    #[prost(message, optional, tag = "1")]
+    pub block_list: ::core::option::Option<BlockPosList>,
+    #[prost(float, optional, tag = "6")]
+    pub explosion_yield: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityInteract {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityKnockbackByEntity {
+    #[prost(enumeration = "EntityKnockbackCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub final_knockback: ::core::option::Option<Vec3>,
+    #[prost(double, tag = "5")]
+    pub force: f64,
+    #[prost(message, optional, tag = "6")]
+    pub knockback: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "7")]
+    pub source_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityKnockbackByEntityPatch {
+    #[prost(message, optional, tag = "4")]
+    pub final_knockback: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityKnockback {
+    #[prost(enumeration = "EntityKnockbackCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub final_knockback: ::core::option::Option<Vec3>,
+    #[prost(double, tag = "5")]
+    pub force: f64,
+    #[prost(message, optional, tag = "6")]
+    pub knockback: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityKnockbackPatch {
+    #[prost(message, optional, tag = "4")]
+    pub final_knockback: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityMount {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub mount: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPickupItem {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub item: ::core::option::Option<EntitySnapshot>,
+    #[prost(int32, tag = "4")]
+    pub remaining: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPlace {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "2")]
+    pub block_face: i32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EquipmentSlot", tag = "5")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "6")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPortalEnter {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPortal {
+    #[prost(bool, tag = "1")]
+    pub can_create_portal: bool,
+    #[prost(int32, tag = "2")]
+    pub creation_radius: i32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(int32, tag = "6")]
+    pub search_radius: i32,
+    #[prost(message, optional, tag = "7")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPortalPatch {
+    #[prost(bool, optional, tag = "1")]
+    pub can_create_portal: ::core::option::Option<bool>,
+    #[prost(int32, optional, tag = "2")]
+    pub creation_radius: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "5")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(int32, optional, tag = "6")]
+    pub search_radius: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "7")]
+    pub to: ::core::option::Option<NullableLocation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPortalExit {
+    #[prost(message, optional, tag = "1")]
+    pub after: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "2")]
+    pub before: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "6")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPortalExitPatch {
+    #[prost(message, optional, tag = "1")]
+    pub after: ::core::option::Option<Vec3>,
+    #[prost(message, optional, tag = "5")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "6")]
+    pub to: ::core::option::Option<NullableLocation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPoseChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "Pose", tag = "3")]
+    pub pose: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityPotionEffect {
+    #[prost(enumeration = "EntityPotionEffectAction", tag = "1")]
+    pub action: i32,
+    #[prost(enumeration = "EntityPotionEffectCause", tag = "2")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub modified_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "6")]
+    pub new_effect: ::core::option::Option<Effect>,
+    #[prost(message, optional, tag = "7")]
+    pub old_effect: ::core::option::Option<Effect>,
+    #[prost(bool, tag = "8")]
+    pub overrides: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntityPotionEffectPatch {
+    #[prost(bool, optional, tag = "8")]
+    pub overrides: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityRegainHealth {
+    #[prost(double, tag = "1")]
+    pub amount: f64,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EntityRegainHealthRegainReason", tag = "4")]
+    pub regain_reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct EntityRegainHealthPatch {
+    #[prost(double, optional, tag = "1")]
+    pub amount: ::core::option::Option<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityRemove {
+    #[prost(enumeration = "EntityRemoveCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityResurrect {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EquipmentSlot", optional, tag = "3")]
+    pub hand: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityShootBow {
+    #[prost(message, optional, tag = "1")]
+    pub bow: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub consumable: ::core::option::Option<Item>,
+    #[prost(bool, tag = "3")]
+    pub consume_item: bool,
+    #[prost(message, optional, tag = "4")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "5")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(float, tag = "6")]
+    pub force: f32,
+    #[prost(enumeration = "EquipmentSlot", tag = "7")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "8")]
+    pub projectile: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityShootBowPatch {
+    #[prost(message, optional, tag = "8")]
+    pub projectile: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitySpawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntitySpellCast {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "SpellcasterSpell", tag = "3")]
+    pub spell: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTame {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub owner: ::core::option::Option<OwnerRef>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTargetBlock {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub target: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntityTargetBlockPatch {
+    #[prost(message, optional, tag = "3")]
+    pub target: ::core::option::Option<NullableBlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTarget {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EntityTargetReason", tag = "3")]
+    pub reason: i32,
+    #[prost(message, optional, tag = "4")]
+    pub target: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTargetPatch {
+    #[prost(message, optional, tag = "4")]
+    pub target: ::core::option::Option<NullableEntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTargetLivingEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EntityTargetReason", tag = "3")]
+    pub reason: i32,
+    #[prost(message, optional, tag = "4")]
+    pub target: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTargetLivingEntityPatch {
+    #[prost(message, optional, tag = "4")]
+    pub target: ::core::option::Option<NullableEntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTeleport {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTeleportPatch {
+    #[prost(message, optional, tag = "3")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub to: ::core::option::Option<NullableLocation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityToggleGlide {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub gliding: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityToggleSwim {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub swimming: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityTransform {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EntityTransformReason", tag = "3")]
+    pub transform_reason: i32,
+    #[prost(message, repeated, tag = "4")]
+    pub transformed_entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(message, optional, tag = "5")]
+    pub transformed_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntityUnleash {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EntityUnleashReason", tag = "3")]
+    pub reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExpBottle {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub experience: i32,
+    #[prost(message, optional, tag = "4")]
+    pub hit_block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", optional, tag = "5")]
+    pub hit_block_face: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "6")]
+    pub hit_entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(bool, tag = "7")]
+    pub show_effect: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExpBottlePatch {
+    #[prost(int32, optional, tag = "3")]
+    pub experience: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag = "7")]
+    pub show_effect: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExplosionPrime {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub fire: bool,
+    #[prost(float, tag = "4")]
+    pub radius: f32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ExplosionPrimePatch {
+    #[prost(bool, optional, tag = "3")]
+    pub fire: ::core::option::Option<bool>,
+    #[prost(float, optional, tag = "4")]
+    pub radius: ::core::option::Option<f32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FireworkExplode {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FluidLevelChange {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_data: ::core::option::Option<BlockState>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FluidLevelChangePatch {
+    #[prost(message, optional, tag = "2")]
+    pub new_data: ::core::option::Option<BlockState>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FoodLevelChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub food_level: i32,
+    #[prost(message, optional, tag = "4")]
+    pub item: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FoodLevelChangePatch {
+    #[prost(int32, optional, tag = "3")]
+    pub food_level: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FurnaceBurn {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(int32, tag = "2")]
+    pub burn_time: i32,
+    #[prost(bool, tag = "3")]
+    pub burning: bool,
+    #[prost(message, optional, tag = "4")]
+    pub fuel: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FurnaceBurnPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub burn_time: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag = "3")]
+    pub burning: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FurnaceExtract {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(int32, tag = "2")]
+    pub exp_to_drop: i32,
+    #[prost(int32, tag = "3")]
+    pub item_amount: i32,
+    #[prost(string, tag = "4")]
+    pub item_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FurnaceExtractPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub exp_to_drop: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FurnaceSmelt {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub source: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FurnaceSmeltPatch {
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FurnaceStartSmelt {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(string, tag = "2")]
+    pub recipe: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub source: ::core::option::Option<Item>,
+    #[prost(int32, tag = "4")]
+    pub total_cook_time: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FurnaceStartSmeltPatch {
+    #[prost(int32, optional, tag = "4")]
+    pub total_cook_time: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GenericGame {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub event: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(int32, tag = "4")]
+    pub radius: i32,
+    #[prost(string, tag = "5")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GenericGamePatch {
+    #[prost(int32, optional, tag = "4")]
+    pub radius: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HangingBreakByEntity {
+    #[prost(enumeration = "HangingBreakRemoveCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub remover: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HangingBreak {
+    #[prost(enumeration = "HangingBreakRemoveCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HangingPlace {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "2")]
+    pub block_face: i32,
+    #[prost(message, optional, tag = "3")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "EquipmentSlot", optional, tag = "4")]
+    pub hand: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "5")]
+    pub item_stack: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "6")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HopperInventorySearch {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "HopperInventorySearchContainerType", tag = "2")]
+    pub container_type: i32,
+    #[prost(message, optional, tag = "3")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "4")]
+    pub search_block: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HopperInventorySearchPatch {
+    #[prost(message, optional, tag = "3")]
+    pub inventory: ::core::option::Option<NullableInventoryRef>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HorseJump {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(float, tag = "3")]
+    pub power: f32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryCreative {
+    #[prost(enumeration = "InventoryAction", tag = "1")]
+    pub action: i32,
+    #[prost(enumeration = "ClickKind", tag = "2")]
+    pub click: i32,
+    #[prost(message, optional, tag = "3")]
+    pub clicked_inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<Item>,
+    #[prost(int32, tag = "6")]
+    pub hotbar_button: i32,
+    #[prost(message, optional, tag = "7")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(bool, tag = "8")]
+    pub left_click: bool,
+    #[prost(int32, tag = "9")]
+    pub raw_slot: i32,
+    #[prost(enumeration = "EventResult", tag = "10")]
+    pub result: i32,
+    #[prost(bool, tag = "11")]
+    pub right_click: bool,
+    #[prost(bool, tag = "12")]
+    pub shift_click: bool,
+    #[prost(int32, tag = "13")]
+    pub slot: i32,
+    #[prost(enumeration = "InventoryTypeSlotType", tag = "14")]
+    pub slot_type: i32,
+    #[prost(message, optional, tag = "15")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "16")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "17")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryCreativePatch {
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<NullableItem>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<NullableItem>,
+    #[prost(enumeration = "EventResult", optional, tag = "10")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryDrag {
+    #[prost(message, optional, tag = "1")]
+    pub cursor: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(int32, repeated, tag = "3")]
+    pub inventory_slots: ::prost::alloc::vec::Vec<i32>,
+    #[prost(message, repeated, tag = "4")]
+    pub new_items: ::prost::alloc::vec::Vec<Slot>,
+    #[prost(message, optional, tag = "5")]
+    pub old_cursor: ::core::option::Option<Item>,
+    #[prost(int32, repeated, tag = "6")]
+    pub raw_slots: ::prost::alloc::vec::Vec<i32>,
+    #[prost(enumeration = "EventResult", tag = "7")]
+    pub result: i32,
+    #[prost(enumeration = "DragType", tag = "8")]
+    pub drag_type: i32,
+    #[prost(message, optional, tag = "9")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "10")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "11")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryDragPatch {
+    #[prost(message, optional, tag = "1")]
+    pub cursor: ::core::option::Option<NullableItem>,
+    #[prost(enumeration = "EventResult", optional, tag = "7")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryMoveItem {
+    #[prost(message, optional, tag = "1")]
+    pub destination: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub initiator: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "3")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub source: ::core::option::Option<InventoryRef>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryMoveItemPatch {
+    #[prost(message, optional, tag = "3")]
+    pub item: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryOpen {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "4")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryPickupItem {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemDespawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemMerge {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub target: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemSpawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LeavesDecay {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LightningStrike {
+    #[prost(enumeration = "LightningStrikeCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub lightning: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LingeringPotionSplash {
+    #[prost(message, optional, tag = "1")]
+    pub area_effect_cloud: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub hit_block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", optional, tag = "5")]
+    pub hit_block_face: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "6")]
+    pub hit_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LootGenerate {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub inventory_holder: ::core::option::Option<HolderRef>,
+    #[prost(message, repeated, tag = "3")]
+    pub loot: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub loot_context: ::core::option::Option<LootContext>,
+    #[prost(string, tag = "5")]
+    pub loot_table: ::prost::alloc::string::String,
+    #[prost(bool, tag = "6")]
+    pub plugin: bool,
+    #[prost(string, tag = "7")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LootGeneratePatch {
+    #[prost(message, optional, tag = "3")]
+    pub loot: ::core::option::Option<ItemList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MapInitialize {}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoistureChange {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub new_state: ::core::option::Option<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct NotePlay {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Instrument", tag = "2")]
+    pub instrument: i32,
+    #[prost(int32, tag = "3")]
+    pub note: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PigZap {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub lightning: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "EntityTransformReason", tag = "5")]
+    pub transform_reason: i32,
+    #[prost(message, repeated, tag = "6")]
+    pub transformed_entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(message, optional, tag = "7")]
+    pub transformed_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PigZombieAnger {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub new_anger: i32,
+    #[prost(message, optional, tag = "4")]
+    pub target: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PigZombieAngerPatch {
+    #[prost(int32, optional, tag = "3")]
+    pub new_anger: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PiglinBarter {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub input: ::core::option::Option<Item>,
+    #[prost(message, repeated, tag = "4")]
+    pub outcome: ::prost::alloc::vec::Vec<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerAdvancementCriterionGrant {
+    #[prost(string, tag = "1")]
+    pub advancement: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub criterion: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerAdvancementDone {
+    #[prost(string, tag = "1")]
+    pub advancement: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerAnimation {
+    #[prost(enumeration = "PlayerAnimationType", tag = "1")]
+    pub animation_type: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerArmorStandManipulate {
+    #[prost(message, optional, tag = "1")]
+    pub armor_stand_item: ::core::option::Option<Item>,
+    #[prost(enumeration = "EquipmentSlot", tag = "2")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub player_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub right_clicked: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "EquipmentSlot", tag = "6")]
+    pub slot: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBedEnter {
+    #[prost(message, optional, tag = "1")]
+    pub bed: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "PlayerBedEnterResult", tag = "2")]
+    pub bed_enter_result: i32,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "EventResult", tag = "4")]
+    pub use_bed: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerBedEnterPatch {
+    #[prost(enumeration = "EventResult", optional, tag = "4")]
+    pub use_bed: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBedLeave {
+    #[prost(message, optional, tag = "1")]
+    pub bed: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(bool, tag = "3")]
+    pub set_spawn_location: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerBedLeavePatch {
+    #[prost(bool, optional, tag = "3")]
+    pub set_spawn_location: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBucketEmpty {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_clicked: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "3")]
+    pub block_face: i32,
+    #[prost(string, tag = "4")]
+    pub bucket: ::prost::alloc::string::String,
+    #[prost(enumeration = "EquipmentSlot", tag = "5")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "6")]
+    pub item_stack: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "7")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBucketEmptyPatch {
+    #[prost(message, optional, tag = "6")]
+    pub item_stack: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBucketEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity_bucket: ::core::option::Option<Item>,
+    #[prost(enumeration = "EquipmentSlot", tag = "3")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "4")]
+    pub original_bucket: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBucketFill {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub block_clicked: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", tag = "3")]
+    pub block_face: i32,
+    #[prost(string, tag = "4")]
+    pub bucket: ::prost::alloc::string::String,
+    #[prost(enumeration = "EquipmentSlot", tag = "5")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "6")]
+    pub item_stack: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "7")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerBucketFillPatch {
+    #[prost(message, optional, tag = "6")]
+    pub item_stack: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerChangedMainHand {
+    #[prost(enumeration = "MainHand", tag = "1")]
+    pub main_hand: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerChangedWorld {
+    #[prost(string, tag = "1")]
+    pub from: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerCommandPreprocess {
+    #[prost(string, tag = "1")]
+    pub message: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerCommandPreprocessPatch {
+    #[prost(string, optional, tag = "1")]
+    pub message: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerCommandSend {
+    #[prost(string, repeated, tag = "1")]
+    pub commands: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerCommandSendPatch {
+    #[prost(message, optional, tag = "1")]
+    pub commands: ::core::option::Option<StringList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerCustomClick {
+    #[prost(string, optional, tag = "1")]
+    pub data: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "2")]
+    pub click_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerDeath {
+    #[prost(message, optional, tag = "1")]
+    pub damage_source: ::core::option::Option<DamageSource>,
+    #[prost(string, optional, tag = "2")]
+    pub death_message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, tag = "3")]
+    pub dropped_exp: i32,
+    #[prost(message, repeated, tag = "4")]
+    pub drops: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub entity: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "6")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(bool, tag = "7")]
+    pub keep_inventory: bool,
+    #[prost(bool, tag = "8")]
+    pub keep_level: bool,
+    #[prost(int32, tag = "9")]
+    pub new_exp: i32,
+    #[prost(int32, tag = "10")]
+    pub new_level: i32,
+    #[prost(int32, tag = "11")]
+    pub new_total_exp: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerDeathPatch {
+    #[prost(message, optional, tag = "2")]
+    pub death_message: ::core::option::Option<NullableString>,
+    #[prost(int32, optional, tag = "3")]
+    pub dropped_exp: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "4")]
+    pub drops: ::core::option::Option<ItemList>,
+    #[prost(bool, optional, tag = "7")]
+    pub keep_inventory: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "8")]
+    pub keep_level: ::core::option::Option<bool>,
+    #[prost(int32, optional, tag = "9")]
+    pub new_exp: ::core::option::Option<i32>,
+    #[prost(int32, optional, tag = "10")]
+    pub new_level: ::core::option::Option<i32>,
+    #[prost(int32, optional, tag = "11")]
+    pub new_total_exp: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerDropItem {
+    #[prost(message, optional, tag = "1")]
+    pub item_drop: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerEditBook {
+    #[prost(message, optional, tag = "1")]
+    pub new_book_meta: ::core::option::Option<BookMeta>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub previous_book_meta: ::core::option::Option<BookMeta>,
+    #[prost(bool, tag = "4")]
+    pub signing: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerEditBookPatch {
+    #[prost(message, optional, tag = "1")]
+    pub new_book_meta: ::core::option::Option<BookMeta>,
+    #[prost(bool, optional, tag = "4")]
+    pub signing: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerEggThrow {
+    #[prost(message, optional, tag = "1")]
+    pub egg: ::core::option::Option<EntitySnapshot>,
+    #[prost(bool, tag = "2")]
+    pub hatching: bool,
+    #[prost(string, tag = "3")]
+    pub hatching_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "4")]
+    pub num_hatches: i32,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerEggThrowPatch {
+    #[prost(bool, optional, tag = "2")]
+    pub hatching: ::core::option::Option<bool>,
+    #[prost(string, optional, tag = "3")]
+    pub hatching_type: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, optional, tag = "4")]
+    pub num_hatches: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerExpChange {
+    #[prost(int32, tag = "1")]
+    pub amount: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerExpChangePatch {
+    #[prost(int32, optional, tag = "1")]
+    pub amount: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerExpCooldownChange {
+    #[prost(int32, tag = "1")]
+    pub new_cooldown: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "PlayerExpCooldownChangeReason", tag = "3")]
+    pub reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerExpCooldownChangePatch {
+    #[prost(int32, optional, tag = "1")]
+    pub new_cooldown: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerFish {
+    #[prost(message, optional, tag = "1")]
+    pub caught: ::core::option::Option<EntitySnapshot>,
+    #[prost(int32, tag = "2")]
+    pub exp_to_drop: i32,
+    #[prost(enumeration = "EquipmentSlot", optional, tag = "3")]
+    pub hand: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "4")]
+    pub hook: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "PlayerFishState", tag = "6")]
+    pub state: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerFishPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub exp_to_drop: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerGameModeChange {
+    #[prost(enumeration = "GameMode", tag = "1")]
+    pub new_game_mode: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerHarvestBlock {
+    #[prost(enumeration = "EquipmentSlot", tag = "1")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "2")]
+    pub harvested_block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "3")]
+    pub items_harvested: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerHideEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerInput {
+    #[prost(message, optional, tag = "1")]
+    pub input: ::core::option::Option<Input>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerInteractAtEntity {
+    #[prost(message, optional, tag = "1")]
+    pub clicked_position: ::core::option::Option<Vec3>,
+    #[prost(enumeration = "EquipmentSlot", tag = "2")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub right_clicked: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerInteractEntity {
+    #[prost(enumeration = "EquipmentSlot", tag = "1")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub right_clicked: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerInteract {
+    #[prost(enumeration = "Action", tag = "1")]
+    pub action: i32,
+    #[prost(bool, tag = "2")]
+    pub block: bool,
+    #[prost(enumeration = "Face", tag = "3")]
+    pub block_face: i32,
+    #[prost(bool, tag = "4")]
+    pub block_in_hand: bool,
+    #[prost(message, optional, tag = "5")]
+    pub clicked_block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "6")]
+    pub clicked_position: ::core::option::Option<Vec3>,
+    #[prost(enumeration = "EquipmentSlot", optional, tag = "7")]
+    pub hand: ::core::option::Option<i32>,
+    #[prost(bool, tag = "8")]
+    pub has_item: bool,
+    #[prost(message, optional, tag = "9")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(string, tag = "10")]
+    pub material: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "11")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "EventResult", tag = "12")]
+    pub use_interacted_block: i32,
+    #[prost(enumeration = "EventResult", tag = "13")]
+    pub use_item_in_hand: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerInteractPatch {
+    #[prost(enumeration = "EventResult", optional, tag = "12")]
+    pub use_interacted_block: ::core::option::Option<i32>,
+    #[prost(enumeration = "EventResult", optional, tag = "13")]
+    pub use_item_in_hand: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemBreak {
+    #[prost(message, optional, tag = "1")]
+    pub broken_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemConsume {
+    #[prost(enumeration = "EquipmentSlot", tag = "1")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemConsumePatch {
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemDamage {
+    #[prost(int32, tag = "1")]
+    pub damage: i32,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerItemDamagePatch {
+    #[prost(int32, optional, tag = "1")]
+    pub damage: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemHeld {
+    #[prost(int32, tag = "1")]
+    pub new_slot: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "3")]
+    pub previous_slot: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerItemMend {
+    #[prost(message, optional, tag = "1")]
+    pub experience_orb: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "4")]
+    pub repair_amount: i32,
+    #[prost(enumeration = "EquipmentSlot", tag = "5")]
+    pub slot: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerItemMendPatch {
+    #[prost(int32, optional, tag = "4")]
+    pub repair_amount: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerKick {
+    #[prost(string, tag = "1")]
+    pub leave_message: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "3")]
+    pub reason: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerKickPatch {
+    #[prost(string, optional, tag = "1")]
+    pub leave_message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "3")]
+    pub reason: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLeashEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "EquipmentSlot", tag = "2")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "3")]
+    pub leash_holder: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLevelChange {
+    #[prost(int32, tag = "1")]
+    pub new_level: i32,
+    #[prost(int32, tag = "2")]
+    pub old_level: i32,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLinksSend {
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLocaleChange {
+    #[prost(string, tag = "1")]
+    pub locale: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerLogin {
+    #[prost(string, tag = "1")]
+    pub address: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub hostname: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub kick_message: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "6")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "7")]
+    pub real_address: ::prost::alloc::string::String,
+    #[prost(enumeration = "PlayerLoginResult", tag = "8")]
+    pub result: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerLoginPatch {
+    #[prost(string, optional, tag = "5")]
+    pub kick_message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration = "PlayerLoginResult", optional, tag = "8")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerPickupArrow {
+    #[prost(message, optional, tag = "1")]
+    pub arrow: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "4")]
+    pub remaining: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerPortal {
+    #[prost(bool, tag = "1")]
+    pub can_create_portal: bool,
+    #[prost(enumeration = "PlayerTeleportCause", tag = "2")]
+    pub cause: i32,
+    #[prost(int32, tag = "3")]
+    pub creation_radius: i32,
+    #[prost(message, optional, tag = "4")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "6")]
+    pub search_radius: i32,
+    #[prost(message, optional, tag = "7")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerPortalPatch {
+    #[prost(bool, optional, tag = "1")]
+    pub can_create_portal: ::core::option::Option<bool>,
+    #[prost(int32, optional, tag = "3")]
+    pub creation_radius: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "4")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(int32, optional, tag = "6")]
+    pub search_radius: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "7")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRecipeBookClick {
+    #[prost(string, tag = "1")]
+    pub original_recipe: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "3")]
+    pub recipe: ::prost::alloc::string::String,
+    #[prost(bool, tag = "4")]
+    pub shift_click: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PlayerRecipeBookClickPatch {
+    #[prost(string, optional, tag = "3")]
+    pub recipe: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag = "4")]
+    pub shift_click: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRecipeBookSettingsChange {
+    #[prost(bool, tag = "1")]
+    pub filtering: bool,
+    #[prost(bool, tag = "2")]
+    pub open: bool,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "PlayerRecipeBookSettingsChangeRecipeBookType", tag = "4")]
+    pub recipe_book_type: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRecipeDiscover {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "2")]
+    pub recipe: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerResourcePackStatus {
+    #[prost(string, tag = "1")]
+    pub pack_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "ResourcePackStatus", tag = "3")]
+    pub status: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRespawn {
+    #[prost(bool, tag = "1")]
+    pub anchor_spawn: bool,
+    #[prost(bool, tag = "2")]
+    pub bed_spawn: bool,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub respawn_location: ::core::option::Option<Location>,
+    #[prost(enumeration = "PlayerRespawnReason", tag = "5")]
+    pub respawn_reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRespawnPatch {
+    #[prost(message, optional, tag = "4")]
+    pub respawn_location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerRiptide {
+    #[prost(message, optional, tag = "1")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "3")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerShearEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "EquipmentSlot", tag = "2")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "3")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerShowEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSignOpen {
+    #[prost(enumeration = "PlayerSignOpenCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "Side", tag = "3")]
+    pub side: i32,
+    #[prost(message, optional, tag = "4")]
+    pub sign: ::core::option::Option<SignData>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSpawnChange {
+    #[prost(enumeration = "PlayerSpawnChangeCause", tag = "1")]
+    pub cause: i32,
+    #[prost(bool, tag = "2")]
+    pub forced: bool,
+    #[prost(message, optional, tag = "3")]
+    pub new_spawn: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSpawnChangePatch {
+    #[prost(bool, optional, tag = "2")]
+    pub forced: ::core::option::Option<bool>,
+    #[prost(message, optional, tag = "3")]
+    pub new_spawn: ::core::option::Option<NullableLocation>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerStatisticIncrement {
+    #[prost(string, optional, tag = "1")]
+    pub entity_type: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub material: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, tag = "3")]
+    pub new_value: i32,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "5")]
+    pub previous_value: i32,
+    #[prost(enumeration = "Statistic", tag = "6")]
+    pub statistic: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSwapHandItems {
+    #[prost(message, optional, tag = "1")]
+    pub main_hand_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub off_hand_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSwapHandItemsPatch {
+    #[prost(message, optional, tag = "1")]
+    pub main_hand_item: ::core::option::Option<NullableItem>,
+    #[prost(message, optional, tag = "2")]
+    pub off_hand_item: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerTakeLecternBook {
+    #[prost(message, optional, tag = "1")]
+    pub book: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "2")]
+    pub lectern: ::core::option::Option<LecternData>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerTeleport {
+    #[prost(enumeration = "PlayerTeleportCause", tag = "1")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "2")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "3")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "4")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerTeleportPatch {
+    #[prost(message, optional, tag = "2")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub to: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerToggleFlight {
+    #[prost(bool, tag = "1")]
+    pub flying: bool,
+    #[prost(message, optional, tag = "2")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerToggleSneak {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(bool, tag = "2")]
+    pub sneaking: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerToggleSprint {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(bool, tag = "2")]
+    pub sprinting: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerUnleashEntity {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(enumeration = "EquipmentSlot", tag = "3")]
+    pub hand: i32,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "EntityUnleashReason", tag = "5")]
+    pub reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerVelocity {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PlayerVelocityPatch {
+    #[prost(message, optional, tag = "2")]
+    pub velocity: ::core::option::Option<Vec3>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginDisable {
+    #[prost(message, optional, tag = "1")]
+    pub plugin: ::core::option::Option<PluginInfo>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginEnable {
+    #[prost(message, optional, tag = "1")]
+    pub plugin: ::core::option::Option<PluginInfo>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PortalCreate {
+    #[prost(message, repeated, tag = "1")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockSnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(enumeration = "PortalCreateReason", tag = "3")]
+    pub reason: i32,
+    #[prost(string, tag = "4")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PotionSplash {
+    #[prost(message, repeated, tag = "1")]
+    pub affected_entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub hit_block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", optional, tag = "6")]
+    pub hit_block_face: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "7")]
+    pub hit_entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "9")]
+    pub potion: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareAnvil {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "4")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareAnvilPatch {
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareGrindstone {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "4")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareGrindstonePatch {
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareItemCraft {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(string, optional, tag = "2")]
+    pub recipe: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag = "3")]
+    pub repair: bool,
+    #[prost(message, optional, tag = "4")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "5")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "100")]
+    pub result: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareItemCraftPatch {
+    #[prost(message, optional, tag = "100")]
+    pub result: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareItemEnchant {
+    #[prost(message, optional, tag = "1")]
+    pub enchant_block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub enchanter: ::core::option::Option<PlayerSnapshot>,
+    #[prost(int32, tag = "3")]
+    pub enchantment_bonus: i32,
+    #[prost(message, optional, tag = "5")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "6")]
+    pub item: ::core::option::Option<Item>,
+    #[prost(message, repeated, tag = "7")]
+    pub offers: ::prost::alloc::vec::Vec<EnchantOffer>,
+    #[prost(message, optional, tag = "8")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "9")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareSmithing {
+    #[prost(message, optional, tag = "1")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "3")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "4")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PrepareSmithingPatch {
+    #[prost(message, optional, tag = "2")]
+    pub result: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProjectileHit {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub hit_block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "Face", optional, tag = "4")]
+    pub hit_block_face: ::core::option::Option<i32>,
+    #[prost(message, optional, tag = "5")]
+    pub hit_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProjectileLaunch {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaidFinish {
+    #[prost(message, repeated, tag = "2")]
+    pub winners: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaidSpawnWave {
+    #[prost(message, optional, tag = "1")]
+    pub patrol_leader: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, repeated, tag = "3")]
+    pub raiders: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    #[prost(string, tag = "4")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RaidStop {
+    #[prost(enumeration = "RaidStopReason", tag = "2")]
+    pub reason: i32,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaidTrigger {
+    #[prost(message, optional, tag = "1")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RemoteServerCommand {
+    #[prost(string, tag = "1")]
+    pub command: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub sender: ::core::option::Option<CommandSender>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RemoteServerCommandPatch {
+    #[prost(string, optional, tag = "1")]
+    pub command: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SculkBloom {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(int32, tag = "2")]
+    pub charge: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SculkBloomPatch {
+    #[prost(int32, optional, tag = "2")]
+    pub charge: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ServerCommand {
+    #[prost(string, tag = "1")]
+    pub command: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub sender: ::core::option::Option<CommandSender>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ServerCommandPatch {
+    #[prost(string, optional, tag = "1")]
+    pub command: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ServerListPing {
+    #[prost(string, tag = "1")]
+    pub address: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub hostname: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub players: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(int32, tag = "4")]
+    pub max_players: i32,
+    #[prost(string, tag = "5")]
+    pub motd: ::prost::alloc::string::String,
+    #[prost(int32, tag = "6")]
+    pub num_players: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ServerListPingPatch {
+    #[prost(int32, optional, tag = "4")]
+    pub max_players: ::core::option::Option<i32>,
+    #[prost(string, optional, tag = "5")]
+    pub motd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "vec", optional, tag = "8")]
+    pub server_icon: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ServerLoad {
+    #[prost(enumeration = "ServerLoadType", tag = "1")]
+    pub load_type: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SheepDyeWool {
+    #[prost(enumeration = "DyeColor", tag = "1")]
+    pub color: i32,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SheepDyeWoolPatch {
+    #[prost(enumeration = "DyeColor", optional, tag = "1")]
+    pub color: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SheepRegrowWool {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignChange {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(string, repeated, tag = "4")]
+    pub lines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "5")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "Side", tag = "6")]
+    pub side: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SignChangePatch {
+    #[prost(message, optional, tag = "4")]
+    pub lines: ::core::option::Option<StringList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SmithItem {
+    #[prost(enumeration = "InventoryAction", tag = "1")]
+    pub action: i32,
+    #[prost(enumeration = "ClickKind", tag = "2")]
+    pub click: i32,
+    #[prost(message, optional, tag = "3")]
+    pub clicked_inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<Item>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<Item>,
+    #[prost(int32, tag = "6")]
+    pub hotbar_button: i32,
+    #[prost(message, optional, tag = "7")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(bool, tag = "8")]
+    pub left_click: bool,
+    #[prost(int32, tag = "9")]
+    pub raw_slot: i32,
+    #[prost(enumeration = "EventResult", tag = "10")]
+    pub result: i32,
+    #[prost(bool, tag = "11")]
+    pub right_click: bool,
+    #[prost(bool, tag = "12")]
+    pub shift_click: bool,
+    #[prost(int32, tag = "13")]
+    pub slot: i32,
+    #[prost(enumeration = "InventoryTypeSlotType", tag = "14")]
+    pub slot_type: i32,
+    #[prost(message, optional, tag = "15")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "16")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "17")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SmithItemPatch {
+    #[prost(message, optional, tag = "4")]
+    pub current_item: ::core::option::Option<NullableItem>,
+    #[prost(message, optional, tag = "5")]
+    pub cursor: ::core::option::Option<NullableItem>,
+    #[prost(enumeration = "EventResult", optional, tag = "10")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpawnChange {
+    #[prost(message, optional, tag = "1")]
+    pub previous_location: ::core::option::Option<Location>,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpawnerSpawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub spawner: ::core::option::Option<SpawnerData>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SpongeAbsorb {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, repeated, tag = "2")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StriderTemperatureChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub shivering: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StructureGrow {
+    #[prost(message, repeated, tag = "1")]
+    pub blocks: ::prost::alloc::vec::Vec<BlockSnapshot>,
+    #[prost(bool, tag = "2")]
+    pub from_bonemeal: bool,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(enumeration = "TreeType", tag = "5")]
+    pub species: i32,
+    #[prost(string, tag = "6")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TntPrime {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(enumeration = "TntPrimeCause", tag = "2")]
+    pub cause: i32,
+    #[prost(message, optional, tag = "3")]
+    pub priming_block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "4")]
+    pub priming_entity: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TabComplete {
+    #[prost(string, tag = "1")]
+    pub buffer: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "2")]
+    pub completions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "3")]
+    pub sender: ::core::option::Option<CommandSender>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TabCompletePatch {
+    #[prost(message, optional, tag = "2")]
+    pub completions: ::core::option::Option<StringList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ThunderChange {
+    #[prost(bool, tag = "1")]
+    pub to_thunder_state: bool,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TimeSkip {
+    #[prost(int64, tag = "1")]
+    pub skip_amount: i64,
+    #[prost(enumeration = "TimeSkipReason", tag = "2")]
+    pub skip_reason: i32,
+    #[prost(string, tag = "3")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TimeSkipPatch {
+    #[prost(int64, optional, tag = "1")]
+    pub skip_amount: ::core::option::Option<i64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TradeSelect {
+    #[prost(int32, tag = "1")]
+    pub index: i32,
+    #[prost(message, optional, tag = "2")]
+    pub inventory: ::core::option::Option<InventoryRef>,
+    #[prost(message, optional, tag = "3")]
+    pub merchant: ::core::option::Option<MerchantRef>,
+    #[prost(enumeration = "EventResult", tag = "4")]
+    pub result: i32,
+    #[prost(message, optional, tag = "5")]
+    pub view: ::core::option::Option<InventoryView>,
+    #[prost(message, repeated, tag = "6")]
+    pub viewers: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, optional, tag = "7")]
+    pub who_clicked: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TradeSelectPatch {
+    #[prost(enumeration = "EventResult", optional, tag = "4")]
+    pub result: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TrialSpawnerSpawn {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub location: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "4")]
+    pub trial_spawner: ::core::option::Option<TrialSpawnerData>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VaultDisplayItem {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub display_item: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VaultDisplayItemPatch {
+    #[prost(message, optional, tag = "2")]
+    pub display_item: ::core::option::Option<NullableItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleBlockCollision {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<BlockPos>,
+    #[prost(message, optional, tag = "2")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleCreate {
+    #[prost(message, optional, tag = "1")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleDamage {
+    #[prost(message, optional, tag = "1")]
+    pub attacker: ::core::option::Option<EntitySnapshot>,
+    #[prost(double, tag = "2")]
+    pub damage: f64,
+    #[prost(message, optional, tag = "3")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct VehicleDamagePatch {
+    #[prost(double, optional, tag = "2")]
+    pub damage: ::core::option::Option<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleDestroy {
+    #[prost(message, optional, tag = "1")]
+    pub attacker: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleEnter {
+    #[prost(message, optional, tag = "1")]
+    pub entered: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleEntityCollision {
+    #[prost(bool, tag = "1")]
+    pub collision_cancelled: bool,
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(bool, tag = "3")]
+    pub pickup_cancelled: bool,
+    #[prost(message, optional, tag = "4")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct VehicleEntityCollisionPatch {
+    #[prost(bool, optional, tag = "1")]
+    pub collision_cancelled: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag = "3")]
+    pub pickup_cancelled: ::core::option::Option<bool>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleExit {
+    #[prost(message, optional, tag = "1")]
+    pub exited: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleMove {
+    #[prost(message, optional, tag = "1")]
+    pub from: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "2")]
+    pub to: ::core::option::Option<Location>,
+    #[prost(message, optional, tag = "3")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VehicleUpdate {
+    #[prost(message, optional, tag = "1")]
+    pub vehicle: ::core::option::Option<EntitySnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerAcquireTrade {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub recipe: ::core::option::Option<Trade>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerAcquireTradePatch {
+    #[prost(message, optional, tag = "3")]
+    pub recipe: ::core::option::Option<Trade>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerCareerChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub profession: ::prost::alloc::string::String,
+    #[prost(enumeration = "VillagerCareerChangeReason", tag = "4")]
+    pub reason: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct VillagerCareerChangePatch {
+    #[prost(string, optional, tag = "3")]
+    pub profession: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerReplenishTrade {
+    #[prost(message, optional, tag = "2")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "3")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub recipe: ::core::option::Option<Trade>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerReplenishTradePatch {
+    #[prost(message, optional, tag = "4")]
+    pub recipe: ::core::option::Option<Trade>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VillagerReputationChange {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "2")]
+    pub entity_type: ::prost::alloc::string::String,
+    #[prost(int32, tag = "3")]
+    pub max_value: i32,
+    #[prost(int32, tag = "4")]
+    pub new_value: i32,
+    #[prost(int32, tag = "5")]
+    pub old_value: i32,
+    #[prost(string, tag = "6")]
+    pub reason: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub reputation_type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "8")]
+    pub target: ::core::option::Option<EntitySnapshot>,
+    #[prost(string, tag = "9")]
+    pub target_uuid: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct VillagerReputationChangePatch {
+    #[prost(int32, optional, tag = "4")]
+    pub new_value: ::core::option::Option<i32>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WeatherChange {
+    #[prost(bool, tag = "1")]
+    pub to_weather_state: bool,
+    #[prost(string, tag = "2")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorldInit {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorldLoad {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorldSave {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WorldUnload {
+    #[prost(string, tag = "1")]
+    pub world: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Event {
+    #[prost(uint64, tag = "1")]
+    pub id: u64,
+    #[prost(uint32, repeated, tag = "2")]
+    pub handlers: ::prost::alloc::vec::Vec<u32>,
+    #[prost(enumeration = "Phase", tag = "3")]
+    pub phase: i32,
+    #[prost(bool, tag = "4")]
+    pub cancelled: bool,
+    #[prost(
+        oneof = "event::Payload",
+        tags = "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 130, 131, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 210, 211, 212, 213, 214, 215, 216, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267"
+    )]
+    pub payload: ::core::option::Option<event::Payload>,
+}
+/// Nested message and enum types in `Event`.
+pub mod event {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "10")]
+        PlayerJoin(super::PlayerJoin),
+        #[prost(message, tag = "11")]
+        PlayerLeave(super::PlayerLeave),
+        #[prost(message, tag = "12")]
+        PlayerMove(super::PlayerMove),
+        #[prost(message, tag = "13")]
+        InventoryClick(super::InventoryClick),
+        #[prost(message, tag = "14")]
+        InventoryClose(super::InventoryClose),
+        #[prost(message, tag = "15")]
+        AreaEffectCloudApply(super::AreaEffectCloudApply),
+        #[prost(message, tag = "16")]
+        ArrowBodyCountChange(super::ArrowBodyCountChange),
+        #[prost(message, tag = "17")]
+        AsyncPlayerChat(super::AsyncPlayerChat),
+        #[prost(message, tag = "18")]
+        AsyncPlayerPreLogin(super::AsyncPlayerPreLogin),
+        #[prost(message, tag = "19")]
+        AsyncStructureGenerate(super::AsyncStructureGenerate),
+        #[prost(message, tag = "20")]
+        AsyncStructureSpawn(super::AsyncStructureSpawn),
+        #[prost(message, tag = "21")]
+        BatToggleSleep(super::BatToggleSleep),
+        #[prost(message, tag = "22")]
+        BellResonate(super::BellResonate),
+        #[prost(message, tag = "23")]
+        BellRing(super::BellRing),
+        #[prost(message, tag = "24")]
+        BlockBreak(super::BlockBreak),
+        #[prost(message, tag = "25")]
+        BlockBrush(super::BlockBrush),
+        #[prost(message, tag = "26")]
+        BlockBurn(super::BlockBurn),
+        #[prost(message, tag = "27")]
+        BlockCanBuild(super::BlockCanBuild),
+        #[prost(message, tag = "28")]
+        BlockCook(super::BlockCook),
+        #[prost(message, tag = "29")]
+        BlockDamageAbort(super::BlockDamageAbort),
+        #[prost(message, tag = "30")]
+        BlockDamage(super::BlockDamage),
+        #[prost(message, tag = "31")]
+        BlockDispenseArmor(super::BlockDispenseArmor),
+        #[prost(message, tag = "32")]
+        BlockDispense(super::BlockDispense),
+        #[prost(message, tag = "33")]
+        BlockDispenseLoot(super::BlockDispenseLoot),
+        #[prost(message, tag = "34")]
+        BlockDropItem(super::BlockDropItem),
+        #[prost(message, tag = "35")]
+        BlockExp(super::BlockExp),
+        #[prost(message, tag = "36")]
+        BlockExplode(super::BlockExplode),
+        #[prost(message, tag = "37")]
+        BlockFade(super::BlockFade),
+        #[prost(message, tag = "38")]
+        BlockFertilize(super::BlockFertilize),
+        #[prost(message, tag = "39")]
+        BlockForm(super::BlockForm),
+        #[prost(message, tag = "40")]
+        BlockFromTo(super::BlockFromTo),
+        #[prost(message, tag = "41")]
+        BlockGrow(super::BlockGrow),
+        #[prost(message, tag = "42")]
+        BlockIgnite(super::BlockIgnite),
+        #[prost(message, tag = "43")]
+        BlockMultiPlace(super::BlockMultiPlace),
+        #[prost(message, tag = "44")]
+        BlockPhysics(super::BlockPhysics),
+        #[prost(message, tag = "45")]
+        BlockPistonExtend(super::BlockPistonExtend),
+        #[prost(message, tag = "46")]
+        BlockPistonRetract(super::BlockPistonRetract),
+        #[prost(message, tag = "47")]
+        BlockPlace(super::BlockPlace),
+        #[prost(message, tag = "48")]
+        BlockReceiveGame(super::BlockReceiveGame),
+        #[prost(message, tag = "49")]
+        BlockRedstone(super::BlockRedstone),
+        #[prost(message, tag = "50")]
+        BlockShearEntity(super::BlockShearEntity),
+        #[prost(message, tag = "51")]
+        BlockSpread(super::BlockSpread),
+        #[prost(message, tag = "52")]
+        Brew(super::Brew),
+        #[prost(message, tag = "53")]
+        BrewingStandFuel(super::BrewingStandFuel),
+        #[prost(message, tag = "54")]
+        BrewingStart(super::BrewingStart),
+        #[prost(message, tag = "55")]
+        BroadcastMessage(super::BroadcastMessage),
+        #[prost(message, tag = "56")]
+        CampfireStart(super::CampfireStart),
+        #[prost(message, tag = "57")]
+        CauldronLevelChange(super::CauldronLevelChange),
+        #[prost(message, tag = "58")]
+        ChunkLoad(super::ChunkLoad),
+        #[prost(message, tag = "59")]
+        ChunkPopulate(super::ChunkPopulate),
+        #[prost(message, tag = "60")]
+        ChunkUnload(super::ChunkUnload),
+        #[prost(message, tag = "61")]
+        CraftItem(super::CraftItem),
+        #[prost(message, tag = "62")]
+        CrafterCraft(super::CrafterCraft),
+        #[prost(message, tag = "63")]
+        CreatureSpawn(super::CreatureSpawn),
+        #[prost(message, tag = "64")]
+        CreeperPower(super::CreeperPower),
+        #[prost(message, tag = "65")]
+        CubeMobSplit(super::CubeMobSplit),
+        #[prost(message, tag = "66")]
+        EnchantItem(super::EnchantItem),
+        #[prost(message, tag = "67")]
+        EnderDragonChangePhase(super::EnderDragonChangePhase),
+        #[prost(message, tag = "68")]
+        EntitiesLoad(super::EntitiesLoad),
+        #[prost(message, tag = "69")]
+        EntitiesUnload(super::EntitiesUnload),
+        #[prost(message, tag = "70")]
+        EntityAirChange(super::EntityAirChange),
+        #[prost(message, tag = "71")]
+        EntityBlockForm(super::EntityBlockForm),
+        #[prost(message, tag = "72")]
+        EntityBreakDoor(super::EntityBreakDoor),
+        #[prost(message, tag = "73")]
+        EntityBreed(super::EntityBreed),
+        #[prost(message, tag = "74")]
+        EntityChangeBlock(super::EntityChangeBlock),
+        #[prost(message, tag = "75")]
+        EntityCombustByBlock(super::EntityCombustByBlock),
+        #[prost(message, tag = "76")]
+        EntityCombustByEntity(super::EntityCombustByEntity),
+        #[prost(message, tag = "77")]
+        EntityCombust(super::EntityCombust),
+        #[prost(message, tag = "78")]
+        EntityDamageByBlock(super::EntityDamageByBlock),
+        #[prost(message, tag = "79")]
+        EntityDamageByEntity(super::EntityDamageByEntity),
+        #[prost(message, tag = "80")]
+        EntityDamage(super::EntityDamage),
+        #[prost(message, tag = "81")]
+        EntityDeath(super::EntityDeath),
+        #[prost(message, tag = "82")]
+        EntityDismount(super::EntityDismount),
+        #[prost(message, tag = "83")]
+        EntityDropItem(super::EntityDropItem),
+        #[prost(message, tag = "84")]
+        EntityEnterBlock(super::EntityEnterBlock),
+        #[prost(message, tag = "85")]
+        EntityEnterLoveMode(super::EntityEnterLoveMode),
+        #[prost(message, tag = "86")]
+        EntityExhaustion(super::EntityExhaustion),
+        #[prost(message, tag = "87")]
+        EntityExplode(super::EntityExplode),
+        #[prost(message, tag = "88")]
+        EntityInteract(super::EntityInteract),
+        #[prost(message, tag = "89")]
+        EntityKnockbackByEntity(super::EntityKnockbackByEntity),
+        #[prost(message, tag = "90")]
+        EntityKnockback(super::EntityKnockback),
+        #[prost(message, tag = "91")]
+        EntityMount(super::EntityMount),
+        #[prost(message, tag = "92")]
+        EntityPickupItem(super::EntityPickupItem),
+        #[prost(message, tag = "93")]
+        EntityPlace(super::EntityPlace),
+        #[prost(message, tag = "94")]
+        EntityPortalEnter(super::EntityPortalEnter),
+        #[prost(message, tag = "95")]
+        EntityPortal(super::EntityPortal),
+        #[prost(message, tag = "96")]
+        EntityPortalExit(super::EntityPortalExit),
+        #[prost(message, tag = "97")]
+        EntityPoseChange(super::EntityPoseChange),
+        #[prost(message, tag = "98")]
+        EntityPotionEffect(super::EntityPotionEffect),
+        #[prost(message, tag = "99")]
+        EntityRegainHealth(super::EntityRegainHealth),
+        #[prost(message, tag = "100")]
+        EntityRemove(super::EntityRemove),
+        #[prost(message, tag = "101")]
+        EntityResurrect(super::EntityResurrect),
+        #[prost(message, tag = "102")]
+        EntityShootBow(super::EntityShootBow),
+        #[prost(message, tag = "103")]
+        EntitySpawn(super::EntitySpawn),
+        #[prost(message, tag = "104")]
+        EntitySpellCast(super::EntitySpellCast),
+        #[prost(message, tag = "105")]
+        EntityTame(super::EntityTame),
+        #[prost(message, tag = "106")]
+        EntityTargetBlock(super::EntityTargetBlock),
+        #[prost(message, tag = "107")]
+        EntityTarget(super::EntityTarget),
+        #[prost(message, tag = "108")]
+        EntityTargetLivingEntity(super::EntityTargetLivingEntity),
+        #[prost(message, tag = "109")]
+        EntityTeleport(super::EntityTeleport),
+        #[prost(message, tag = "110")]
+        EntityToggleGlide(super::EntityToggleGlide),
+        #[prost(message, tag = "111")]
+        EntityToggleSwim(super::EntityToggleSwim),
+        #[prost(message, tag = "112")]
+        EntityTransform(super::EntityTransform),
+        #[prost(message, tag = "113")]
+        EntityUnleash(super::EntityUnleash),
+        #[prost(message, tag = "114")]
+        ExpBottle(super::ExpBottle),
+        #[prost(message, tag = "115")]
+        ExplosionPrime(super::ExplosionPrime),
+        #[prost(message, tag = "116")]
+        FireworkExplode(super::FireworkExplode),
+        #[prost(message, tag = "117")]
+        FluidLevelChange(super::FluidLevelChange),
+        #[prost(message, tag = "118")]
+        FoodLevelChange(super::FoodLevelChange),
+        #[prost(message, tag = "119")]
+        FurnaceBurn(super::FurnaceBurn),
+        #[prost(message, tag = "120")]
+        FurnaceExtract(super::FurnaceExtract),
+        #[prost(message, tag = "121")]
+        FurnaceSmelt(super::FurnaceSmelt),
+        #[prost(message, tag = "122")]
+        FurnaceStartSmelt(super::FurnaceStartSmelt),
+        #[prost(message, tag = "123")]
+        GenericGame(super::GenericGame),
+        #[prost(message, tag = "124")]
+        HangingBreakByEntity(super::HangingBreakByEntity),
+        #[prost(message, tag = "125")]
+        HangingBreak(super::HangingBreak),
+        #[prost(message, tag = "126")]
+        HangingPlace(super::HangingPlace),
+        #[prost(message, tag = "127")]
+        HopperInventorySearch(super::HopperInventorySearch),
+        #[prost(message, tag = "128")]
+        HorseJump(super::HorseJump),
+        #[prost(message, tag = "130")]
+        InventoryCreative(super::InventoryCreative),
+        #[prost(message, tag = "131")]
+        InventoryDrag(super::InventoryDrag),
+        #[prost(message, tag = "133")]
+        InventoryMoveItem(super::InventoryMoveItem),
+        #[prost(message, tag = "134")]
+        InventoryOpen(super::InventoryOpen),
+        #[prost(message, tag = "135")]
+        InventoryPickupItem(super::InventoryPickupItem),
+        #[prost(message, tag = "136")]
+        ItemDespawn(super::ItemDespawn),
+        #[prost(message, tag = "137")]
+        ItemMerge(super::ItemMerge),
+        #[prost(message, tag = "138")]
+        ItemSpawn(super::ItemSpawn),
+        #[prost(message, tag = "139")]
+        LeavesDecay(super::LeavesDecay),
+        #[prost(message, tag = "140")]
+        LightningStrike(super::LightningStrike),
+        #[prost(message, tag = "141")]
+        LingeringPotionSplash(super::LingeringPotionSplash),
+        #[prost(message, tag = "142")]
+        LootGenerate(super::LootGenerate),
+        #[prost(message, tag = "143")]
+        MapInitialize(super::MapInitialize),
+        #[prost(message, tag = "144")]
+        MoistureChange(super::MoistureChange),
+        #[prost(message, tag = "145")]
+        NotePlay(super::NotePlay),
+        #[prost(message, tag = "146")]
+        PigZap(super::PigZap),
+        #[prost(message, tag = "147")]
+        PigZombieAnger(super::PigZombieAnger),
+        #[prost(message, tag = "148")]
+        PiglinBarter(super::PiglinBarter),
+        #[prost(message, tag = "149")]
+        PlayerAdvancementCriterionGrant(super::PlayerAdvancementCriterionGrant),
+        #[prost(message, tag = "150")]
+        PlayerAdvancementDone(super::PlayerAdvancementDone),
+        #[prost(message, tag = "151")]
+        PlayerAnimation(super::PlayerAnimation),
+        #[prost(message, tag = "152")]
+        PlayerArmorStandManipulate(super::PlayerArmorStandManipulate),
+        #[prost(message, tag = "153")]
+        PlayerBedEnter(super::PlayerBedEnter),
+        #[prost(message, tag = "154")]
+        PlayerBedLeave(super::PlayerBedLeave),
+        #[prost(message, tag = "155")]
+        PlayerBucketEmpty(super::PlayerBucketEmpty),
+        #[prost(message, tag = "156")]
+        PlayerBucketEntity(super::PlayerBucketEntity),
+        #[prost(message, tag = "157")]
+        PlayerBucketFill(super::PlayerBucketFill),
+        #[prost(message, tag = "158")]
+        PlayerChangedMainHand(super::PlayerChangedMainHand),
+        #[prost(message, tag = "159")]
+        PlayerChangedWorld(super::PlayerChangedWorld),
+        #[prost(message, tag = "160")]
+        PlayerCommandPreprocess(super::PlayerCommandPreprocess),
+        #[prost(message, tag = "161")]
+        PlayerCommandSend(super::PlayerCommandSend),
+        #[prost(message, tag = "162")]
+        PlayerCustomClick(super::PlayerCustomClick),
+        #[prost(message, tag = "163")]
+        PlayerDeath(super::PlayerDeath),
+        #[prost(message, tag = "164")]
+        PlayerDropItem(super::PlayerDropItem),
+        #[prost(message, tag = "165")]
+        PlayerEditBook(super::PlayerEditBook),
+        #[prost(message, tag = "166")]
+        PlayerEggThrow(super::PlayerEggThrow),
+        #[prost(message, tag = "167")]
+        PlayerExpChange(super::PlayerExpChange),
+        #[prost(message, tag = "168")]
+        PlayerExpCooldownChange(super::PlayerExpCooldownChange),
+        #[prost(message, tag = "169")]
+        PlayerFish(super::PlayerFish),
+        #[prost(message, tag = "170")]
+        PlayerGameModeChange(super::PlayerGameModeChange),
+        #[prost(message, tag = "171")]
+        PlayerHarvestBlock(super::PlayerHarvestBlock),
+        #[prost(message, tag = "172")]
+        PlayerHideEntity(super::PlayerHideEntity),
+        #[prost(message, tag = "173")]
+        PlayerInput(super::PlayerInput),
+        #[prost(message, tag = "174")]
+        PlayerInteractAtEntity(super::PlayerInteractAtEntity),
+        #[prost(message, tag = "175")]
+        PlayerInteractEntity(super::PlayerInteractEntity),
+        #[prost(message, tag = "176")]
+        PlayerInteract(super::PlayerInteract),
+        #[prost(message, tag = "177")]
+        PlayerItemBreak(super::PlayerItemBreak),
+        #[prost(message, tag = "178")]
+        PlayerItemConsume(super::PlayerItemConsume),
+        #[prost(message, tag = "179")]
+        PlayerItemDamage(super::PlayerItemDamage),
+        #[prost(message, tag = "180")]
+        PlayerItemHeld(super::PlayerItemHeld),
+        #[prost(message, tag = "181")]
+        PlayerItemMend(super::PlayerItemMend),
+        #[prost(message, tag = "182")]
+        PlayerKick(super::PlayerKick),
+        #[prost(message, tag = "183")]
+        PlayerLeashEntity(super::PlayerLeashEntity),
+        #[prost(message, tag = "184")]
+        PlayerLevelChange(super::PlayerLevelChange),
+        #[prost(message, tag = "185")]
+        PlayerLinksSend(super::PlayerLinksSend),
+        #[prost(message, tag = "186")]
+        PlayerLocaleChange(super::PlayerLocaleChange),
+        #[prost(message, tag = "187")]
+        PlayerLogin(super::PlayerLogin),
+        #[prost(message, tag = "188")]
+        PlayerPickupArrow(super::PlayerPickupArrow),
+        #[prost(message, tag = "189")]
+        PlayerPortal(super::PlayerPortal),
+        #[prost(message, tag = "190")]
+        PlayerRecipeBookClick(super::PlayerRecipeBookClick),
+        #[prost(message, tag = "191")]
+        PlayerRecipeBookSettingsChange(super::PlayerRecipeBookSettingsChange),
+        #[prost(message, tag = "192")]
+        PlayerRecipeDiscover(super::PlayerRecipeDiscover),
+        #[prost(message, tag = "194")]
+        PlayerResourcePackStatus(super::PlayerResourcePackStatus),
+        #[prost(message, tag = "195")]
+        PlayerRespawn(super::PlayerRespawn),
+        #[prost(message, tag = "196")]
+        PlayerRiptide(super::PlayerRiptide),
+        #[prost(message, tag = "197")]
+        PlayerShearEntity(super::PlayerShearEntity),
+        #[prost(message, tag = "198")]
+        PlayerShowEntity(super::PlayerShowEntity),
+        #[prost(message, tag = "199")]
+        PlayerSignOpen(super::PlayerSignOpen),
+        #[prost(message, tag = "200")]
+        PlayerSpawnChange(super::PlayerSpawnChange),
+        #[prost(message, tag = "201")]
+        PlayerStatisticIncrement(super::PlayerStatisticIncrement),
+        #[prost(message, tag = "202")]
+        PlayerSwapHandItems(super::PlayerSwapHandItems),
+        #[prost(message, tag = "203")]
+        PlayerTakeLecternBook(super::PlayerTakeLecternBook),
+        #[prost(message, tag = "204")]
+        PlayerTeleport(super::PlayerTeleport),
+        #[prost(message, tag = "205")]
+        PlayerToggleFlight(super::PlayerToggleFlight),
+        #[prost(message, tag = "206")]
+        PlayerToggleSneak(super::PlayerToggleSneak),
+        #[prost(message, tag = "207")]
+        PlayerToggleSprint(super::PlayerToggleSprint),
+        #[prost(message, tag = "208")]
+        PlayerUnleashEntity(super::PlayerUnleashEntity),
+        #[prost(message, tag = "210")]
+        PlayerVelocity(super::PlayerVelocity),
+        #[prost(message, tag = "211")]
+        PluginDisable(super::PluginDisable),
+        #[prost(message, tag = "212")]
+        PluginEnable(super::PluginEnable),
+        #[prost(message, tag = "213")]
+        PortalCreate(super::PortalCreate),
+        #[prost(message, tag = "214")]
+        PotionSplash(super::PotionSplash),
+        #[prost(message, tag = "215")]
+        PrepareAnvil(super::PrepareAnvil),
+        #[prost(message, tag = "216")]
+        PrepareGrindstone(super::PrepareGrindstone),
+        #[prost(message, tag = "218")]
+        PrepareItemCraft(super::PrepareItemCraft),
+        #[prost(message, tag = "219")]
+        PrepareItemEnchant(super::PrepareItemEnchant),
+        #[prost(message, tag = "220")]
+        PrepareSmithing(super::PrepareSmithing),
+        #[prost(message, tag = "221")]
+        ProjectileHit(super::ProjectileHit),
+        #[prost(message, tag = "222")]
+        ProjectileLaunch(super::ProjectileLaunch),
+        #[prost(message, tag = "223")]
+        RaidFinish(super::RaidFinish),
+        #[prost(message, tag = "224")]
+        RaidSpawnWave(super::RaidSpawnWave),
+        #[prost(message, tag = "225")]
+        RaidStop(super::RaidStop),
+        #[prost(message, tag = "226")]
+        RaidTrigger(super::RaidTrigger),
+        #[prost(message, tag = "227")]
+        RemoteServerCommand(super::RemoteServerCommand),
+        #[prost(message, tag = "228")]
+        SculkBloom(super::SculkBloom),
+        #[prost(message, tag = "229")]
+        ServerCommand(super::ServerCommand),
+        #[prost(message, tag = "230")]
+        ServerListPing(super::ServerListPing),
+        #[prost(message, tag = "231")]
+        ServerLoad(super::ServerLoad),
+        #[prost(message, tag = "234")]
+        SheepDyeWool(super::SheepDyeWool),
+        #[prost(message, tag = "235")]
+        SheepRegrowWool(super::SheepRegrowWool),
+        #[prost(message, tag = "236")]
+        SignChange(super::SignChange),
+        #[prost(message, tag = "237")]
+        SmithItem(super::SmithItem),
+        #[prost(message, tag = "238")]
+        SpawnChange(super::SpawnChange),
+        #[prost(message, tag = "239")]
+        SpawnerSpawn(super::SpawnerSpawn),
+        #[prost(message, tag = "240")]
+        SpongeAbsorb(super::SpongeAbsorb),
+        #[prost(message, tag = "241")]
+        StriderTemperatureChange(super::StriderTemperatureChange),
+        #[prost(message, tag = "242")]
+        StructureGrow(super::StructureGrow),
+        #[prost(message, tag = "243")]
+        TntPrime(super::TntPrime),
+        #[prost(message, tag = "244")]
+        TabComplete(super::TabComplete),
+        #[prost(message, tag = "245")]
+        ThunderChange(super::ThunderChange),
+        #[prost(message, tag = "246")]
+        TimeSkip(super::TimeSkip),
+        #[prost(message, tag = "247")]
+        TradeSelect(super::TradeSelect),
+        #[prost(message, tag = "248")]
+        TrialSpawnerSpawn(super::TrialSpawnerSpawn),
+        #[prost(message, tag = "249")]
+        VaultDisplayItem(super::VaultDisplayItem),
+        #[prost(message, tag = "250")]
+        VehicleBlockCollision(super::VehicleBlockCollision),
+        #[prost(message, tag = "251")]
+        VehicleCreate(super::VehicleCreate),
+        #[prost(message, tag = "252")]
+        VehicleDamage(super::VehicleDamage),
+        #[prost(message, tag = "253")]
+        VehicleDestroy(super::VehicleDestroy),
+        #[prost(message, tag = "254")]
+        VehicleEnter(super::VehicleEnter),
+        #[prost(message, tag = "255")]
+        VehicleEntityCollision(super::VehicleEntityCollision),
+        #[prost(message, tag = "256")]
+        VehicleExit(super::VehicleExit),
+        #[prost(message, tag = "257")]
+        VehicleMove(super::VehicleMove),
+        #[prost(message, tag = "258")]
+        VehicleUpdate(super::VehicleUpdate),
+        #[prost(message, tag = "259")]
+        VillagerAcquireTrade(super::VillagerAcquireTrade),
+        #[prost(message, tag = "260")]
+        VillagerCareerChange(super::VillagerCareerChange),
+        #[prost(message, tag = "261")]
+        VillagerReplenishTrade(super::VillagerReplenishTrade),
+        #[prost(message, tag = "262")]
+        VillagerReputationChange(super::VillagerReputationChange),
+        #[prost(message, tag = "263")]
+        WeatherChange(super::WeatherChange),
+        #[prost(message, tag = "264")]
+        WorldInit(super::WorldInit),
+        #[prost(message, tag = "265")]
+        WorldLoad(super::WorldLoad),
+        #[prost(message, tag = "266")]
+        WorldSave(super::WorldSave),
+        #[prost(message, tag = "267")]
+        WorldUnload(super::WorldUnload),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Patch {
+    #[prost(
+        oneof = "patch::Change",
+        tags = "10, 11, 12, 13, 16, 17, 18, 24, 27, 28, 30, 31, 32, 33, 34, 35, 36, 43, 47, 49, 53, 54, 55, 56, 60, 61, 62, 65, 66, 67, 70, 73, 75, 76, 77, 78, 79, 80, 81, 85, 86, 87, 89, 90, 95, 96, 98, 99, 102, 106, 107, 108, 109, 114, 115, 117, 118, 119, 120, 121, 122, 123, 127, 130, 131, 133, 142, 147, 153, 154, 155, 157, 160, 161, 163, 165, 166, 167, 168, 169, 176, 178, 179, 181, 182, 187, 189, 190, 195, 200, 202, 204, 210, 215, 216, 218, 220, 227, 228, 229, 230, 234, 236, 237, 244, 246, 247, 249, 252, 255, 259, 260, 261, 262"
+    )]
+    pub change: ::core::option::Option<patch::Change>,
+}
+/// Nested message and enum types in `Patch`.
+pub mod patch {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Change {
+        #[prost(message, tag = "10")]
+        PlayerJoin(super::PlayerJoinPatch),
+        #[prost(message, tag = "11")]
+        PlayerLeave(super::PlayerLeavePatch),
+        #[prost(message, tag = "12")]
+        PlayerMove(super::PlayerMovePatch),
+        #[prost(message, tag = "13")]
+        InventoryClick(super::InventoryClickPatch),
+        #[prost(message, tag = "16")]
+        ArrowBodyCountChange(super::ArrowBodyCountChangePatch),
+        #[prost(message, tag = "17")]
+        AsyncPlayerChat(super::AsyncPlayerChatPatch),
+        #[prost(message, tag = "18")]
+        AsyncPlayerPreLogin(super::AsyncPlayerPreLoginPatch),
+        #[prost(message, tag = "24")]
+        BlockBreak(super::BlockBreakPatch),
+        #[prost(message, tag = "27")]
+        BlockCanBuild(super::BlockCanBuildPatch),
+        #[prost(message, tag = "28")]
+        BlockCook(super::BlockCookPatch),
+        #[prost(message, tag = "30")]
+        BlockDamage(super::BlockDamagePatch),
+        #[prost(message, tag = "31")]
+        BlockDispenseArmor(super::BlockDispenseArmorPatch),
+        #[prost(message, tag = "32")]
+        BlockDispense(super::BlockDispensePatch),
+        #[prost(message, tag = "33")]
+        BlockDispenseLoot(super::BlockDispenseLootPatch),
+        #[prost(message, tag = "34")]
+        BlockDropItem(super::BlockDropItemPatch),
+        #[prost(message, tag = "35")]
+        BlockExp(super::BlockExpPatch),
+        #[prost(message, tag = "36")]
+        BlockExplode(super::BlockExplodePatch),
+        #[prost(message, tag = "43")]
+        BlockMultiPlace(super::BlockMultiPlacePatch),
+        #[prost(message, tag = "47")]
+        BlockPlace(super::BlockPlacePatch),
+        #[prost(message, tag = "49")]
+        BlockRedstone(super::BlockRedstonePatch),
+        #[prost(message, tag = "53")]
+        BrewingStandFuel(super::BrewingStandFuelPatch),
+        #[prost(message, tag = "54")]
+        BrewingStart(super::BrewingStartPatch),
+        #[prost(message, tag = "55")]
+        BroadcastMessage(super::BroadcastMessagePatch),
+        #[prost(message, tag = "56")]
+        CampfireStart(super::CampfireStartPatch),
+        #[prost(message, tag = "60")]
+        ChunkUnload(super::ChunkUnloadPatch),
+        #[prost(message, tag = "61")]
+        CraftItem(super::CraftItemPatch),
+        #[prost(message, tag = "62")]
+        CrafterCraft(super::CrafterCraftPatch),
+        #[prost(message, tag = "65")]
+        CubeMobSplit(super::CubeMobSplitPatch),
+        #[prost(message, tag = "66")]
+        EnchantItem(super::EnchantItemPatch),
+        #[prost(message, tag = "67")]
+        EnderDragonChangePhase(super::EnderDragonChangePhasePatch),
+        #[prost(message, tag = "70")]
+        EntityAirChange(super::EntityAirChangePatch),
+        #[prost(message, tag = "73")]
+        EntityBreed(super::EntityBreedPatch),
+        #[prost(message, tag = "75")]
+        EntityCombustByBlock(super::EntityCombustByBlockPatch),
+        #[prost(message, tag = "76")]
+        EntityCombustByEntity(super::EntityCombustByEntityPatch),
+        #[prost(message, tag = "77")]
+        EntityCombust(super::EntityCombustPatch),
+        #[prost(message, tag = "78")]
+        EntityDamageByBlock(super::EntityDamageByBlockPatch),
+        #[prost(message, tag = "79")]
+        EntityDamageByEntity(super::EntityDamageByEntityPatch),
+        #[prost(message, tag = "80")]
+        EntityDamage(super::EntityDamagePatch),
+        #[prost(message, tag = "81")]
+        EntityDeath(super::EntityDeathPatch),
+        #[prost(message, tag = "85")]
+        EntityEnterLoveMode(super::EntityEnterLoveModePatch),
+        #[prost(message, tag = "86")]
+        EntityExhaustion(super::EntityExhaustionPatch),
+        #[prost(message, tag = "87")]
+        EntityExplode(super::EntityExplodePatch),
+        #[prost(message, tag = "89")]
+        EntityKnockbackByEntity(super::EntityKnockbackByEntityPatch),
+        #[prost(message, tag = "90")]
+        EntityKnockback(super::EntityKnockbackPatch),
+        #[prost(message, tag = "95")]
+        EntityPortal(super::EntityPortalPatch),
+        #[prost(message, tag = "96")]
+        EntityPortalExit(super::EntityPortalExitPatch),
+        #[prost(message, tag = "98")]
+        EntityPotionEffect(super::EntityPotionEffectPatch),
+        #[prost(message, tag = "99")]
+        EntityRegainHealth(super::EntityRegainHealthPatch),
+        #[prost(message, tag = "102")]
+        EntityShootBow(super::EntityShootBowPatch),
+        #[prost(message, tag = "106")]
+        EntityTargetBlock(super::EntityTargetBlockPatch),
+        #[prost(message, tag = "107")]
+        EntityTarget(super::EntityTargetPatch),
+        #[prost(message, tag = "108")]
+        EntityTargetLivingEntity(super::EntityTargetLivingEntityPatch),
+        #[prost(message, tag = "109")]
+        EntityTeleport(super::EntityTeleportPatch),
+        #[prost(message, tag = "114")]
+        ExpBottle(super::ExpBottlePatch),
+        #[prost(message, tag = "115")]
+        ExplosionPrime(super::ExplosionPrimePatch),
+        #[prost(message, tag = "117")]
+        FluidLevelChange(super::FluidLevelChangePatch),
+        #[prost(message, tag = "118")]
+        FoodLevelChange(super::FoodLevelChangePatch),
+        #[prost(message, tag = "119")]
+        FurnaceBurn(super::FurnaceBurnPatch),
+        #[prost(message, tag = "120")]
+        FurnaceExtract(super::FurnaceExtractPatch),
+        #[prost(message, tag = "121")]
+        FurnaceSmelt(super::FurnaceSmeltPatch),
+        #[prost(message, tag = "122")]
+        FurnaceStartSmelt(super::FurnaceStartSmeltPatch),
+        #[prost(message, tag = "123")]
+        GenericGame(super::GenericGamePatch),
+        #[prost(message, tag = "127")]
+        HopperInventorySearch(super::HopperInventorySearchPatch),
+        #[prost(message, tag = "130")]
+        InventoryCreative(super::InventoryCreativePatch),
+        #[prost(message, tag = "131")]
+        InventoryDrag(super::InventoryDragPatch),
+        #[prost(message, tag = "133")]
+        InventoryMoveItem(super::InventoryMoveItemPatch),
+        #[prost(message, tag = "142")]
+        LootGenerate(super::LootGeneratePatch),
+        #[prost(message, tag = "147")]
+        PigZombieAnger(super::PigZombieAngerPatch),
+        #[prost(message, tag = "153")]
+        PlayerBedEnter(super::PlayerBedEnterPatch),
+        #[prost(message, tag = "154")]
+        PlayerBedLeave(super::PlayerBedLeavePatch),
+        #[prost(message, tag = "155")]
+        PlayerBucketEmpty(super::PlayerBucketEmptyPatch),
+        #[prost(message, tag = "157")]
+        PlayerBucketFill(super::PlayerBucketFillPatch),
+        #[prost(message, tag = "160")]
+        PlayerCommandPreprocess(super::PlayerCommandPreprocessPatch),
+        #[prost(message, tag = "161")]
+        PlayerCommandSend(super::PlayerCommandSendPatch),
+        #[prost(message, tag = "163")]
+        PlayerDeath(super::PlayerDeathPatch),
+        #[prost(message, tag = "165")]
+        PlayerEditBook(super::PlayerEditBookPatch),
+        #[prost(message, tag = "166")]
+        PlayerEggThrow(super::PlayerEggThrowPatch),
+        #[prost(message, tag = "167")]
+        PlayerExpChange(super::PlayerExpChangePatch),
+        #[prost(message, tag = "168")]
+        PlayerExpCooldownChange(super::PlayerExpCooldownChangePatch),
+        #[prost(message, tag = "169")]
+        PlayerFish(super::PlayerFishPatch),
+        #[prost(message, tag = "176")]
+        PlayerInteract(super::PlayerInteractPatch),
+        #[prost(message, tag = "178")]
+        PlayerItemConsume(super::PlayerItemConsumePatch),
+        #[prost(message, tag = "179")]
+        PlayerItemDamage(super::PlayerItemDamagePatch),
+        #[prost(message, tag = "181")]
+        PlayerItemMend(super::PlayerItemMendPatch),
+        #[prost(message, tag = "182")]
+        PlayerKick(super::PlayerKickPatch),
+        #[prost(message, tag = "187")]
+        PlayerLogin(super::PlayerLoginPatch),
+        #[prost(message, tag = "189")]
+        PlayerPortal(super::PlayerPortalPatch),
+        #[prost(message, tag = "190")]
+        PlayerRecipeBookClick(super::PlayerRecipeBookClickPatch),
+        #[prost(message, tag = "195")]
+        PlayerRespawn(super::PlayerRespawnPatch),
+        #[prost(message, tag = "200")]
+        PlayerSpawnChange(super::PlayerSpawnChangePatch),
+        #[prost(message, tag = "202")]
+        PlayerSwapHandItems(super::PlayerSwapHandItemsPatch),
+        #[prost(message, tag = "204")]
+        PlayerTeleport(super::PlayerTeleportPatch),
+        #[prost(message, tag = "210")]
+        PlayerVelocity(super::PlayerVelocityPatch),
+        #[prost(message, tag = "215")]
+        PrepareAnvil(super::PrepareAnvilPatch),
+        #[prost(message, tag = "216")]
+        PrepareGrindstone(super::PrepareGrindstonePatch),
+        #[prost(message, tag = "218")]
+        PrepareItemCraft(super::PrepareItemCraftPatch),
+        #[prost(message, tag = "220")]
+        PrepareSmithing(super::PrepareSmithingPatch),
+        #[prost(message, tag = "227")]
+        RemoteServerCommand(super::RemoteServerCommandPatch),
+        #[prost(message, tag = "228")]
+        SculkBloom(super::SculkBloomPatch),
+        #[prost(message, tag = "229")]
+        ServerCommand(super::ServerCommandPatch),
+        #[prost(message, tag = "230")]
+        ServerListPing(super::ServerListPingPatch),
+        #[prost(message, tag = "234")]
+        SheepDyeWool(super::SheepDyeWoolPatch),
+        #[prost(message, tag = "236")]
+        SignChange(super::SignChangePatch),
+        #[prost(message, tag = "237")]
+        SmithItem(super::SmithItemPatch),
+        #[prost(message, tag = "244")]
+        TabComplete(super::TabCompletePatch),
+        #[prost(message, tag = "246")]
+        TimeSkip(super::TimeSkipPatch),
+        #[prost(message, tag = "247")]
+        TradeSelect(super::TradeSelectPatch),
+        #[prost(message, tag = "249")]
+        VaultDisplayItem(super::VaultDisplayItemPatch),
+        #[prost(message, tag = "252")]
+        VehicleDamage(super::VehicleDamagePatch),
+        #[prost(message, tag = "255")]
+        VehicleEntityCollision(super::VehicleEntityCollisionPatch),
+        #[prost(message, tag = "259")]
+        VillagerAcquireTrade(super::VillagerAcquireTradePatch),
+        #[prost(message, tag = "260")]
+        VillagerCareerChange(super::VillagerCareerChangePatch),
+        #[prost(message, tag = "261")]
+        VillagerReplenishTrade(super::VillagerReplenishTradePatch),
+        #[prost(message, tag = "262")]
+        VillagerReputationChange(super::VillagerReputationChangePatch),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EventKind {
+    Unspecified = 0,
+    PlayerJoin = 1,
+    PlayerLeave = 2,
+    PlayerMove = 3,
+    InventoryClick = 4,
+    InventoryClose = 5,
+    AreaEffectCloudApply = 6,
+    ArrowBodyCountChange = 7,
+    AsyncPlayerChat = 8,
+    AsyncPlayerPreLogin = 9,
+    AsyncStructureGenerate = 10,
+    AsyncStructureSpawn = 11,
+    BatToggleSleep = 12,
+    BellResonate = 13,
+    BellRing = 14,
+    BlockBreak = 15,
+    BlockBrush = 16,
+    BlockBurn = 17,
+    BlockCanBuild = 18,
+    BlockCook = 19,
+    BlockDamageAbort = 20,
+    BlockDamage = 21,
+    BlockDispenseArmor = 22,
+    BlockDispense = 23,
+    BlockDispenseLoot = 24,
+    BlockDropItem = 25,
+    BlockExp = 26,
+    BlockExplode = 27,
+    BlockFade = 28,
+    BlockFertilize = 29,
+    BlockForm = 30,
+    BlockFromTo = 31,
+    BlockGrow = 32,
+    BlockIgnite = 33,
+    BlockMultiPlace = 34,
+    BlockPhysics = 35,
+    BlockPistonExtend = 36,
+    BlockPistonRetract = 37,
+    BlockPlace = 38,
+    BlockReceiveGame = 39,
+    BlockRedstone = 40,
+    BlockShearEntity = 41,
+    BlockSpread = 42,
+    Brew = 43,
+    BrewingStandFuel = 44,
+    BrewingStart = 45,
+    BroadcastMessage = 46,
+    CampfireStart = 47,
+    CauldronLevelChange = 48,
+    ChunkLoad = 49,
+    ChunkPopulate = 50,
+    ChunkUnload = 51,
+    CraftItem = 52,
+    CrafterCraft = 53,
+    CreatureSpawn = 54,
+    CreeperPower = 55,
+    CubeMobSplit = 56,
+    EnchantItem = 57,
+    EnderDragonChangePhase = 58,
+    EntitiesLoad = 59,
+    EntitiesUnload = 60,
+    EntityAirChange = 61,
+    EntityBlockForm = 62,
+    EntityBreakDoor = 63,
+    EntityBreed = 64,
+    EntityChangeBlock = 65,
+    EntityCombustByBlock = 66,
+    EntityCombustByEntity = 67,
+    EntityCombust = 68,
+    EntityDamageByBlock = 69,
+    EntityDamageByEntity = 70,
+    EntityDamage = 71,
+    EntityDeath = 72,
+    EntityDismount = 73,
+    EntityDropItem = 74,
+    EntityEnterBlock = 75,
+    EntityEnterLoveMode = 76,
+    EntityExhaustion = 77,
+    EntityExplode = 78,
+    EntityInteract = 79,
+    EntityKnockbackByEntity = 80,
+    EntityKnockback = 81,
+    EntityMount = 82,
+    EntityPickupItem = 83,
+    EntityPlace = 84,
+    EntityPortalEnter = 85,
+    EntityPortal = 86,
+    EntityPortalExit = 87,
+    EntityPoseChange = 88,
+    EntityPotionEffect = 89,
+    EntityRegainHealth = 90,
+    EntityRemove = 91,
+    EntityResurrect = 92,
+    EntityShootBow = 93,
+    EntitySpawn = 94,
+    EntitySpellCast = 95,
+    EntityTame = 96,
+    EntityTargetBlock = 97,
+    EntityTarget = 98,
+    EntityTargetLivingEntity = 99,
+    EntityTeleport = 100,
+    EntityToggleGlide = 101,
+    EntityToggleSwim = 102,
+    EntityTransform = 103,
+    EntityUnleash = 104,
+    ExpBottle = 105,
+    ExplosionPrime = 106,
+    FireworkExplode = 107,
+    FluidLevelChange = 108,
+    FoodLevelChange = 109,
+    FurnaceBurn = 110,
+    FurnaceExtract = 111,
+    FurnaceSmelt = 112,
+    FurnaceStartSmelt = 113,
+    GenericGame = 114,
+    HangingBreakByEntity = 115,
+    HangingBreak = 116,
+    HangingPlace = 117,
+    HopperInventorySearch = 118,
+    HorseJump = 119,
+    InventoryCreative = 121,
+    InventoryDrag = 122,
+    InventoryMoveItem = 124,
+    InventoryOpen = 125,
+    InventoryPickupItem = 126,
+    ItemDespawn = 127,
+    ItemMerge = 128,
+    ItemSpawn = 129,
+    LeavesDecay = 130,
+    LightningStrike = 131,
+    LingeringPotionSplash = 132,
+    LootGenerate = 133,
+    MapInitialize = 134,
+    MoistureChange = 135,
+    NotePlay = 136,
+    PigZap = 137,
+    PigZombieAnger = 138,
+    PiglinBarter = 139,
+    PlayerAdvancementCriterionGrant = 140,
+    PlayerAdvancementDone = 141,
+    PlayerAnimation = 142,
+    PlayerArmorStandManipulate = 143,
+    PlayerBedEnter = 144,
+    PlayerBedLeave = 145,
+    PlayerBucketEmpty = 146,
+    PlayerBucketEntity = 147,
+    PlayerBucketFill = 148,
+    PlayerChangedMainHand = 149,
+    PlayerChangedWorld = 150,
+    PlayerCommandPreprocess = 151,
+    PlayerCommandSend = 152,
+    PlayerCustomClick = 153,
+    PlayerDeath = 154,
+    PlayerDropItem = 155,
+    PlayerEditBook = 156,
+    PlayerEggThrow = 157,
+    PlayerExpChange = 158,
+    PlayerExpCooldownChange = 159,
+    PlayerFish = 160,
+    PlayerGameModeChange = 161,
+    PlayerHarvestBlock = 162,
+    PlayerHideEntity = 163,
+    PlayerInput = 164,
+    PlayerInteractAtEntity = 165,
+    PlayerInteractEntity = 166,
+    PlayerInteract = 167,
+    PlayerItemBreak = 168,
+    PlayerItemConsume = 169,
+    PlayerItemDamage = 170,
+    PlayerItemHeld = 171,
+    PlayerItemMend = 172,
+    PlayerKick = 173,
+    PlayerLeashEntity = 174,
+    PlayerLevelChange = 175,
+    PlayerLinksSend = 176,
+    PlayerLocaleChange = 177,
+    PlayerLogin = 178,
+    PlayerPickupArrow = 179,
+    PlayerPortal = 180,
+    PlayerRecipeBookClick = 181,
+    PlayerRecipeBookSettingsChange = 182,
+    PlayerRecipeDiscover = 183,
+    PlayerResourcePackStatus = 185,
+    PlayerRespawn = 186,
+    PlayerRiptide = 187,
+    PlayerShearEntity = 188,
+    PlayerShowEntity = 189,
+    PlayerSignOpen = 190,
+    PlayerSpawnChange = 191,
+    PlayerStatisticIncrement = 192,
+    PlayerSwapHandItems = 193,
+    PlayerTakeLecternBook = 194,
+    PlayerTeleport = 195,
+    PlayerToggleFlight = 196,
+    PlayerToggleSneak = 197,
+    PlayerToggleSprint = 198,
+    PlayerUnleashEntity = 199,
+    PlayerVelocity = 201,
+    PluginDisable = 202,
+    PluginEnable = 203,
+    PortalCreate = 204,
+    PotionSplash = 205,
+    PrepareAnvil = 206,
+    PrepareGrindstone = 207,
+    PrepareItemCraft = 209,
+    PrepareItemEnchant = 210,
+    PrepareSmithing = 211,
+    ProjectileHit = 212,
+    ProjectileLaunch = 213,
+    RaidFinish = 214,
+    RaidSpawnWave = 215,
+    RaidStop = 216,
+    RaidTrigger = 217,
+    RemoteServerCommand = 218,
+    SculkBloom = 219,
+    ServerCommand = 220,
+    ServerListPing = 221,
+    ServerLoad = 222,
+    SheepDyeWool = 225,
+    SheepRegrowWool = 226,
+    SignChange = 227,
+    SmithItem = 228,
+    SpawnChange = 229,
+    SpawnerSpawn = 230,
+    SpongeAbsorb = 231,
+    StriderTemperatureChange = 232,
+    StructureGrow = 233,
+    TntPrime = 234,
+    TabComplete = 235,
+    ThunderChange = 236,
+    TimeSkip = 237,
+    TradeSelect = 238,
+    TrialSpawnerSpawn = 239,
+    VaultDisplayItem = 240,
+    VehicleBlockCollision = 241,
+    VehicleCreate = 242,
+    VehicleDamage = 243,
+    VehicleDestroy = 244,
+    VehicleEnter = 245,
+    VehicleEntityCollision = 246,
+    VehicleExit = 247,
+    VehicleMove = 248,
+    VehicleUpdate = 249,
+    VillagerAcquireTrade = 250,
+    VillagerCareerChange = 251,
+    VillagerReplenishTrade = 252,
+    VillagerReputationChange = 253,
+    WeatherChange = 254,
+    WorldInit = 255,
+    WorldLoad = 256,
+    WorldSave = 257,
+    WorldUnload = 258,
+}
+impl EventKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "EVENT_KIND_UNSPECIFIED",
+            Self::PlayerJoin => "EVENT_KIND_PLAYER_JOIN",
+            Self::PlayerLeave => "EVENT_KIND_PLAYER_LEAVE",
+            Self::PlayerMove => "EVENT_KIND_PLAYER_MOVE",
+            Self::InventoryClick => "EVENT_KIND_INVENTORY_CLICK",
+            Self::InventoryClose => "EVENT_KIND_INVENTORY_CLOSE",
+            Self::AreaEffectCloudApply => "EVENT_KIND_AREA_EFFECT_CLOUD_APPLY",
+            Self::ArrowBodyCountChange => "EVENT_KIND_ARROW_BODY_COUNT_CHANGE",
+            Self::AsyncPlayerChat => "EVENT_KIND_ASYNC_PLAYER_CHAT",
+            Self::AsyncPlayerPreLogin => "EVENT_KIND_ASYNC_PLAYER_PRE_LOGIN",
+            Self::AsyncStructureGenerate => "EVENT_KIND_ASYNC_STRUCTURE_GENERATE",
+            Self::AsyncStructureSpawn => "EVENT_KIND_ASYNC_STRUCTURE_SPAWN",
+            Self::BatToggleSleep => "EVENT_KIND_BAT_TOGGLE_SLEEP",
+            Self::BellResonate => "EVENT_KIND_BELL_RESONATE",
+            Self::BellRing => "EVENT_KIND_BELL_RING",
+            Self::BlockBreak => "EVENT_KIND_BLOCK_BREAK",
+            Self::BlockBrush => "EVENT_KIND_BLOCK_BRUSH",
+            Self::BlockBurn => "EVENT_KIND_BLOCK_BURN",
+            Self::BlockCanBuild => "EVENT_KIND_BLOCK_CAN_BUILD",
+            Self::BlockCook => "EVENT_KIND_BLOCK_COOK",
+            Self::BlockDamageAbort => "EVENT_KIND_BLOCK_DAMAGE_ABORT",
+            Self::BlockDamage => "EVENT_KIND_BLOCK_DAMAGE",
+            Self::BlockDispenseArmor => "EVENT_KIND_BLOCK_DISPENSE_ARMOR",
+            Self::BlockDispense => "EVENT_KIND_BLOCK_DISPENSE",
+            Self::BlockDispenseLoot => "EVENT_KIND_BLOCK_DISPENSE_LOOT",
+            Self::BlockDropItem => "EVENT_KIND_BLOCK_DROP_ITEM",
+            Self::BlockExp => "EVENT_KIND_BLOCK_EXP",
+            Self::BlockExplode => "EVENT_KIND_BLOCK_EXPLODE",
+            Self::BlockFade => "EVENT_KIND_BLOCK_FADE",
+            Self::BlockFertilize => "EVENT_KIND_BLOCK_FERTILIZE",
+            Self::BlockForm => "EVENT_KIND_BLOCK_FORM",
+            Self::BlockFromTo => "EVENT_KIND_BLOCK_FROM_TO",
+            Self::BlockGrow => "EVENT_KIND_BLOCK_GROW",
+            Self::BlockIgnite => "EVENT_KIND_BLOCK_IGNITE",
+            Self::BlockMultiPlace => "EVENT_KIND_BLOCK_MULTI_PLACE",
+            Self::BlockPhysics => "EVENT_KIND_BLOCK_PHYSICS",
+            Self::BlockPistonExtend => "EVENT_KIND_BLOCK_PISTON_EXTEND",
+            Self::BlockPistonRetract => "EVENT_KIND_BLOCK_PISTON_RETRACT",
+            Self::BlockPlace => "EVENT_KIND_BLOCK_PLACE",
+            Self::BlockReceiveGame => "EVENT_KIND_BLOCK_RECEIVE_GAME",
+            Self::BlockRedstone => "EVENT_KIND_BLOCK_REDSTONE",
+            Self::BlockShearEntity => "EVENT_KIND_BLOCK_SHEAR_ENTITY",
+            Self::BlockSpread => "EVENT_KIND_BLOCK_SPREAD",
+            Self::Brew => "EVENT_KIND_BREW",
+            Self::BrewingStandFuel => "EVENT_KIND_BREWING_STAND_FUEL",
+            Self::BrewingStart => "EVENT_KIND_BREWING_START",
+            Self::BroadcastMessage => "EVENT_KIND_BROADCAST_MESSAGE",
+            Self::CampfireStart => "EVENT_KIND_CAMPFIRE_START",
+            Self::CauldronLevelChange => "EVENT_KIND_CAULDRON_LEVEL_CHANGE",
+            Self::ChunkLoad => "EVENT_KIND_CHUNK_LOAD",
+            Self::ChunkPopulate => "EVENT_KIND_CHUNK_POPULATE",
+            Self::ChunkUnload => "EVENT_KIND_CHUNK_UNLOAD",
+            Self::CraftItem => "EVENT_KIND_CRAFT_ITEM",
+            Self::CrafterCraft => "EVENT_KIND_CRAFTER_CRAFT",
+            Self::CreatureSpawn => "EVENT_KIND_CREATURE_SPAWN",
+            Self::CreeperPower => "EVENT_KIND_CREEPER_POWER",
+            Self::CubeMobSplit => "EVENT_KIND_CUBE_MOB_SPLIT",
+            Self::EnchantItem => "EVENT_KIND_ENCHANT_ITEM",
+            Self::EnderDragonChangePhase => "EVENT_KIND_ENDER_DRAGON_CHANGE_PHASE",
+            Self::EntitiesLoad => "EVENT_KIND_ENTITIES_LOAD",
+            Self::EntitiesUnload => "EVENT_KIND_ENTITIES_UNLOAD",
+            Self::EntityAirChange => "EVENT_KIND_ENTITY_AIR_CHANGE",
+            Self::EntityBlockForm => "EVENT_KIND_ENTITY_BLOCK_FORM",
+            Self::EntityBreakDoor => "EVENT_KIND_ENTITY_BREAK_DOOR",
+            Self::EntityBreed => "EVENT_KIND_ENTITY_BREED",
+            Self::EntityChangeBlock => "EVENT_KIND_ENTITY_CHANGE_BLOCK",
+            Self::EntityCombustByBlock => "EVENT_KIND_ENTITY_COMBUST_BY_BLOCK",
+            Self::EntityCombustByEntity => "EVENT_KIND_ENTITY_COMBUST_BY_ENTITY",
+            Self::EntityCombust => "EVENT_KIND_ENTITY_COMBUST",
+            Self::EntityDamageByBlock => "EVENT_KIND_ENTITY_DAMAGE_BY_BLOCK",
+            Self::EntityDamageByEntity => "EVENT_KIND_ENTITY_DAMAGE_BY_ENTITY",
+            Self::EntityDamage => "EVENT_KIND_ENTITY_DAMAGE",
+            Self::EntityDeath => "EVENT_KIND_ENTITY_DEATH",
+            Self::EntityDismount => "EVENT_KIND_ENTITY_DISMOUNT",
+            Self::EntityDropItem => "EVENT_KIND_ENTITY_DROP_ITEM",
+            Self::EntityEnterBlock => "EVENT_KIND_ENTITY_ENTER_BLOCK",
+            Self::EntityEnterLoveMode => "EVENT_KIND_ENTITY_ENTER_LOVE_MODE",
+            Self::EntityExhaustion => "EVENT_KIND_ENTITY_EXHAUSTION",
+            Self::EntityExplode => "EVENT_KIND_ENTITY_EXPLODE",
+            Self::EntityInteract => "EVENT_KIND_ENTITY_INTERACT",
+            Self::EntityKnockbackByEntity => "EVENT_KIND_ENTITY_KNOCKBACK_BY_ENTITY",
+            Self::EntityKnockback => "EVENT_KIND_ENTITY_KNOCKBACK",
+            Self::EntityMount => "EVENT_KIND_ENTITY_MOUNT",
+            Self::EntityPickupItem => "EVENT_KIND_ENTITY_PICKUP_ITEM",
+            Self::EntityPlace => "EVENT_KIND_ENTITY_PLACE",
+            Self::EntityPortalEnter => "EVENT_KIND_ENTITY_PORTAL_ENTER",
+            Self::EntityPortal => "EVENT_KIND_ENTITY_PORTAL",
+            Self::EntityPortalExit => "EVENT_KIND_ENTITY_PORTAL_EXIT",
+            Self::EntityPoseChange => "EVENT_KIND_ENTITY_POSE_CHANGE",
+            Self::EntityPotionEffect => "EVENT_KIND_ENTITY_POTION_EFFECT",
+            Self::EntityRegainHealth => "EVENT_KIND_ENTITY_REGAIN_HEALTH",
+            Self::EntityRemove => "EVENT_KIND_ENTITY_REMOVE",
+            Self::EntityResurrect => "EVENT_KIND_ENTITY_RESURRECT",
+            Self::EntityShootBow => "EVENT_KIND_ENTITY_SHOOT_BOW",
+            Self::EntitySpawn => "EVENT_KIND_ENTITY_SPAWN",
+            Self::EntitySpellCast => "EVENT_KIND_ENTITY_SPELL_CAST",
+            Self::EntityTame => "EVENT_KIND_ENTITY_TAME",
+            Self::EntityTargetBlock => "EVENT_KIND_ENTITY_TARGET_BLOCK",
+            Self::EntityTarget => "EVENT_KIND_ENTITY_TARGET",
+            Self::EntityTargetLivingEntity => "EVENT_KIND_ENTITY_TARGET_LIVING_ENTITY",
+            Self::EntityTeleport => "EVENT_KIND_ENTITY_TELEPORT",
+            Self::EntityToggleGlide => "EVENT_KIND_ENTITY_TOGGLE_GLIDE",
+            Self::EntityToggleSwim => "EVENT_KIND_ENTITY_TOGGLE_SWIM",
+            Self::EntityTransform => "EVENT_KIND_ENTITY_TRANSFORM",
+            Self::EntityUnleash => "EVENT_KIND_ENTITY_UNLEASH",
+            Self::ExpBottle => "EVENT_KIND_EXP_BOTTLE",
+            Self::ExplosionPrime => "EVENT_KIND_EXPLOSION_PRIME",
+            Self::FireworkExplode => "EVENT_KIND_FIREWORK_EXPLODE",
+            Self::FluidLevelChange => "EVENT_KIND_FLUID_LEVEL_CHANGE",
+            Self::FoodLevelChange => "EVENT_KIND_FOOD_LEVEL_CHANGE",
+            Self::FurnaceBurn => "EVENT_KIND_FURNACE_BURN",
+            Self::FurnaceExtract => "EVENT_KIND_FURNACE_EXTRACT",
+            Self::FurnaceSmelt => "EVENT_KIND_FURNACE_SMELT",
+            Self::FurnaceStartSmelt => "EVENT_KIND_FURNACE_START_SMELT",
+            Self::GenericGame => "EVENT_KIND_GENERIC_GAME",
+            Self::HangingBreakByEntity => "EVENT_KIND_HANGING_BREAK_BY_ENTITY",
+            Self::HangingBreak => "EVENT_KIND_HANGING_BREAK",
+            Self::HangingPlace => "EVENT_KIND_HANGING_PLACE",
+            Self::HopperInventorySearch => "EVENT_KIND_HOPPER_INVENTORY_SEARCH",
+            Self::HorseJump => "EVENT_KIND_HORSE_JUMP",
+            Self::InventoryCreative => "EVENT_KIND_INVENTORY_CREATIVE",
+            Self::InventoryDrag => "EVENT_KIND_INVENTORY_DRAG",
+            Self::InventoryMoveItem => "EVENT_KIND_INVENTORY_MOVE_ITEM",
+            Self::InventoryOpen => "EVENT_KIND_INVENTORY_OPEN",
+            Self::InventoryPickupItem => "EVENT_KIND_INVENTORY_PICKUP_ITEM",
+            Self::ItemDespawn => "EVENT_KIND_ITEM_DESPAWN",
+            Self::ItemMerge => "EVENT_KIND_ITEM_MERGE",
+            Self::ItemSpawn => "EVENT_KIND_ITEM_SPAWN",
+            Self::LeavesDecay => "EVENT_KIND_LEAVES_DECAY",
+            Self::LightningStrike => "EVENT_KIND_LIGHTNING_STRIKE",
+            Self::LingeringPotionSplash => "EVENT_KIND_LINGERING_POTION_SPLASH",
+            Self::LootGenerate => "EVENT_KIND_LOOT_GENERATE",
+            Self::MapInitialize => "EVENT_KIND_MAP_INITIALIZE",
+            Self::MoistureChange => "EVENT_KIND_MOISTURE_CHANGE",
+            Self::NotePlay => "EVENT_KIND_NOTE_PLAY",
+            Self::PigZap => "EVENT_KIND_PIG_ZAP",
+            Self::PigZombieAnger => "EVENT_KIND_PIG_ZOMBIE_ANGER",
+            Self::PiglinBarter => "EVENT_KIND_PIGLIN_BARTER",
+            Self::PlayerAdvancementCriterionGrant => {
+                "EVENT_KIND_PLAYER_ADVANCEMENT_CRITERION_GRANT"
+            }
+            Self::PlayerAdvancementDone => "EVENT_KIND_PLAYER_ADVANCEMENT_DONE",
+            Self::PlayerAnimation => "EVENT_KIND_PLAYER_ANIMATION",
+            Self::PlayerArmorStandManipulate => {
+                "EVENT_KIND_PLAYER_ARMOR_STAND_MANIPULATE"
+            }
+            Self::PlayerBedEnter => "EVENT_KIND_PLAYER_BED_ENTER",
+            Self::PlayerBedLeave => "EVENT_KIND_PLAYER_BED_LEAVE",
+            Self::PlayerBucketEmpty => "EVENT_KIND_PLAYER_BUCKET_EMPTY",
+            Self::PlayerBucketEntity => "EVENT_KIND_PLAYER_BUCKET_ENTITY",
+            Self::PlayerBucketFill => "EVENT_KIND_PLAYER_BUCKET_FILL",
+            Self::PlayerChangedMainHand => "EVENT_KIND_PLAYER_CHANGED_MAIN_HAND",
+            Self::PlayerChangedWorld => "EVENT_KIND_PLAYER_CHANGED_WORLD",
+            Self::PlayerCommandPreprocess => "EVENT_KIND_PLAYER_COMMAND_PREPROCESS",
+            Self::PlayerCommandSend => "EVENT_KIND_PLAYER_COMMAND_SEND",
+            Self::PlayerCustomClick => "EVENT_KIND_PLAYER_CUSTOM_CLICK",
+            Self::PlayerDeath => "EVENT_KIND_PLAYER_DEATH",
+            Self::PlayerDropItem => "EVENT_KIND_PLAYER_DROP_ITEM",
+            Self::PlayerEditBook => "EVENT_KIND_PLAYER_EDIT_BOOK",
+            Self::PlayerEggThrow => "EVENT_KIND_PLAYER_EGG_THROW",
+            Self::PlayerExpChange => "EVENT_KIND_PLAYER_EXP_CHANGE",
+            Self::PlayerExpCooldownChange => "EVENT_KIND_PLAYER_EXP_COOLDOWN_CHANGE",
+            Self::PlayerFish => "EVENT_KIND_PLAYER_FISH",
+            Self::PlayerGameModeChange => "EVENT_KIND_PLAYER_GAME_MODE_CHANGE",
+            Self::PlayerHarvestBlock => "EVENT_KIND_PLAYER_HARVEST_BLOCK",
+            Self::PlayerHideEntity => "EVENT_KIND_PLAYER_HIDE_ENTITY",
+            Self::PlayerInput => "EVENT_KIND_PLAYER_INPUT",
+            Self::PlayerInteractAtEntity => "EVENT_KIND_PLAYER_INTERACT_AT_ENTITY",
+            Self::PlayerInteractEntity => "EVENT_KIND_PLAYER_INTERACT_ENTITY",
+            Self::PlayerInteract => "EVENT_KIND_PLAYER_INTERACT",
+            Self::PlayerItemBreak => "EVENT_KIND_PLAYER_ITEM_BREAK",
+            Self::PlayerItemConsume => "EVENT_KIND_PLAYER_ITEM_CONSUME",
+            Self::PlayerItemDamage => "EVENT_KIND_PLAYER_ITEM_DAMAGE",
+            Self::PlayerItemHeld => "EVENT_KIND_PLAYER_ITEM_HELD",
+            Self::PlayerItemMend => "EVENT_KIND_PLAYER_ITEM_MEND",
+            Self::PlayerKick => "EVENT_KIND_PLAYER_KICK",
+            Self::PlayerLeashEntity => "EVENT_KIND_PLAYER_LEASH_ENTITY",
+            Self::PlayerLevelChange => "EVENT_KIND_PLAYER_LEVEL_CHANGE",
+            Self::PlayerLinksSend => "EVENT_KIND_PLAYER_LINKS_SEND",
+            Self::PlayerLocaleChange => "EVENT_KIND_PLAYER_LOCALE_CHANGE",
+            Self::PlayerLogin => "EVENT_KIND_PLAYER_LOGIN",
+            Self::PlayerPickupArrow => "EVENT_KIND_PLAYER_PICKUP_ARROW",
+            Self::PlayerPortal => "EVENT_KIND_PLAYER_PORTAL",
+            Self::PlayerRecipeBookClick => "EVENT_KIND_PLAYER_RECIPE_BOOK_CLICK",
+            Self::PlayerRecipeBookSettingsChange => {
+                "EVENT_KIND_PLAYER_RECIPE_BOOK_SETTINGS_CHANGE"
+            }
+            Self::PlayerRecipeDiscover => "EVENT_KIND_PLAYER_RECIPE_DISCOVER",
+            Self::PlayerResourcePackStatus => "EVENT_KIND_PLAYER_RESOURCE_PACK_STATUS",
+            Self::PlayerRespawn => "EVENT_KIND_PLAYER_RESPAWN",
+            Self::PlayerRiptide => "EVENT_KIND_PLAYER_RIPTIDE",
+            Self::PlayerShearEntity => "EVENT_KIND_PLAYER_SHEAR_ENTITY",
+            Self::PlayerShowEntity => "EVENT_KIND_PLAYER_SHOW_ENTITY",
+            Self::PlayerSignOpen => "EVENT_KIND_PLAYER_SIGN_OPEN",
+            Self::PlayerSpawnChange => "EVENT_KIND_PLAYER_SPAWN_CHANGE",
+            Self::PlayerStatisticIncrement => "EVENT_KIND_PLAYER_STATISTIC_INCREMENT",
+            Self::PlayerSwapHandItems => "EVENT_KIND_PLAYER_SWAP_HAND_ITEMS",
+            Self::PlayerTakeLecternBook => "EVENT_KIND_PLAYER_TAKE_LECTERN_BOOK",
+            Self::PlayerTeleport => "EVENT_KIND_PLAYER_TELEPORT",
+            Self::PlayerToggleFlight => "EVENT_KIND_PLAYER_TOGGLE_FLIGHT",
+            Self::PlayerToggleSneak => "EVENT_KIND_PLAYER_TOGGLE_SNEAK",
+            Self::PlayerToggleSprint => "EVENT_KIND_PLAYER_TOGGLE_SPRINT",
+            Self::PlayerUnleashEntity => "EVENT_KIND_PLAYER_UNLEASH_ENTITY",
+            Self::PlayerVelocity => "EVENT_KIND_PLAYER_VELOCITY",
+            Self::PluginDisable => "EVENT_KIND_PLUGIN_DISABLE",
+            Self::PluginEnable => "EVENT_KIND_PLUGIN_ENABLE",
+            Self::PortalCreate => "EVENT_KIND_PORTAL_CREATE",
+            Self::PotionSplash => "EVENT_KIND_POTION_SPLASH",
+            Self::PrepareAnvil => "EVENT_KIND_PREPARE_ANVIL",
+            Self::PrepareGrindstone => "EVENT_KIND_PREPARE_GRINDSTONE",
+            Self::PrepareItemCraft => "EVENT_KIND_PREPARE_ITEM_CRAFT",
+            Self::PrepareItemEnchant => "EVENT_KIND_PREPARE_ITEM_ENCHANT",
+            Self::PrepareSmithing => "EVENT_KIND_PREPARE_SMITHING",
+            Self::ProjectileHit => "EVENT_KIND_PROJECTILE_HIT",
+            Self::ProjectileLaunch => "EVENT_KIND_PROJECTILE_LAUNCH",
+            Self::RaidFinish => "EVENT_KIND_RAID_FINISH",
+            Self::RaidSpawnWave => "EVENT_KIND_RAID_SPAWN_WAVE",
+            Self::RaidStop => "EVENT_KIND_RAID_STOP",
+            Self::RaidTrigger => "EVENT_KIND_RAID_TRIGGER",
+            Self::RemoteServerCommand => "EVENT_KIND_REMOTE_SERVER_COMMAND",
+            Self::SculkBloom => "EVENT_KIND_SCULK_BLOOM",
+            Self::ServerCommand => "EVENT_KIND_SERVER_COMMAND",
+            Self::ServerListPing => "EVENT_KIND_SERVER_LIST_PING",
+            Self::ServerLoad => "EVENT_KIND_SERVER_LOAD",
+            Self::SheepDyeWool => "EVENT_KIND_SHEEP_DYE_WOOL",
+            Self::SheepRegrowWool => "EVENT_KIND_SHEEP_REGROW_WOOL",
+            Self::SignChange => "EVENT_KIND_SIGN_CHANGE",
+            Self::SmithItem => "EVENT_KIND_SMITH_ITEM",
+            Self::SpawnChange => "EVENT_KIND_SPAWN_CHANGE",
+            Self::SpawnerSpawn => "EVENT_KIND_SPAWNER_SPAWN",
+            Self::SpongeAbsorb => "EVENT_KIND_SPONGE_ABSORB",
+            Self::StriderTemperatureChange => "EVENT_KIND_STRIDER_TEMPERATURE_CHANGE",
+            Self::StructureGrow => "EVENT_KIND_STRUCTURE_GROW",
+            Self::TntPrime => "EVENT_KIND_TNT_PRIME",
+            Self::TabComplete => "EVENT_KIND_TAB_COMPLETE",
+            Self::ThunderChange => "EVENT_KIND_THUNDER_CHANGE",
+            Self::TimeSkip => "EVENT_KIND_TIME_SKIP",
+            Self::TradeSelect => "EVENT_KIND_TRADE_SELECT",
+            Self::TrialSpawnerSpawn => "EVENT_KIND_TRIAL_SPAWNER_SPAWN",
+            Self::VaultDisplayItem => "EVENT_KIND_VAULT_DISPLAY_ITEM",
+            Self::VehicleBlockCollision => "EVENT_KIND_VEHICLE_BLOCK_COLLISION",
+            Self::VehicleCreate => "EVENT_KIND_VEHICLE_CREATE",
+            Self::VehicleDamage => "EVENT_KIND_VEHICLE_DAMAGE",
+            Self::VehicleDestroy => "EVENT_KIND_VEHICLE_DESTROY",
+            Self::VehicleEnter => "EVENT_KIND_VEHICLE_ENTER",
+            Self::VehicleEntityCollision => "EVENT_KIND_VEHICLE_ENTITY_COLLISION",
+            Self::VehicleExit => "EVENT_KIND_VEHICLE_EXIT",
+            Self::VehicleMove => "EVENT_KIND_VEHICLE_MOVE",
+            Self::VehicleUpdate => "EVENT_KIND_VEHICLE_UPDATE",
+            Self::VillagerAcquireTrade => "EVENT_KIND_VILLAGER_ACQUIRE_TRADE",
+            Self::VillagerCareerChange => "EVENT_KIND_VILLAGER_CAREER_CHANGE",
+            Self::VillagerReplenishTrade => "EVENT_KIND_VILLAGER_REPLENISH_TRADE",
+            Self::VillagerReputationChange => "EVENT_KIND_VILLAGER_REPUTATION_CHANGE",
+            Self::WeatherChange => "EVENT_KIND_WEATHER_CHANGE",
+            Self::WorldInit => "EVENT_KIND_WORLD_INIT",
+            Self::WorldLoad => "EVENT_KIND_WORLD_LOAD",
+            Self::WorldSave => "EVENT_KIND_WORLD_SAVE",
+            Self::WorldUnload => "EVENT_KIND_WORLD_UNLOAD",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EVENT_KIND_UNSPECIFIED" => Some(Self::Unspecified),
+            "EVENT_KIND_PLAYER_JOIN" => Some(Self::PlayerJoin),
+            "EVENT_KIND_PLAYER_LEAVE" => Some(Self::PlayerLeave),
+            "EVENT_KIND_PLAYER_MOVE" => Some(Self::PlayerMove),
+            "EVENT_KIND_INVENTORY_CLICK" => Some(Self::InventoryClick),
+            "EVENT_KIND_INVENTORY_CLOSE" => Some(Self::InventoryClose),
+            "EVENT_KIND_AREA_EFFECT_CLOUD_APPLY" => Some(Self::AreaEffectCloudApply),
+            "EVENT_KIND_ARROW_BODY_COUNT_CHANGE" => Some(Self::ArrowBodyCountChange),
+            "EVENT_KIND_ASYNC_PLAYER_CHAT" => Some(Self::AsyncPlayerChat),
+            "EVENT_KIND_ASYNC_PLAYER_PRE_LOGIN" => Some(Self::AsyncPlayerPreLogin),
+            "EVENT_KIND_ASYNC_STRUCTURE_GENERATE" => Some(Self::AsyncStructureGenerate),
+            "EVENT_KIND_ASYNC_STRUCTURE_SPAWN" => Some(Self::AsyncStructureSpawn),
+            "EVENT_KIND_BAT_TOGGLE_SLEEP" => Some(Self::BatToggleSleep),
+            "EVENT_KIND_BELL_RESONATE" => Some(Self::BellResonate),
+            "EVENT_KIND_BELL_RING" => Some(Self::BellRing),
+            "EVENT_KIND_BLOCK_BREAK" => Some(Self::BlockBreak),
+            "EVENT_KIND_BLOCK_BRUSH" => Some(Self::BlockBrush),
+            "EVENT_KIND_BLOCK_BURN" => Some(Self::BlockBurn),
+            "EVENT_KIND_BLOCK_CAN_BUILD" => Some(Self::BlockCanBuild),
+            "EVENT_KIND_BLOCK_COOK" => Some(Self::BlockCook),
+            "EVENT_KIND_BLOCK_DAMAGE_ABORT" => Some(Self::BlockDamageAbort),
+            "EVENT_KIND_BLOCK_DAMAGE" => Some(Self::BlockDamage),
+            "EVENT_KIND_BLOCK_DISPENSE_ARMOR" => Some(Self::BlockDispenseArmor),
+            "EVENT_KIND_BLOCK_DISPENSE" => Some(Self::BlockDispense),
+            "EVENT_KIND_BLOCK_DISPENSE_LOOT" => Some(Self::BlockDispenseLoot),
+            "EVENT_KIND_BLOCK_DROP_ITEM" => Some(Self::BlockDropItem),
+            "EVENT_KIND_BLOCK_EXP" => Some(Self::BlockExp),
+            "EVENT_KIND_BLOCK_EXPLODE" => Some(Self::BlockExplode),
+            "EVENT_KIND_BLOCK_FADE" => Some(Self::BlockFade),
+            "EVENT_KIND_BLOCK_FERTILIZE" => Some(Self::BlockFertilize),
+            "EVENT_KIND_BLOCK_FORM" => Some(Self::BlockForm),
+            "EVENT_KIND_BLOCK_FROM_TO" => Some(Self::BlockFromTo),
+            "EVENT_KIND_BLOCK_GROW" => Some(Self::BlockGrow),
+            "EVENT_KIND_BLOCK_IGNITE" => Some(Self::BlockIgnite),
+            "EVENT_KIND_BLOCK_MULTI_PLACE" => Some(Self::BlockMultiPlace),
+            "EVENT_KIND_BLOCK_PHYSICS" => Some(Self::BlockPhysics),
+            "EVENT_KIND_BLOCK_PISTON_EXTEND" => Some(Self::BlockPistonExtend),
+            "EVENT_KIND_BLOCK_PISTON_RETRACT" => Some(Self::BlockPistonRetract),
+            "EVENT_KIND_BLOCK_PLACE" => Some(Self::BlockPlace),
+            "EVENT_KIND_BLOCK_RECEIVE_GAME" => Some(Self::BlockReceiveGame),
+            "EVENT_KIND_BLOCK_REDSTONE" => Some(Self::BlockRedstone),
+            "EVENT_KIND_BLOCK_SHEAR_ENTITY" => Some(Self::BlockShearEntity),
+            "EVENT_KIND_BLOCK_SPREAD" => Some(Self::BlockSpread),
+            "EVENT_KIND_BREW" => Some(Self::Brew),
+            "EVENT_KIND_BREWING_STAND_FUEL" => Some(Self::BrewingStandFuel),
+            "EVENT_KIND_BREWING_START" => Some(Self::BrewingStart),
+            "EVENT_KIND_BROADCAST_MESSAGE" => Some(Self::BroadcastMessage),
+            "EVENT_KIND_CAMPFIRE_START" => Some(Self::CampfireStart),
+            "EVENT_KIND_CAULDRON_LEVEL_CHANGE" => Some(Self::CauldronLevelChange),
+            "EVENT_KIND_CHUNK_LOAD" => Some(Self::ChunkLoad),
+            "EVENT_KIND_CHUNK_POPULATE" => Some(Self::ChunkPopulate),
+            "EVENT_KIND_CHUNK_UNLOAD" => Some(Self::ChunkUnload),
+            "EVENT_KIND_CRAFT_ITEM" => Some(Self::CraftItem),
+            "EVENT_KIND_CRAFTER_CRAFT" => Some(Self::CrafterCraft),
+            "EVENT_KIND_CREATURE_SPAWN" => Some(Self::CreatureSpawn),
+            "EVENT_KIND_CREEPER_POWER" => Some(Self::CreeperPower),
+            "EVENT_KIND_CUBE_MOB_SPLIT" => Some(Self::CubeMobSplit),
+            "EVENT_KIND_ENCHANT_ITEM" => Some(Self::EnchantItem),
+            "EVENT_KIND_ENDER_DRAGON_CHANGE_PHASE" => Some(Self::EnderDragonChangePhase),
+            "EVENT_KIND_ENTITIES_LOAD" => Some(Self::EntitiesLoad),
+            "EVENT_KIND_ENTITIES_UNLOAD" => Some(Self::EntitiesUnload),
+            "EVENT_KIND_ENTITY_AIR_CHANGE" => Some(Self::EntityAirChange),
+            "EVENT_KIND_ENTITY_BLOCK_FORM" => Some(Self::EntityBlockForm),
+            "EVENT_KIND_ENTITY_BREAK_DOOR" => Some(Self::EntityBreakDoor),
+            "EVENT_KIND_ENTITY_BREED" => Some(Self::EntityBreed),
+            "EVENT_KIND_ENTITY_CHANGE_BLOCK" => Some(Self::EntityChangeBlock),
+            "EVENT_KIND_ENTITY_COMBUST_BY_BLOCK" => Some(Self::EntityCombustByBlock),
+            "EVENT_KIND_ENTITY_COMBUST_BY_ENTITY" => Some(Self::EntityCombustByEntity),
+            "EVENT_KIND_ENTITY_COMBUST" => Some(Self::EntityCombust),
+            "EVENT_KIND_ENTITY_DAMAGE_BY_BLOCK" => Some(Self::EntityDamageByBlock),
+            "EVENT_KIND_ENTITY_DAMAGE_BY_ENTITY" => Some(Self::EntityDamageByEntity),
+            "EVENT_KIND_ENTITY_DAMAGE" => Some(Self::EntityDamage),
+            "EVENT_KIND_ENTITY_DEATH" => Some(Self::EntityDeath),
+            "EVENT_KIND_ENTITY_DISMOUNT" => Some(Self::EntityDismount),
+            "EVENT_KIND_ENTITY_DROP_ITEM" => Some(Self::EntityDropItem),
+            "EVENT_KIND_ENTITY_ENTER_BLOCK" => Some(Self::EntityEnterBlock),
+            "EVENT_KIND_ENTITY_ENTER_LOVE_MODE" => Some(Self::EntityEnterLoveMode),
+            "EVENT_KIND_ENTITY_EXHAUSTION" => Some(Self::EntityExhaustion),
+            "EVENT_KIND_ENTITY_EXPLODE" => Some(Self::EntityExplode),
+            "EVENT_KIND_ENTITY_INTERACT" => Some(Self::EntityInteract),
+            "EVENT_KIND_ENTITY_KNOCKBACK_BY_ENTITY" => {
+                Some(Self::EntityKnockbackByEntity)
+            }
+            "EVENT_KIND_ENTITY_KNOCKBACK" => Some(Self::EntityKnockback),
+            "EVENT_KIND_ENTITY_MOUNT" => Some(Self::EntityMount),
+            "EVENT_KIND_ENTITY_PICKUP_ITEM" => Some(Self::EntityPickupItem),
+            "EVENT_KIND_ENTITY_PLACE" => Some(Self::EntityPlace),
+            "EVENT_KIND_ENTITY_PORTAL_ENTER" => Some(Self::EntityPortalEnter),
+            "EVENT_KIND_ENTITY_PORTAL" => Some(Self::EntityPortal),
+            "EVENT_KIND_ENTITY_PORTAL_EXIT" => Some(Self::EntityPortalExit),
+            "EVENT_KIND_ENTITY_POSE_CHANGE" => Some(Self::EntityPoseChange),
+            "EVENT_KIND_ENTITY_POTION_EFFECT" => Some(Self::EntityPotionEffect),
+            "EVENT_KIND_ENTITY_REGAIN_HEALTH" => Some(Self::EntityRegainHealth),
+            "EVENT_KIND_ENTITY_REMOVE" => Some(Self::EntityRemove),
+            "EVENT_KIND_ENTITY_RESURRECT" => Some(Self::EntityResurrect),
+            "EVENT_KIND_ENTITY_SHOOT_BOW" => Some(Self::EntityShootBow),
+            "EVENT_KIND_ENTITY_SPAWN" => Some(Self::EntitySpawn),
+            "EVENT_KIND_ENTITY_SPELL_CAST" => Some(Self::EntitySpellCast),
+            "EVENT_KIND_ENTITY_TAME" => Some(Self::EntityTame),
+            "EVENT_KIND_ENTITY_TARGET_BLOCK" => Some(Self::EntityTargetBlock),
+            "EVENT_KIND_ENTITY_TARGET" => Some(Self::EntityTarget),
+            "EVENT_KIND_ENTITY_TARGET_LIVING_ENTITY" => {
+                Some(Self::EntityTargetLivingEntity)
+            }
+            "EVENT_KIND_ENTITY_TELEPORT" => Some(Self::EntityTeleport),
+            "EVENT_KIND_ENTITY_TOGGLE_GLIDE" => Some(Self::EntityToggleGlide),
+            "EVENT_KIND_ENTITY_TOGGLE_SWIM" => Some(Self::EntityToggleSwim),
+            "EVENT_KIND_ENTITY_TRANSFORM" => Some(Self::EntityTransform),
+            "EVENT_KIND_ENTITY_UNLEASH" => Some(Self::EntityUnleash),
+            "EVENT_KIND_EXP_BOTTLE" => Some(Self::ExpBottle),
+            "EVENT_KIND_EXPLOSION_PRIME" => Some(Self::ExplosionPrime),
+            "EVENT_KIND_FIREWORK_EXPLODE" => Some(Self::FireworkExplode),
+            "EVENT_KIND_FLUID_LEVEL_CHANGE" => Some(Self::FluidLevelChange),
+            "EVENT_KIND_FOOD_LEVEL_CHANGE" => Some(Self::FoodLevelChange),
+            "EVENT_KIND_FURNACE_BURN" => Some(Self::FurnaceBurn),
+            "EVENT_KIND_FURNACE_EXTRACT" => Some(Self::FurnaceExtract),
+            "EVENT_KIND_FURNACE_SMELT" => Some(Self::FurnaceSmelt),
+            "EVENT_KIND_FURNACE_START_SMELT" => Some(Self::FurnaceStartSmelt),
+            "EVENT_KIND_GENERIC_GAME" => Some(Self::GenericGame),
+            "EVENT_KIND_HANGING_BREAK_BY_ENTITY" => Some(Self::HangingBreakByEntity),
+            "EVENT_KIND_HANGING_BREAK" => Some(Self::HangingBreak),
+            "EVENT_KIND_HANGING_PLACE" => Some(Self::HangingPlace),
+            "EVENT_KIND_HOPPER_INVENTORY_SEARCH" => Some(Self::HopperInventorySearch),
+            "EVENT_KIND_HORSE_JUMP" => Some(Self::HorseJump),
+            "EVENT_KIND_INVENTORY_CREATIVE" => Some(Self::InventoryCreative),
+            "EVENT_KIND_INVENTORY_DRAG" => Some(Self::InventoryDrag),
+            "EVENT_KIND_INVENTORY_MOVE_ITEM" => Some(Self::InventoryMoveItem),
+            "EVENT_KIND_INVENTORY_OPEN" => Some(Self::InventoryOpen),
+            "EVENT_KIND_INVENTORY_PICKUP_ITEM" => Some(Self::InventoryPickupItem),
+            "EVENT_KIND_ITEM_DESPAWN" => Some(Self::ItemDespawn),
+            "EVENT_KIND_ITEM_MERGE" => Some(Self::ItemMerge),
+            "EVENT_KIND_ITEM_SPAWN" => Some(Self::ItemSpawn),
+            "EVENT_KIND_LEAVES_DECAY" => Some(Self::LeavesDecay),
+            "EVENT_KIND_LIGHTNING_STRIKE" => Some(Self::LightningStrike),
+            "EVENT_KIND_LINGERING_POTION_SPLASH" => Some(Self::LingeringPotionSplash),
+            "EVENT_KIND_LOOT_GENERATE" => Some(Self::LootGenerate),
+            "EVENT_KIND_MAP_INITIALIZE" => Some(Self::MapInitialize),
+            "EVENT_KIND_MOISTURE_CHANGE" => Some(Self::MoistureChange),
+            "EVENT_KIND_NOTE_PLAY" => Some(Self::NotePlay),
+            "EVENT_KIND_PIG_ZAP" => Some(Self::PigZap),
+            "EVENT_KIND_PIG_ZOMBIE_ANGER" => Some(Self::PigZombieAnger),
+            "EVENT_KIND_PIGLIN_BARTER" => Some(Self::PiglinBarter),
+            "EVENT_KIND_PLAYER_ADVANCEMENT_CRITERION_GRANT" => {
+                Some(Self::PlayerAdvancementCriterionGrant)
+            }
+            "EVENT_KIND_PLAYER_ADVANCEMENT_DONE" => Some(Self::PlayerAdvancementDone),
+            "EVENT_KIND_PLAYER_ANIMATION" => Some(Self::PlayerAnimation),
+            "EVENT_KIND_PLAYER_ARMOR_STAND_MANIPULATE" => {
+                Some(Self::PlayerArmorStandManipulate)
+            }
+            "EVENT_KIND_PLAYER_BED_ENTER" => Some(Self::PlayerBedEnter),
+            "EVENT_KIND_PLAYER_BED_LEAVE" => Some(Self::PlayerBedLeave),
+            "EVENT_KIND_PLAYER_BUCKET_EMPTY" => Some(Self::PlayerBucketEmpty),
+            "EVENT_KIND_PLAYER_BUCKET_ENTITY" => Some(Self::PlayerBucketEntity),
+            "EVENT_KIND_PLAYER_BUCKET_FILL" => Some(Self::PlayerBucketFill),
+            "EVENT_KIND_PLAYER_CHANGED_MAIN_HAND" => Some(Self::PlayerChangedMainHand),
+            "EVENT_KIND_PLAYER_CHANGED_WORLD" => Some(Self::PlayerChangedWorld),
+            "EVENT_KIND_PLAYER_COMMAND_PREPROCESS" => Some(Self::PlayerCommandPreprocess),
+            "EVENT_KIND_PLAYER_COMMAND_SEND" => Some(Self::PlayerCommandSend),
+            "EVENT_KIND_PLAYER_CUSTOM_CLICK" => Some(Self::PlayerCustomClick),
+            "EVENT_KIND_PLAYER_DEATH" => Some(Self::PlayerDeath),
+            "EVENT_KIND_PLAYER_DROP_ITEM" => Some(Self::PlayerDropItem),
+            "EVENT_KIND_PLAYER_EDIT_BOOK" => Some(Self::PlayerEditBook),
+            "EVENT_KIND_PLAYER_EGG_THROW" => Some(Self::PlayerEggThrow),
+            "EVENT_KIND_PLAYER_EXP_CHANGE" => Some(Self::PlayerExpChange),
+            "EVENT_KIND_PLAYER_EXP_COOLDOWN_CHANGE" => {
+                Some(Self::PlayerExpCooldownChange)
+            }
+            "EVENT_KIND_PLAYER_FISH" => Some(Self::PlayerFish),
+            "EVENT_KIND_PLAYER_GAME_MODE_CHANGE" => Some(Self::PlayerGameModeChange),
+            "EVENT_KIND_PLAYER_HARVEST_BLOCK" => Some(Self::PlayerHarvestBlock),
+            "EVENT_KIND_PLAYER_HIDE_ENTITY" => Some(Self::PlayerHideEntity),
+            "EVENT_KIND_PLAYER_INPUT" => Some(Self::PlayerInput),
+            "EVENT_KIND_PLAYER_INTERACT_AT_ENTITY" => Some(Self::PlayerInteractAtEntity),
+            "EVENT_KIND_PLAYER_INTERACT_ENTITY" => Some(Self::PlayerInteractEntity),
+            "EVENT_KIND_PLAYER_INTERACT" => Some(Self::PlayerInteract),
+            "EVENT_KIND_PLAYER_ITEM_BREAK" => Some(Self::PlayerItemBreak),
+            "EVENT_KIND_PLAYER_ITEM_CONSUME" => Some(Self::PlayerItemConsume),
+            "EVENT_KIND_PLAYER_ITEM_DAMAGE" => Some(Self::PlayerItemDamage),
+            "EVENT_KIND_PLAYER_ITEM_HELD" => Some(Self::PlayerItemHeld),
+            "EVENT_KIND_PLAYER_ITEM_MEND" => Some(Self::PlayerItemMend),
+            "EVENT_KIND_PLAYER_KICK" => Some(Self::PlayerKick),
+            "EVENT_KIND_PLAYER_LEASH_ENTITY" => Some(Self::PlayerLeashEntity),
+            "EVENT_KIND_PLAYER_LEVEL_CHANGE" => Some(Self::PlayerLevelChange),
+            "EVENT_KIND_PLAYER_LINKS_SEND" => Some(Self::PlayerLinksSend),
+            "EVENT_KIND_PLAYER_LOCALE_CHANGE" => Some(Self::PlayerLocaleChange),
+            "EVENT_KIND_PLAYER_LOGIN" => Some(Self::PlayerLogin),
+            "EVENT_KIND_PLAYER_PICKUP_ARROW" => Some(Self::PlayerPickupArrow),
+            "EVENT_KIND_PLAYER_PORTAL" => Some(Self::PlayerPortal),
+            "EVENT_KIND_PLAYER_RECIPE_BOOK_CLICK" => Some(Self::PlayerRecipeBookClick),
+            "EVENT_KIND_PLAYER_RECIPE_BOOK_SETTINGS_CHANGE" => {
+                Some(Self::PlayerRecipeBookSettingsChange)
+            }
+            "EVENT_KIND_PLAYER_RECIPE_DISCOVER" => Some(Self::PlayerRecipeDiscover),
+            "EVENT_KIND_PLAYER_RESOURCE_PACK_STATUS" => {
+                Some(Self::PlayerResourcePackStatus)
+            }
+            "EVENT_KIND_PLAYER_RESPAWN" => Some(Self::PlayerRespawn),
+            "EVENT_KIND_PLAYER_RIPTIDE" => Some(Self::PlayerRiptide),
+            "EVENT_KIND_PLAYER_SHEAR_ENTITY" => Some(Self::PlayerShearEntity),
+            "EVENT_KIND_PLAYER_SHOW_ENTITY" => Some(Self::PlayerShowEntity),
+            "EVENT_KIND_PLAYER_SIGN_OPEN" => Some(Self::PlayerSignOpen),
+            "EVENT_KIND_PLAYER_SPAWN_CHANGE" => Some(Self::PlayerSpawnChange),
+            "EVENT_KIND_PLAYER_STATISTIC_INCREMENT" => {
+                Some(Self::PlayerStatisticIncrement)
+            }
+            "EVENT_KIND_PLAYER_SWAP_HAND_ITEMS" => Some(Self::PlayerSwapHandItems),
+            "EVENT_KIND_PLAYER_TAKE_LECTERN_BOOK" => Some(Self::PlayerTakeLecternBook),
+            "EVENT_KIND_PLAYER_TELEPORT" => Some(Self::PlayerTeleport),
+            "EVENT_KIND_PLAYER_TOGGLE_FLIGHT" => Some(Self::PlayerToggleFlight),
+            "EVENT_KIND_PLAYER_TOGGLE_SNEAK" => Some(Self::PlayerToggleSneak),
+            "EVENT_KIND_PLAYER_TOGGLE_SPRINT" => Some(Self::PlayerToggleSprint),
+            "EVENT_KIND_PLAYER_UNLEASH_ENTITY" => Some(Self::PlayerUnleashEntity),
+            "EVENT_KIND_PLAYER_VELOCITY" => Some(Self::PlayerVelocity),
+            "EVENT_KIND_PLUGIN_DISABLE" => Some(Self::PluginDisable),
+            "EVENT_KIND_PLUGIN_ENABLE" => Some(Self::PluginEnable),
+            "EVENT_KIND_PORTAL_CREATE" => Some(Self::PortalCreate),
+            "EVENT_KIND_POTION_SPLASH" => Some(Self::PotionSplash),
+            "EVENT_KIND_PREPARE_ANVIL" => Some(Self::PrepareAnvil),
+            "EVENT_KIND_PREPARE_GRINDSTONE" => Some(Self::PrepareGrindstone),
+            "EVENT_KIND_PREPARE_ITEM_CRAFT" => Some(Self::PrepareItemCraft),
+            "EVENT_KIND_PREPARE_ITEM_ENCHANT" => Some(Self::PrepareItemEnchant),
+            "EVENT_KIND_PREPARE_SMITHING" => Some(Self::PrepareSmithing),
+            "EVENT_KIND_PROJECTILE_HIT" => Some(Self::ProjectileHit),
+            "EVENT_KIND_PROJECTILE_LAUNCH" => Some(Self::ProjectileLaunch),
+            "EVENT_KIND_RAID_FINISH" => Some(Self::RaidFinish),
+            "EVENT_KIND_RAID_SPAWN_WAVE" => Some(Self::RaidSpawnWave),
+            "EVENT_KIND_RAID_STOP" => Some(Self::RaidStop),
+            "EVENT_KIND_RAID_TRIGGER" => Some(Self::RaidTrigger),
+            "EVENT_KIND_REMOTE_SERVER_COMMAND" => Some(Self::RemoteServerCommand),
+            "EVENT_KIND_SCULK_BLOOM" => Some(Self::SculkBloom),
+            "EVENT_KIND_SERVER_COMMAND" => Some(Self::ServerCommand),
+            "EVENT_KIND_SERVER_LIST_PING" => Some(Self::ServerListPing),
+            "EVENT_KIND_SERVER_LOAD" => Some(Self::ServerLoad),
+            "EVENT_KIND_SHEEP_DYE_WOOL" => Some(Self::SheepDyeWool),
+            "EVENT_KIND_SHEEP_REGROW_WOOL" => Some(Self::SheepRegrowWool),
+            "EVENT_KIND_SIGN_CHANGE" => Some(Self::SignChange),
+            "EVENT_KIND_SMITH_ITEM" => Some(Self::SmithItem),
+            "EVENT_KIND_SPAWN_CHANGE" => Some(Self::SpawnChange),
+            "EVENT_KIND_SPAWNER_SPAWN" => Some(Self::SpawnerSpawn),
+            "EVENT_KIND_SPONGE_ABSORB" => Some(Self::SpongeAbsorb),
+            "EVENT_KIND_STRIDER_TEMPERATURE_CHANGE" => {
+                Some(Self::StriderTemperatureChange)
+            }
+            "EVENT_KIND_STRUCTURE_GROW" => Some(Self::StructureGrow),
+            "EVENT_KIND_TNT_PRIME" => Some(Self::TntPrime),
+            "EVENT_KIND_TAB_COMPLETE" => Some(Self::TabComplete),
+            "EVENT_KIND_THUNDER_CHANGE" => Some(Self::ThunderChange),
+            "EVENT_KIND_TIME_SKIP" => Some(Self::TimeSkip),
+            "EVENT_KIND_TRADE_SELECT" => Some(Self::TradeSelect),
+            "EVENT_KIND_TRIAL_SPAWNER_SPAWN" => Some(Self::TrialSpawnerSpawn),
+            "EVENT_KIND_VAULT_DISPLAY_ITEM" => Some(Self::VaultDisplayItem),
+            "EVENT_KIND_VEHICLE_BLOCK_COLLISION" => Some(Self::VehicleBlockCollision),
+            "EVENT_KIND_VEHICLE_CREATE" => Some(Self::VehicleCreate),
+            "EVENT_KIND_VEHICLE_DAMAGE" => Some(Self::VehicleDamage),
+            "EVENT_KIND_VEHICLE_DESTROY" => Some(Self::VehicleDestroy),
+            "EVENT_KIND_VEHICLE_ENTER" => Some(Self::VehicleEnter),
+            "EVENT_KIND_VEHICLE_ENTITY_COLLISION" => Some(Self::VehicleEntityCollision),
+            "EVENT_KIND_VEHICLE_EXIT" => Some(Self::VehicleExit),
+            "EVENT_KIND_VEHICLE_MOVE" => Some(Self::VehicleMove),
+            "EVENT_KIND_VEHICLE_UPDATE" => Some(Self::VehicleUpdate),
+            "EVENT_KIND_VILLAGER_ACQUIRE_TRADE" => Some(Self::VillagerAcquireTrade),
+            "EVENT_KIND_VILLAGER_CAREER_CHANGE" => Some(Self::VillagerCareerChange),
+            "EVENT_KIND_VILLAGER_REPLENISH_TRADE" => Some(Self::VillagerReplenishTrade),
+            "EVENT_KIND_VILLAGER_REPUTATION_CHANGE" => {
+                Some(Self::VillagerReputationChange)
+            }
+            "EVENT_KIND_WEATHER_CHANGE" => Some(Self::WeatherChange),
+            "EVENT_KIND_WORLD_INIT" => Some(Self::WorldInit),
+            "EVENT_KIND_WORLD_LOAD" => Some(Self::WorldLoad),
+            "EVENT_KIND_WORLD_SAVE" => Some(Self::WorldSave),
+            "EVENT_KIND_WORLD_UNLOAD" => Some(Self::WorldUnload),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Action {
+    Unspecified = 0,
+    LeftClickBlock = 1,
+    RightClickBlock = 2,
+    LeftClickAir = 3,
+    RightClickAir = 4,
+    Physical = 5,
+}
+impl Action {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ACTION_UNSPECIFIED",
+            Self::LeftClickBlock => "ACTION_LEFT_CLICK_BLOCK",
+            Self::RightClickBlock => "ACTION_RIGHT_CLICK_BLOCK",
+            Self::LeftClickAir => "ACTION_LEFT_CLICK_AIR",
+            Self::RightClickAir => "ACTION_RIGHT_CLICK_AIR",
+            Self::Physical => "ACTION_PHYSICAL",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ACTION_UNSPECIFIED" => Some(Self::Unspecified),
+            "ACTION_LEFT_CLICK_BLOCK" => Some(Self::LeftClickBlock),
+            "ACTION_RIGHT_CLICK_BLOCK" => Some(Self::RightClickBlock),
+            "ACTION_LEFT_CLICK_AIR" => Some(Self::LeftClickAir),
+            "ACTION_RIGHT_CLICK_AIR" => Some(Self::RightClickAir),
+            "ACTION_PHYSICAL" => Some(Self::Physical),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AsyncPlayerPreLoginResult {
+    Unspecified = 0,
+    Allowed = 1,
+    KickFull = 2,
+    KickBanned = 3,
+    KickWhitelist = 4,
+    KickOther = 5,
+}
+impl AsyncPlayerPreLoginResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ASYNC_PLAYER_PRE_LOGIN_RESULT_UNSPECIFIED",
+            Self::Allowed => "ASYNC_PLAYER_PRE_LOGIN_RESULT_ALLOWED",
+            Self::KickFull => "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_FULL",
+            Self::KickBanned => "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_BANNED",
+            Self::KickWhitelist => "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_WHITELIST",
+            Self::KickOther => "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_OTHER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_ALLOWED" => Some(Self::Allowed),
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_FULL" => Some(Self::KickFull),
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_BANNED" => Some(Self::KickBanned),
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_WHITELIST" => Some(Self::KickWhitelist),
+            "ASYNC_PLAYER_PRE_LOGIN_RESULT_KICK_OTHER" => Some(Self::KickOther),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AsyncStructureGenerateCause {
+    Unspecified = 0,
+    Command = 1,
+    WorldGeneration = 2,
+    Custom = 3,
+}
+impl AsyncStructureGenerateCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ASYNC_STRUCTURE_GENERATE_CAUSE_UNSPECIFIED",
+            Self::Command => "ASYNC_STRUCTURE_GENERATE_CAUSE_COMMAND",
+            Self::WorldGeneration => "ASYNC_STRUCTURE_GENERATE_CAUSE_WORLD_GENERATION",
+            Self::Custom => "ASYNC_STRUCTURE_GENERATE_CAUSE_CUSTOM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ASYNC_STRUCTURE_GENERATE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ASYNC_STRUCTURE_GENERATE_CAUSE_COMMAND" => Some(Self::Command),
+            "ASYNC_STRUCTURE_GENERATE_CAUSE_WORLD_GENERATION" => {
+                Some(Self::WorldGeneration)
+            }
+            "ASYNC_STRUCTURE_GENERATE_CAUSE_CUSTOM" => Some(Self::Custom),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BlockIgniteCause {
+    Unspecified = 0,
+    Lava = 1,
+    FlintAndSteel = 2,
+    Spread = 3,
+    Lightning = 4,
+    Fireball = 5,
+    EnderCrystal = 6,
+    Explosion = 7,
+    Arrow = 8,
+}
+impl BlockIgniteCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "BLOCK_IGNITE_CAUSE_UNSPECIFIED",
+            Self::Lava => "BLOCK_IGNITE_CAUSE_LAVA",
+            Self::FlintAndSteel => "BLOCK_IGNITE_CAUSE_FLINT_AND_STEEL",
+            Self::Spread => "BLOCK_IGNITE_CAUSE_SPREAD",
+            Self::Lightning => "BLOCK_IGNITE_CAUSE_LIGHTNING",
+            Self::Fireball => "BLOCK_IGNITE_CAUSE_FIREBALL",
+            Self::EnderCrystal => "BLOCK_IGNITE_CAUSE_ENDER_CRYSTAL",
+            Self::Explosion => "BLOCK_IGNITE_CAUSE_EXPLOSION",
+            Self::Arrow => "BLOCK_IGNITE_CAUSE_ARROW",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BLOCK_IGNITE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "BLOCK_IGNITE_CAUSE_LAVA" => Some(Self::Lava),
+            "BLOCK_IGNITE_CAUSE_FLINT_AND_STEEL" => Some(Self::FlintAndSteel),
+            "BLOCK_IGNITE_CAUSE_SPREAD" => Some(Self::Spread),
+            "BLOCK_IGNITE_CAUSE_LIGHTNING" => Some(Self::Lightning),
+            "BLOCK_IGNITE_CAUSE_FIREBALL" => Some(Self::Fireball),
+            "BLOCK_IGNITE_CAUSE_ENDER_CRYSTAL" => Some(Self::EnderCrystal),
+            "BLOCK_IGNITE_CAUSE_EXPLOSION" => Some(Self::Explosion),
+            "BLOCK_IGNITE_CAUSE_ARROW" => Some(Self::Arrow),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CauldronLevelChangeReason {
+    Unspecified = 0,
+    BucketFill = 1,
+    BucketEmpty = 2,
+    BottleFill = 3,
+    BottleEmpty = 4,
+    BannerWash = 5,
+    ArmorWash = 6,
+    ShulkerWash = 7,
+    Extinguish = 8,
+    Evaporate = 9,
+    NaturalFill = 10,
+    Unknown = 11,
+}
+impl CauldronLevelChangeReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CAULDRON_LEVEL_CHANGE_REASON_UNSPECIFIED",
+            Self::BucketFill => "CAULDRON_LEVEL_CHANGE_REASON_BUCKET_FILL",
+            Self::BucketEmpty => "CAULDRON_LEVEL_CHANGE_REASON_BUCKET_EMPTY",
+            Self::BottleFill => "CAULDRON_LEVEL_CHANGE_REASON_BOTTLE_FILL",
+            Self::BottleEmpty => "CAULDRON_LEVEL_CHANGE_REASON_BOTTLE_EMPTY",
+            Self::BannerWash => "CAULDRON_LEVEL_CHANGE_REASON_BANNER_WASH",
+            Self::ArmorWash => "CAULDRON_LEVEL_CHANGE_REASON_ARMOR_WASH",
+            Self::ShulkerWash => "CAULDRON_LEVEL_CHANGE_REASON_SHULKER_WASH",
+            Self::Extinguish => "CAULDRON_LEVEL_CHANGE_REASON_EXTINGUISH",
+            Self::Evaporate => "CAULDRON_LEVEL_CHANGE_REASON_EVAPORATE",
+            Self::NaturalFill => "CAULDRON_LEVEL_CHANGE_REASON_NATURAL_FILL",
+            Self::Unknown => "CAULDRON_LEVEL_CHANGE_REASON_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CAULDRON_LEVEL_CHANGE_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "CAULDRON_LEVEL_CHANGE_REASON_BUCKET_FILL" => Some(Self::BucketFill),
+            "CAULDRON_LEVEL_CHANGE_REASON_BUCKET_EMPTY" => Some(Self::BucketEmpty),
+            "CAULDRON_LEVEL_CHANGE_REASON_BOTTLE_FILL" => Some(Self::BottleFill),
+            "CAULDRON_LEVEL_CHANGE_REASON_BOTTLE_EMPTY" => Some(Self::BottleEmpty),
+            "CAULDRON_LEVEL_CHANGE_REASON_BANNER_WASH" => Some(Self::BannerWash),
+            "CAULDRON_LEVEL_CHANGE_REASON_ARMOR_WASH" => Some(Self::ArmorWash),
+            "CAULDRON_LEVEL_CHANGE_REASON_SHULKER_WASH" => Some(Self::ShulkerWash),
+            "CAULDRON_LEVEL_CHANGE_REASON_EXTINGUISH" => Some(Self::Extinguish),
+            "CAULDRON_LEVEL_CHANGE_REASON_EVAPORATE" => Some(Self::Evaporate),
+            "CAULDRON_LEVEL_CHANGE_REASON_NATURAL_FILL" => Some(Self::NaturalFill),
+            "CAULDRON_LEVEL_CHANGE_REASON_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ClickKind {
+    Unspecified = 0,
+    Left = 1,
+    Right = 2,
+    ShiftLeft = 3,
+    ShiftRight = 4,
+    NumberKey = 5,
+    SwapOffhand = 6,
+    Drop = 7,
+    ControlDrop = 8,
+    DoubleClick = 9,
+    Middle = 10,
+    WindowBorderLeft = 11,
+    WindowBorderRight = 12,
+    Creative = 13,
+    Unknown = 14,
+}
+impl ClickKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CLICK_KIND_UNSPECIFIED",
+            Self::Left => "CLICK_KIND_LEFT",
+            Self::Right => "CLICK_KIND_RIGHT",
+            Self::ShiftLeft => "CLICK_KIND_SHIFT_LEFT",
+            Self::ShiftRight => "CLICK_KIND_SHIFT_RIGHT",
+            Self::NumberKey => "CLICK_KIND_NUMBER_KEY",
+            Self::SwapOffhand => "CLICK_KIND_SWAP_OFFHAND",
+            Self::Drop => "CLICK_KIND_DROP",
+            Self::ControlDrop => "CLICK_KIND_CONTROL_DROP",
+            Self::DoubleClick => "CLICK_KIND_DOUBLE_CLICK",
+            Self::Middle => "CLICK_KIND_MIDDLE",
+            Self::WindowBorderLeft => "CLICK_KIND_WINDOW_BORDER_LEFT",
+            Self::WindowBorderRight => "CLICK_KIND_WINDOW_BORDER_RIGHT",
+            Self::Creative => "CLICK_KIND_CREATIVE",
+            Self::Unknown => "CLICK_KIND_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CLICK_KIND_UNSPECIFIED" => Some(Self::Unspecified),
+            "CLICK_KIND_LEFT" => Some(Self::Left),
+            "CLICK_KIND_RIGHT" => Some(Self::Right),
+            "CLICK_KIND_SHIFT_LEFT" => Some(Self::ShiftLeft),
+            "CLICK_KIND_SHIFT_RIGHT" => Some(Self::ShiftRight),
+            "CLICK_KIND_NUMBER_KEY" => Some(Self::NumberKey),
+            "CLICK_KIND_SWAP_OFFHAND" => Some(Self::SwapOffhand),
+            "CLICK_KIND_DROP" => Some(Self::Drop),
+            "CLICK_KIND_CONTROL_DROP" => Some(Self::ControlDrop),
+            "CLICK_KIND_DOUBLE_CLICK" => Some(Self::DoubleClick),
+            "CLICK_KIND_MIDDLE" => Some(Self::Middle),
+            "CLICK_KIND_WINDOW_BORDER_LEFT" => Some(Self::WindowBorderLeft),
+            "CLICK_KIND_WINDOW_BORDER_RIGHT" => Some(Self::WindowBorderRight),
+            "CLICK_KIND_CREATIVE" => Some(Self::Creative),
+            "CLICK_KIND_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CreatureSpawnReason {
+    Unspecified = 0,
+    Natural = 1,
+    Jockey = 2,
+    ChunkGen = 3,
+    Spawner = 4,
+    TrialSpawner = 5,
+    Egg = 6,
+    SpawnerEgg = 7,
+    Bucket = 8,
+    Lightning = 9,
+    BuildSnowman = 10,
+    BuildIrongolem = 11,
+    BuildCoppergolem = 12,
+    BuildWither = 13,
+    VillageDefense = 14,
+    VillageInvasion = 15,
+    Breeding = 16,
+    SlimeSplit = 17,
+    Reinforcements = 18,
+    NetherPortal = 19,
+    DispenseEgg = 20,
+    Infection = 21,
+    Cured = 22,
+    OcelotBaby = 23,
+    SilverfishBlock = 24,
+    Mount = 25,
+    Trap = 26,
+    EnderPearl = 27,
+    ShoulderEntity = 28,
+    Drowned = 29,
+    Sheared = 30,
+    Explosion = 31,
+    Raid = 32,
+    Patrol = 33,
+    Beehive = 34,
+    PiglinZombified = 35,
+    Spell = 36,
+    Frozen = 37,
+    Metamorphosis = 38,
+    Duplication = 39,
+    Command = 40,
+    Enchantment = 41,
+    PotionEffect = 42,
+    Reanimate = 43,
+    Custom = 44,
+    Default = 45,
+}
+impl CreatureSpawnReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CREATURE_SPAWN_REASON_UNSPECIFIED",
+            Self::Natural => "CREATURE_SPAWN_REASON_NATURAL",
+            Self::Jockey => "CREATURE_SPAWN_REASON_JOCKEY",
+            Self::ChunkGen => "CREATURE_SPAWN_REASON_CHUNK_GEN",
+            Self::Spawner => "CREATURE_SPAWN_REASON_SPAWNER",
+            Self::TrialSpawner => "CREATURE_SPAWN_REASON_TRIAL_SPAWNER",
+            Self::Egg => "CREATURE_SPAWN_REASON_EGG",
+            Self::SpawnerEgg => "CREATURE_SPAWN_REASON_SPAWNER_EGG",
+            Self::Bucket => "CREATURE_SPAWN_REASON_BUCKET",
+            Self::Lightning => "CREATURE_SPAWN_REASON_LIGHTNING",
+            Self::BuildSnowman => "CREATURE_SPAWN_REASON_BUILD_SNOWMAN",
+            Self::BuildIrongolem => "CREATURE_SPAWN_REASON_BUILD_IRONGOLEM",
+            Self::BuildCoppergolem => "CREATURE_SPAWN_REASON_BUILD_COPPERGOLEM",
+            Self::BuildWither => "CREATURE_SPAWN_REASON_BUILD_WITHER",
+            Self::VillageDefense => "CREATURE_SPAWN_REASON_VILLAGE_DEFENSE",
+            Self::VillageInvasion => "CREATURE_SPAWN_REASON_VILLAGE_INVASION",
+            Self::Breeding => "CREATURE_SPAWN_REASON_BREEDING",
+            Self::SlimeSplit => "CREATURE_SPAWN_REASON_SLIME_SPLIT",
+            Self::Reinforcements => "CREATURE_SPAWN_REASON_REINFORCEMENTS",
+            Self::NetherPortal => "CREATURE_SPAWN_REASON_NETHER_PORTAL",
+            Self::DispenseEgg => "CREATURE_SPAWN_REASON_DISPENSE_EGG",
+            Self::Infection => "CREATURE_SPAWN_REASON_INFECTION",
+            Self::Cured => "CREATURE_SPAWN_REASON_CURED",
+            Self::OcelotBaby => "CREATURE_SPAWN_REASON_OCELOT_BABY",
+            Self::SilverfishBlock => "CREATURE_SPAWN_REASON_SILVERFISH_BLOCK",
+            Self::Mount => "CREATURE_SPAWN_REASON_MOUNT",
+            Self::Trap => "CREATURE_SPAWN_REASON_TRAP",
+            Self::EnderPearl => "CREATURE_SPAWN_REASON_ENDER_PEARL",
+            Self::ShoulderEntity => "CREATURE_SPAWN_REASON_SHOULDER_ENTITY",
+            Self::Drowned => "CREATURE_SPAWN_REASON_DROWNED",
+            Self::Sheared => "CREATURE_SPAWN_REASON_SHEARED",
+            Self::Explosion => "CREATURE_SPAWN_REASON_EXPLOSION",
+            Self::Raid => "CREATURE_SPAWN_REASON_RAID",
+            Self::Patrol => "CREATURE_SPAWN_REASON_PATROL",
+            Self::Beehive => "CREATURE_SPAWN_REASON_BEEHIVE",
+            Self::PiglinZombified => "CREATURE_SPAWN_REASON_PIGLIN_ZOMBIFIED",
+            Self::Spell => "CREATURE_SPAWN_REASON_SPELL",
+            Self::Frozen => "CREATURE_SPAWN_REASON_FROZEN",
+            Self::Metamorphosis => "CREATURE_SPAWN_REASON_METAMORPHOSIS",
+            Self::Duplication => "CREATURE_SPAWN_REASON_DUPLICATION",
+            Self::Command => "CREATURE_SPAWN_REASON_COMMAND",
+            Self::Enchantment => "CREATURE_SPAWN_REASON_ENCHANTMENT",
+            Self::PotionEffect => "CREATURE_SPAWN_REASON_POTION_EFFECT",
+            Self::Reanimate => "CREATURE_SPAWN_REASON_REANIMATE",
+            Self::Custom => "CREATURE_SPAWN_REASON_CUSTOM",
+            Self::Default => "CREATURE_SPAWN_REASON_DEFAULT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CREATURE_SPAWN_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "CREATURE_SPAWN_REASON_NATURAL" => Some(Self::Natural),
+            "CREATURE_SPAWN_REASON_JOCKEY" => Some(Self::Jockey),
+            "CREATURE_SPAWN_REASON_CHUNK_GEN" => Some(Self::ChunkGen),
+            "CREATURE_SPAWN_REASON_SPAWNER" => Some(Self::Spawner),
+            "CREATURE_SPAWN_REASON_TRIAL_SPAWNER" => Some(Self::TrialSpawner),
+            "CREATURE_SPAWN_REASON_EGG" => Some(Self::Egg),
+            "CREATURE_SPAWN_REASON_SPAWNER_EGG" => Some(Self::SpawnerEgg),
+            "CREATURE_SPAWN_REASON_BUCKET" => Some(Self::Bucket),
+            "CREATURE_SPAWN_REASON_LIGHTNING" => Some(Self::Lightning),
+            "CREATURE_SPAWN_REASON_BUILD_SNOWMAN" => Some(Self::BuildSnowman),
+            "CREATURE_SPAWN_REASON_BUILD_IRONGOLEM" => Some(Self::BuildIrongolem),
+            "CREATURE_SPAWN_REASON_BUILD_COPPERGOLEM" => Some(Self::BuildCoppergolem),
+            "CREATURE_SPAWN_REASON_BUILD_WITHER" => Some(Self::BuildWither),
+            "CREATURE_SPAWN_REASON_VILLAGE_DEFENSE" => Some(Self::VillageDefense),
+            "CREATURE_SPAWN_REASON_VILLAGE_INVASION" => Some(Self::VillageInvasion),
+            "CREATURE_SPAWN_REASON_BREEDING" => Some(Self::Breeding),
+            "CREATURE_SPAWN_REASON_SLIME_SPLIT" => Some(Self::SlimeSplit),
+            "CREATURE_SPAWN_REASON_REINFORCEMENTS" => Some(Self::Reinforcements),
+            "CREATURE_SPAWN_REASON_NETHER_PORTAL" => Some(Self::NetherPortal),
+            "CREATURE_SPAWN_REASON_DISPENSE_EGG" => Some(Self::DispenseEgg),
+            "CREATURE_SPAWN_REASON_INFECTION" => Some(Self::Infection),
+            "CREATURE_SPAWN_REASON_CURED" => Some(Self::Cured),
+            "CREATURE_SPAWN_REASON_OCELOT_BABY" => Some(Self::OcelotBaby),
+            "CREATURE_SPAWN_REASON_SILVERFISH_BLOCK" => Some(Self::SilverfishBlock),
+            "CREATURE_SPAWN_REASON_MOUNT" => Some(Self::Mount),
+            "CREATURE_SPAWN_REASON_TRAP" => Some(Self::Trap),
+            "CREATURE_SPAWN_REASON_ENDER_PEARL" => Some(Self::EnderPearl),
+            "CREATURE_SPAWN_REASON_SHOULDER_ENTITY" => Some(Self::ShoulderEntity),
+            "CREATURE_SPAWN_REASON_DROWNED" => Some(Self::Drowned),
+            "CREATURE_SPAWN_REASON_SHEARED" => Some(Self::Sheared),
+            "CREATURE_SPAWN_REASON_EXPLOSION" => Some(Self::Explosion),
+            "CREATURE_SPAWN_REASON_RAID" => Some(Self::Raid),
+            "CREATURE_SPAWN_REASON_PATROL" => Some(Self::Patrol),
+            "CREATURE_SPAWN_REASON_BEEHIVE" => Some(Self::Beehive),
+            "CREATURE_SPAWN_REASON_PIGLIN_ZOMBIFIED" => Some(Self::PiglinZombified),
+            "CREATURE_SPAWN_REASON_SPELL" => Some(Self::Spell),
+            "CREATURE_SPAWN_REASON_FROZEN" => Some(Self::Frozen),
+            "CREATURE_SPAWN_REASON_METAMORPHOSIS" => Some(Self::Metamorphosis),
+            "CREATURE_SPAWN_REASON_DUPLICATION" => Some(Self::Duplication),
+            "CREATURE_SPAWN_REASON_COMMAND" => Some(Self::Command),
+            "CREATURE_SPAWN_REASON_ENCHANTMENT" => Some(Self::Enchantment),
+            "CREATURE_SPAWN_REASON_POTION_EFFECT" => Some(Self::PotionEffect),
+            "CREATURE_SPAWN_REASON_REANIMATE" => Some(Self::Reanimate),
+            "CREATURE_SPAWN_REASON_CUSTOM" => Some(Self::Custom),
+            "CREATURE_SPAWN_REASON_DEFAULT" => Some(Self::Default),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CreeperPowerCause {
+    Unspecified = 0,
+    Lightning = 1,
+    SetOn = 2,
+    SetOff = 3,
+}
+impl CreeperPowerCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CREEPER_POWER_CAUSE_UNSPECIFIED",
+            Self::Lightning => "CREEPER_POWER_CAUSE_LIGHTNING",
+            Self::SetOn => "CREEPER_POWER_CAUSE_SET_ON",
+            Self::SetOff => "CREEPER_POWER_CAUSE_SET_OFF",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CREEPER_POWER_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "CREEPER_POWER_CAUSE_LIGHTNING" => Some(Self::Lightning),
+            "CREEPER_POWER_CAUSE_SET_ON" => Some(Self::SetOn),
+            "CREEPER_POWER_CAUSE_SET_OFF" => Some(Self::SetOff),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum DragType {
+    Unspecified = 0,
+    Single = 1,
+    Even = 2,
+}
+impl DragType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "DRAG_TYPE_UNSPECIFIED",
+            Self::Single => "DRAG_TYPE_SINGLE",
+            Self::Even => "DRAG_TYPE_EVEN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "DRAG_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "DRAG_TYPE_SINGLE" => Some(Self::Single),
+            "DRAG_TYPE_EVEN" => Some(Self::Even),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum DyeColor {
+    Unspecified = 0,
+    White = 1,
+    Orange = 2,
+    Magenta = 3,
+    LightBlue = 4,
+    Yellow = 5,
+    Lime = 6,
+    Pink = 7,
+    Gray = 8,
+    LightGray = 9,
+    Cyan = 10,
+    Purple = 11,
+    Blue = 12,
+    Brown = 13,
+    Green = 14,
+    Red = 15,
+    Black = 16,
+}
+impl DyeColor {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "DYE_COLOR_UNSPECIFIED",
+            Self::White => "DYE_COLOR_WHITE",
+            Self::Orange => "DYE_COLOR_ORANGE",
+            Self::Magenta => "DYE_COLOR_MAGENTA",
+            Self::LightBlue => "DYE_COLOR_LIGHT_BLUE",
+            Self::Yellow => "DYE_COLOR_YELLOW",
+            Self::Lime => "DYE_COLOR_LIME",
+            Self::Pink => "DYE_COLOR_PINK",
+            Self::Gray => "DYE_COLOR_GRAY",
+            Self::LightGray => "DYE_COLOR_LIGHT_GRAY",
+            Self::Cyan => "DYE_COLOR_CYAN",
+            Self::Purple => "DYE_COLOR_PURPLE",
+            Self::Blue => "DYE_COLOR_BLUE",
+            Self::Brown => "DYE_COLOR_BROWN",
+            Self::Green => "DYE_COLOR_GREEN",
+            Self::Red => "DYE_COLOR_RED",
+            Self::Black => "DYE_COLOR_BLACK",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "DYE_COLOR_UNSPECIFIED" => Some(Self::Unspecified),
+            "DYE_COLOR_WHITE" => Some(Self::White),
+            "DYE_COLOR_ORANGE" => Some(Self::Orange),
+            "DYE_COLOR_MAGENTA" => Some(Self::Magenta),
+            "DYE_COLOR_LIGHT_BLUE" => Some(Self::LightBlue),
+            "DYE_COLOR_YELLOW" => Some(Self::Yellow),
+            "DYE_COLOR_LIME" => Some(Self::Lime),
+            "DYE_COLOR_PINK" => Some(Self::Pink),
+            "DYE_COLOR_GRAY" => Some(Self::Gray),
+            "DYE_COLOR_LIGHT_GRAY" => Some(Self::LightGray),
+            "DYE_COLOR_CYAN" => Some(Self::Cyan),
+            "DYE_COLOR_PURPLE" => Some(Self::Purple),
+            "DYE_COLOR_BLUE" => Some(Self::Blue),
+            "DYE_COLOR_BROWN" => Some(Self::Brown),
+            "DYE_COLOR_GREEN" => Some(Self::Green),
+            "DYE_COLOR_RED" => Some(Self::Red),
+            "DYE_COLOR_BLACK" => Some(Self::Black),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EnderDragonPhase {
+    Unspecified = 0,
+    Circling = 1,
+    Strafing = 2,
+    FlyToPortal = 3,
+    LandOnPortal = 4,
+    LeavePortal = 5,
+    BreathAttack = 6,
+    SearchForBreathAttackTarget = 7,
+    RoarBeforeAttack = 8,
+    ChargePlayer = 9,
+    Dying = 10,
+    Hover = 11,
+}
+impl EnderDragonPhase {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENDER_DRAGON_PHASE_UNSPECIFIED",
+            Self::Circling => "ENDER_DRAGON_PHASE_CIRCLING",
+            Self::Strafing => "ENDER_DRAGON_PHASE_STRAFING",
+            Self::FlyToPortal => "ENDER_DRAGON_PHASE_FLY_TO_PORTAL",
+            Self::LandOnPortal => "ENDER_DRAGON_PHASE_LAND_ON_PORTAL",
+            Self::LeavePortal => "ENDER_DRAGON_PHASE_LEAVE_PORTAL",
+            Self::BreathAttack => "ENDER_DRAGON_PHASE_BREATH_ATTACK",
+            Self::SearchForBreathAttackTarget => {
+                "ENDER_DRAGON_PHASE_SEARCH_FOR_BREATH_ATTACK_TARGET"
+            }
+            Self::RoarBeforeAttack => "ENDER_DRAGON_PHASE_ROAR_BEFORE_ATTACK",
+            Self::ChargePlayer => "ENDER_DRAGON_PHASE_CHARGE_PLAYER",
+            Self::Dying => "ENDER_DRAGON_PHASE_DYING",
+            Self::Hover => "ENDER_DRAGON_PHASE_HOVER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENDER_DRAGON_PHASE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENDER_DRAGON_PHASE_CIRCLING" => Some(Self::Circling),
+            "ENDER_DRAGON_PHASE_STRAFING" => Some(Self::Strafing),
+            "ENDER_DRAGON_PHASE_FLY_TO_PORTAL" => Some(Self::FlyToPortal),
+            "ENDER_DRAGON_PHASE_LAND_ON_PORTAL" => Some(Self::LandOnPortal),
+            "ENDER_DRAGON_PHASE_LEAVE_PORTAL" => Some(Self::LeavePortal),
+            "ENDER_DRAGON_PHASE_BREATH_ATTACK" => Some(Self::BreathAttack),
+            "ENDER_DRAGON_PHASE_SEARCH_FOR_BREATH_ATTACK_TARGET" => {
+                Some(Self::SearchForBreathAttackTarget)
+            }
+            "ENDER_DRAGON_PHASE_ROAR_BEFORE_ATTACK" => Some(Self::RoarBeforeAttack),
+            "ENDER_DRAGON_PHASE_CHARGE_PLAYER" => Some(Self::ChargePlayer),
+            "ENDER_DRAGON_PHASE_DYING" => Some(Self::Dying),
+            "ENDER_DRAGON_PHASE_HOVER" => Some(Self::Hover),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityDamageCause {
+    Unspecified = 0,
+    Kill = 1,
+    WorldBorder = 2,
+    Contact = 3,
+    EntityAttack = 4,
+    EntitySweepAttack = 5,
+    Projectile = 6,
+    Suffocation = 7,
+    Fall = 8,
+    Fire = 9,
+    FireTick = 10,
+    Melting = 11,
+    Lava = 12,
+    Drowning = 13,
+    BlockExplosion = 14,
+    EntityExplosion = 15,
+    Void = 16,
+    Lightning = 17,
+    Suicide = 18,
+    Starvation = 19,
+    Poison = 20,
+    Magic = 21,
+    Wither = 22,
+    FallingBlock = 23,
+    Thorns = 24,
+    DragonBreath = 25,
+    Custom = 26,
+    FlyIntoWall = 27,
+    HotFloor = 28,
+    Campfire = 29,
+    Cramming = 30,
+    Dryout = 31,
+    Freeze = 32,
+    SonicBoom = 33,
+}
+impl EntityDamageCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_DAMAGE_CAUSE_UNSPECIFIED",
+            Self::Kill => "ENTITY_DAMAGE_CAUSE_KILL",
+            Self::WorldBorder => "ENTITY_DAMAGE_CAUSE_WORLD_BORDER",
+            Self::Contact => "ENTITY_DAMAGE_CAUSE_CONTACT",
+            Self::EntityAttack => "ENTITY_DAMAGE_CAUSE_ENTITY_ATTACK",
+            Self::EntitySweepAttack => "ENTITY_DAMAGE_CAUSE_ENTITY_SWEEP_ATTACK",
+            Self::Projectile => "ENTITY_DAMAGE_CAUSE_PROJECTILE",
+            Self::Suffocation => "ENTITY_DAMAGE_CAUSE_SUFFOCATION",
+            Self::Fall => "ENTITY_DAMAGE_CAUSE_FALL",
+            Self::Fire => "ENTITY_DAMAGE_CAUSE_FIRE",
+            Self::FireTick => "ENTITY_DAMAGE_CAUSE_FIRE_TICK",
+            Self::Melting => "ENTITY_DAMAGE_CAUSE_MELTING",
+            Self::Lava => "ENTITY_DAMAGE_CAUSE_LAVA",
+            Self::Drowning => "ENTITY_DAMAGE_CAUSE_DROWNING",
+            Self::BlockExplosion => "ENTITY_DAMAGE_CAUSE_BLOCK_EXPLOSION",
+            Self::EntityExplosion => "ENTITY_DAMAGE_CAUSE_ENTITY_EXPLOSION",
+            Self::Void => "ENTITY_DAMAGE_CAUSE_VOID",
+            Self::Lightning => "ENTITY_DAMAGE_CAUSE_LIGHTNING",
+            Self::Suicide => "ENTITY_DAMAGE_CAUSE_SUICIDE",
+            Self::Starvation => "ENTITY_DAMAGE_CAUSE_STARVATION",
+            Self::Poison => "ENTITY_DAMAGE_CAUSE_POISON",
+            Self::Magic => "ENTITY_DAMAGE_CAUSE_MAGIC",
+            Self::Wither => "ENTITY_DAMAGE_CAUSE_WITHER",
+            Self::FallingBlock => "ENTITY_DAMAGE_CAUSE_FALLING_BLOCK",
+            Self::Thorns => "ENTITY_DAMAGE_CAUSE_THORNS",
+            Self::DragonBreath => "ENTITY_DAMAGE_CAUSE_DRAGON_BREATH",
+            Self::Custom => "ENTITY_DAMAGE_CAUSE_CUSTOM",
+            Self::FlyIntoWall => "ENTITY_DAMAGE_CAUSE_FLY_INTO_WALL",
+            Self::HotFloor => "ENTITY_DAMAGE_CAUSE_HOT_FLOOR",
+            Self::Campfire => "ENTITY_DAMAGE_CAUSE_CAMPFIRE",
+            Self::Cramming => "ENTITY_DAMAGE_CAUSE_CRAMMING",
+            Self::Dryout => "ENTITY_DAMAGE_CAUSE_DRYOUT",
+            Self::Freeze => "ENTITY_DAMAGE_CAUSE_FREEZE",
+            Self::SonicBoom => "ENTITY_DAMAGE_CAUSE_SONIC_BOOM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_DAMAGE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_DAMAGE_CAUSE_KILL" => Some(Self::Kill),
+            "ENTITY_DAMAGE_CAUSE_WORLD_BORDER" => Some(Self::WorldBorder),
+            "ENTITY_DAMAGE_CAUSE_CONTACT" => Some(Self::Contact),
+            "ENTITY_DAMAGE_CAUSE_ENTITY_ATTACK" => Some(Self::EntityAttack),
+            "ENTITY_DAMAGE_CAUSE_ENTITY_SWEEP_ATTACK" => Some(Self::EntitySweepAttack),
+            "ENTITY_DAMAGE_CAUSE_PROJECTILE" => Some(Self::Projectile),
+            "ENTITY_DAMAGE_CAUSE_SUFFOCATION" => Some(Self::Suffocation),
+            "ENTITY_DAMAGE_CAUSE_FALL" => Some(Self::Fall),
+            "ENTITY_DAMAGE_CAUSE_FIRE" => Some(Self::Fire),
+            "ENTITY_DAMAGE_CAUSE_FIRE_TICK" => Some(Self::FireTick),
+            "ENTITY_DAMAGE_CAUSE_MELTING" => Some(Self::Melting),
+            "ENTITY_DAMAGE_CAUSE_LAVA" => Some(Self::Lava),
+            "ENTITY_DAMAGE_CAUSE_DROWNING" => Some(Self::Drowning),
+            "ENTITY_DAMAGE_CAUSE_BLOCK_EXPLOSION" => Some(Self::BlockExplosion),
+            "ENTITY_DAMAGE_CAUSE_ENTITY_EXPLOSION" => Some(Self::EntityExplosion),
+            "ENTITY_DAMAGE_CAUSE_VOID" => Some(Self::Void),
+            "ENTITY_DAMAGE_CAUSE_LIGHTNING" => Some(Self::Lightning),
+            "ENTITY_DAMAGE_CAUSE_SUICIDE" => Some(Self::Suicide),
+            "ENTITY_DAMAGE_CAUSE_STARVATION" => Some(Self::Starvation),
+            "ENTITY_DAMAGE_CAUSE_POISON" => Some(Self::Poison),
+            "ENTITY_DAMAGE_CAUSE_MAGIC" => Some(Self::Magic),
+            "ENTITY_DAMAGE_CAUSE_WITHER" => Some(Self::Wither),
+            "ENTITY_DAMAGE_CAUSE_FALLING_BLOCK" => Some(Self::FallingBlock),
+            "ENTITY_DAMAGE_CAUSE_THORNS" => Some(Self::Thorns),
+            "ENTITY_DAMAGE_CAUSE_DRAGON_BREATH" => Some(Self::DragonBreath),
+            "ENTITY_DAMAGE_CAUSE_CUSTOM" => Some(Self::Custom),
+            "ENTITY_DAMAGE_CAUSE_FLY_INTO_WALL" => Some(Self::FlyIntoWall),
+            "ENTITY_DAMAGE_CAUSE_HOT_FLOOR" => Some(Self::HotFloor),
+            "ENTITY_DAMAGE_CAUSE_CAMPFIRE" => Some(Self::Campfire),
+            "ENTITY_DAMAGE_CAUSE_CRAMMING" => Some(Self::Cramming),
+            "ENTITY_DAMAGE_CAUSE_DRYOUT" => Some(Self::Dryout),
+            "ENTITY_DAMAGE_CAUSE_FREEZE" => Some(Self::Freeze),
+            "ENTITY_DAMAGE_CAUSE_SONIC_BOOM" => Some(Self::SonicBoom),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityExhaustionReason {
+    Unspecified = 0,
+    BlockMined = 1,
+    HungerEffect = 2,
+    Damaged = 3,
+    Attack = 4,
+    JumpSprint = 5,
+    Jump = 6,
+    Swim = 7,
+    WalkUnderwater = 8,
+    WalkOnWater = 9,
+    Sprint = 10,
+    Crouch = 11,
+    Walk = 12,
+    Regen = 13,
+    Unknown = 14,
+}
+impl EntityExhaustionReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_EXHAUSTION_REASON_UNSPECIFIED",
+            Self::BlockMined => "ENTITY_EXHAUSTION_REASON_BLOCK_MINED",
+            Self::HungerEffect => "ENTITY_EXHAUSTION_REASON_HUNGER_EFFECT",
+            Self::Damaged => "ENTITY_EXHAUSTION_REASON_DAMAGED",
+            Self::Attack => "ENTITY_EXHAUSTION_REASON_ATTACK",
+            Self::JumpSprint => "ENTITY_EXHAUSTION_REASON_JUMP_SPRINT",
+            Self::Jump => "ENTITY_EXHAUSTION_REASON_JUMP",
+            Self::Swim => "ENTITY_EXHAUSTION_REASON_SWIM",
+            Self::WalkUnderwater => "ENTITY_EXHAUSTION_REASON_WALK_UNDERWATER",
+            Self::WalkOnWater => "ENTITY_EXHAUSTION_REASON_WALK_ON_WATER",
+            Self::Sprint => "ENTITY_EXHAUSTION_REASON_SPRINT",
+            Self::Crouch => "ENTITY_EXHAUSTION_REASON_CROUCH",
+            Self::Walk => "ENTITY_EXHAUSTION_REASON_WALK",
+            Self::Regen => "ENTITY_EXHAUSTION_REASON_REGEN",
+            Self::Unknown => "ENTITY_EXHAUSTION_REASON_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_EXHAUSTION_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_EXHAUSTION_REASON_BLOCK_MINED" => Some(Self::BlockMined),
+            "ENTITY_EXHAUSTION_REASON_HUNGER_EFFECT" => Some(Self::HungerEffect),
+            "ENTITY_EXHAUSTION_REASON_DAMAGED" => Some(Self::Damaged),
+            "ENTITY_EXHAUSTION_REASON_ATTACK" => Some(Self::Attack),
+            "ENTITY_EXHAUSTION_REASON_JUMP_SPRINT" => Some(Self::JumpSprint),
+            "ENTITY_EXHAUSTION_REASON_JUMP" => Some(Self::Jump),
+            "ENTITY_EXHAUSTION_REASON_SWIM" => Some(Self::Swim),
+            "ENTITY_EXHAUSTION_REASON_WALK_UNDERWATER" => Some(Self::WalkUnderwater),
+            "ENTITY_EXHAUSTION_REASON_WALK_ON_WATER" => Some(Self::WalkOnWater),
+            "ENTITY_EXHAUSTION_REASON_SPRINT" => Some(Self::Sprint),
+            "ENTITY_EXHAUSTION_REASON_CROUCH" => Some(Self::Crouch),
+            "ENTITY_EXHAUSTION_REASON_WALK" => Some(Self::Walk),
+            "ENTITY_EXHAUSTION_REASON_REGEN" => Some(Self::Regen),
+            "ENTITY_EXHAUSTION_REASON_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityKnockbackCause {
+    Unspecified = 0,
+    Damage = 1,
+    EntityAttack = 2,
+    Explosion = 3,
+    ShieldBlock = 4,
+    SweepAttack = 5,
+    Unknown = 6,
+}
+impl EntityKnockbackCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_KNOCKBACK_CAUSE_UNSPECIFIED",
+            Self::Damage => "ENTITY_KNOCKBACK_CAUSE_DAMAGE",
+            Self::EntityAttack => "ENTITY_KNOCKBACK_CAUSE_ENTITY_ATTACK",
+            Self::Explosion => "ENTITY_KNOCKBACK_CAUSE_EXPLOSION",
+            Self::ShieldBlock => "ENTITY_KNOCKBACK_CAUSE_SHIELD_BLOCK",
+            Self::SweepAttack => "ENTITY_KNOCKBACK_CAUSE_SWEEP_ATTACK",
+            Self::Unknown => "ENTITY_KNOCKBACK_CAUSE_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_KNOCKBACK_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_KNOCKBACK_CAUSE_DAMAGE" => Some(Self::Damage),
+            "ENTITY_KNOCKBACK_CAUSE_ENTITY_ATTACK" => Some(Self::EntityAttack),
+            "ENTITY_KNOCKBACK_CAUSE_EXPLOSION" => Some(Self::Explosion),
+            "ENTITY_KNOCKBACK_CAUSE_SHIELD_BLOCK" => Some(Self::ShieldBlock),
+            "ENTITY_KNOCKBACK_CAUSE_SWEEP_ATTACK" => Some(Self::SweepAttack),
+            "ENTITY_KNOCKBACK_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityPotionEffectAction {
+    Unspecified = 0,
+    Added = 1,
+    Changed = 2,
+    Cleared = 3,
+    Removed = 4,
+}
+impl EntityPotionEffectAction {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_POTION_EFFECT_ACTION_UNSPECIFIED",
+            Self::Added => "ENTITY_POTION_EFFECT_ACTION_ADDED",
+            Self::Changed => "ENTITY_POTION_EFFECT_ACTION_CHANGED",
+            Self::Cleared => "ENTITY_POTION_EFFECT_ACTION_CLEARED",
+            Self::Removed => "ENTITY_POTION_EFFECT_ACTION_REMOVED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_POTION_EFFECT_ACTION_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_POTION_EFFECT_ACTION_ADDED" => Some(Self::Added),
+            "ENTITY_POTION_EFFECT_ACTION_CHANGED" => Some(Self::Changed),
+            "ENTITY_POTION_EFFECT_ACTION_CLEARED" => Some(Self::Cleared),
+            "ENTITY_POTION_EFFECT_ACTION_REMOVED" => Some(Self::Removed),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityPotionEffectCause {
+    Unspecified = 0,
+    AreaEffectCloud = 1,
+    Arrow = 2,
+    Attack = 3,
+    Axolotl = 4,
+    Beacon = 5,
+    Command = 6,
+    Conduit = 7,
+    Conversion = 8,
+    Death = 9,
+    Dolphin = 10,
+    Expiration = 11,
+    Food = 12,
+    Illusion = 13,
+    Milk = 14,
+    PatrolCaptain = 15,
+    Plugin = 16,
+    PotionDrink = 17,
+    PotionSplash = 18,
+    SpiderSpawn = 19,
+    Totem = 20,
+    TurtleHelmet = 21,
+    Unknown = 22,
+    VillagerTrade = 23,
+    Warden = 24,
+    WitherRose = 25,
+}
+impl EntityPotionEffectCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_POTION_EFFECT_CAUSE_UNSPECIFIED",
+            Self::AreaEffectCloud => "ENTITY_POTION_EFFECT_CAUSE_AREA_EFFECT_CLOUD",
+            Self::Arrow => "ENTITY_POTION_EFFECT_CAUSE_ARROW",
+            Self::Attack => "ENTITY_POTION_EFFECT_CAUSE_ATTACK",
+            Self::Axolotl => "ENTITY_POTION_EFFECT_CAUSE_AXOLOTL",
+            Self::Beacon => "ENTITY_POTION_EFFECT_CAUSE_BEACON",
+            Self::Command => "ENTITY_POTION_EFFECT_CAUSE_COMMAND",
+            Self::Conduit => "ENTITY_POTION_EFFECT_CAUSE_CONDUIT",
+            Self::Conversion => "ENTITY_POTION_EFFECT_CAUSE_CONVERSION",
+            Self::Death => "ENTITY_POTION_EFFECT_CAUSE_DEATH",
+            Self::Dolphin => "ENTITY_POTION_EFFECT_CAUSE_DOLPHIN",
+            Self::Expiration => "ENTITY_POTION_EFFECT_CAUSE_EXPIRATION",
+            Self::Food => "ENTITY_POTION_EFFECT_CAUSE_FOOD",
+            Self::Illusion => "ENTITY_POTION_EFFECT_CAUSE_ILLUSION",
+            Self::Milk => "ENTITY_POTION_EFFECT_CAUSE_MILK",
+            Self::PatrolCaptain => "ENTITY_POTION_EFFECT_CAUSE_PATROL_CAPTAIN",
+            Self::Plugin => "ENTITY_POTION_EFFECT_CAUSE_PLUGIN",
+            Self::PotionDrink => "ENTITY_POTION_EFFECT_CAUSE_POTION_DRINK",
+            Self::PotionSplash => "ENTITY_POTION_EFFECT_CAUSE_POTION_SPLASH",
+            Self::SpiderSpawn => "ENTITY_POTION_EFFECT_CAUSE_SPIDER_SPAWN",
+            Self::Totem => "ENTITY_POTION_EFFECT_CAUSE_TOTEM",
+            Self::TurtleHelmet => "ENTITY_POTION_EFFECT_CAUSE_TURTLE_HELMET",
+            Self::Unknown => "ENTITY_POTION_EFFECT_CAUSE_UNKNOWN",
+            Self::VillagerTrade => "ENTITY_POTION_EFFECT_CAUSE_VILLAGER_TRADE",
+            Self::Warden => "ENTITY_POTION_EFFECT_CAUSE_WARDEN",
+            Self::WitherRose => "ENTITY_POTION_EFFECT_CAUSE_WITHER_ROSE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_POTION_EFFECT_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_POTION_EFFECT_CAUSE_AREA_EFFECT_CLOUD" => Some(Self::AreaEffectCloud),
+            "ENTITY_POTION_EFFECT_CAUSE_ARROW" => Some(Self::Arrow),
+            "ENTITY_POTION_EFFECT_CAUSE_ATTACK" => Some(Self::Attack),
+            "ENTITY_POTION_EFFECT_CAUSE_AXOLOTL" => Some(Self::Axolotl),
+            "ENTITY_POTION_EFFECT_CAUSE_BEACON" => Some(Self::Beacon),
+            "ENTITY_POTION_EFFECT_CAUSE_COMMAND" => Some(Self::Command),
+            "ENTITY_POTION_EFFECT_CAUSE_CONDUIT" => Some(Self::Conduit),
+            "ENTITY_POTION_EFFECT_CAUSE_CONVERSION" => Some(Self::Conversion),
+            "ENTITY_POTION_EFFECT_CAUSE_DEATH" => Some(Self::Death),
+            "ENTITY_POTION_EFFECT_CAUSE_DOLPHIN" => Some(Self::Dolphin),
+            "ENTITY_POTION_EFFECT_CAUSE_EXPIRATION" => Some(Self::Expiration),
+            "ENTITY_POTION_EFFECT_CAUSE_FOOD" => Some(Self::Food),
+            "ENTITY_POTION_EFFECT_CAUSE_ILLUSION" => Some(Self::Illusion),
+            "ENTITY_POTION_EFFECT_CAUSE_MILK" => Some(Self::Milk),
+            "ENTITY_POTION_EFFECT_CAUSE_PATROL_CAPTAIN" => Some(Self::PatrolCaptain),
+            "ENTITY_POTION_EFFECT_CAUSE_PLUGIN" => Some(Self::Plugin),
+            "ENTITY_POTION_EFFECT_CAUSE_POTION_DRINK" => Some(Self::PotionDrink),
+            "ENTITY_POTION_EFFECT_CAUSE_POTION_SPLASH" => Some(Self::PotionSplash),
+            "ENTITY_POTION_EFFECT_CAUSE_SPIDER_SPAWN" => Some(Self::SpiderSpawn),
+            "ENTITY_POTION_EFFECT_CAUSE_TOTEM" => Some(Self::Totem),
+            "ENTITY_POTION_EFFECT_CAUSE_TURTLE_HELMET" => Some(Self::TurtleHelmet),
+            "ENTITY_POTION_EFFECT_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            "ENTITY_POTION_EFFECT_CAUSE_VILLAGER_TRADE" => Some(Self::VillagerTrade),
+            "ENTITY_POTION_EFFECT_CAUSE_WARDEN" => Some(Self::Warden),
+            "ENTITY_POTION_EFFECT_CAUSE_WITHER_ROSE" => Some(Self::WitherRose),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityRegainHealthRegainReason {
+    Unspecified = 0,
+    Regen = 1,
+    Satiated = 2,
+    Eating = 3,
+    EnderCrystal = 4,
+    Magic = 5,
+    MagicRegen = 6,
+    WitherSpawn = 7,
+    Wither = 8,
+    Custom = 9,
+}
+impl EntityRegainHealthRegainReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_UNSPECIFIED",
+            Self::Regen => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_REGEN",
+            Self::Satiated => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_SATIATED",
+            Self::Eating => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_EATING",
+            Self::EnderCrystal => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_ENDER_CRYSTAL",
+            Self::Magic => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_MAGIC",
+            Self::MagicRegen => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_MAGIC_REGEN",
+            Self::WitherSpawn => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_WITHER_SPAWN",
+            Self::Wither => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_WITHER",
+            Self::Custom => "ENTITY_REGAIN_HEALTH_REGAIN_REASON_CUSTOM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_REGEN" => Some(Self::Regen),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_SATIATED" => Some(Self::Satiated),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_EATING" => Some(Self::Eating),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_ENDER_CRYSTAL" => {
+                Some(Self::EnderCrystal)
+            }
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_MAGIC" => Some(Self::Magic),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_MAGIC_REGEN" => Some(Self::MagicRegen),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_WITHER_SPAWN" => Some(Self::WitherSpawn),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_WITHER" => Some(Self::Wither),
+            "ENTITY_REGAIN_HEALTH_REGAIN_REASON_CUSTOM" => Some(Self::Custom),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityRemoveCause {
+    Unspecified = 0,
+    Death = 1,
+    Despawn = 2,
+    Drop = 3,
+    EnterBlock = 4,
+    Explode = 5,
+    Hit = 6,
+    Merge = 7,
+    OutOfWorld = 8,
+    Pickup = 9,
+    PlayerQuit = 10,
+    Plugin = 11,
+    Transformation = 12,
+    Unload = 13,
+}
+impl EntityRemoveCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_REMOVE_CAUSE_UNSPECIFIED",
+            Self::Death => "ENTITY_REMOVE_CAUSE_DEATH",
+            Self::Despawn => "ENTITY_REMOVE_CAUSE_DESPAWN",
+            Self::Drop => "ENTITY_REMOVE_CAUSE_DROP",
+            Self::EnterBlock => "ENTITY_REMOVE_CAUSE_ENTER_BLOCK",
+            Self::Explode => "ENTITY_REMOVE_CAUSE_EXPLODE",
+            Self::Hit => "ENTITY_REMOVE_CAUSE_HIT",
+            Self::Merge => "ENTITY_REMOVE_CAUSE_MERGE",
+            Self::OutOfWorld => "ENTITY_REMOVE_CAUSE_OUT_OF_WORLD",
+            Self::Pickup => "ENTITY_REMOVE_CAUSE_PICKUP",
+            Self::PlayerQuit => "ENTITY_REMOVE_CAUSE_PLAYER_QUIT",
+            Self::Plugin => "ENTITY_REMOVE_CAUSE_PLUGIN",
+            Self::Transformation => "ENTITY_REMOVE_CAUSE_TRANSFORMATION",
+            Self::Unload => "ENTITY_REMOVE_CAUSE_UNLOAD",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_REMOVE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_REMOVE_CAUSE_DEATH" => Some(Self::Death),
+            "ENTITY_REMOVE_CAUSE_DESPAWN" => Some(Self::Despawn),
+            "ENTITY_REMOVE_CAUSE_DROP" => Some(Self::Drop),
+            "ENTITY_REMOVE_CAUSE_ENTER_BLOCK" => Some(Self::EnterBlock),
+            "ENTITY_REMOVE_CAUSE_EXPLODE" => Some(Self::Explode),
+            "ENTITY_REMOVE_CAUSE_HIT" => Some(Self::Hit),
+            "ENTITY_REMOVE_CAUSE_MERGE" => Some(Self::Merge),
+            "ENTITY_REMOVE_CAUSE_OUT_OF_WORLD" => Some(Self::OutOfWorld),
+            "ENTITY_REMOVE_CAUSE_PICKUP" => Some(Self::Pickup),
+            "ENTITY_REMOVE_CAUSE_PLAYER_QUIT" => Some(Self::PlayerQuit),
+            "ENTITY_REMOVE_CAUSE_PLUGIN" => Some(Self::Plugin),
+            "ENTITY_REMOVE_CAUSE_TRANSFORMATION" => Some(Self::Transformation),
+            "ENTITY_REMOVE_CAUSE_UNLOAD" => Some(Self::Unload),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityTargetReason {
+    Unspecified = 0,
+    TargetDied = 1,
+    ClosestPlayer = 2,
+    TargetAttackedEntity = 3,
+    PigZombieTarget = 4,
+    ForgotTarget = 5,
+    TargetAttackedOwner = 6,
+    OwnerAttackedTarget = 7,
+    RandomTarget = 8,
+    DefendVillage = 9,
+    TargetAttackedNearbyEntity = 10,
+    ReinforcementTarget = 11,
+    Collision = 12,
+    Custom = 13,
+    ClosestEntity = 14,
+    FollowLeader = 15,
+    Tempt = 16,
+    Unknown = 17,
+}
+impl EntityTargetReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_TARGET_REASON_UNSPECIFIED",
+            Self::TargetDied => "ENTITY_TARGET_REASON_TARGET_DIED",
+            Self::ClosestPlayer => "ENTITY_TARGET_REASON_CLOSEST_PLAYER",
+            Self::TargetAttackedEntity => "ENTITY_TARGET_REASON_TARGET_ATTACKED_ENTITY",
+            Self::PigZombieTarget => "ENTITY_TARGET_REASON_PIG_ZOMBIE_TARGET",
+            Self::ForgotTarget => "ENTITY_TARGET_REASON_FORGOT_TARGET",
+            Self::TargetAttackedOwner => "ENTITY_TARGET_REASON_TARGET_ATTACKED_OWNER",
+            Self::OwnerAttackedTarget => "ENTITY_TARGET_REASON_OWNER_ATTACKED_TARGET",
+            Self::RandomTarget => "ENTITY_TARGET_REASON_RANDOM_TARGET",
+            Self::DefendVillage => "ENTITY_TARGET_REASON_DEFEND_VILLAGE",
+            Self::TargetAttackedNearbyEntity => {
+                "ENTITY_TARGET_REASON_TARGET_ATTACKED_NEARBY_ENTITY"
+            }
+            Self::ReinforcementTarget => "ENTITY_TARGET_REASON_REINFORCEMENT_TARGET",
+            Self::Collision => "ENTITY_TARGET_REASON_COLLISION",
+            Self::Custom => "ENTITY_TARGET_REASON_CUSTOM",
+            Self::ClosestEntity => "ENTITY_TARGET_REASON_CLOSEST_ENTITY",
+            Self::FollowLeader => "ENTITY_TARGET_REASON_FOLLOW_LEADER",
+            Self::Tempt => "ENTITY_TARGET_REASON_TEMPT",
+            Self::Unknown => "ENTITY_TARGET_REASON_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_TARGET_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_TARGET_REASON_TARGET_DIED" => Some(Self::TargetDied),
+            "ENTITY_TARGET_REASON_CLOSEST_PLAYER" => Some(Self::ClosestPlayer),
+            "ENTITY_TARGET_REASON_TARGET_ATTACKED_ENTITY" => {
+                Some(Self::TargetAttackedEntity)
+            }
+            "ENTITY_TARGET_REASON_PIG_ZOMBIE_TARGET" => Some(Self::PigZombieTarget),
+            "ENTITY_TARGET_REASON_FORGOT_TARGET" => Some(Self::ForgotTarget),
+            "ENTITY_TARGET_REASON_TARGET_ATTACKED_OWNER" => {
+                Some(Self::TargetAttackedOwner)
+            }
+            "ENTITY_TARGET_REASON_OWNER_ATTACKED_TARGET" => {
+                Some(Self::OwnerAttackedTarget)
+            }
+            "ENTITY_TARGET_REASON_RANDOM_TARGET" => Some(Self::RandomTarget),
+            "ENTITY_TARGET_REASON_DEFEND_VILLAGE" => Some(Self::DefendVillage),
+            "ENTITY_TARGET_REASON_TARGET_ATTACKED_NEARBY_ENTITY" => {
+                Some(Self::TargetAttackedNearbyEntity)
+            }
+            "ENTITY_TARGET_REASON_REINFORCEMENT_TARGET" => {
+                Some(Self::ReinforcementTarget)
+            }
+            "ENTITY_TARGET_REASON_COLLISION" => Some(Self::Collision),
+            "ENTITY_TARGET_REASON_CUSTOM" => Some(Self::Custom),
+            "ENTITY_TARGET_REASON_CLOSEST_ENTITY" => Some(Self::ClosestEntity),
+            "ENTITY_TARGET_REASON_FOLLOW_LEADER" => Some(Self::FollowLeader),
+            "ENTITY_TARGET_REASON_TEMPT" => Some(Self::Tempt),
+            "ENTITY_TARGET_REASON_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityTransformReason {
+    Unspecified = 0,
+    Cured = 1,
+    Frozen = 2,
+    Infection = 3,
+    Drowned = 4,
+    Sheared = 5,
+    Lightning = 6,
+    Split = 7,
+    PiglinZombified = 8,
+    Metamorphosis = 9,
+    Unknown = 10,
+}
+impl EntityTransformReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_TRANSFORM_REASON_UNSPECIFIED",
+            Self::Cured => "ENTITY_TRANSFORM_REASON_CURED",
+            Self::Frozen => "ENTITY_TRANSFORM_REASON_FROZEN",
+            Self::Infection => "ENTITY_TRANSFORM_REASON_INFECTION",
+            Self::Drowned => "ENTITY_TRANSFORM_REASON_DROWNED",
+            Self::Sheared => "ENTITY_TRANSFORM_REASON_SHEARED",
+            Self::Lightning => "ENTITY_TRANSFORM_REASON_LIGHTNING",
+            Self::Split => "ENTITY_TRANSFORM_REASON_SPLIT",
+            Self::PiglinZombified => "ENTITY_TRANSFORM_REASON_PIGLIN_ZOMBIFIED",
+            Self::Metamorphosis => "ENTITY_TRANSFORM_REASON_METAMORPHOSIS",
+            Self::Unknown => "ENTITY_TRANSFORM_REASON_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_TRANSFORM_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_TRANSFORM_REASON_CURED" => Some(Self::Cured),
+            "ENTITY_TRANSFORM_REASON_FROZEN" => Some(Self::Frozen),
+            "ENTITY_TRANSFORM_REASON_INFECTION" => Some(Self::Infection),
+            "ENTITY_TRANSFORM_REASON_DROWNED" => Some(Self::Drowned),
+            "ENTITY_TRANSFORM_REASON_SHEARED" => Some(Self::Sheared),
+            "ENTITY_TRANSFORM_REASON_LIGHTNING" => Some(Self::Lightning),
+            "ENTITY_TRANSFORM_REASON_SPLIT" => Some(Self::Split),
+            "ENTITY_TRANSFORM_REASON_PIGLIN_ZOMBIFIED" => Some(Self::PiglinZombified),
+            "ENTITY_TRANSFORM_REASON_METAMORPHOSIS" => Some(Self::Metamorphosis),
+            "ENTITY_TRANSFORM_REASON_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EntityUnleashReason {
+    Unspecified = 0,
+    HolderGone = 1,
+    PlayerUnleash = 2,
+    Distance = 3,
+    Shear = 4,
+    Firework = 5,
+    Unknown = 6,
+}
+impl EntityUnleashReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "ENTITY_UNLEASH_REASON_UNSPECIFIED",
+            Self::HolderGone => "ENTITY_UNLEASH_REASON_HOLDER_GONE",
+            Self::PlayerUnleash => "ENTITY_UNLEASH_REASON_PLAYER_UNLEASH",
+            Self::Distance => "ENTITY_UNLEASH_REASON_DISTANCE",
+            Self::Shear => "ENTITY_UNLEASH_REASON_SHEAR",
+            Self::Firework => "ENTITY_UNLEASH_REASON_FIREWORK",
+            Self::Unknown => "ENTITY_UNLEASH_REASON_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ENTITY_UNLEASH_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "ENTITY_UNLEASH_REASON_HOLDER_GONE" => Some(Self::HolderGone),
+            "ENTITY_UNLEASH_REASON_PLAYER_UNLEASH" => Some(Self::PlayerUnleash),
+            "ENTITY_UNLEASH_REASON_DISTANCE" => Some(Self::Distance),
+            "ENTITY_UNLEASH_REASON_SHEAR" => Some(Self::Shear),
+            "ENTITY_UNLEASH_REASON_FIREWORK" => Some(Self::Firework),
+            "ENTITY_UNLEASH_REASON_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EquipmentSlot {
+    Unspecified = 0,
+    Hand = 1,
+    OffHand = 2,
+    Feet = 3,
+    Legs = 4,
+    Chest = 5,
+    Head = 6,
+    Body = 7,
+    Saddle = 8,
+}
+impl EquipmentSlot {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "EQUIPMENT_SLOT_UNSPECIFIED",
+            Self::Hand => "EQUIPMENT_SLOT_HAND",
+            Self::OffHand => "EQUIPMENT_SLOT_OFF_HAND",
+            Self::Feet => "EQUIPMENT_SLOT_FEET",
+            Self::Legs => "EQUIPMENT_SLOT_LEGS",
+            Self::Chest => "EQUIPMENT_SLOT_CHEST",
+            Self::Head => "EQUIPMENT_SLOT_HEAD",
+            Self::Body => "EQUIPMENT_SLOT_BODY",
+            Self::Saddle => "EQUIPMENT_SLOT_SADDLE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EQUIPMENT_SLOT_UNSPECIFIED" => Some(Self::Unspecified),
+            "EQUIPMENT_SLOT_HAND" => Some(Self::Hand),
+            "EQUIPMENT_SLOT_OFF_HAND" => Some(Self::OffHand),
+            "EQUIPMENT_SLOT_FEET" => Some(Self::Feet),
+            "EQUIPMENT_SLOT_LEGS" => Some(Self::Legs),
+            "EQUIPMENT_SLOT_CHEST" => Some(Self::Chest),
+            "EQUIPMENT_SLOT_HEAD" => Some(Self::Head),
+            "EQUIPMENT_SLOT_BODY" => Some(Self::Body),
+            "EQUIPMENT_SLOT_SADDLE" => Some(Self::Saddle),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum EventResult {
+    Unspecified = 0,
+    Deny = 1,
+    Default = 2,
+    Allow = 3,
+}
+impl EventResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "EVENT_RESULT_UNSPECIFIED",
+            Self::Deny => "EVENT_RESULT_DENY",
+            Self::Default => "EVENT_RESULT_DEFAULT",
+            Self::Allow => "EVENT_RESULT_ALLOW",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EVENT_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "EVENT_RESULT_DENY" => Some(Self::Deny),
+            "EVENT_RESULT_DEFAULT" => Some(Self::Default),
+            "EVENT_RESULT_ALLOW" => Some(Self::Allow),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ExplosionResult {
+    Unspecified = 0,
+    Keep = 1,
+    Destroy = 2,
+    DestroyWithDecay = 3,
+    TriggerBlock = 4,
+}
+impl ExplosionResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "EXPLOSION_RESULT_UNSPECIFIED",
+            Self::Keep => "EXPLOSION_RESULT_KEEP",
+            Self::Destroy => "EXPLOSION_RESULT_DESTROY",
+            Self::DestroyWithDecay => "EXPLOSION_RESULT_DESTROY_WITH_DECAY",
+            Self::TriggerBlock => "EXPLOSION_RESULT_TRIGGER_BLOCK",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EXPLOSION_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "EXPLOSION_RESULT_KEEP" => Some(Self::Keep),
+            "EXPLOSION_RESULT_DESTROY" => Some(Self::Destroy),
+            "EXPLOSION_RESULT_DESTROY_WITH_DECAY" => Some(Self::DestroyWithDecay),
+            "EXPLOSION_RESULT_TRIGGER_BLOCK" => Some(Self::TriggerBlock),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Face {
+    Unspecified = 0,
+    Down = 1,
+    Up = 2,
+    North = 3,
+    South = 4,
+    West = 5,
+    East = 6,
+    NorthEast = 7,
+    NorthWest = 8,
+    SouthEast = 9,
+    SouthWest = 10,
+    WestNorthWest = 11,
+    NorthNorthWest = 12,
+    NorthNorthEast = 13,
+    EastNorthEast = 14,
+    EastSouthEast = 15,
+    SouthSouthEast = 16,
+    SouthSouthWest = 17,
+    WestSouthWest = 18,
+    Self_ = 19,
+}
+impl Face {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "FACE_UNSPECIFIED",
+            Self::Down => "FACE_DOWN",
+            Self::Up => "FACE_UP",
+            Self::North => "FACE_NORTH",
+            Self::South => "FACE_SOUTH",
+            Self::West => "FACE_WEST",
+            Self::East => "FACE_EAST",
+            Self::NorthEast => "FACE_NORTH_EAST",
+            Self::NorthWest => "FACE_NORTH_WEST",
+            Self::SouthEast => "FACE_SOUTH_EAST",
+            Self::SouthWest => "FACE_SOUTH_WEST",
+            Self::WestNorthWest => "FACE_WEST_NORTH_WEST",
+            Self::NorthNorthWest => "FACE_NORTH_NORTH_WEST",
+            Self::NorthNorthEast => "FACE_NORTH_NORTH_EAST",
+            Self::EastNorthEast => "FACE_EAST_NORTH_EAST",
+            Self::EastSouthEast => "FACE_EAST_SOUTH_EAST",
+            Self::SouthSouthEast => "FACE_SOUTH_SOUTH_EAST",
+            Self::SouthSouthWest => "FACE_SOUTH_SOUTH_WEST",
+            Self::WestSouthWest => "FACE_WEST_SOUTH_WEST",
+            Self::Self_ => "FACE_SELF",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FACE_UNSPECIFIED" => Some(Self::Unspecified),
+            "FACE_DOWN" => Some(Self::Down),
+            "FACE_UP" => Some(Self::Up),
+            "FACE_NORTH" => Some(Self::North),
+            "FACE_SOUTH" => Some(Self::South),
+            "FACE_WEST" => Some(Self::West),
+            "FACE_EAST" => Some(Self::East),
+            "FACE_NORTH_EAST" => Some(Self::NorthEast),
+            "FACE_NORTH_WEST" => Some(Self::NorthWest),
+            "FACE_SOUTH_EAST" => Some(Self::SouthEast),
+            "FACE_SOUTH_WEST" => Some(Self::SouthWest),
+            "FACE_WEST_NORTH_WEST" => Some(Self::WestNorthWest),
+            "FACE_NORTH_NORTH_WEST" => Some(Self::NorthNorthWest),
+            "FACE_NORTH_NORTH_EAST" => Some(Self::NorthNorthEast),
+            "FACE_EAST_NORTH_EAST" => Some(Self::EastNorthEast),
+            "FACE_EAST_SOUTH_EAST" => Some(Self::EastSouthEast),
+            "FACE_SOUTH_SOUTH_EAST" => Some(Self::SouthSouthEast),
+            "FACE_SOUTH_SOUTH_WEST" => Some(Self::SouthSouthWest),
+            "FACE_WEST_SOUTH_WEST" => Some(Self::WestSouthWest),
+            "FACE_SELF" => Some(Self::Self_),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HangingBreakRemoveCause {
+    Unspecified = 0,
+    Entity = 1,
+    Explosion = 2,
+    Obstruction = 3,
+    Physics = 4,
+    Default = 5,
+}
+impl HangingBreakRemoveCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "HANGING_BREAK_REMOVE_CAUSE_UNSPECIFIED",
+            Self::Entity => "HANGING_BREAK_REMOVE_CAUSE_ENTITY",
+            Self::Explosion => "HANGING_BREAK_REMOVE_CAUSE_EXPLOSION",
+            Self::Obstruction => "HANGING_BREAK_REMOVE_CAUSE_OBSTRUCTION",
+            Self::Physics => "HANGING_BREAK_REMOVE_CAUSE_PHYSICS",
+            Self::Default => "HANGING_BREAK_REMOVE_CAUSE_DEFAULT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HANGING_BREAK_REMOVE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "HANGING_BREAK_REMOVE_CAUSE_ENTITY" => Some(Self::Entity),
+            "HANGING_BREAK_REMOVE_CAUSE_EXPLOSION" => Some(Self::Explosion),
+            "HANGING_BREAK_REMOVE_CAUSE_OBSTRUCTION" => Some(Self::Obstruction),
+            "HANGING_BREAK_REMOVE_CAUSE_PHYSICS" => Some(Self::Physics),
+            "HANGING_BREAK_REMOVE_CAUSE_DEFAULT" => Some(Self::Default),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HopperInventorySearchContainerType {
+    Unspecified = 0,
+    Source = 1,
+    Destination = 2,
+}
+impl HopperInventorySearchContainerType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_UNSPECIFIED",
+            Self::Source => "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_SOURCE",
+            Self::Destination => "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_DESTINATION",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_UNSPECIFIED" => {
+                Some(Self::Unspecified)
+            }
+            "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_SOURCE" => Some(Self::Source),
+            "HOPPER_INVENTORY_SEARCH_CONTAINER_TYPE_DESTINATION" => {
+                Some(Self::Destination)
+            }
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Instrument {
+    Unspecified = 0,
+    Piano = 1,
+    BassDrum = 2,
+    SnareDrum = 3,
+    Sticks = 4,
+    BassGuitar = 5,
+    Flute = 6,
+    Bell = 7,
+    Guitar = 8,
+    Chime = 9,
+    Xylophone = 10,
+    IronXylophone = 11,
+    CowBell = 12,
+    Didgeridoo = 13,
+    Bit = 14,
+    Banjo = 15,
+    Pling = 16,
+    Zombie = 17,
+    Trumpet = 18,
+    TrumpetExposed = 19,
+    TrumpetOxidized = 20,
+    TrumpetWeathered = 21,
+    Skeleton = 22,
+    Creeper = 23,
+    Dragon = 24,
+    WitherSkeleton = 25,
+    Piglin = 26,
+    CustomHead = 27,
+}
+impl Instrument {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "INSTRUMENT_UNSPECIFIED",
+            Self::Piano => "INSTRUMENT_PIANO",
+            Self::BassDrum => "INSTRUMENT_BASS_DRUM",
+            Self::SnareDrum => "INSTRUMENT_SNARE_DRUM",
+            Self::Sticks => "INSTRUMENT_STICKS",
+            Self::BassGuitar => "INSTRUMENT_BASS_GUITAR",
+            Self::Flute => "INSTRUMENT_FLUTE",
+            Self::Bell => "INSTRUMENT_BELL",
+            Self::Guitar => "INSTRUMENT_GUITAR",
+            Self::Chime => "INSTRUMENT_CHIME",
+            Self::Xylophone => "INSTRUMENT_XYLOPHONE",
+            Self::IronXylophone => "INSTRUMENT_IRON_XYLOPHONE",
+            Self::CowBell => "INSTRUMENT_COW_BELL",
+            Self::Didgeridoo => "INSTRUMENT_DIDGERIDOO",
+            Self::Bit => "INSTRUMENT_BIT",
+            Self::Banjo => "INSTRUMENT_BANJO",
+            Self::Pling => "INSTRUMENT_PLING",
+            Self::Zombie => "INSTRUMENT_ZOMBIE",
+            Self::Trumpet => "INSTRUMENT_TRUMPET",
+            Self::TrumpetExposed => "INSTRUMENT_TRUMPET_EXPOSED",
+            Self::TrumpetOxidized => "INSTRUMENT_TRUMPET_OXIDIZED",
+            Self::TrumpetWeathered => "INSTRUMENT_TRUMPET_WEATHERED",
+            Self::Skeleton => "INSTRUMENT_SKELETON",
+            Self::Creeper => "INSTRUMENT_CREEPER",
+            Self::Dragon => "INSTRUMENT_DRAGON",
+            Self::WitherSkeleton => "INSTRUMENT_WITHER_SKELETON",
+            Self::Piglin => "INSTRUMENT_PIGLIN",
+            Self::CustomHead => "INSTRUMENT_CUSTOM_HEAD",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "INSTRUMENT_UNSPECIFIED" => Some(Self::Unspecified),
+            "INSTRUMENT_PIANO" => Some(Self::Piano),
+            "INSTRUMENT_BASS_DRUM" => Some(Self::BassDrum),
+            "INSTRUMENT_SNARE_DRUM" => Some(Self::SnareDrum),
+            "INSTRUMENT_STICKS" => Some(Self::Sticks),
+            "INSTRUMENT_BASS_GUITAR" => Some(Self::BassGuitar),
+            "INSTRUMENT_FLUTE" => Some(Self::Flute),
+            "INSTRUMENT_BELL" => Some(Self::Bell),
+            "INSTRUMENT_GUITAR" => Some(Self::Guitar),
+            "INSTRUMENT_CHIME" => Some(Self::Chime),
+            "INSTRUMENT_XYLOPHONE" => Some(Self::Xylophone),
+            "INSTRUMENT_IRON_XYLOPHONE" => Some(Self::IronXylophone),
+            "INSTRUMENT_COW_BELL" => Some(Self::CowBell),
+            "INSTRUMENT_DIDGERIDOO" => Some(Self::Didgeridoo),
+            "INSTRUMENT_BIT" => Some(Self::Bit),
+            "INSTRUMENT_BANJO" => Some(Self::Banjo),
+            "INSTRUMENT_PLING" => Some(Self::Pling),
+            "INSTRUMENT_ZOMBIE" => Some(Self::Zombie),
+            "INSTRUMENT_TRUMPET" => Some(Self::Trumpet),
+            "INSTRUMENT_TRUMPET_EXPOSED" => Some(Self::TrumpetExposed),
+            "INSTRUMENT_TRUMPET_OXIDIZED" => Some(Self::TrumpetOxidized),
+            "INSTRUMENT_TRUMPET_WEATHERED" => Some(Self::TrumpetWeathered),
+            "INSTRUMENT_SKELETON" => Some(Self::Skeleton),
+            "INSTRUMENT_CREEPER" => Some(Self::Creeper),
+            "INSTRUMENT_DRAGON" => Some(Self::Dragon),
+            "INSTRUMENT_WITHER_SKELETON" => Some(Self::WitherSkeleton),
+            "INSTRUMENT_PIGLIN" => Some(Self::Piglin),
+            "INSTRUMENT_CUSTOM_HEAD" => Some(Self::CustomHead),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum InventoryAction {
+    Unspecified = 0,
+    Nothing = 1,
+    PickupAll = 2,
+    PickupSome = 3,
+    PickupHalf = 4,
+    PickupOne = 5,
+    PlaceAll = 6,
+    PlaceSome = 7,
+    PlaceOne = 8,
+    SwapWithCursor = 9,
+    DropAllCursor = 10,
+    DropOneCursor = 11,
+    DropAllSlot = 12,
+    DropOneSlot = 13,
+    MoveToOtherInventory = 14,
+    HotbarMoveAndReadd = 15,
+    HotbarSwap = 16,
+    CloneStack = 17,
+    CollectToCursor = 18,
+    Unknown = 19,
+}
+impl InventoryAction {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "INVENTORY_ACTION_UNSPECIFIED",
+            Self::Nothing => "INVENTORY_ACTION_NOTHING",
+            Self::PickupAll => "INVENTORY_ACTION_PICKUP_ALL",
+            Self::PickupSome => "INVENTORY_ACTION_PICKUP_SOME",
+            Self::PickupHalf => "INVENTORY_ACTION_PICKUP_HALF",
+            Self::PickupOne => "INVENTORY_ACTION_PICKUP_ONE",
+            Self::PlaceAll => "INVENTORY_ACTION_PLACE_ALL",
+            Self::PlaceSome => "INVENTORY_ACTION_PLACE_SOME",
+            Self::PlaceOne => "INVENTORY_ACTION_PLACE_ONE",
+            Self::SwapWithCursor => "INVENTORY_ACTION_SWAP_WITH_CURSOR",
+            Self::DropAllCursor => "INVENTORY_ACTION_DROP_ALL_CURSOR",
+            Self::DropOneCursor => "INVENTORY_ACTION_DROP_ONE_CURSOR",
+            Self::DropAllSlot => "INVENTORY_ACTION_DROP_ALL_SLOT",
+            Self::DropOneSlot => "INVENTORY_ACTION_DROP_ONE_SLOT",
+            Self::MoveToOtherInventory => "INVENTORY_ACTION_MOVE_TO_OTHER_INVENTORY",
+            Self::HotbarMoveAndReadd => "INVENTORY_ACTION_HOTBAR_MOVE_AND_READD",
+            Self::HotbarSwap => "INVENTORY_ACTION_HOTBAR_SWAP",
+            Self::CloneStack => "INVENTORY_ACTION_CLONE_STACK",
+            Self::CollectToCursor => "INVENTORY_ACTION_COLLECT_TO_CURSOR",
+            Self::Unknown => "INVENTORY_ACTION_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "INVENTORY_ACTION_UNSPECIFIED" => Some(Self::Unspecified),
+            "INVENTORY_ACTION_NOTHING" => Some(Self::Nothing),
+            "INVENTORY_ACTION_PICKUP_ALL" => Some(Self::PickupAll),
+            "INVENTORY_ACTION_PICKUP_SOME" => Some(Self::PickupSome),
+            "INVENTORY_ACTION_PICKUP_HALF" => Some(Self::PickupHalf),
+            "INVENTORY_ACTION_PICKUP_ONE" => Some(Self::PickupOne),
+            "INVENTORY_ACTION_PLACE_ALL" => Some(Self::PlaceAll),
+            "INVENTORY_ACTION_PLACE_SOME" => Some(Self::PlaceSome),
+            "INVENTORY_ACTION_PLACE_ONE" => Some(Self::PlaceOne),
+            "INVENTORY_ACTION_SWAP_WITH_CURSOR" => Some(Self::SwapWithCursor),
+            "INVENTORY_ACTION_DROP_ALL_CURSOR" => Some(Self::DropAllCursor),
+            "INVENTORY_ACTION_DROP_ONE_CURSOR" => Some(Self::DropOneCursor),
+            "INVENTORY_ACTION_DROP_ALL_SLOT" => Some(Self::DropAllSlot),
+            "INVENTORY_ACTION_DROP_ONE_SLOT" => Some(Self::DropOneSlot),
+            "INVENTORY_ACTION_MOVE_TO_OTHER_INVENTORY" => {
+                Some(Self::MoveToOtherInventory)
+            }
+            "INVENTORY_ACTION_HOTBAR_MOVE_AND_READD" => Some(Self::HotbarMoveAndReadd),
+            "INVENTORY_ACTION_HOTBAR_SWAP" => Some(Self::HotbarSwap),
+            "INVENTORY_ACTION_CLONE_STACK" => Some(Self::CloneStack),
+            "INVENTORY_ACTION_COLLECT_TO_CURSOR" => Some(Self::CollectToCursor),
+            "INVENTORY_ACTION_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum InventoryTypeSlotType {
+    Unspecified = 0,
+    Result = 1,
+    Crafting = 2,
+    Armor = 3,
+    Container = 4,
+    Quickbar = 5,
+    Outside = 6,
+    Fuel = 7,
+}
+impl InventoryTypeSlotType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "INVENTORY_TYPE_SLOT_TYPE_UNSPECIFIED",
+            Self::Result => "INVENTORY_TYPE_SLOT_TYPE_RESULT",
+            Self::Crafting => "INVENTORY_TYPE_SLOT_TYPE_CRAFTING",
+            Self::Armor => "INVENTORY_TYPE_SLOT_TYPE_ARMOR",
+            Self::Container => "INVENTORY_TYPE_SLOT_TYPE_CONTAINER",
+            Self::Quickbar => "INVENTORY_TYPE_SLOT_TYPE_QUICKBAR",
+            Self::Outside => "INVENTORY_TYPE_SLOT_TYPE_OUTSIDE",
+            Self::Fuel => "INVENTORY_TYPE_SLOT_TYPE_FUEL",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "INVENTORY_TYPE_SLOT_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "INVENTORY_TYPE_SLOT_TYPE_RESULT" => Some(Self::Result),
+            "INVENTORY_TYPE_SLOT_TYPE_CRAFTING" => Some(Self::Crafting),
+            "INVENTORY_TYPE_SLOT_TYPE_ARMOR" => Some(Self::Armor),
+            "INVENTORY_TYPE_SLOT_TYPE_CONTAINER" => Some(Self::Container),
+            "INVENTORY_TYPE_SLOT_TYPE_QUICKBAR" => Some(Self::Quickbar),
+            "INVENTORY_TYPE_SLOT_TYPE_OUTSIDE" => Some(Self::Outside),
+            "INVENTORY_TYPE_SLOT_TYPE_FUEL" => Some(Self::Fuel),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LightningStrikeCause {
+    Unspecified = 0,
+    Command = 1,
+    Custom = 2,
+    Spawner = 3,
+    Trident = 4,
+    Trap = 5,
+    Weather = 6,
+    Enchantment = 7,
+    Unknown = 8,
+}
+impl LightningStrikeCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "LIGHTNING_STRIKE_CAUSE_UNSPECIFIED",
+            Self::Command => "LIGHTNING_STRIKE_CAUSE_COMMAND",
+            Self::Custom => "LIGHTNING_STRIKE_CAUSE_CUSTOM",
+            Self::Spawner => "LIGHTNING_STRIKE_CAUSE_SPAWNER",
+            Self::Trident => "LIGHTNING_STRIKE_CAUSE_TRIDENT",
+            Self::Trap => "LIGHTNING_STRIKE_CAUSE_TRAP",
+            Self::Weather => "LIGHTNING_STRIKE_CAUSE_WEATHER",
+            Self::Enchantment => "LIGHTNING_STRIKE_CAUSE_ENCHANTMENT",
+            Self::Unknown => "LIGHTNING_STRIKE_CAUSE_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LIGHTNING_STRIKE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "LIGHTNING_STRIKE_CAUSE_COMMAND" => Some(Self::Command),
+            "LIGHTNING_STRIKE_CAUSE_CUSTOM" => Some(Self::Custom),
+            "LIGHTNING_STRIKE_CAUSE_SPAWNER" => Some(Self::Spawner),
+            "LIGHTNING_STRIKE_CAUSE_TRIDENT" => Some(Self::Trident),
+            "LIGHTNING_STRIKE_CAUSE_TRAP" => Some(Self::Trap),
+            "LIGHTNING_STRIKE_CAUSE_WEATHER" => Some(Self::Weather),
+            "LIGHTNING_STRIKE_CAUSE_ENCHANTMENT" => Some(Self::Enchantment),
+            "LIGHTNING_STRIKE_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum MainHand {
+    Unspecified = 0,
+    Left = 1,
+    Right = 2,
+}
+impl MainHand {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "MAIN_HAND_UNSPECIFIED",
+            Self::Left => "MAIN_HAND_LEFT",
+            Self::Right => "MAIN_HAND_RIGHT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "MAIN_HAND_UNSPECIFIED" => Some(Self::Unspecified),
+            "MAIN_HAND_LEFT" => Some(Self::Left),
+            "MAIN_HAND_RIGHT" => Some(Self::Right),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerAnimationType {
+    Unspecified = 0,
+    ArmSwing = 1,
+    OffArmSwing = 2,
+}
+impl PlayerAnimationType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_ANIMATION_TYPE_UNSPECIFIED",
+            Self::ArmSwing => "PLAYER_ANIMATION_TYPE_ARM_SWING",
+            Self::OffArmSwing => "PLAYER_ANIMATION_TYPE_OFF_ARM_SWING",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_ANIMATION_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_ANIMATION_TYPE_ARM_SWING" => Some(Self::ArmSwing),
+            "PLAYER_ANIMATION_TYPE_OFF_ARM_SWING" => Some(Self::OffArmSwing),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerBedEnterResult {
+    Unspecified = 0,
+    Ok = 1,
+    NotPossibleHere = 2,
+    NotPossibleNow = 3,
+    TooFarAway = 4,
+    NotSafe = 5,
+    OtherProblem = 6,
+}
+impl PlayerBedEnterResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_BED_ENTER_RESULT_UNSPECIFIED",
+            Self::Ok => "PLAYER_BED_ENTER_RESULT_OK",
+            Self::NotPossibleHere => "PLAYER_BED_ENTER_RESULT_NOT_POSSIBLE_HERE",
+            Self::NotPossibleNow => "PLAYER_BED_ENTER_RESULT_NOT_POSSIBLE_NOW",
+            Self::TooFarAway => "PLAYER_BED_ENTER_RESULT_TOO_FAR_AWAY",
+            Self::NotSafe => "PLAYER_BED_ENTER_RESULT_NOT_SAFE",
+            Self::OtherProblem => "PLAYER_BED_ENTER_RESULT_OTHER_PROBLEM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_BED_ENTER_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_BED_ENTER_RESULT_OK" => Some(Self::Ok),
+            "PLAYER_BED_ENTER_RESULT_NOT_POSSIBLE_HERE" => Some(Self::NotPossibleHere),
+            "PLAYER_BED_ENTER_RESULT_NOT_POSSIBLE_NOW" => Some(Self::NotPossibleNow),
+            "PLAYER_BED_ENTER_RESULT_TOO_FAR_AWAY" => Some(Self::TooFarAway),
+            "PLAYER_BED_ENTER_RESULT_NOT_SAFE" => Some(Self::NotSafe),
+            "PLAYER_BED_ENTER_RESULT_OTHER_PROBLEM" => Some(Self::OtherProblem),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerExpCooldownChangeReason {
+    Unspecified = 0,
+    PickupOrb = 1,
+    Plugin = 2,
+}
+impl PlayerExpCooldownChangeReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_EXP_COOLDOWN_CHANGE_REASON_UNSPECIFIED",
+            Self::PickupOrb => "PLAYER_EXP_COOLDOWN_CHANGE_REASON_PICKUP_ORB",
+            Self::Plugin => "PLAYER_EXP_COOLDOWN_CHANGE_REASON_PLUGIN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_EXP_COOLDOWN_CHANGE_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_EXP_COOLDOWN_CHANGE_REASON_PICKUP_ORB" => Some(Self::PickupOrb),
+            "PLAYER_EXP_COOLDOWN_CHANGE_REASON_PLUGIN" => Some(Self::Plugin),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerFishState {
+    Unspecified = 0,
+    Fishing = 1,
+    CaughtFish = 2,
+    CaughtEntity = 3,
+    InGround = 4,
+    FailedAttempt = 5,
+    ReelIn = 6,
+    Bite = 7,
+}
+impl PlayerFishState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_FISH_STATE_UNSPECIFIED",
+            Self::Fishing => "PLAYER_FISH_STATE_FISHING",
+            Self::CaughtFish => "PLAYER_FISH_STATE_CAUGHT_FISH",
+            Self::CaughtEntity => "PLAYER_FISH_STATE_CAUGHT_ENTITY",
+            Self::InGround => "PLAYER_FISH_STATE_IN_GROUND",
+            Self::FailedAttempt => "PLAYER_FISH_STATE_FAILED_ATTEMPT",
+            Self::ReelIn => "PLAYER_FISH_STATE_REEL_IN",
+            Self::Bite => "PLAYER_FISH_STATE_BITE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_FISH_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_FISH_STATE_FISHING" => Some(Self::Fishing),
+            "PLAYER_FISH_STATE_CAUGHT_FISH" => Some(Self::CaughtFish),
+            "PLAYER_FISH_STATE_CAUGHT_ENTITY" => Some(Self::CaughtEntity),
+            "PLAYER_FISH_STATE_IN_GROUND" => Some(Self::InGround),
+            "PLAYER_FISH_STATE_FAILED_ATTEMPT" => Some(Self::FailedAttempt),
+            "PLAYER_FISH_STATE_REEL_IN" => Some(Self::ReelIn),
+            "PLAYER_FISH_STATE_BITE" => Some(Self::Bite),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerLoginResult {
+    Unspecified = 0,
+    Allowed = 1,
+    KickFull = 2,
+    KickBanned = 3,
+    KickWhitelist = 4,
+    KickOther = 5,
+}
+impl PlayerLoginResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_LOGIN_RESULT_UNSPECIFIED",
+            Self::Allowed => "PLAYER_LOGIN_RESULT_ALLOWED",
+            Self::KickFull => "PLAYER_LOGIN_RESULT_KICK_FULL",
+            Self::KickBanned => "PLAYER_LOGIN_RESULT_KICK_BANNED",
+            Self::KickWhitelist => "PLAYER_LOGIN_RESULT_KICK_WHITELIST",
+            Self::KickOther => "PLAYER_LOGIN_RESULT_KICK_OTHER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_LOGIN_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_LOGIN_RESULT_ALLOWED" => Some(Self::Allowed),
+            "PLAYER_LOGIN_RESULT_KICK_FULL" => Some(Self::KickFull),
+            "PLAYER_LOGIN_RESULT_KICK_BANNED" => Some(Self::KickBanned),
+            "PLAYER_LOGIN_RESULT_KICK_WHITELIST" => Some(Self::KickWhitelist),
+            "PLAYER_LOGIN_RESULT_KICK_OTHER" => Some(Self::KickOther),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerRecipeBookSettingsChangeRecipeBookType {
+    Unspecified = 0,
+    Crafting = 1,
+    Furnace = 2,
+    BlastFurnace = 3,
+    Smoker = 4,
+}
+impl PlayerRecipeBookSettingsChangeRecipeBookType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => {
+                "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_UNSPECIFIED"
+            }
+            Self::Crafting => {
+                "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_CRAFTING"
+            }
+            Self::Furnace => {
+                "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_FURNACE"
+            }
+            Self::BlastFurnace => {
+                "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_BLAST_FURNACE"
+            }
+            Self::Smoker => "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_SMOKER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_UNSPECIFIED" => {
+                Some(Self::Unspecified)
+            }
+            "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_CRAFTING" => {
+                Some(Self::Crafting)
+            }
+            "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_FURNACE" => {
+                Some(Self::Furnace)
+            }
+            "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_BLAST_FURNACE" => {
+                Some(Self::BlastFurnace)
+            }
+            "PLAYER_RECIPE_BOOK_SETTINGS_CHANGE_RECIPE_BOOK_TYPE_SMOKER" => {
+                Some(Self::Smoker)
+            }
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerRespawnReason {
+    Unspecified = 0,
+    Death = 1,
+    EndPortal = 2,
+    Plugin = 3,
+}
+impl PlayerRespawnReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_RESPAWN_REASON_UNSPECIFIED",
+            Self::Death => "PLAYER_RESPAWN_REASON_DEATH",
+            Self::EndPortal => "PLAYER_RESPAWN_REASON_END_PORTAL",
+            Self::Plugin => "PLAYER_RESPAWN_REASON_PLUGIN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_RESPAWN_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_RESPAWN_REASON_DEATH" => Some(Self::Death),
+            "PLAYER_RESPAWN_REASON_END_PORTAL" => Some(Self::EndPortal),
+            "PLAYER_RESPAWN_REASON_PLUGIN" => Some(Self::Plugin),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerSignOpenCause {
+    Unspecified = 0,
+    Interact = 1,
+    Place = 2,
+    Plugin = 3,
+    Unknown = 4,
+}
+impl PlayerSignOpenCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_SIGN_OPEN_CAUSE_UNSPECIFIED",
+            Self::Interact => "PLAYER_SIGN_OPEN_CAUSE_INTERACT",
+            Self::Place => "PLAYER_SIGN_OPEN_CAUSE_PLACE",
+            Self::Plugin => "PLAYER_SIGN_OPEN_CAUSE_PLUGIN",
+            Self::Unknown => "PLAYER_SIGN_OPEN_CAUSE_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_SIGN_OPEN_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_SIGN_OPEN_CAUSE_INTERACT" => Some(Self::Interact),
+            "PLAYER_SIGN_OPEN_CAUSE_PLACE" => Some(Self::Place),
+            "PLAYER_SIGN_OPEN_CAUSE_PLUGIN" => Some(Self::Plugin),
+            "PLAYER_SIGN_OPEN_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerSpawnChangeCause {
+    Unspecified = 0,
+    Command = 1,
+    Bed = 2,
+    RespawnAnchor = 3,
+    Plugin = 4,
+    Reset = 5,
+    Unknown = 6,
+}
+impl PlayerSpawnChangeCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_SPAWN_CHANGE_CAUSE_UNSPECIFIED",
+            Self::Command => "PLAYER_SPAWN_CHANGE_CAUSE_COMMAND",
+            Self::Bed => "PLAYER_SPAWN_CHANGE_CAUSE_BED",
+            Self::RespawnAnchor => "PLAYER_SPAWN_CHANGE_CAUSE_RESPAWN_ANCHOR",
+            Self::Plugin => "PLAYER_SPAWN_CHANGE_CAUSE_PLUGIN",
+            Self::Reset => "PLAYER_SPAWN_CHANGE_CAUSE_RESET",
+            Self::Unknown => "PLAYER_SPAWN_CHANGE_CAUSE_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_SPAWN_CHANGE_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_SPAWN_CHANGE_CAUSE_COMMAND" => Some(Self::Command),
+            "PLAYER_SPAWN_CHANGE_CAUSE_BED" => Some(Self::Bed),
+            "PLAYER_SPAWN_CHANGE_CAUSE_RESPAWN_ANCHOR" => Some(Self::RespawnAnchor),
+            "PLAYER_SPAWN_CHANGE_CAUSE_PLUGIN" => Some(Self::Plugin),
+            "PLAYER_SPAWN_CHANGE_CAUSE_RESET" => Some(Self::Reset),
+            "PLAYER_SPAWN_CHANGE_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PlayerTeleportCause {
+    Unspecified = 0,
+    EnderPearl = 1,
+    Command = 2,
+    Plugin = 3,
+    NetherPortal = 4,
+    EndPortal = 5,
+    Spectate = 6,
+    EndGateway = 7,
+    ChorusFruit = 8,
+    Dismount = 9,
+    ExitBed = 10,
+    Unknown = 11,
+}
+impl PlayerTeleportCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLAYER_TELEPORT_CAUSE_UNSPECIFIED",
+            Self::EnderPearl => "PLAYER_TELEPORT_CAUSE_ENDER_PEARL",
+            Self::Command => "PLAYER_TELEPORT_CAUSE_COMMAND",
+            Self::Plugin => "PLAYER_TELEPORT_CAUSE_PLUGIN",
+            Self::NetherPortal => "PLAYER_TELEPORT_CAUSE_NETHER_PORTAL",
+            Self::EndPortal => "PLAYER_TELEPORT_CAUSE_END_PORTAL",
+            Self::Spectate => "PLAYER_TELEPORT_CAUSE_SPECTATE",
+            Self::EndGateway => "PLAYER_TELEPORT_CAUSE_END_GATEWAY",
+            Self::ChorusFruit => "PLAYER_TELEPORT_CAUSE_CHORUS_FRUIT",
+            Self::Dismount => "PLAYER_TELEPORT_CAUSE_DISMOUNT",
+            Self::ExitBed => "PLAYER_TELEPORT_CAUSE_EXIT_BED",
+            Self::Unknown => "PLAYER_TELEPORT_CAUSE_UNKNOWN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLAYER_TELEPORT_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLAYER_TELEPORT_CAUSE_ENDER_PEARL" => Some(Self::EnderPearl),
+            "PLAYER_TELEPORT_CAUSE_COMMAND" => Some(Self::Command),
+            "PLAYER_TELEPORT_CAUSE_PLUGIN" => Some(Self::Plugin),
+            "PLAYER_TELEPORT_CAUSE_NETHER_PORTAL" => Some(Self::NetherPortal),
+            "PLAYER_TELEPORT_CAUSE_END_PORTAL" => Some(Self::EndPortal),
+            "PLAYER_TELEPORT_CAUSE_SPECTATE" => Some(Self::Spectate),
+            "PLAYER_TELEPORT_CAUSE_END_GATEWAY" => Some(Self::EndGateway),
+            "PLAYER_TELEPORT_CAUSE_CHORUS_FRUIT" => Some(Self::ChorusFruit),
+            "PLAYER_TELEPORT_CAUSE_DISMOUNT" => Some(Self::Dismount),
+            "PLAYER_TELEPORT_CAUSE_EXIT_BED" => Some(Self::ExitBed),
+            "PLAYER_TELEPORT_CAUSE_UNKNOWN" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PortalCreateReason {
+    Unspecified = 0,
+    Fire = 1,
+    NetherPair = 2,
+    EndPlatform = 3,
+}
+impl PortalCreateReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PORTAL_CREATE_REASON_UNSPECIFIED",
+            Self::Fire => "PORTAL_CREATE_REASON_FIRE",
+            Self::NetherPair => "PORTAL_CREATE_REASON_NETHER_PAIR",
+            Self::EndPlatform => "PORTAL_CREATE_REASON_END_PLATFORM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PORTAL_CREATE_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "PORTAL_CREATE_REASON_FIRE" => Some(Self::Fire),
+            "PORTAL_CREATE_REASON_NETHER_PAIR" => Some(Self::NetherPair),
+            "PORTAL_CREATE_REASON_END_PLATFORM" => Some(Self::EndPlatform),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Pose {
+    Unspecified = 0,
+    Standing = 1,
+    FallFlying = 2,
+    Sleeping = 3,
+    Swimming = 4,
+    SpinAttack = 5,
+    Sneaking = 6,
+    LongJumping = 7,
+    Dying = 8,
+    Croaking = 9,
+    UsingTongue = 10,
+    Sitting = 11,
+    Roaring = 12,
+    Sniffing = 13,
+    Emerging = 14,
+    Digging = 15,
+    Sliding = 16,
+    Shooting = 17,
+    Inhaling = 18,
+}
+impl Pose {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "POSE_UNSPECIFIED",
+            Self::Standing => "POSE_STANDING",
+            Self::FallFlying => "POSE_FALL_FLYING",
+            Self::Sleeping => "POSE_SLEEPING",
+            Self::Swimming => "POSE_SWIMMING",
+            Self::SpinAttack => "POSE_SPIN_ATTACK",
+            Self::Sneaking => "POSE_SNEAKING",
+            Self::LongJumping => "POSE_LONG_JUMPING",
+            Self::Dying => "POSE_DYING",
+            Self::Croaking => "POSE_CROAKING",
+            Self::UsingTongue => "POSE_USING_TONGUE",
+            Self::Sitting => "POSE_SITTING",
+            Self::Roaring => "POSE_ROARING",
+            Self::Sniffing => "POSE_SNIFFING",
+            Self::Emerging => "POSE_EMERGING",
+            Self::Digging => "POSE_DIGGING",
+            Self::Sliding => "POSE_SLIDING",
+            Self::Shooting => "POSE_SHOOTING",
+            Self::Inhaling => "POSE_INHALING",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "POSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "POSE_STANDING" => Some(Self::Standing),
+            "POSE_FALL_FLYING" => Some(Self::FallFlying),
+            "POSE_SLEEPING" => Some(Self::Sleeping),
+            "POSE_SWIMMING" => Some(Self::Swimming),
+            "POSE_SPIN_ATTACK" => Some(Self::SpinAttack),
+            "POSE_SNEAKING" => Some(Self::Sneaking),
+            "POSE_LONG_JUMPING" => Some(Self::LongJumping),
+            "POSE_DYING" => Some(Self::Dying),
+            "POSE_CROAKING" => Some(Self::Croaking),
+            "POSE_USING_TONGUE" => Some(Self::UsingTongue),
+            "POSE_SITTING" => Some(Self::Sitting),
+            "POSE_ROARING" => Some(Self::Roaring),
+            "POSE_SNIFFING" => Some(Self::Sniffing),
+            "POSE_EMERGING" => Some(Self::Emerging),
+            "POSE_DIGGING" => Some(Self::Digging),
+            "POSE_SLIDING" => Some(Self::Sliding),
+            "POSE_SHOOTING" => Some(Self::Shooting),
+            "POSE_INHALING" => Some(Self::Inhaling),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum RaidStopReason {
+    Unspecified = 0,
+    Peace = 1,
+    Timeout = 2,
+    Finished = 3,
+    Unspawnable = 4,
+    NotInVillage = 5,
+    Plugin = 6,
+}
+impl RaidStopReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "RAID_STOP_REASON_UNSPECIFIED",
+            Self::Peace => "RAID_STOP_REASON_PEACE",
+            Self::Timeout => "RAID_STOP_REASON_TIMEOUT",
+            Self::Finished => "RAID_STOP_REASON_FINISHED",
+            Self::Unspawnable => "RAID_STOP_REASON_UNSPAWNABLE",
+            Self::NotInVillage => "RAID_STOP_REASON_NOT_IN_VILLAGE",
+            Self::Plugin => "RAID_STOP_REASON_PLUGIN",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "RAID_STOP_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "RAID_STOP_REASON_PEACE" => Some(Self::Peace),
+            "RAID_STOP_REASON_TIMEOUT" => Some(Self::Timeout),
+            "RAID_STOP_REASON_FINISHED" => Some(Self::Finished),
+            "RAID_STOP_REASON_UNSPAWNABLE" => Some(Self::Unspawnable),
+            "RAID_STOP_REASON_NOT_IN_VILLAGE" => Some(Self::NotInVillage),
+            "RAID_STOP_REASON_PLUGIN" => Some(Self::Plugin),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ResourcePackStatus {
+    Unspecified = 0,
+    SuccessfullyLoaded = 1,
+    Declined = 2,
+    FailedDownload = 3,
+    Accepted = 4,
+    Downloaded = 5,
+    InvalidUrl = 6,
+    FailedReload = 7,
+    Discarded = 8,
+}
+impl ResourcePackStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "RESOURCE_PACK_STATUS_UNSPECIFIED",
+            Self::SuccessfullyLoaded => "RESOURCE_PACK_STATUS_SUCCESSFULLY_LOADED",
+            Self::Declined => "RESOURCE_PACK_STATUS_DECLINED",
+            Self::FailedDownload => "RESOURCE_PACK_STATUS_FAILED_DOWNLOAD",
+            Self::Accepted => "RESOURCE_PACK_STATUS_ACCEPTED",
+            Self::Downloaded => "RESOURCE_PACK_STATUS_DOWNLOADED",
+            Self::InvalidUrl => "RESOURCE_PACK_STATUS_INVALID_URL",
+            Self::FailedReload => "RESOURCE_PACK_STATUS_FAILED_RELOAD",
+            Self::Discarded => "RESOURCE_PACK_STATUS_DISCARDED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "RESOURCE_PACK_STATUS_UNSPECIFIED" => Some(Self::Unspecified),
+            "RESOURCE_PACK_STATUS_SUCCESSFULLY_LOADED" => Some(Self::SuccessfullyLoaded),
+            "RESOURCE_PACK_STATUS_DECLINED" => Some(Self::Declined),
+            "RESOURCE_PACK_STATUS_FAILED_DOWNLOAD" => Some(Self::FailedDownload),
+            "RESOURCE_PACK_STATUS_ACCEPTED" => Some(Self::Accepted),
+            "RESOURCE_PACK_STATUS_DOWNLOADED" => Some(Self::Downloaded),
+            "RESOURCE_PACK_STATUS_INVALID_URL" => Some(Self::InvalidUrl),
+            "RESOURCE_PACK_STATUS_FAILED_RELOAD" => Some(Self::FailedReload),
+            "RESOURCE_PACK_STATUS_DISCARDED" => Some(Self::Discarded),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ServerLoadType {
+    Unspecified = 0,
+    Startup = 1,
+    Reload = 2,
+}
+impl ServerLoadType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "SERVER_LOAD_TYPE_UNSPECIFIED",
+            Self::Startup => "SERVER_LOAD_TYPE_STARTUP",
+            Self::Reload => "SERVER_LOAD_TYPE_RELOAD",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SERVER_LOAD_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "SERVER_LOAD_TYPE_STARTUP" => Some(Self::Startup),
+            "SERVER_LOAD_TYPE_RELOAD" => Some(Self::Reload),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Side {
+    Unspecified = 0,
+    Front = 1,
+    Back = 2,
+}
+impl Side {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "SIDE_UNSPECIFIED",
+            Self::Front => "SIDE_FRONT",
+            Self::Back => "SIDE_BACK",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SIDE_UNSPECIFIED" => Some(Self::Unspecified),
+            "SIDE_FRONT" => Some(Self::Front),
+            "SIDE_BACK" => Some(Self::Back),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SpellcasterSpell {
+    Unspecified = 0,
+    None = 1,
+    SummonVex = 2,
+    Fangs = 3,
+    Wololo = 4,
+    Disappear = 5,
+    Blindness = 6,
+}
+impl SpellcasterSpell {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "SPELLCASTER_SPELL_UNSPECIFIED",
+            Self::None => "SPELLCASTER_SPELL_NONE",
+            Self::SummonVex => "SPELLCASTER_SPELL_SUMMON_VEX",
+            Self::Fangs => "SPELLCASTER_SPELL_FANGS",
+            Self::Wololo => "SPELLCASTER_SPELL_WOLOLO",
+            Self::Disappear => "SPELLCASTER_SPELL_DISAPPEAR",
+            Self::Blindness => "SPELLCASTER_SPELL_BLINDNESS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SPELLCASTER_SPELL_UNSPECIFIED" => Some(Self::Unspecified),
+            "SPELLCASTER_SPELL_NONE" => Some(Self::None),
+            "SPELLCASTER_SPELL_SUMMON_VEX" => Some(Self::SummonVex),
+            "SPELLCASTER_SPELL_FANGS" => Some(Self::Fangs),
+            "SPELLCASTER_SPELL_WOLOLO" => Some(Self::Wololo),
+            "SPELLCASTER_SPELL_DISAPPEAR" => Some(Self::Disappear),
+            "SPELLCASTER_SPELL_BLINDNESS" => Some(Self::Blindness),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Statistic {
+    Unspecified = 0,
+    DamageDealt = 1,
+    DamageTaken = 2,
+    Deaths = 3,
+    MobKills = 4,
+    PlayerKills = 5,
+    FishCaught = 6,
+    AnimalsBred = 7,
+    LeaveGame = 8,
+    Jump = 9,
+    DropCount = 10,
+    Drop = 11,
+    Pickup = 12,
+    PlayOneMinute = 13,
+    TotalWorldTime = 14,
+    WalkOneCm = 15,
+    WalkOnWaterOneCm = 16,
+    FallOneCm = 17,
+    SneakTime = 18,
+    ClimbOneCm = 19,
+    FlyOneCm = 20,
+    WalkUnderWaterOneCm = 21,
+    MinecartOneCm = 22,
+    BoatOneCm = 23,
+    PigOneCm = 24,
+    HappyGhastOneCm = 25,
+    HorseOneCm = 26,
+    SprintOneCm = 27,
+    CrouchOneCm = 28,
+    AviateOneCm = 29,
+    MineBlock = 30,
+    UseItem = 31,
+    BreakItem = 32,
+    CraftItem = 33,
+    KillEntity = 34,
+    EntityKilledBy = 35,
+    TimeSinceDeath = 36,
+    TalkedToVillager = 37,
+    TradedWithVillager = 38,
+    CakeSlicesEaten = 39,
+    CauldronFilled = 40,
+    CauldronUsed = 41,
+    ArmorCleaned = 42,
+    BannerCleaned = 43,
+    BrewingstandInteraction = 44,
+    BeaconInteraction = 45,
+    DropperInspected = 46,
+    HopperInspected = 47,
+    DispenserInspected = 48,
+    NoteblockPlayed = 49,
+    NoteblockTuned = 50,
+    FlowerPotted = 51,
+    TrappedChestTriggered = 52,
+    EnderchestOpened = 53,
+    ItemEnchanted = 54,
+    RecordPlayed = 55,
+    FurnaceInteraction = 56,
+    CraftingTableInteraction = 57,
+    ChestOpened = 58,
+    SleepInBed = 59,
+    SleepInStrawBed = 60,
+    ShulkerBoxOpened = 61,
+    TimeSinceRest = 62,
+    SwimOneCm = 63,
+    DamageDealtAbsorbed = 64,
+    DamageDealtResisted = 65,
+    DamageBlockedByShield = 66,
+    DamageAbsorbed = 67,
+    DamageResisted = 68,
+    CleanShulkerBox = 69,
+    OpenBarrel = 70,
+    InteractWithBlastFurnace = 71,
+    InteractWithSmoker = 72,
+    InteractWithLectern = 73,
+    InteractWithCampfire = 74,
+    InteractWithCartographyTable = 75,
+    InteractWithLoom = 76,
+    InteractWithStonecutter = 77,
+    BellRing = 78,
+    RaidTrigger = 79,
+    RaidWin = 80,
+    InteractWithAnvil = 81,
+    InteractWithGrindstone = 82,
+    TargetHit = 83,
+    InteractWithSmithingTable = 84,
+    StriderOneCm = 85,
+    NautilusOneCm = 86,
+}
+impl Statistic {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "STATISTIC_UNSPECIFIED",
+            Self::DamageDealt => "STATISTIC_DAMAGE_DEALT",
+            Self::DamageTaken => "STATISTIC_DAMAGE_TAKEN",
+            Self::Deaths => "STATISTIC_DEATHS",
+            Self::MobKills => "STATISTIC_MOB_KILLS",
+            Self::PlayerKills => "STATISTIC_PLAYER_KILLS",
+            Self::FishCaught => "STATISTIC_FISH_CAUGHT",
+            Self::AnimalsBred => "STATISTIC_ANIMALS_BRED",
+            Self::LeaveGame => "STATISTIC_LEAVE_GAME",
+            Self::Jump => "STATISTIC_JUMP",
+            Self::DropCount => "STATISTIC_DROP_COUNT",
+            Self::Drop => "STATISTIC_DROP",
+            Self::Pickup => "STATISTIC_PICKUP",
+            Self::PlayOneMinute => "STATISTIC_PLAY_ONE_MINUTE",
+            Self::TotalWorldTime => "STATISTIC_TOTAL_WORLD_TIME",
+            Self::WalkOneCm => "STATISTIC_WALK_ONE_CM",
+            Self::WalkOnWaterOneCm => "STATISTIC_WALK_ON_WATER_ONE_CM",
+            Self::FallOneCm => "STATISTIC_FALL_ONE_CM",
+            Self::SneakTime => "STATISTIC_SNEAK_TIME",
+            Self::ClimbOneCm => "STATISTIC_CLIMB_ONE_CM",
+            Self::FlyOneCm => "STATISTIC_FLY_ONE_CM",
+            Self::WalkUnderWaterOneCm => "STATISTIC_WALK_UNDER_WATER_ONE_CM",
+            Self::MinecartOneCm => "STATISTIC_MINECART_ONE_CM",
+            Self::BoatOneCm => "STATISTIC_BOAT_ONE_CM",
+            Self::PigOneCm => "STATISTIC_PIG_ONE_CM",
+            Self::HappyGhastOneCm => "STATISTIC_HAPPY_GHAST_ONE_CM",
+            Self::HorseOneCm => "STATISTIC_HORSE_ONE_CM",
+            Self::SprintOneCm => "STATISTIC_SPRINT_ONE_CM",
+            Self::CrouchOneCm => "STATISTIC_CROUCH_ONE_CM",
+            Self::AviateOneCm => "STATISTIC_AVIATE_ONE_CM",
+            Self::MineBlock => "STATISTIC_MINE_BLOCK",
+            Self::UseItem => "STATISTIC_USE_ITEM",
+            Self::BreakItem => "STATISTIC_BREAK_ITEM",
+            Self::CraftItem => "STATISTIC_CRAFT_ITEM",
+            Self::KillEntity => "STATISTIC_KILL_ENTITY",
+            Self::EntityKilledBy => "STATISTIC_ENTITY_KILLED_BY",
+            Self::TimeSinceDeath => "STATISTIC_TIME_SINCE_DEATH",
+            Self::TalkedToVillager => "STATISTIC_TALKED_TO_VILLAGER",
+            Self::TradedWithVillager => "STATISTIC_TRADED_WITH_VILLAGER",
+            Self::CakeSlicesEaten => "STATISTIC_CAKE_SLICES_EATEN",
+            Self::CauldronFilled => "STATISTIC_CAULDRON_FILLED",
+            Self::CauldronUsed => "STATISTIC_CAULDRON_USED",
+            Self::ArmorCleaned => "STATISTIC_ARMOR_CLEANED",
+            Self::BannerCleaned => "STATISTIC_BANNER_CLEANED",
+            Self::BrewingstandInteraction => "STATISTIC_BREWINGSTAND_INTERACTION",
+            Self::BeaconInteraction => "STATISTIC_BEACON_INTERACTION",
+            Self::DropperInspected => "STATISTIC_DROPPER_INSPECTED",
+            Self::HopperInspected => "STATISTIC_HOPPER_INSPECTED",
+            Self::DispenserInspected => "STATISTIC_DISPENSER_INSPECTED",
+            Self::NoteblockPlayed => "STATISTIC_NOTEBLOCK_PLAYED",
+            Self::NoteblockTuned => "STATISTIC_NOTEBLOCK_TUNED",
+            Self::FlowerPotted => "STATISTIC_FLOWER_POTTED",
+            Self::TrappedChestTriggered => "STATISTIC_TRAPPED_CHEST_TRIGGERED",
+            Self::EnderchestOpened => "STATISTIC_ENDERCHEST_OPENED",
+            Self::ItemEnchanted => "STATISTIC_ITEM_ENCHANTED",
+            Self::RecordPlayed => "STATISTIC_RECORD_PLAYED",
+            Self::FurnaceInteraction => "STATISTIC_FURNACE_INTERACTION",
+            Self::CraftingTableInteraction => "STATISTIC_CRAFTING_TABLE_INTERACTION",
+            Self::ChestOpened => "STATISTIC_CHEST_OPENED",
+            Self::SleepInBed => "STATISTIC_SLEEP_IN_BED",
+            Self::SleepInStrawBed => "STATISTIC_SLEEP_IN_STRAW_BED",
+            Self::ShulkerBoxOpened => "STATISTIC_SHULKER_BOX_OPENED",
+            Self::TimeSinceRest => "STATISTIC_TIME_SINCE_REST",
+            Self::SwimOneCm => "STATISTIC_SWIM_ONE_CM",
+            Self::DamageDealtAbsorbed => "STATISTIC_DAMAGE_DEALT_ABSORBED",
+            Self::DamageDealtResisted => "STATISTIC_DAMAGE_DEALT_RESISTED",
+            Self::DamageBlockedByShield => "STATISTIC_DAMAGE_BLOCKED_BY_SHIELD",
+            Self::DamageAbsorbed => "STATISTIC_DAMAGE_ABSORBED",
+            Self::DamageResisted => "STATISTIC_DAMAGE_RESISTED",
+            Self::CleanShulkerBox => "STATISTIC_CLEAN_SHULKER_BOX",
+            Self::OpenBarrel => "STATISTIC_OPEN_BARREL",
+            Self::InteractWithBlastFurnace => "STATISTIC_INTERACT_WITH_BLAST_FURNACE",
+            Self::InteractWithSmoker => "STATISTIC_INTERACT_WITH_SMOKER",
+            Self::InteractWithLectern => "STATISTIC_INTERACT_WITH_LECTERN",
+            Self::InteractWithCampfire => "STATISTIC_INTERACT_WITH_CAMPFIRE",
+            Self::InteractWithCartographyTable => {
+                "STATISTIC_INTERACT_WITH_CARTOGRAPHY_TABLE"
+            }
+            Self::InteractWithLoom => "STATISTIC_INTERACT_WITH_LOOM",
+            Self::InteractWithStonecutter => "STATISTIC_INTERACT_WITH_STONECUTTER",
+            Self::BellRing => "STATISTIC_BELL_RING",
+            Self::RaidTrigger => "STATISTIC_RAID_TRIGGER",
+            Self::RaidWin => "STATISTIC_RAID_WIN",
+            Self::InteractWithAnvil => "STATISTIC_INTERACT_WITH_ANVIL",
+            Self::InteractWithGrindstone => "STATISTIC_INTERACT_WITH_GRINDSTONE",
+            Self::TargetHit => "STATISTIC_TARGET_HIT",
+            Self::InteractWithSmithingTable => "STATISTIC_INTERACT_WITH_SMITHING_TABLE",
+            Self::StriderOneCm => "STATISTIC_STRIDER_ONE_CM",
+            Self::NautilusOneCm => "STATISTIC_NAUTILUS_ONE_CM",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "STATISTIC_UNSPECIFIED" => Some(Self::Unspecified),
+            "STATISTIC_DAMAGE_DEALT" => Some(Self::DamageDealt),
+            "STATISTIC_DAMAGE_TAKEN" => Some(Self::DamageTaken),
+            "STATISTIC_DEATHS" => Some(Self::Deaths),
+            "STATISTIC_MOB_KILLS" => Some(Self::MobKills),
+            "STATISTIC_PLAYER_KILLS" => Some(Self::PlayerKills),
+            "STATISTIC_FISH_CAUGHT" => Some(Self::FishCaught),
+            "STATISTIC_ANIMALS_BRED" => Some(Self::AnimalsBred),
+            "STATISTIC_LEAVE_GAME" => Some(Self::LeaveGame),
+            "STATISTIC_JUMP" => Some(Self::Jump),
+            "STATISTIC_DROP_COUNT" => Some(Self::DropCount),
+            "STATISTIC_DROP" => Some(Self::Drop),
+            "STATISTIC_PICKUP" => Some(Self::Pickup),
+            "STATISTIC_PLAY_ONE_MINUTE" => Some(Self::PlayOneMinute),
+            "STATISTIC_TOTAL_WORLD_TIME" => Some(Self::TotalWorldTime),
+            "STATISTIC_WALK_ONE_CM" => Some(Self::WalkOneCm),
+            "STATISTIC_WALK_ON_WATER_ONE_CM" => Some(Self::WalkOnWaterOneCm),
+            "STATISTIC_FALL_ONE_CM" => Some(Self::FallOneCm),
+            "STATISTIC_SNEAK_TIME" => Some(Self::SneakTime),
+            "STATISTIC_CLIMB_ONE_CM" => Some(Self::ClimbOneCm),
+            "STATISTIC_FLY_ONE_CM" => Some(Self::FlyOneCm),
+            "STATISTIC_WALK_UNDER_WATER_ONE_CM" => Some(Self::WalkUnderWaterOneCm),
+            "STATISTIC_MINECART_ONE_CM" => Some(Self::MinecartOneCm),
+            "STATISTIC_BOAT_ONE_CM" => Some(Self::BoatOneCm),
+            "STATISTIC_PIG_ONE_CM" => Some(Self::PigOneCm),
+            "STATISTIC_HAPPY_GHAST_ONE_CM" => Some(Self::HappyGhastOneCm),
+            "STATISTIC_HORSE_ONE_CM" => Some(Self::HorseOneCm),
+            "STATISTIC_SPRINT_ONE_CM" => Some(Self::SprintOneCm),
+            "STATISTIC_CROUCH_ONE_CM" => Some(Self::CrouchOneCm),
+            "STATISTIC_AVIATE_ONE_CM" => Some(Self::AviateOneCm),
+            "STATISTIC_MINE_BLOCK" => Some(Self::MineBlock),
+            "STATISTIC_USE_ITEM" => Some(Self::UseItem),
+            "STATISTIC_BREAK_ITEM" => Some(Self::BreakItem),
+            "STATISTIC_CRAFT_ITEM" => Some(Self::CraftItem),
+            "STATISTIC_KILL_ENTITY" => Some(Self::KillEntity),
+            "STATISTIC_ENTITY_KILLED_BY" => Some(Self::EntityKilledBy),
+            "STATISTIC_TIME_SINCE_DEATH" => Some(Self::TimeSinceDeath),
+            "STATISTIC_TALKED_TO_VILLAGER" => Some(Self::TalkedToVillager),
+            "STATISTIC_TRADED_WITH_VILLAGER" => Some(Self::TradedWithVillager),
+            "STATISTIC_CAKE_SLICES_EATEN" => Some(Self::CakeSlicesEaten),
+            "STATISTIC_CAULDRON_FILLED" => Some(Self::CauldronFilled),
+            "STATISTIC_CAULDRON_USED" => Some(Self::CauldronUsed),
+            "STATISTIC_ARMOR_CLEANED" => Some(Self::ArmorCleaned),
+            "STATISTIC_BANNER_CLEANED" => Some(Self::BannerCleaned),
+            "STATISTIC_BREWINGSTAND_INTERACTION" => Some(Self::BrewingstandInteraction),
+            "STATISTIC_BEACON_INTERACTION" => Some(Self::BeaconInteraction),
+            "STATISTIC_DROPPER_INSPECTED" => Some(Self::DropperInspected),
+            "STATISTIC_HOPPER_INSPECTED" => Some(Self::HopperInspected),
+            "STATISTIC_DISPENSER_INSPECTED" => Some(Self::DispenserInspected),
+            "STATISTIC_NOTEBLOCK_PLAYED" => Some(Self::NoteblockPlayed),
+            "STATISTIC_NOTEBLOCK_TUNED" => Some(Self::NoteblockTuned),
+            "STATISTIC_FLOWER_POTTED" => Some(Self::FlowerPotted),
+            "STATISTIC_TRAPPED_CHEST_TRIGGERED" => Some(Self::TrappedChestTriggered),
+            "STATISTIC_ENDERCHEST_OPENED" => Some(Self::EnderchestOpened),
+            "STATISTIC_ITEM_ENCHANTED" => Some(Self::ItemEnchanted),
+            "STATISTIC_RECORD_PLAYED" => Some(Self::RecordPlayed),
+            "STATISTIC_FURNACE_INTERACTION" => Some(Self::FurnaceInteraction),
+            "STATISTIC_CRAFTING_TABLE_INTERACTION" => {
+                Some(Self::CraftingTableInteraction)
+            }
+            "STATISTIC_CHEST_OPENED" => Some(Self::ChestOpened),
+            "STATISTIC_SLEEP_IN_BED" => Some(Self::SleepInBed),
+            "STATISTIC_SLEEP_IN_STRAW_BED" => Some(Self::SleepInStrawBed),
+            "STATISTIC_SHULKER_BOX_OPENED" => Some(Self::ShulkerBoxOpened),
+            "STATISTIC_TIME_SINCE_REST" => Some(Self::TimeSinceRest),
+            "STATISTIC_SWIM_ONE_CM" => Some(Self::SwimOneCm),
+            "STATISTIC_DAMAGE_DEALT_ABSORBED" => Some(Self::DamageDealtAbsorbed),
+            "STATISTIC_DAMAGE_DEALT_RESISTED" => Some(Self::DamageDealtResisted),
+            "STATISTIC_DAMAGE_BLOCKED_BY_SHIELD" => Some(Self::DamageBlockedByShield),
+            "STATISTIC_DAMAGE_ABSORBED" => Some(Self::DamageAbsorbed),
+            "STATISTIC_DAMAGE_RESISTED" => Some(Self::DamageResisted),
+            "STATISTIC_CLEAN_SHULKER_BOX" => Some(Self::CleanShulkerBox),
+            "STATISTIC_OPEN_BARREL" => Some(Self::OpenBarrel),
+            "STATISTIC_INTERACT_WITH_BLAST_FURNACE" => {
+                Some(Self::InteractWithBlastFurnace)
+            }
+            "STATISTIC_INTERACT_WITH_SMOKER" => Some(Self::InteractWithSmoker),
+            "STATISTIC_INTERACT_WITH_LECTERN" => Some(Self::InteractWithLectern),
+            "STATISTIC_INTERACT_WITH_CAMPFIRE" => Some(Self::InteractWithCampfire),
+            "STATISTIC_INTERACT_WITH_CARTOGRAPHY_TABLE" => {
+                Some(Self::InteractWithCartographyTable)
+            }
+            "STATISTIC_INTERACT_WITH_LOOM" => Some(Self::InteractWithLoom),
+            "STATISTIC_INTERACT_WITH_STONECUTTER" => Some(Self::InteractWithStonecutter),
+            "STATISTIC_BELL_RING" => Some(Self::BellRing),
+            "STATISTIC_RAID_TRIGGER" => Some(Self::RaidTrigger),
+            "STATISTIC_RAID_WIN" => Some(Self::RaidWin),
+            "STATISTIC_INTERACT_WITH_ANVIL" => Some(Self::InteractWithAnvil),
+            "STATISTIC_INTERACT_WITH_GRINDSTONE" => Some(Self::InteractWithGrindstone),
+            "STATISTIC_TARGET_HIT" => Some(Self::TargetHit),
+            "STATISTIC_INTERACT_WITH_SMITHING_TABLE" => {
+                Some(Self::InteractWithSmithingTable)
+            }
+            "STATISTIC_STRIDER_ONE_CM" => Some(Self::StriderOneCm),
+            "STATISTIC_NAUTILUS_ONE_CM" => Some(Self::NautilusOneCm),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TntPrimeCause {
+    Unspecified = 0,
+    Fire = 1,
+    Redstone = 2,
+    Player = 3,
+    Explosion = 4,
+    Projectile = 5,
+    BlockBreak = 6,
+    Dispenser = 7,
+}
+impl TntPrimeCause {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TNT_PRIME_CAUSE_UNSPECIFIED",
+            Self::Fire => "TNT_PRIME_CAUSE_FIRE",
+            Self::Redstone => "TNT_PRIME_CAUSE_REDSTONE",
+            Self::Player => "TNT_PRIME_CAUSE_PLAYER",
+            Self::Explosion => "TNT_PRIME_CAUSE_EXPLOSION",
+            Self::Projectile => "TNT_PRIME_CAUSE_PROJECTILE",
+            Self::BlockBreak => "TNT_PRIME_CAUSE_BLOCK_BREAK",
+            Self::Dispenser => "TNT_PRIME_CAUSE_DISPENSER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TNT_PRIME_CAUSE_UNSPECIFIED" => Some(Self::Unspecified),
+            "TNT_PRIME_CAUSE_FIRE" => Some(Self::Fire),
+            "TNT_PRIME_CAUSE_REDSTONE" => Some(Self::Redstone),
+            "TNT_PRIME_CAUSE_PLAYER" => Some(Self::Player),
+            "TNT_PRIME_CAUSE_EXPLOSION" => Some(Self::Explosion),
+            "TNT_PRIME_CAUSE_PROJECTILE" => Some(Self::Projectile),
+            "TNT_PRIME_CAUSE_BLOCK_BREAK" => Some(Self::BlockBreak),
+            "TNT_PRIME_CAUSE_DISPENSER" => Some(Self::Dispenser),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TimeSkipReason {
+    Unspecified = 0,
+    Command = 1,
+    Custom = 2,
+    NightSkip = 3,
+}
+impl TimeSkipReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TIME_SKIP_REASON_UNSPECIFIED",
+            Self::Command => "TIME_SKIP_REASON_COMMAND",
+            Self::Custom => "TIME_SKIP_REASON_CUSTOM",
+            Self::NightSkip => "TIME_SKIP_REASON_NIGHT_SKIP",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TIME_SKIP_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "TIME_SKIP_REASON_COMMAND" => Some(Self::Command),
+            "TIME_SKIP_REASON_CUSTOM" => Some(Self::Custom),
+            "TIME_SKIP_REASON_NIGHT_SKIP" => Some(Self::NightSkip),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TreeType {
+    Unspecified = 0,
+    Tree = 1,
+    BigTree = 2,
+    Redwood = 3,
+    TallRedwood = 4,
+    Birch = 5,
+    Jungle = 6,
+    SmallJungle = 7,
+    CocoaTree = 8,
+    JungleBush = 9,
+    RedMushroom = 10,
+    BrownMushroom = 11,
+    Swamp = 12,
+    Acacia = 13,
+    DarkOak = 14,
+    MegaRedwood = 15,
+    MegaPine = 16,
+    TallBirch = 17,
+    ChorusPlant = 18,
+    CrimsonFungus = 19,
+    WarpedFungus = 20,
+    Azalea = 21,
+    Mangrove = 22,
+    TallMangrove = 23,
+    Cherry = 24,
+    PaleOak = 25,
+    PaleOakCreaking = 26,
+    RedPoplar = 27,
+    OrangePoplar = 28,
+    YellowPoplar = 29,
+}
+impl TreeType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TREE_TYPE_UNSPECIFIED",
+            Self::Tree => "TREE_TYPE_TREE",
+            Self::BigTree => "TREE_TYPE_BIG_TREE",
+            Self::Redwood => "TREE_TYPE_REDWOOD",
+            Self::TallRedwood => "TREE_TYPE_TALL_REDWOOD",
+            Self::Birch => "TREE_TYPE_BIRCH",
+            Self::Jungle => "TREE_TYPE_JUNGLE",
+            Self::SmallJungle => "TREE_TYPE_SMALL_JUNGLE",
+            Self::CocoaTree => "TREE_TYPE_COCOA_TREE",
+            Self::JungleBush => "TREE_TYPE_JUNGLE_BUSH",
+            Self::RedMushroom => "TREE_TYPE_RED_MUSHROOM",
+            Self::BrownMushroom => "TREE_TYPE_BROWN_MUSHROOM",
+            Self::Swamp => "TREE_TYPE_SWAMP",
+            Self::Acacia => "TREE_TYPE_ACACIA",
+            Self::DarkOak => "TREE_TYPE_DARK_OAK",
+            Self::MegaRedwood => "TREE_TYPE_MEGA_REDWOOD",
+            Self::MegaPine => "TREE_TYPE_MEGA_PINE",
+            Self::TallBirch => "TREE_TYPE_TALL_BIRCH",
+            Self::ChorusPlant => "TREE_TYPE_CHORUS_PLANT",
+            Self::CrimsonFungus => "TREE_TYPE_CRIMSON_FUNGUS",
+            Self::WarpedFungus => "TREE_TYPE_WARPED_FUNGUS",
+            Self::Azalea => "TREE_TYPE_AZALEA",
+            Self::Mangrove => "TREE_TYPE_MANGROVE",
+            Self::TallMangrove => "TREE_TYPE_TALL_MANGROVE",
+            Self::Cherry => "TREE_TYPE_CHERRY",
+            Self::PaleOak => "TREE_TYPE_PALE_OAK",
+            Self::PaleOakCreaking => "TREE_TYPE_PALE_OAK_CREAKING",
+            Self::RedPoplar => "TREE_TYPE_RED_POPLAR",
+            Self::OrangePoplar => "TREE_TYPE_ORANGE_POPLAR",
+            Self::YellowPoplar => "TREE_TYPE_YELLOW_POPLAR",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TREE_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "TREE_TYPE_TREE" => Some(Self::Tree),
+            "TREE_TYPE_BIG_TREE" => Some(Self::BigTree),
+            "TREE_TYPE_REDWOOD" => Some(Self::Redwood),
+            "TREE_TYPE_TALL_REDWOOD" => Some(Self::TallRedwood),
+            "TREE_TYPE_BIRCH" => Some(Self::Birch),
+            "TREE_TYPE_JUNGLE" => Some(Self::Jungle),
+            "TREE_TYPE_SMALL_JUNGLE" => Some(Self::SmallJungle),
+            "TREE_TYPE_COCOA_TREE" => Some(Self::CocoaTree),
+            "TREE_TYPE_JUNGLE_BUSH" => Some(Self::JungleBush),
+            "TREE_TYPE_RED_MUSHROOM" => Some(Self::RedMushroom),
+            "TREE_TYPE_BROWN_MUSHROOM" => Some(Self::BrownMushroom),
+            "TREE_TYPE_SWAMP" => Some(Self::Swamp),
+            "TREE_TYPE_ACACIA" => Some(Self::Acacia),
+            "TREE_TYPE_DARK_OAK" => Some(Self::DarkOak),
+            "TREE_TYPE_MEGA_REDWOOD" => Some(Self::MegaRedwood),
+            "TREE_TYPE_MEGA_PINE" => Some(Self::MegaPine),
+            "TREE_TYPE_TALL_BIRCH" => Some(Self::TallBirch),
+            "TREE_TYPE_CHORUS_PLANT" => Some(Self::ChorusPlant),
+            "TREE_TYPE_CRIMSON_FUNGUS" => Some(Self::CrimsonFungus),
+            "TREE_TYPE_WARPED_FUNGUS" => Some(Self::WarpedFungus),
+            "TREE_TYPE_AZALEA" => Some(Self::Azalea),
+            "TREE_TYPE_MANGROVE" => Some(Self::Mangrove),
+            "TREE_TYPE_TALL_MANGROVE" => Some(Self::TallMangrove),
+            "TREE_TYPE_CHERRY" => Some(Self::Cherry),
+            "TREE_TYPE_PALE_OAK" => Some(Self::PaleOak),
+            "TREE_TYPE_PALE_OAK_CREAKING" => Some(Self::PaleOakCreaking),
+            "TREE_TYPE_RED_POPLAR" => Some(Self::RedPoplar),
+            "TREE_TYPE_ORANGE_POPLAR" => Some(Self::OrangePoplar),
+            "TREE_TYPE_YELLOW_POPLAR" => Some(Self::YellowPoplar),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum VillagerCareerChangeReason {
+    Unspecified = 0,
+    LosingJob = 1,
+    Employed = 2,
+}
+impl VillagerCareerChangeReason {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED",
+            Self::LosingJob => "VILLAGER_CAREER_CHANGE_REASON_LOSING_JOB",
+            Self::Employed => "VILLAGER_CAREER_CHANGE_REASON_EMPLOYED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED" => Some(Self::Unspecified),
+            "VILLAGER_CAREER_CHANGE_REASON_LOSING_JOB" => Some(Self::LosingJob),
+            "VILLAGER_CAREER_CHANGE_REASON_EMPLOYED" => Some(Self::Employed),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Dust {
     #[prost(uint32, tag = "1")]
@@ -267,36 +9171,6 @@ pub struct Hello {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PlayerSnapshot {
-    #[prost(string, tag = "1")]
-    pub uuid: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(int32, tag = "3")]
-    pub entity_id: i32,
-    #[prost(string, tag = "4")]
-    pub world: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "5")]
-    pub position: ::core::option::Option<Vec3>,
-    #[prost(enumeration = "GameMode", tag = "6")]
-    pub game_mode: i32,
-    #[prost(message, optional, tag = "7")]
-    pub rotation: ::core::option::Option<Rotation>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EntitySnapshot {
-    #[prost(int32, tag = "1")]
-    pub entity_id: i32,
-    #[prost(string, tag = "2")]
-    pub uuid: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub kind: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "4")]
-    pub position: ::core::option::Option<Vec3>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlayerState {
     #[prost(message, optional, tag = "1")]
     pub player: ::core::option::Option<PlayerSnapshot>,
@@ -351,125 +9225,6 @@ pub struct PlayerState {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PlayerJoin {
-    #[prost(message, optional, tag = "1")]
-    pub player: ::core::option::Option<PlayerSnapshot>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PlayerLeave {
-    #[prost(message, optional, tag = "1")]
-    pub player: ::core::option::Option<PlayerSnapshot>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PlayerMove {
-    #[prost(message, optional, tag = "1")]
-    pub player: ::core::option::Option<PlayerSnapshot>,
-    #[prost(message, optional, tag = "2")]
-    pub from: ::core::option::Option<Vec3>,
-    #[prost(message, optional, tag = "3")]
-    pub to: ::core::option::Option<Vec3>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ClickedSlot {
-    #[prost(oneof = "clicked_slot::Slot", tags = "1, 2, 3")]
-    pub slot: ::core::option::Option<clicked_slot::Slot>,
-}
-/// Nested message and enum types in `ClickedSlot`.
-pub mod clicked_slot {
-    #[allow(clippy::all)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Slot {
-        #[prost(int32, tag = "1")]
-        Menu(i32),
-        #[prost(int32, tag = "2")]
-        Player(i32),
-        #[prost(message, tag = "3")]
-        Outside(super::Empty),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InventoryClick {
-    #[prost(message, optional, tag = "1")]
-    pub player: ::core::option::Option<PlayerSnapshot>,
-    #[prost(uint64, tag = "2")]
-    pub inventory: u64,
-    #[prost(message, optional, tag = "3")]
-    pub slot: ::core::option::Option<ClickedSlot>,
-    #[prost(enumeration = "ClickKind", tag = "4")]
-    pub kind: i32,
-    #[prost(int32, tag = "5")]
-    pub hotbar_key: i32,
-    #[prost(message, optional, tag = "6")]
-    pub item: ::core::option::Option<Item>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InventoryClose {
-    #[prost(message, optional, tag = "1")]
-    pub player: ::core::option::Option<PlayerSnapshot>,
-    #[prost(uint64, tag = "2")]
-    pub inventory: u64,
-    #[prost(bool, tag = "3")]
-    pub by_player: bool,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Event {
-    #[prost(uint64, tag = "1")]
-    pub id: u64,
-    #[prost(uint32, repeated, tag = "2")]
-    pub handlers: ::prost::alloc::vec::Vec<u32>,
-    #[prost(enumeration = "Phase", tag = "3")]
-    pub phase: i32,
-    #[prost(bool, tag = "4")]
-    pub cancelled: bool,
-    #[prost(oneof = "event::Payload", tags = "10, 11, 12, 13, 14")]
-    pub payload: ::core::option::Option<event::Payload>,
-}
-/// Nested message and enum types in `Event`.
-pub mod event {
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Payload {
-        #[prost(message, tag = "10")]
-        PlayerJoin(super::PlayerJoin),
-        #[prost(message, tag = "11")]
-        PlayerLeave(super::PlayerLeave),
-        #[prost(message, tag = "12")]
-        PlayerMove(super::PlayerMove),
-        #[prost(message, tag = "13")]
-        InventoryClick(super::InventoryClick),
-        #[prost(message, tag = "14")]
-        InventoryClose(super::InventoryClose),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct PlayerMovePatch {
-    #[prost(message, optional, tag = "1")]
-    pub to: ::core::option::Option<Vec3>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct Patch {
-    #[prost(oneof = "patch::Change", tags = "12")]
-    pub change: ::core::option::Option<patch::Change>,
-}
-/// Nested message and enum types in `Patch`.
-pub mod patch {
-    #[allow(clippy::all)]
-    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
-    pub enum Change {
-        #[prost(message, tag = "12")]
-        PlayerMove(super::PlayerMovePatch),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Verdict {
     #[prost(uint32, tag = "1")]
     pub handler: u32,
@@ -1036,14 +9791,6 @@ pub struct WorldState {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockState {
-    #[prost(string, tag = "1")]
-    pub block: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag = "2")]
-    pub properties: ::prost::alloc::vec::Vec<Property>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntityList {
     #[prost(message, repeated, tag = "1")]
     pub entities: ::prost::alloc::vec::Vec<EntitySnapshot>,
@@ -1155,45 +9902,6 @@ pub mod to_plugin {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum EventKind {
-    Unspecified = 0,
-    PlayerJoin = 1,
-    PlayerLeave = 2,
-    PlayerMove = 3,
-    InventoryClick = 4,
-    InventoryClose = 5,
-}
-impl EventKind {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "EVENT_KIND_UNSPECIFIED",
-            Self::PlayerJoin => "EVENT_KIND_PLAYER_JOIN",
-            Self::PlayerLeave => "EVENT_KIND_PLAYER_LEAVE",
-            Self::PlayerMove => "EVENT_KIND_PLAYER_MOVE",
-            Self::InventoryClick => "EVENT_KIND_INVENTORY_CLICK",
-            Self::InventoryClose => "EVENT_KIND_INVENTORY_CLOSE",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "EVENT_KIND_UNSPECIFIED" => Some(Self::Unspecified),
-            "EVENT_KIND_PLAYER_JOIN" => Some(Self::PlayerJoin),
-            "EVENT_KIND_PLAYER_LEAVE" => Some(Self::PlayerLeave),
-            "EVENT_KIND_PLAYER_MOVE" => Some(Self::PlayerMove),
-            "EVENT_KIND_INVENTORY_CLICK" => Some(Self::InventoryClick),
-            "EVENT_KIND_INVENTORY_CLOSE" => Some(Self::InventoryClose),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
 pub enum Access {
     Unspecified = 0,
     Observe = 1,
@@ -1256,75 +9964,6 @@ impl Priority {
             "PRIORITY_NORMAL" => Some(Self::Normal),
             "PRIORITY_HIGH" => Some(Self::High),
             "PRIORITY_HIGHEST" => Some(Self::Highest),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum GameMode {
-    Unspecified = 0,
-    Survival = 1,
-    Creative = 2,
-    Adventure = 3,
-    Spectator = 4,
-}
-impl GameMode {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "GAME_MODE_UNSPECIFIED",
-            Self::Survival => "GAME_MODE_SURVIVAL",
-            Self::Creative => "GAME_MODE_CREATIVE",
-            Self::Adventure => "GAME_MODE_ADVENTURE",
-            Self::Spectator => "GAME_MODE_SPECTATOR",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "GAME_MODE_UNSPECIFIED" => Some(Self::Unspecified),
-            "GAME_MODE_SURVIVAL" => Some(Self::Survival),
-            "GAME_MODE_CREATIVE" => Some(Self::Creative),
-            "GAME_MODE_ADVENTURE" => Some(Self::Adventure),
-            "GAME_MODE_SPECTATOR" => Some(Self::Spectator),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum Phase {
-    Unspecified = 0,
-    Decide = 1,
-    Settled = 2,
-    RolledBack = 3,
-}
-impl Phase {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "PHASE_UNSPECIFIED",
-            Self::Decide => "PHASE_DECIDE",
-            Self::Settled => "PHASE_SETTLED",
-            Self::RolledBack => "PHASE_ROLLED_BACK",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "PHASE_UNSPECIFIED" => Some(Self::Unspecified),
-            "PHASE_DECIDE" => Some(Self::Decide),
-            "PHASE_SETTLED" => Some(Self::Settled),
-            "PHASE_ROLLED_BACK" => Some(Self::RolledBack),
             _ => None,
         }
     }
@@ -1451,102 +10090,6 @@ impl GameRule {
             "GAME_RULE_MOB_EXPLOSION_DROP_DECAY" => Some(Self::MobExplosionDropDecay),
             "GAME_RULE_BLOCK_DROPS" => Some(Self::BlockDrops),
             "GAME_RULE_UNIVERSAL_ANGER" => Some(Self::UniversalAnger),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum Face {
-    Unspecified = 0,
-    Down = 1,
-    Up = 2,
-    North = 3,
-    South = 4,
-    West = 5,
-    East = 6,
-}
-impl Face {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "FACE_UNSPECIFIED",
-            Self::Down => "FACE_DOWN",
-            Self::Up => "FACE_UP",
-            Self::North => "FACE_NORTH",
-            Self::South => "FACE_SOUTH",
-            Self::West => "FACE_WEST",
-            Self::East => "FACE_EAST",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "FACE_UNSPECIFIED" => Some(Self::Unspecified),
-            "FACE_DOWN" => Some(Self::Down),
-            "FACE_UP" => Some(Self::Up),
-            "FACE_NORTH" => Some(Self::North),
-            "FACE_SOUTH" => Some(Self::South),
-            "FACE_WEST" => Some(Self::West),
-            "FACE_EAST" => Some(Self::East),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum ClickKind {
-    Unspecified = 0,
-    Left = 1,
-    Right = 2,
-    ShiftLeft = 3,
-    ShiftRight = 4,
-    NumberKey = 5,
-    SwapOffhand = 6,
-    Drop = 7,
-    ControlDrop = 8,
-    DoubleClick = 9,
-    Middle = 10,
-}
-impl ClickKind {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "CLICK_KIND_UNSPECIFIED",
-            Self::Left => "CLICK_KIND_LEFT",
-            Self::Right => "CLICK_KIND_RIGHT",
-            Self::ShiftLeft => "CLICK_KIND_SHIFT_LEFT",
-            Self::ShiftRight => "CLICK_KIND_SHIFT_RIGHT",
-            Self::NumberKey => "CLICK_KIND_NUMBER_KEY",
-            Self::SwapOffhand => "CLICK_KIND_SWAP_OFFHAND",
-            Self::Drop => "CLICK_KIND_DROP",
-            Self::ControlDrop => "CLICK_KIND_CONTROL_DROP",
-            Self::DoubleClick => "CLICK_KIND_DOUBLE_CLICK",
-            Self::Middle => "CLICK_KIND_MIDDLE",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "CLICK_KIND_UNSPECIFIED" => Some(Self::Unspecified),
-            "CLICK_KIND_LEFT" => Some(Self::Left),
-            "CLICK_KIND_RIGHT" => Some(Self::Right),
-            "CLICK_KIND_SHIFT_LEFT" => Some(Self::ShiftLeft),
-            "CLICK_KIND_SHIFT_RIGHT" => Some(Self::ShiftRight),
-            "CLICK_KIND_NUMBER_KEY" => Some(Self::NumberKey),
-            "CLICK_KIND_SWAP_OFFHAND" => Some(Self::SwapOffhand),
-            "CLICK_KIND_DROP" => Some(Self::Drop),
-            "CLICK_KIND_CONTROL_DROP" => Some(Self::ControlDrop),
-            "CLICK_KIND_DOUBLE_CLICK" => Some(Self::DoubleClick),
-            "CLICK_KIND_MIDDLE" => Some(Self::Middle),
             _ => None,
         }
     }

@@ -167,7 +167,7 @@ fn game_mode(value: i32) -> Result<GameMode, Malformed> {
     }
 }
 
-const fn wire_game_mode(mode: GameMode) -> v1::GameMode {
+pub(super) const fn wire_game_mode(mode: GameMode) -> v1::GameMode {
     match mode {
         GameMode::Survival => v1::GameMode::Survival,
         GameMode::Creative => v1::GameMode::Creative,

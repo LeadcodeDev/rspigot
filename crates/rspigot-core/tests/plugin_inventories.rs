@@ -6,9 +6,10 @@ use common::*;
 use rspigot_core::events::{
     ClickInput, ClientEvent, ContainerClick, Direction, Hand, HashedSlot, Inbound, PlayerInput,
 };
+use rspigot_core::plugins::events::{self, InventoryClick, InventoryClose};
 use rspigot_core::plugins::{
-    Answer, BlockOrder, ClickKind, ClickedSlot, CustomInventoryOrder, CustomInventoryState,
-    EventKind, EventPayload, FromPlugin, InventoryOrder, InventoryState, ItemSpec,
+    Answer, BlockOrder, CustomInventoryOrder, CustomInventoryState, EventKind, EventPayload,
+    FromPlugin, InventoryOrder, InventoryOwner, InventoryRef, InventoryState, ItemSpec,
     MAX_PLUGIN_INVENTORIES, Order, PlayerOrder, Question, ServerOrder, ToPlugin,
 };
 use rspigot_domain::item::{ItemStack, Slot};
@@ -39,6 +40,65 @@ impl Screen {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClickedSlot {
+    Menu(u16),
+    Player(i32),
+    Outside,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClickKind {
+    Left,
+    Right,
+    ShiftLeft,
+    ShiftRight,
+    NumberKey(u8),
+    SwapOffhand,
+    Drop,
+    ControlDrop,
+    DoubleClick,
+    Middle,
+}
+
+fn custom_id(inventory: &InventoryRef) -> u64 {
+    match inventory.owner {
+        InventoryOwner::Custom(id) => id,
+        other => panic!("expected a plugin inventory, got {other:?}"),
+    }
+}
+
+fn clicked(click: &InventoryClick) -> (ClickedSlot, ClickKind) {
+    let slot = match click
+        .clicked_inventory
+        .as_ref()
+        .map(|inventory| inventory.owner)
+    {
+        Some(InventoryOwner::Custom(_)) => {
+            ClickedSlot::Menu(u16::try_from(click.slot).expect("a menu slot"))
+        }
+        Some(InventoryOwner::Player(_)) => ClickedSlot::Player(click.slot),
+        None => ClickedSlot::Outside,
+        Some(other) => panic!("unexpected clicked inventory {other:?}"),
+    };
+    let kind = match click.click {
+        events::ClickKind::Left => ClickKind::Left,
+        events::ClickKind::Right => ClickKind::Right,
+        events::ClickKind::ShiftLeft => ClickKind::ShiftLeft,
+        events::ClickKind::ShiftRight => ClickKind::ShiftRight,
+        events::ClickKind::NumberKey => {
+            ClickKind::NumberKey(u8::try_from(click.hotbar_button).expect("a hotbar key"))
+        }
+        events::ClickKind::SwapOffhand => ClickKind::SwapOffhand,
+        events::ClickKind::Drop => ClickKind::Drop,
+        events::ClickKind::ControlDrop => ClickKind::ControlDrop,
+        events::ClickKind::DoubleClick => ClickKind::DoubleClick,
+        events::ClickKind::Middle => ClickKind::Middle,
+        other => panic!("unexpected click {other:?}"),
+    };
+    (slot, kind)
 }
 
 struct Click {
@@ -227,19 +287,16 @@ fn clicks(mailbox: &Mailbox, player: &Player) -> Vec<Click> {
     events_of(mailbox)
         .into_iter()
         .filter_map(|(handlers, payload)| match payload {
-            EventPayload::InventoryClick {
-                player: who,
-                inventory,
-                slot,
-                kind,
-                item,
-            } if who.id == player.id => Some(Click {
-                handlers,
-                inventory,
-                slot,
-                kind,
-                item,
-            }),
+            EventPayload::InventoryClick(click) if click.who_clicked.id == player.id => {
+                let (slot, kind) = clicked(&click);
+                Some(Click {
+                    handlers,
+                    inventory: custom_id(&click.inventory),
+                    slot,
+                    kind,
+                    item: click.current_item,
+                })
+            }
             _ => None,
         })
         .collect()
@@ -255,13 +312,14 @@ fn closes(mailbox: &Mailbox, player: &Player) -> Vec<Close> {
     events_of(mailbox)
         .into_iter()
         .filter_map(|(handlers, payload)| match payload {
-            EventPayload::InventoryClose {
+            EventPayload::InventoryClose(InventoryClose {
                 player: who,
                 inventory,
                 by_player,
-            } if who.id == player.id => Some(Close {
+                ..
+            }) if who.id == player.id => Some(Close {
                 handlers,
-                inventory,
+                inventory: custom_id(&inventory),
                 by_player,
             }),
             _ => None,

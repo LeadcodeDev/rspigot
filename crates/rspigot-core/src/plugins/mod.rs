@@ -1,6 +1,8 @@
 mod block;
+mod contract;
 mod decisions;
 mod entity;
+pub mod events;
 mod inventory;
 mod items;
 mod menus;
@@ -25,7 +27,13 @@ use uuid::Uuid;
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
+pub use contract::{
+    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, EnchantOffer, HolderRef,
+    Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location, LootContext,
+    MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
+};
 pub(crate) use decisions::{Decisions, Held};
+pub use events::{EventKind, EventPatch, EventPayload};
 pub use items::ItemSpec;
 pub use menus::MAX_PLUGIN_INVENTORIES;
 pub(crate) use menus::{PluginInventories, PluginMenu};
@@ -33,25 +41,10 @@ pub use orders::{
     BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
     ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
-pub use patch::{EventPatch, PlayerMovePatch, Verdict};
+pub use patch::Verdict;
 pub(crate) use registry::Registry;
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EventKind {
-    PlayerJoin,
-    PlayerLeave,
-    PlayerMove,
-    InventoryClick,
-    InventoryClose,
-}
-
-impl EventKind {
-    pub const fn decidable(self) -> bool {
-        matches!(self, Self::PlayerMove)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Access {
@@ -231,66 +224,6 @@ pub enum TargetHit {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ClickedSlot {
-    Menu(u16),
-    Player(i32),
-    Outside,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ClickKind {
-    Left,
-    Right,
-    ShiftLeft,
-    ShiftRight,
-    NumberKey(u8),
-    SwapOffhand,
-    Drop,
-    ControlDrop,
-    DoubleClick,
-    Middle,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EventPayload {
-    PlayerJoin {
-        player: PlayerSnapshot,
-    },
-    PlayerLeave {
-        player: PlayerSnapshot,
-    },
-    PlayerMove {
-        player: PlayerSnapshot,
-        from: Vec3,
-        to: Vec3,
-    },
-    InventoryClick {
-        player: PlayerSnapshot,
-        inventory: u64,
-        slot: ClickedSlot,
-        kind: ClickKind,
-        item: Option<ItemSpec>,
-    },
-    InventoryClose {
-        player: PlayerSnapshot,
-        inventory: u64,
-        by_player: bool,
-    },
-}
-
-impl EventPayload {
-    pub const fn kind(&self) -> EventKind {
-        match self {
-            Self::PlayerJoin { .. } => EventKind::PlayerJoin,
-            Self::PlayerLeave { .. } => EventKind::PlayerLeave,
-            Self::PlayerMove { .. } => EventKind::PlayerMove,
-            Self::InventoryClick { .. } => EventKind::InventoryClick,
-            Self::InventoryClose { .. } => EventKind::InventoryClose,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Phase {
     Decide,
     Settled,
@@ -317,6 +250,7 @@ pub enum Answer {
     NotFound,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToPlugin {
     Accepted,
@@ -414,7 +348,7 @@ mod tests {
             Err(IntroError::DuplicateHandler(1))
         );
 
-        let join_decider = handler(3, EventKind::PlayerJoin, Access::Decide);
+        let join_decider = handler(3, EventKind::InventoryClose, Access::Decide);
         assert_eq!(
             intro(vec![observer, join_decider]).validate(),
             Err(IntroError::Undecidable(3))
@@ -437,12 +371,53 @@ mod tests {
     }
 
     #[test]
-    fn only_a_move_can_be_decided() {
+    fn an_event_is_decidable_when_it_can_be_cancelled_or_changed() {
         assert!(EventKind::PlayerMove.decidable());
-        assert!(!EventKind::PlayerJoin.decidable());
-        assert!(!EventKind::PlayerLeave.decidable());
-        assert!(!EventKind::InventoryClick.decidable());
+        assert!(EventKind::PlayerJoin.decidable());
+        assert!(!EventKind::PlayerJoin.cancellable());
+        assert!(EventKind::InventoryClick.decidable());
+        assert!(EventKind::PlayerDeath.decidable());
+        assert!(!EventKind::PlayerDeath.cancellable());
         assert!(!EventKind::InventoryClose.decidable());
+        assert!(!EventKind::WorldLoad.decidable());
+    }
+
+    #[test]
+    fn a_family_follows_the_bukkit_handler_lists() {
+        assert_eq!(
+            EventKind::EntityDamageByEntity.receivers(),
+            [EventKind::EntityDamage, EventKind::EntityDamageByEntity]
+        );
+        assert_eq!(
+            EventKind::EntityDamage.receivers(),
+            [EventKind::EntityDamage]
+        );
+        assert_eq!(
+            EventKind::PlayerDeath.receivers(),
+            [EventKind::EntityDeath, EventKind::PlayerDeath]
+        );
+        assert_eq!(
+            EventKind::PlayerTeleport.receivers(),
+            [EventKind::PlayerTeleport]
+        );
+        assert_eq!(
+            EventKind::CraftItem.receivers(),
+            [EventKind::CraftItem, EventKind::InventoryClick]
+        );
+    }
+
+    #[test]
+    fn an_event_kind_has_a_key_for_plugins_yml() {
+        assert_eq!(EventKind::PlayerLeave.key(), "player_leave");
+        assert_eq!(
+            EventKind::from_key("player_move"),
+            Some(EventKind::PlayerMove)
+        );
+        assert_eq!(
+            EventKind::from_key("entity_damage_by_entity"),
+            Some(EventKind::EntityDamageByEntity)
+        );
+        assert_eq!(EventKind::from_key("player_fly"), None);
     }
 
     #[test]

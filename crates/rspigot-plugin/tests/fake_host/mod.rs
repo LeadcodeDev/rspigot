@@ -5,7 +5,8 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use rspigot_plugin::{
-    Error, InventoryClick, InventoryClose, Player, PlayerJoin, Plugin, Server, listeners, run_with,
+    ClickKind, Error, InventoryClick, InventoryClose, InventoryRef, InventoryTypeSlotType,
+    ItemStack, Player, PlayerJoin, Plugin, Server, listeners, run_with,
 };
 use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
 use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
@@ -216,6 +217,7 @@ pub fn join(id: u64) -> to_plugin::Body {
         false,
         event::Payload::PlayerJoin(v1::PlayerJoin {
             player: Some(steve()),
+            join_message: None,
         }),
     )
 }
@@ -225,10 +227,26 @@ pub type Script = fn(Player) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 pub type Enable = fn(Server) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[derive(Debug)]
+pub struct Clicked {
+    pub id: u64,
+    pub who: String,
+    pub inventory: InventoryRef,
+    pub clicked: Option<InventoryRef>,
+    pub slot: i32,
+    pub raw_slot: i32,
+    pub slot_type: InventoryTypeSlotType,
+    pub click: ClickKind,
+    pub hotbar_button: i32,
+    pub item: Option<ItemStack>,
+    pub title: String,
+    pub viewers: usize,
+}
+
+#[derive(Debug)]
 pub enum Mark {
     Enabled,
     Finished,
-    Clicked(InventoryClick),
+    Clicked(Clicked),
     Closed(InventoryClose),
     Disabled,
 }
@@ -244,12 +262,25 @@ pub struct Caller {
 #[listeners]
 impl Caller {
     async fn on_player_join(&self, event: &PlayerJoin) {
-        (self.script)(event.player.clone()).await;
+        (self.script)(event.player().clone()).await;
         let _ = self.marks.send(Mark::Finished);
     }
 
     async fn on_inventory_click(&self, event: &InventoryClick) {
-        let _ = self.marks.send(Mark::Clicked(event.clone()));
+        let _ = self.marks.send(Mark::Clicked(Clicked {
+            id: event.id(),
+            who: event.who_clicked().name.clone(),
+            inventory: event.inventory().clone(),
+            clicked: event.clicked_inventory().cloned(),
+            slot: event.slot(),
+            raw_slot: event.raw_slot(),
+            slot_type: event.slot_type(),
+            click: event.click(),
+            hotbar_button: event.hotbar_button(),
+            item: event.current_item().cloned(),
+            title: event.view().title.clone(),
+            viewers: event.viewers().len(),
+        }));
     }
 
     async fn on_inventory_close(&self, event: &InventoryClose) {

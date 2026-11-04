@@ -1,7 +1,7 @@
 error[E0596]: cannot borrow `*event` as mutable, as it is behind a `&` reference
  --> tests/ui/set_to_in_observer.rs:9:9
   |
-9 |         event.set_to(event.from);
+9 |         event.set_to(event.from().clone());
   |         ^^^^^ `event` is a `&` reference, so it cannot be borrowed as mutable
   |
 help: consider specifying this binding's type

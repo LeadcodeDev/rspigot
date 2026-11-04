@@ -1,6 +1,7 @@
 use rspigot_core::plugins::{EntityDetails, EntityOrder, EntityView, Order, Question};
 use rspigot_domain::EntityId;
 use rspigot_plugin_protocol::v1::{self, entity_order::Order as Wire};
+use uuid::Uuid;
 
 use super::Malformed;
 use super::shared::{self, required, wire_vec};
@@ -42,6 +43,15 @@ pub(super) fn drop_item(drop: v1::DropItem) -> Result<Question, Malformed> {
     Ok(Question::DropItem {
         position: shared::vec3(required(drop.position)?),
         item: shared::item(required(drop.item)?),
+    })
+}
+
+pub(super) fn view(snapshot: v1::EntitySnapshot) -> Result<EntityView, Malformed> {
+    Ok(EntityView {
+        id: EntityId(snapshot.entity_id),
+        uuid: Uuid::parse_str(&snapshot.uuid).map_err(|_| Malformed::Entity(snapshot.uuid))?,
+        kind: snapshot.kind,
+        position: shared::vec3(required(snapshot.position)?),
     })
 }
 

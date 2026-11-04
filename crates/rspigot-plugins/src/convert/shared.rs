@@ -157,3 +157,21 @@ pub(super) fn wire_item(item: ItemSpec) -> v1::Item {
         components: item.components,
     }
 }
+
+pub(super) fn byte(value: i32) -> Result<i8, Malformed> {
+    i8::try_from(value).map_err(|_| Malformed::OutOfRange {
+        field: "byte",
+        value: i64::from(value),
+    })
+}
+
+pub(super) fn wire_enchant((key, level): (String, i32)) -> v1::Enchant {
+    v1::Enchant { key, level }
+}
+
+pub(super) fn wire_slot((slot, item): (i32, ItemSpec)) -> v1::Slot {
+    v1::Slot {
+        slot,
+        item: Some(wire_item(item)),
+    }
+}

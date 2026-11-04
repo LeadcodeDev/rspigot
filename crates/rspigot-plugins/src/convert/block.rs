@@ -20,6 +20,17 @@ pub(super) fn order(order: v1::BlockOrder) -> Result<Order, Malformed> {
     Ok(Order::Block { pos, order })
 }
 
+pub(super) fn state(state: v1::BlockState) -> BlockState {
+    BlockState {
+        kind: state.block,
+        properties: state
+            .properties
+            .into_iter()
+            .map(|property| (property.name, property.value))
+            .collect(),
+    }
+}
+
 pub(super) fn wire_state(state: BlockState) -> v1::BlockState {
     v1::BlockState {
         block: state.kind,

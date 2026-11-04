@@ -7,7 +7,7 @@ struct Welcome;
 #[listeners]
 impl Welcome {
     async fn on_player_join(&self, event: &PlayerJoin) {
-        event.player.send_message("Welcome!");
+        event.player().send_message("Welcome!");
     }
 
     #[priority(High)]
@@ -23,10 +23,10 @@ impl Welcome {
 
     #[priority(Highest)]
     async fn hold_the_spawn(&self, event: &mut ::rspigot_plugin::PlayerMove) {
-        if event.to().y > 100.0 {
+        if event.to().is_some_and(|to| to.position.y > 100.0) {
             event.cancel();
         } else {
-            event.set_to(event.from);
+            event.set_to(event.from().clone());
         }
     }
 
@@ -37,7 +37,7 @@ impl Welcome {
 
     #[priority(Normal)]
     async fn say_goodbye(&self, event: &PlayerLeave) {
-        let _ = &event.player;
+        let _ = event.player();
     }
 }
 

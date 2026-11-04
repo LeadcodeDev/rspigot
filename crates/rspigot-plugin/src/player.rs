@@ -35,7 +35,7 @@ pub struct Rotation {
 }
 
 impl Rotation {
-    fn from_wire(rotation: Option<v1::Rotation>) -> Result<Self, Error> {
+    pub(crate) fn from_wire(rotation: Option<v1::Rotation>) -> Result<Self, Error> {
         let rotation =
             rotation.ok_or_else(|| Error::Malformed("a message without `rotation`".to_owned()))?;
         Ok(Self {
@@ -44,7 +44,7 @@ impl Rotation {
         })
     }
 
-    const fn to_wire(self) -> v1::Rotation {
+    pub(crate) const fn to_wire(self) -> v1::Rotation {
         v1::Rotation {
             yaw: self.yaw,
             pitch: self.pitch,
@@ -61,7 +61,7 @@ pub enum GameMode {
 }
 
 impl GameMode {
-    fn from_wire(mode: i32) -> Result<Self, Error> {
+    pub(crate) fn from_wire(mode: i32) -> Result<Self, Error> {
         match v1::GameMode::try_from(mode) {
             Ok(v1::GameMode::Survival) => Ok(Self::Survival),
             Ok(v1::GameMode::Creative) => Ok(Self::Creative),
@@ -73,7 +73,7 @@ impl GameMode {
         }
     }
 
-    const fn to_wire(self) -> v1::GameMode {
+    pub(crate) const fn to_wire(self) -> v1::GameMode {
         match self {
             Self::Survival => v1::GameMode::Survival,
             Self::Creative => v1::GameMode::Creative,
@@ -102,6 +102,10 @@ impl Player {
     ) -> Result<Self, Error> {
         let snapshot =
             snapshot.ok_or_else(|| Error::Malformed("a message without its player".to_owned()))?;
+        Self::from_snapshot(snapshot, link)
+    }
+
+    pub(crate) fn from_snapshot(snapshot: v1::PlayerSnapshot, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             uuid: parse_uuid(&snapshot.uuid, "a player")?,
             game_mode: GameMode::from_wire(snapshot.game_mode)?,

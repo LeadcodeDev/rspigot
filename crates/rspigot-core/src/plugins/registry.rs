@@ -66,12 +66,13 @@ impl Registry {
     }
 
     pub(crate) fn listens(&self, event: EventKind, access: Access) -> bool {
+        let receivers = event.receivers();
         self.connected.values().any(|plugin| {
             plugin
                 .intro
                 .handlers
                 .iter()
-                .any(|spec| spec.event == event && spec.access == access)
+                .any(|spec| receivers.contains(&spec.event) && spec.access == access)
         })
     }
 
@@ -81,12 +82,13 @@ impl Registry {
         access: Access,
         settings: &PluginSettings,
     ) -> Vec<(u64, HandlerSpec)> {
+        let receivers = event.receivers();
         let mut found = Vec::new();
         for (connection, plugin) in &self.connected {
             let name = plugin.intro.name.as_str();
             let rank = rank(name, settings);
             for spec in &plugin.intro.handlers {
-                if spec.event == event && spec.access == access {
+                if receivers.contains(&spec.event) && spec.access == access {
                     let priority = effective_priority(name, spec, settings);
                     found.push(((priority, rank, spec.id, *connection), *spec));
                 }
@@ -543,5 +545,56 @@ mod tests {
         registry.send(9, ToPlugin::Replaced);
         assert!(welcome.received().is_empty());
         assert_eq!(guard.received(), [ToPlugin::Accepted]);
+    }
+
+    #[test]
+    fn a_fired_event_reaches_the_handlers_of_its_family_in_registry_order() {
+        let mut registry = Registry::default();
+        let handlers = vec![
+            handler(
+                1,
+                EventKind::EntityDamageByEntity,
+                Access::Decide,
+                Priority::Normal,
+            ),
+            handler(2, EventKind::EntityDamage, Access::Decide, Priority::Low),
+            handler(3, EventKind::PlayerMove, Access::Observe, Priority::Normal),
+            handler(
+                4,
+                EventKind::PlayerTeleport,
+                Access::Observe,
+                Priority::Normal,
+            ),
+        ];
+        connect(&mut registry, 1, intro("guard", handlers));
+        let settings = PluginSettings::default();
+        let ids = |event, access| {
+            registry
+                .listeners(event, access, &settings)
+                .into_iter()
+                .map(|(_, spec)| (spec.id, spec.event))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(EventKind::EntityDamageByEntity, Access::Decide),
+            [
+                (2, EventKind::EntityDamage),
+                (1, EventKind::EntityDamageByEntity)
+            ]
+        );
+        assert_eq!(
+            ids(EventKind::EntityDamage, Access::Decide),
+            [(2, EventKind::EntityDamage)]
+        );
+        assert_eq!(
+            ids(EventKind::PlayerTeleport, Access::Observe),
+            [(4, EventKind::PlayerTeleport)]
+        );
+        assert_eq!(
+            ids(EventKind::PlayerMove, Access::Observe),
+            [(3, EventKind::PlayerMove)]
+        );
+        assert!(registry.listens(EventKind::EntityDamageByBlock, Access::Decide));
+        assert!(!registry.listens(EventKind::EntityDamageByBlock, Access::Observe));
     }
 }
