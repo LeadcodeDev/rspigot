@@ -62,7 +62,7 @@ fn update_tag(campfire: &Campfire) -> Compound {
 }
 
 impl<L: ClientLink> Server<L> {
-    fn campfire_at(&self, pos: BlockPos) -> Option<Campfire> {
+    pub(crate) fn campfire_at(&self, pos: BlockPos) -> Option<Campfire> {
         self.world
             .chunks
             .get(pos.chunk())
@@ -249,7 +249,7 @@ impl<L: ClientLink> Server<L> {
             return true;
         };
         let total = i32::from(recipe.cooking_time);
-        let source = spec_of(&held);
+        let recipe_id = recipe.id;
         let step = CampfireStep {
             player: id,
             hand,
@@ -261,14 +261,19 @@ impl<L: ClientLink> Server<L> {
             cooking_slot,
             total,
         };
-        self.fire(id, Continuation::CampfireStart(Box::new(step)), move |_| {
-            Some(EventPayload::CampfireStart(CampfireStart {
-                block: pos,
-                recipe: recipe.id.to_owned(),
-                source,
-                total_cook_time: total,
-            }))
-        });
+        self.fire(
+            id,
+            Continuation::CampfireStart(Box::new(step)),
+            move |server| {
+                let held = server.players.get(&id)?.inventory.get(slot)?;
+                Some(EventPayload::CampfireStart(CampfireStart {
+                    block: pos,
+                    recipe: recipe_id.to_owned(),
+                    source: spec_of(held),
+                    total_cook_time: total,
+                }))
+            },
+        );
         true
     }
 

@@ -12,6 +12,7 @@ use crate::plugins::steps::{BuildStep, Change, PlaceStep, UseItem};
 use crate::plugins::{BlockSnapshot, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
+use rspigot_domain::BlockStateId;
 
 const LEVEL_EVENT_RANGE: f64 = 64.0;
 const AROUND: [Direction; 6] = [
@@ -26,15 +27,13 @@ const AROUND: [Direction; 6] = [
 impl<L: ClientLink> Server<L> {
     pub(crate) fn ask_can_build(&mut self, step: BuildStep) {
         let id = step.using.player;
-        let (block, buildable) = (step.target, step.buildable);
-        let block_data = data_of(step.state);
-        let material = material_of(step.state).to_owned();
+        let (block, buildable, state) = (step.target, step.buildable, step.state);
         self.fire(id, Continuation::CanBuild(Box::new(step)), move |server| {
             Some(EventPayload::BlockCanBuild(BlockCanBuild {
                 block,
-                block_data,
+                block_data: data_of(state),
                 buildable,
-                material,
+                material: material_of(state).to_owned(),
                 player: server.snapshot_of(id),
             }))
         });
@@ -85,25 +84,26 @@ impl<L: ClientLink> Server<L> {
         let Some(first) = step.changes.first().copied() else {
             return;
         };
-        let replaced: Vec<BlockSnapshot> = step
-            .changes
-            .iter()
-            .map(|change| snapshot_of(change.pos, change.old))
-            .collect();
-        let placed: Vec<BlockSnapshot> = step
-            .changes
-            .iter()
-            .map(|change| snapshot_of(change.pos, change.new))
-            .collect();
+        let second = step.changes.get(1).copied();
         let against = step.using.against;
         let build = step.build;
         let hand = slot_of(step.using.hand);
-        let item_in_hand = spec_of(&step.using.stack);
-        if step.changes.len() > 1 {
+        let slot = step.using.slot;
+        let changes = move || std::iter::once(first).chain(second);
+        let item_in_hand =
+            move |server: &Self| server.players.get(&id)?.inventory.get(slot).map(spec_of);
+        let snapshots = move |of: fn(&Change) -> BlockStateId| -> Vec<BlockSnapshot> {
+            changes()
+                .map(|change| snapshot_of(change.pos, of(&change)))
+                .collect()
+        };
+        if second.is_some() {
             self.fire(
                 id,
                 Continuation::MultiPlace(Box::new(step)),
                 move |server| {
+                    let replaced = snapshots(|change| change.old);
+                    let placed = snapshots(|change| change.new);
                     Some(EventPayload::BlockMultiPlace(BlockMultiPlace {
                         block: first.pos,
                         block_against: against,
@@ -111,7 +111,7 @@ impl<L: ClientLink> Server<L> {
                         block_replaced_state: replaced[0].clone(),
                         build,
                         hand: Slot::Hand,
-                        item_in_hand,
+                        item_in_hand: item_in_hand(server)?,
                         player: server.snapshot_of(id)?,
                         replaced_block_states: replaced,
                         placed_state: placed[0].clone(),
@@ -126,12 +126,12 @@ impl<L: ClientLink> Server<L> {
                 block: first.pos,
                 block_against: against,
                 block_placed: first.pos,
-                block_replaced_state: replaced.into_iter().next()?,
+                block_replaced_state: snapshot_of(first.pos, first.old),
                 build,
                 hand,
-                item_in_hand,
+                item_in_hand: item_in_hand(server)?,
                 player: server.snapshot_of(id)?,
-                placed_state: placed.into_iter().next()?,
+                placed_state: snapshot_of(first.pos, first.new),
             }))
         });
     }

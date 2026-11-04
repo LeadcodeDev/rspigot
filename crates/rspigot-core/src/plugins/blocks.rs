@@ -9,9 +9,10 @@ use crate::plugins::events::{
     ExplosionResult,
 };
 use crate::plugins::steps::{CookStep, ExpStep, ExplodeStep, PhysicsStep};
-use crate::plugins::{EventPayload, spec_of};
+use crate::plugins::{EventKind, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::Server;
+use rspigot_domain::campfire::Campfire;
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn ask_physics(&mut self, pos: BlockPos, state: BlockStateId) {
@@ -35,17 +36,17 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn ask_cook(&mut self, step: CookStep) {
-        let pos = step.pos;
-        let source = spec_of(&step.source);
-        let result = spec_of(&step.result);
+        let (pos, slot) = (step.pos, step.slot);
         self.fire(
             Lane::Block(pos),
             Continuation::Cook(Box::new(step)),
-            move |_| {
+            move |server| {
+                let campfire = server.campfire_at(pos)?;
+                let source = campfire.items[slot].as_ref()?;
                 Some(EventPayload::BlockCook(BlockCook {
                     block: pos,
-                    result,
-                    source,
+                    result: spec_of(&Campfire::result_of(source)),
+                    source: spec_of(source),
                 }))
             },
         );
@@ -70,11 +71,9 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn ask_explosion(&mut self, step: ExplodeStep) {
         let block = step.center.block();
-        let exploded_block_state = snapshot_of(
-            block,
-            self.world.chunks.block(block).unwrap_or(BlockStateId::AIR),
-        );
-        let block_list = step.blocks.clone();
+        let block_list = self
+            .listened(EventKind::BlockExplode)
+            .then(|| step.blocks.clone());
         let explosion_result = match step.interaction {
             BlockInteraction::Keep => ExplosionResult::Keep,
             BlockInteraction::Destroy => ExplosionResult::Destroy,
@@ -84,11 +83,18 @@ impl<L: ClientLink> Server<L> {
         self.fire(
             Lane::Block(block),
             Continuation::Explode(Box::new(step)),
-            move |_| {
+            move |server| {
                 Some(EventPayload::BlockExplode(BlockExplode {
                     block,
-                    block_list,
-                    exploded_block_state,
+                    block_list: block_list?,
+                    exploded_block_state: snapshot_of(
+                        block,
+                        server
+                            .world
+                            .chunks
+                            .block(block)
+                            .unwrap_or(BlockStateId::AIR),
+                    ),
                     explosion_result,
                     explosion_yield,
                 }))

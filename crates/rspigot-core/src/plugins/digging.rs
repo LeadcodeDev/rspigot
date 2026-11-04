@@ -1,10 +1,11 @@
 use rspigot_domain::effect::EffectId;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{BlockPos, BlockStateId};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 use rspigot_items::ItemKind;
 use rustc_hash::FxHashSet;
+use uuid::Uuid;
 
 use crate::events::{ClientEvent, Direction};
 use crate::loot::{self, LootContext, LootEntity};
@@ -144,6 +145,10 @@ impl<L: ClientLink> Server<L> {
         self.destroy_speed(player, state) / hardness / divisor
     }
 
+    fn held_spec(&self, id: PlayerId) -> Option<ItemSpec> {
+        Some(hand_spec(self.players.get(&id)?.inventory.held()))
+    }
+
     pub(crate) fn ack_block(&mut self, id: PlayerId, sequence: i32) {
         self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
     }
@@ -174,7 +179,6 @@ impl<L: ClientLink> Server<L> {
             }
             GameMode::Survival if !state.is_air() => {
                 let insta = self.destroy_progress(id, state) >= 1.0;
-                let item_in_hand = hand_spec(held.as_ref());
                 let step = DamageStep {
                     player: id,
                     pos,
@@ -187,7 +191,7 @@ impl<L: ClientLink> Server<L> {
                     Some(EventPayload::BlockDamage(BlockDamage {
                         block: pos,
                         insta_break: insta,
-                        item_in_hand,
+                        item_in_hand: server.held_spec(id)?,
                         player: server.snapshot_of(id)?,
                     }))
                 });
@@ -371,22 +375,24 @@ impl<L: ClientLink> Server<L> {
             .into_iter()
             .map(|stack| (self.block_drop_launch(pos), stack))
             .collect();
-        let items: Vec<EntityView> = drops
+        let handles: Vec<(EntityId, Uuid, Vec3)> = drops
             .iter()
-            .map(|(launch, _)| EntityView {
-                id: launch.base.id,
-                uuid: launch.base.uuid,
-                kind: Kind::Item.name().to_owned(),
-                position: launch.base.position,
-            })
+            .map(|(launch, _)| (launch.base.id, launch.base.uuid, launch.base.position))
             .collect();
-        let block_state = snapshot_of(pos, state);
         let step = DropItemsStep { pos, drops, exp };
         self.fire(id, Continuation::DropItems(Box::new(step)), move |server| {
             Some(EventPayload::BlockDropItem(BlockDropItem {
                 block: pos,
-                block_state,
-                items,
+                block_state: snapshot_of(pos, state),
+                items: handles
+                    .into_iter()
+                    .map(|(id, uuid, position)| EntityView {
+                        id,
+                        uuid,
+                        kind: Kind::Item.name().to_owned(),
+                        position,
+                    })
+                    .collect(),
                 player: server.snapshot_of(id)?,
             }))
         });
@@ -426,16 +432,14 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let destroying = player.mining.take().is_some();
-        let held = player.inventory.held().cloned();
         if !destroying && !self.within_reach(id, pos) {
             self.ack_block(id, step.sequence);
             return;
         }
-        let item_in_hand = hand_spec(held.as_ref());
         self.fire(id, Continuation::Abort(step), move |server| {
             Some(EventPayload::BlockDamageAbort(BlockDamageAbort {
                 block: pos,
-                item_in_hand,
+                item_in_hand: server.held_spec(id)?,
                 player: server.snapshot_of(id)?,
             }))
         });

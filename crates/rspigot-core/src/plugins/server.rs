@@ -15,8 +15,8 @@ use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTel
 use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
-    Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
-    Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
+    Access, Answer, EffectSpec, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec,
+    Location, Order, Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -342,6 +342,10 @@ impl<L: ClientLink> Server<L> {
         } else {
             self.settle(pending.settle(event));
         }
+    }
+
+    pub(crate) fn listened(&self, kind: EventKind) -> bool {
+        self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
     }
 
     fn run_now(&mut self, then: Continuation) {
