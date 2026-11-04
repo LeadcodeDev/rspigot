@@ -14,6 +14,7 @@ use crate::plugins::decisions::{
     Undone,
 };
 use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTeleportCause};
+use crate::plugins::knockback::settled_knockback;
 use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
@@ -782,6 +783,10 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::Combust(step) => {
                 self.finish_combust(step, cancelled, settled_duration(patch));
+                Vec::new()
+            }
+            Continuation::Knock(step) => {
+                self.finish_knock(step, cancelled, settled_knockback(patch));
                 Vec::new()
             }
         }

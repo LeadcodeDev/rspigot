@@ -7,7 +7,6 @@ use rspigot_domain::entity::ageable::{self, AgeableState};
 use rspigot_domain::entity::fire;
 use rspigot_domain::entity::living::{
     self, ATTACK_DAMAGE, ATTACK_KNOCKBACK, EQUIPMENT_SLOTS, HurtOutcome, HurtSource,
-    KNOCKBACK_RESISTANCE,
 };
 use rspigot_domain::entity::physics::{Landing, water_height};
 use rspigot_domain::entity::species::{self, Species};
@@ -41,10 +40,10 @@ use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
 use crate::plugins::events::EntityRemoveCause;
-use crate::plugins::events::{EntityDeath, EntityDeathPatch};
+use crate::plugins::events::{EntityDeath, EntityDeathPatch, EntityKnockbackCause};
 use crate::plugins::steps::LootStep;
 use crate::plugins::{
-    AfterHurt, Continuation, EventPayload, MobAttackFollow, Struck, spec_of, stack_of,
+    AfterHurt, Continuation, EventPayload, Holder, MobAttackFollow, Struck, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -73,7 +72,6 @@ const DAMAGE_SOURCE_MEMORY: i64 = 40;
 const PANIC_CAUSES: &str = "minecraft:panic_causes";
 pub const DEFAULT_KNOCKBACK: f64 = 0.400_000_005_960_464_5;
 pub const MIN_KNOCKBACK_DIRECTION: f64 = 9.999_999_747_378_752e-6;
-const RANDOM_DIRECTION_SCALE: f64 = 0.01;
 const KNOCKBACK_VERTICAL_CAP: f64 = 0.4;
 const VOID_DAMAGE: f32 = 4.0;
 const VOID_DEPTH: i32 = 64;
@@ -1124,7 +1122,13 @@ impl<L: ClientLink> Server<L> {
             );
             if !kind.is(DamageTag::NoKnockback) {
                 let (dx, dz) = source.knockback_from(position);
-                self.mob_knockback(id, DEFAULT_KNOCKBACK, dx, dz);
+                self.knock(
+                    Holder::Mob(id),
+                    DEFAULT_KNOCKBACK,
+                    (dx, dz),
+                    source.knock_cause(),
+                    source.direct.as_ref().map(|direct| direct.entity),
+                );
             }
         }
         if dead {
@@ -1141,28 +1145,6 @@ impl<L: ClientLink> Server<L> {
             self.zombie_reinforcements(id, source);
         }
         true
-    }
-
-    pub(crate) fn mob_knockback(&mut self, id: EntityId, strength: f64, dx: f64, dz: f64) {
-        let Some(Entity {
-            state: EntityState::Living(state),
-            ..
-        }) = self.entities.store.get_mut(id)
-        else {
-            return;
-        };
-        let strength = strength * (1.0 - state.attribute(KNOCKBACK_RESISTANCE));
-        let (mut dx, mut dz) = (dx, dz);
-        while dx * dx + dz * dz < MIN_KNOCKBACK_DIRECTION {
-            dx = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-            dz = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-        }
-        let Some(entity) = self.entities.store.get_mut(id) else {
-            return;
-        };
-        let base = &mut entity.base;
-        base.velocity = knockback_velocity(base.velocity, strength, dx, dz, base.on_ground);
-        base.needs_sync = true;
     }
 
     pub(crate) fn make_entity_sound(
@@ -1548,22 +1530,22 @@ impl<L: ClientLink> Server<L> {
         if knockback > 0.0 {
             let (dx, dz) = mth::yaw_direction(yaw);
             let living_target = match target {
-                Target::Player(player) => {
-                    self.knockback(player, f64::from(knockback), dx, dz);
-                    true
-                }
-                Target::Entity(entity) => {
-                    let living = self
-                        .entities
-                        .store
-                        .get(entity)
-                        .is_some_and(|e| e.living().is_some());
-                    if living {
-                        self.mob_knockback(entity, f64::from(knockback), dx, dz);
-                    }
-                    living
-                }
+                Target::Player(_) => true,
+                Target::Entity(entity) => self
+                    .entities
+                    .store
+                    .get(entity)
+                    .is_some_and(|e| e.living().is_some()),
             };
+            if living_target {
+                self.knockback_target(
+                    target,
+                    f64::from(knockback),
+                    (dx, dz),
+                    EntityKnockbackCause::EntityAttack,
+                    attacker,
+                );
+            }
             if living_target && let Some(entity) = self.entities.store.get_mut(attacker) {
                 entity.base.velocity =
                     entity

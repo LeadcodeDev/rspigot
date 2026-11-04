@@ -4,7 +4,7 @@ use rspigot_domain::entity::species::{self, Species};
 use rspigot_domain::entity::{Aabb, EntityState, RemovalReason, item};
 use rspigot_domain::explosion::{self, MIN_RADIUS, PACKET_RANGE_SQR};
 use rspigot_domain::item::{ItemStack, same_item_same_components};
-use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::player::PlayerId;
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
@@ -14,7 +14,7 @@ use crate::loot::{self, LootContext, LootEntity};
 use crate::mobs::ServerRandom;
 use crate::plugins::events::EntityRemoveCause;
 use crate::plugins::steps::ExplodeStep;
-use crate::plugins::{AfterHurt, BlastFollow, Struck};
+use crate::plugins::{AfterHurt, BlastFollow, Holder, Struck};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -262,6 +262,7 @@ impl<L: ClientLink> Server<L> {
                     target: target.id,
                     player: target.player,
                     knockback,
+                    source,
                 })
             });
             if orb {
@@ -281,28 +282,22 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn blast_knockback(&mut self, follow: BlastFollow) {
-        let knockback = follow.knockback;
-        match follow.player {
-            Some(player) => {
-                let Some(p) = self.players.get_mut(&player) else {
-                    return;
-                };
-                p.vitals.velocity = p.vitals.velocity + knockback;
-                let flying_creative = p.game_mode == GameMode::Creative && p.flying;
-                if p.game_mode == GameMode::Spectator || flying_creative {
-                    return;
-                }
-                match &mut self.impacts.knocked {
-                    Some(knocked) => knocked.push((player, knockback)),
-                    None => p.vitals.sync_velocity = true,
-                }
-            }
-            None => {
-                if let Some(entity) = self.entities.store.get_mut(follow.target) {
-                    entity.base.velocity = entity.base.velocity + knockback;
-                    entity.base.needs_sync = true;
-                }
-            }
+        let living = follow.player.is_some()
+            || self
+                .entities
+                .store
+                .get(follow.target)
+                .is_some_and(|entity| entity.living().is_some());
+        if living {
+            let holder = follow
+                .player
+                .map_or(Holder::Mob(follow.target), Holder::Player);
+            self.blast_push(holder, follow.knockback, follow.source);
+            return;
+        }
+        if let Some(entity) = self.entities.store.get_mut(follow.target) {
+            entity.base.velocity = entity.base.velocity + follow.knockback;
+            entity.base.needs_sync = true;
         }
     }
 

@@ -106,13 +106,15 @@ EntityCombust = "undead burning in daylight; its handlers also hear EntityCombus
 EntityCombustByBlock = "fire blocks once the fire counter reaches 0 and lava for a living entity that is not burning, with the lava block it touched; burning or non-living entities catch fire from lava without the event, as in Spigot"
 EntityCombustByEntity = "a burning arrow before its hit; the combuster is the arrow"
 EntityPotionEffect = "COMMAND, PLUGIN, EXPIRATION (also when an effect stops ticking) and DEATH at respawn, for players and mobs; restored effects fire nothing; a cancelled expiration keeps the spent effect and asks again each tick"
+EntityKnockback = "the hurt knockback (ENTITY_ATTACK with a direct entity, DAMAGE otherwise, which no damage type of rspigot without a direct entity produces yet), the extra knockback of player and mob attacks (ENTITY_ATTACK), sweeps (SWEEP_ATTACK) and explosions (EXPLOSION); a player hit fires two, a swept target two; the settled final knockback is the new velocity; there is no shield, goat or mace knockback"
+EntityKnockbackByEntity = "every knockback whose source is an entity: the direct entity of the hurt, the attacker or the explosion source; reaches EntityKnockback handlers"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
     "EntityBreed", "EntityChangeBlock",
     "EntityEnterLoveMode", "EntityExplode", "EntityInteract",
-    "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
+    "EntityPickupItem", "EntityPoseChange",
     "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",

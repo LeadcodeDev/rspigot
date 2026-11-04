@@ -22,12 +22,12 @@ use rspigot_items::EquipmentSlot as ItemSlot;
 use crate::events::{ClientEvent, EntityStatus, GameEvent, MetadataEntry, MetadataValue};
 use crate::player::Player;
 use crate::plugins::events::{
-    EntityExhaustionReason, EntityRegainHealthRegainReason, PlayerDeath, PlayerDeathPatch,
-    PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
+    EntityExhaustionReason, EntityKnockbackCause, EntityRegainHealthRegainReason, PlayerDeath,
+    PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
 };
 use crate::plugins::{
-    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep,
-    Struck, spec_of, stack_of,
+    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, Holder, ItemSpec, Phase,
+    RespawnStep, Struck, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -129,6 +129,14 @@ impl DamageSource {
     pub(crate) fn source_position(&self) -> Option<Vec3> {
         self.position
             .or_else(|| self.direct.as_ref().map(|d| d.position))
+    }
+
+    pub(crate) fn knock_cause(&self) -> EntityKnockbackCause {
+        if self.direct.is_some() {
+            EntityKnockbackCause::EntityAttack
+        } else {
+            EntityKnockbackCause::Damage
+        }
     }
 
     pub(crate) fn knockback_from(&self, victim: Vec3) -> (f64, f64) {
@@ -527,7 +535,13 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::Trackers(entity), event);
             if !kind.is(DamageTag::NoKnockback) {
                 let (dx, dz) = source.knockback_from(position);
-                self.knockback(id, crate::combat::DEFAULT_KNOCKBACK, dx, dz);
+                self.knock(
+                    Holder::Player(id),
+                    crate::combat::DEFAULT_KNOCKBACK,
+                    (dx, dz),
+                    source.knock_cause(),
+                    source.direct.as_ref().map(|direct| direct.entity),
+                );
                 self.indicate_damage(id, dx, dz);
             }
         }

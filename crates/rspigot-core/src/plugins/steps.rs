@@ -561,6 +561,7 @@ pub(crate) struct BlastFollow {
     pub(crate) target: EntityId,
     pub(crate) player: Option<PlayerId>,
     pub(crate) knockback: Vec3,
+    pub(crate) source: Option<EntityId>,
 }
 
 #[derive(Debug)]
@@ -625,6 +626,22 @@ pub(crate) enum Potion {
     Remove(EffectInstance),
     Clear(EffectInstance),
     Expire(EffectInstance),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Push {
+    Knock {
+        strength: f64,
+        direction: (f64, f64),
+    },
+    Blast(Vec3),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct KnockStep {
+    pub(crate) kind: EventKind,
+    pub(crate) target: Holder,
+    pub(crate) push: Push,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -717,6 +734,7 @@ pub(crate) enum Continuation {
     Food(FoodStep),
     Potion(PotionStep),
     Combust(CombustStep),
+    Knock(KnockStep),
 }
 
 impl Continuation {
@@ -781,6 +799,7 @@ impl Continuation {
             Self::Food(_) => EventKind::FoodLevelChange,
             Self::Potion(_) => EventKind::EntityPotionEffect,
             Self::Combust(step) => step.kind,
+            Self::Knock(step) => step.kind,
         }
     }
 

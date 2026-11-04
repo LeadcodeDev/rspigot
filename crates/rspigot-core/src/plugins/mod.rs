@@ -12,6 +12,7 @@ pub mod events;
 mod inputs;
 mod inventory;
 mod items;
+mod knockback;
 mod levels;
 mod menus;
 mod objects;
