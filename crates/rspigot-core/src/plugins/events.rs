@@ -3786,8 +3786,8 @@ pub struct PlayerDeath {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerDropItem {
-    pub item_drop: EntityView,
     pub player: PlayerSnapshot,
+    pub item: ItemSpec,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3989,9 +3989,9 @@ pub struct PlayerMove {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerPickupArrow {
     pub arrow: EntityView,
-    pub item: EntityView,
     pub player: PlayerSnapshot,
     pub remaining: i32,
+    pub item: ItemSpec,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -6210,6 +6210,25 @@ impl PlayerDeathPatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlayerDropItemPatch {
+    pub item: Option<ItemSpec>,
+}
+
+impl PlayerDropItemPatch {
+    fn then(self, later: Self) -> Self {
+        Self {
+            item: later.item.or(self.item),
+        }
+    }
+
+    fn settle(self, event: &mut PlayerDropItem) {
+        if let Some(value) = self.item {
+            event.item = value;
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerEditBookPatch {
     pub new_book_meta: Option<BookMeta>,
     pub signing: Option<bool>,
@@ -7803,6 +7822,7 @@ pub enum EventPatch {
     PlayerCommandPreprocess(PlayerCommandPreprocessPatch),
     PlayerCommandSend(PlayerCommandSendPatch),
     PlayerDeath(PlayerDeathPatch),
+    PlayerDropItem(PlayerDropItemPatch),
     PlayerEditBook(PlayerEditBookPatch),
     PlayerEggThrow(PlayerEggThrowPatch),
     PlayerExpChange(PlayerExpChangePatch),
@@ -7924,6 +7944,7 @@ impl EventPatch {
             Self::PlayerCommandPreprocess(_) => EventKind::PlayerCommandPreprocess,
             Self::PlayerCommandSend(_) => EventKind::PlayerCommandSend,
             Self::PlayerDeath(_) => EventKind::PlayerDeath,
+            Self::PlayerDropItem(_) => EventKind::PlayerDropItem,
             Self::PlayerEditBook(_) => EventKind::PlayerEditBook,
             Self::PlayerEggThrow(_) => EventKind::PlayerEggThrow,
             Self::PlayerExpChange(_) => EventKind::PlayerExpChange,
@@ -8186,6 +8207,9 @@ impl EventPatch {
             }
             (Self::PlayerDeath(earlier), Self::PlayerDeath(later)) => {
                 Self::PlayerDeath(earlier.then(later))
+            }
+            (Self::PlayerDropItem(earlier), Self::PlayerDropItem(later)) => {
+                Self::PlayerDropItem(earlier.then(later))
             }
             (Self::PlayerEditBook(earlier), Self::PlayerEditBook(later)) => {
                 Self::PlayerEditBook(earlier.then(later))
@@ -8480,6 +8504,9 @@ impl EventPatch {
                 patch.settle(event)
             }
             (Self::PlayerDeath(patch), EventPayload::PlayerDeath(event)) => patch.settle(event),
+            (Self::PlayerDropItem(patch), EventPayload::PlayerDropItem(event)) => {
+                patch.settle(event)
+            }
             (Self::PlayerEditBook(patch), EventPayload::PlayerEditBook(event)) => {
                 patch.settle(event)
             }
@@ -8744,6 +8771,7 @@ impl EventPatch {
             }
             (patch @ Self::PlayerCommandSend(_), EventKind::PlayerCommandSend) => Some(patch),
             (patch @ Self::PlayerDeath(_), EventKind::PlayerDeath) => Some(patch),
+            (patch @ Self::PlayerDropItem(_), EventKind::PlayerDropItem) => Some(patch),
             (patch @ Self::PlayerEditBook(_), EventKind::PlayerEditBook) => Some(patch),
             (patch @ Self::PlayerEggThrow(_), EventKind::PlayerEggThrow) => Some(patch),
             (patch @ Self::PlayerExpChange(_), EventKind::PlayerExpChange) => Some(patch),

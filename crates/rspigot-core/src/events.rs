@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use crossbeam_channel::Sender;
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
@@ -141,6 +142,7 @@ pub enum PlayerInput {
         target: EntityId,
         hand: Hand,
         sneaking: bool,
+        location: Vec3,
     },
     PickBlock {
         pos: BlockPos,
@@ -175,12 +177,26 @@ pub struct ContainerClick {
     pub carried: HashedSlot,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreLoginVerdict {
+    Allowed,
+    Refused(String),
+}
+
 pub enum Inbound<L> {
+    PreLogin {
+        name: String,
+        id: PlayerId,
+        address: IpAddr,
+        transferred: bool,
+        reply: Sender<PreLoginVerdict>,
+    },
     Join {
         profile: GameProfile,
         settings: ClientSettings,
         link: L,
         address: IpAddr,
+        session: u64,
     },
     Input {
         player: PlayerId,
@@ -188,6 +204,7 @@ pub enum Inbound<L> {
     },
     Leave {
         player: PlayerId,
+        session: u64,
     },
     Console(String),
     PluginConnected {

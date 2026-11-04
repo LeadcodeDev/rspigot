@@ -2,7 +2,7 @@ use std::num::NonZeroU8;
 
 use rspigot_domain::entity::ageable;
 use rspigot_domain::entity::living::{self, slot_index};
-use rspigot_domain::entity::reward::{damage_value, max_damage, set_damage_value};
+use rspigot_domain::entity::reward::max_damage;
 use rspigot_domain::entity::species::{self, Species};
 use rspigot_domain::entity::{Aabb, Entity, EntityState, save};
 use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT};
@@ -13,9 +13,12 @@ use rspigot_domain::{EntityId, ItemId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 use rspigot_items::{EquipmentSlot, ItemKind};
 
-use crate::events::{Animation, ClientEvent, EntityStatus, EquipmentSlot as WireSlot, Hand};
+use crate::events::{Animation, ClientEvent, EquipmentSlot as WireSlot, Hand};
 use crate::loot::{self, LootContext};
 use crate::mob_actions::new_mob;
+use crate::plugins::events::{EquipmentSlot as Slot, PlayerShearEntity};
+use crate::plugins::steps::ShearStep;
+use crate::plugins::{Continuation, EventPayload, Lane, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -106,6 +109,7 @@ impl<L: ClientLink> Server<L> {
         target: EntityId,
         hand: Hand,
         sneaking: bool,
+        location: Vec3,
     ) {
         let Some(player) = self.players.get(&id) else {
             return;
@@ -114,9 +118,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         if target == player.entity_id && player.game_mode != GameMode::Spectator {
-            player
-                .link
-                .disconnect(Component::text("Cannot interact with self!"));
+            self.disconnect_player(id, Component::text("Cannot interact with self!"));
             return;
         }
         if player.sneaking != sneaking {
@@ -125,16 +127,23 @@ impl<L: ClientLink> Server<L> {
             }
             self.broadcast_metadata(id);
         }
+        if !self.within_entity_reach(id, target) {
+            return;
+        }
+        self.ask_interact_entity(id, target, hand, location);
+    }
+
+    fn within_entity_reach(&self, id: PlayerId, target: EntityId) -> bool {
         let Some(bounds) = self
             .entities
             .store
             .get(target)
             .map(|e| e.base.bounding_box())
         else {
-            return;
+            return false;
         };
         let Some(player) = self.players.get(&id) else {
-            return;
+            return false;
         };
         let reach = ENTITY_REACH
             + if player.game_mode == GameMode::Creative {
@@ -143,9 +152,24 @@ impl<L: ClientLink> Server<L> {
                 0.0
             }
             + REACH_BUFFER;
-        if box_distance_squared(&bounds, player.eye_position()) >= reach * reach {
-            return;
-        }
+        box_distance_squared(&bounds, player.eye_position()) < reach * reach
+    }
+
+    pub(crate) fn may_interact_with(&self, id: PlayerId, target: EntityId) -> bool {
+        let alive = self
+            .players
+            .get(&id)
+            .is_some_and(|player| !player.vitals.is_dead());
+        let present = self.entities.store.get(target).is_some_and(|entity| {
+            !entity.base.is_removed()
+                && entity
+                    .living()
+                    .is_none_or(|living| !living::is_dead_or_dying(&entity.base, living))
+        });
+        alive && present && self.within_entity_reach(id, target)
+    }
+
+    pub(crate) fn interact_now(&mut self, id: PlayerId, target: EntityId, hand: Hand) {
         let result = self.interact_on(id, target, hand);
         if matches!(result, Interaction::Predicted | Interaction::ServerOnly) {
             self.player_swing(id, hand, result == Interaction::ServerOnly);
@@ -209,34 +233,10 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn hurt_held(&mut self, id: PlayerId, hand: Hand, amount: i32) {
-        if self.infinite_materials(id) {
-            return;
-        }
-        let Some(mut stack) = self.held(id, hand) else {
-            return;
-        };
-        let Some(max) = max_damage(&stack) else {
-            return;
-        };
-        let damage = damage_value(&stack) + amount;
-        set_damage_value(&mut stack, damage);
-        let broken = damage >= max;
-        self.set_held(id, hand, if broken { None } else { Some(stack) });
-        if broken && let Some(entity) = self.players.get(&id).map(|p| p.entity_id) {
-            let slot = match hand {
-                Hand::Main => WireSlot::MainHand,
-                Hand::Off => WireSlot::OffHand,
-            };
-            let status = ClientEvent::EntityStatus {
-                entity,
-                status: EntityStatus::EquipmentBreak(slot),
-            };
-            self.push(Audience::One(id), status.clone());
-            self.push(Audience::Trackers(entity), status);
-        }
+        self.wear(id, hand, amount);
     }
 
-    fn refresh_hands(&mut self, id: PlayerId) {
+    pub(crate) fn refresh_hands(&mut self, id: PlayerId) {
         self.sync_inventory(id);
         self.broadcast_held_item(id);
     }
@@ -557,6 +557,66 @@ impl<L: ClientLink> Server<L> {
         if species::is_sheared(&entity.base) || entity.is_baby() {
             return Interaction::Consume;
         }
+        let Some(stack) = self.held(id, hand) else {
+            return Interaction::Pass;
+        };
+        let item = spec_of(&stack);
+        let mut then = Continuation::Shear(Box::new(ShearStep {
+            player: id,
+            target,
+            hand,
+            stack,
+            parked: false,
+        }));
+        let parked = self.parks(Lane::Player(id), &then);
+        if let Continuation::Shear(step) = &mut then {
+            step.parked = parked;
+        }
+        self.fire(id, then, move |server| {
+            Some(EventPayload::PlayerShearEntity(PlayerShearEntity {
+                entity: server.entity_view(target)?,
+                hand: match hand {
+                    Hand::Main => Slot::Hand,
+                    Hand::Off => Slot::OffHand,
+                },
+                item,
+                player: server.snapshot_of(id)?,
+            }))
+        });
+        if parked {
+            Interaction::Consume
+        } else {
+            Interaction::ServerOnly
+        }
+    }
+
+    pub(crate) fn finish_shear(&mut self, step: ShearStep) {
+        let ready = self.entities.store.get(step.target).is_some_and(|entity| {
+            !entity.base.is_removed()
+                && !species::is_sheared(&entity.base)
+                && !entity.is_baby()
+                && entity
+                    .living()
+                    .is_some_and(|living| !living::is_dead_or_dying(&entity.base, living))
+        });
+        let able = self
+            .players
+            .get(&step.player)
+            .is_some_and(|player| !player.vitals.is_dead());
+        if !ready || !able || self.held(step.player, step.hand).as_ref() != Some(&step.stack) {
+            return;
+        }
+        self.shear_now(step.player, step.target, step.hand);
+        if step.parked {
+            self.player_swing(step.player, step.hand, true);
+            self.refresh_hands(step.player);
+        }
+    }
+
+    fn shear_now(&mut self, id: PlayerId, target: EntityId, hand: Hand) {
+        let Some(entity) = self.entities.store.get(target) else {
+            return;
+        };
         let position = entity.base.position;
         let facts = crate::mobs::loot_facts_of(entity);
         self.play_sound(
@@ -599,7 +659,6 @@ impl<L: ClientLink> Server<L> {
             species::set_sheared(&mut entity.base, true);
         }
         self.hurt_held(id, hand, 1);
-        Interaction::ServerOnly
     }
 
     fn animal_interact(

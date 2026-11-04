@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use rspigot_core::events::{Direction, Inbound};
+use rspigot_core::events::Direction;
 use rspigot_core::plugins::{
     Answer, BlockOrder, EntityOrder, EntityView, Order, PlayerOrder, Question, TargetHit,
 };
@@ -165,7 +165,7 @@ fn distance_is_checked() {
             Answer::Refused(_)
         ));
     }
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     s.server.deliver();
     assert_eq!(target_block(&mut s, &alice, 10.0), Answer::NotFound);
     assert_eq!(target_entity(&mut s, &alice, 10.0), Answer::NotFound);

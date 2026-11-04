@@ -12207,8 +12207,9 @@ pub struct PlayerDropItem {
     id: u64,
     cancelled: bool,
     rolled_back: bool,
-    item_drop: Entity,
     player: Player,
+    item: ItemStack,
+    patch: v1::PlayerDropItemPatch,
 }
 
 impl PlayerDropItem {
@@ -12217,8 +12218,9 @@ impl PlayerDropItem {
             id: meta.id,
             cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
-            item_drop: Entity::from_wire(required(message.item_drop, "item_drop")?, link)?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            item: ItemStack::from_wire(required(message.item, "item")?)?,
+            patch: v1::PlayerDropItemPatch::default(),
         })
     }
 
@@ -12226,12 +12228,17 @@ impl PlayerDropItem {
         self.id
     }
 
-    pub fn item_drop(&self) -> &Entity {
-        &self.item_drop
-    }
-
     pub fn player(&self) -> &Player {
         &self.player
+    }
+
+    pub fn item(&self) -> &ItemStack {
+        &self.item
+    }
+
+    pub fn set_item(&mut self, value: ItemStack) {
+        self.patch.item = Some(value.to_wire());
+        self.item = value;
     }
 
     pub const fn cancel(&mut self) {
@@ -12251,7 +12258,11 @@ impl From<PlayerDropItem> for Verdict {
     fn from(event: PlayerDropItem) -> Self {
         Self {
             cancel: event.cancelled,
-            patch: None,
+            patch: (event.patch != v1::PlayerDropItemPatch::default()).then(|| {
+                Box::new(v1::Patch {
+                    change: Some(patch::Change::PlayerDropItem(event.patch)),
+                })
+            }),
         }
     }
 }
@@ -13901,9 +13912,9 @@ pub struct PlayerPickupArrow {
     cancelled: bool,
     rolled_back: bool,
     arrow: Entity,
-    item: Entity,
     player: Player,
     remaining: i32,
+    item: ItemStack,
 }
 
 impl PlayerPickupArrow {
@@ -13913,9 +13924,9 @@ impl PlayerPickupArrow {
             cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             arrow: Entity::from_wire(required(message.arrow, "arrow")?, link)?,
-            item: Entity::from_wire(required(message.item, "item")?, link)?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
             remaining: message.remaining,
+            item: ItemStack::from_wire(required(message.item, "item")?)?,
         })
     }
 
@@ -13927,16 +13938,16 @@ impl PlayerPickupArrow {
         &self.arrow
     }
 
-    pub fn item(&self) -> &Entity {
-        &self.item
-    }
-
     pub fn player(&self) -> &Player {
         &self.player
     }
 
     pub fn remaining(&self) -> i32 {
         self.remaining
+    }
+
+    pub fn item(&self) -> &ItemStack {
+        &self.item
     }
 
     pub const fn cancel(&mut self) {

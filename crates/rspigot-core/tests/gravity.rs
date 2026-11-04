@@ -231,6 +231,7 @@ fn join(server: &mut Server<Link>) -> (PlayerId, Link) {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     for event in link.take() {

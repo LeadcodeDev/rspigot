@@ -163,6 +163,7 @@ fn join(server: &mut Server<Link>, name: &str) -> (PlayerId, Link) {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     (id, link)
@@ -290,7 +291,10 @@ fn two_players_see_each_other_and_chat() {
             .iter()
             .any(|e| matches!(e, ClientEvent::PlayerChat { message, .. } if message == "hello"))
     );
-    server.handle(Inbound::Leave { player: bob });
+    server.handle(Inbound::Leave {
+        player: bob,
+        session: 0,
+    });
     server.deliver();
     let alice_events = alice_link.take();
     assert!(

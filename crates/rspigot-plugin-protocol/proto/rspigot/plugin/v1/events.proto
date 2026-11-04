@@ -300,7 +300,8 @@ message PlayerCommandSendPatch { StringList commands = 1; }
 message PlayerCustomClick { optional string data = 1; string click_id = 2; PlayerSnapshot player = 3; }
 message PlayerDeath { DamageSource damage_source = 1; optional string death_message = 2; int32 dropped_exp = 3; repeated Item drops = 4; PlayerSnapshot entity = 5; string entity_type = 6; bool keep_inventory = 7; bool keep_level = 8; int32 new_exp = 9; int32 new_level = 10; int32 new_total_exp = 11; }
 message PlayerDeathPatch { NullableString death_message = 2; optional int32 dropped_exp = 3; ItemList drops = 4; optional bool keep_inventory = 7; optional bool keep_level = 8; optional int32 new_exp = 9; optional int32 new_level = 10; optional int32 new_total_exp = 11; }
-message PlayerDropItem { EntitySnapshot item_drop = 1; PlayerSnapshot player = 2; }
+message PlayerDropItem { PlayerSnapshot player = 2; Item item = 100; }
+message PlayerDropItemPatch { Item item = 100; }
 message PlayerEditBook { BookMeta new_book_meta = 1; PlayerSnapshot player = 2; BookMeta previous_book_meta = 3; bool signing = 4; }
 message PlayerEditBookPatch { BookMeta new_book_meta = 1; optional bool signing = 4; }
 message PlayerEggThrow { EntitySnapshot egg = 1; bool hatching = 2; string hatching_type = 3; int32 num_hatches = 4; PlayerSnapshot player = 5; }
@@ -336,7 +337,7 @@ message PlayerLinksSend { PlayerSnapshot player = 2; }
 message PlayerLocaleChange { string locale = 1; PlayerSnapshot player = 2; }
 message PlayerLogin { string address = 1; string hostname = 4; string kick_message = 5; PlayerSnapshot player = 6; string real_address = 7; PlayerLoginResult result = 8; }
 message PlayerLoginPatch { optional string kick_message = 5; optional PlayerLoginResult result = 8; }
-message PlayerPickupArrow { EntitySnapshot arrow = 1; EntitySnapshot item = 2; PlayerSnapshot player = 3; int32 remaining = 4; }
+message PlayerPickupArrow { EntitySnapshot arrow = 1; PlayerSnapshot player = 3; int32 remaining = 4; Item item = 100; }
 message PlayerPortal { bool can_create_portal = 1; PlayerTeleportCause cause = 2; int32 creation_radius = 3; Location from = 4; PlayerSnapshot player = 5; int32 search_radius = 6; Location to = 7; }
 message PlayerPortalPatch { optional bool can_create_portal = 1; optional int32 creation_radius = 3; optional int32 search_radius = 6; Location to = 7; }
 message PlayerRecipeBookClick { string original_recipe = 1; PlayerSnapshot player = 2; string recipe = 3; bool shift_click = 4; }
@@ -774,6 +775,7 @@ message Patch {
     PlayerCommandPreprocessPatch player_command_preprocess = 160;
     PlayerCommandSendPatch player_command_send = 161;
     PlayerDeathPatch player_death = 163;
+    PlayerDropItemPatch player_drop_item = 164;
     PlayerEditBookPatch player_edit_book = 165;
     PlayerEggThrowPatch player_egg_throw = 166;
     PlayerExpChangePatch player_exp_change = 167;

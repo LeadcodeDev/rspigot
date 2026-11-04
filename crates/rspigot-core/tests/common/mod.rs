@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -7,16 +8,18 @@ use std::time::Duration;
 
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::player_data::PlayerSave;
 use rspigot_core::plugins::{
-    Access, Answer, EventKind, FromPlugin, HandlerSpec, Order, PlayerOrder, PluginIntro, Priority,
-    Question, ToPlugin,
+    Access, Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
+    PlayerOrder, PluginIntro, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{
-    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PluginOutbox, StoreError,
+    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox, StoreError,
 };
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
 use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
@@ -24,6 +27,7 @@ use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Vec3
 use rspigot_nbt::Compound;
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Default)]
 pub struct Link {
@@ -138,16 +142,28 @@ impl PluginOutbox for Mailbox {
 pub struct Player {
     pub id: PlayerId,
     pub link: Link,
+    pub session: u64,
+}
+
+pub fn leave_of(player: &Player) -> Inbound<Link> {
+    Inbound::Leave {
+        player: player.id,
+        session: player.session,
+    }
 }
 
 pub fn server(plugins: PluginSettings) -> Server<Link> {
-    let config = GameConfig {
+    configured(|config| config.plugins = plugins)
+}
+
+pub fn configured(adjust: impl FnOnce(&mut GameConfig)) -> Server<Link> {
+    let mut config = GameConfig {
         view_distance: 3,
         chunk_workers: 2,
         spawn_protection: 0,
-        plugins,
         ..GameConfig::default()
     };
+    adjust(&mut config);
     let mut server = Server::new(
         config,
         LevelData::default(),
@@ -164,8 +180,17 @@ pub fn join(server: &mut Server<Link>, name: &str) -> Player {
 }
 
 pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Player {
+    join_as(server, name, address, ClientSettings::default())
+}
+
+pub fn join_with(server: &mut Server<Link>, name: &str, settings: ClientSettings) -> Player {
+    join_as(server, name, IpAddr::from([127, 0, 0, 1]), settings)
+}
+
+pub fn arrive(server: &mut Server<Link>, name: &str) -> Player {
     let link = Link::default();
     let id = PlayerId::offline(name);
+    let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     server.handle(Inbound::Join {
         profile: GameProfile {
             id,
@@ -174,7 +199,47 @@ pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Play
         },
         settings: ClientSettings::default(),
         link: link.clone(),
+        address: IpAddr::from([127, 0, 0, 1]),
+        session,
+    });
+    server.deliver();
+    Player { id, link, session }
+}
+
+pub fn settle_arrival(server: &mut Server<Link>, player: &Player) {
+    for event in player.link.take() {
+        if let ClientEvent::Teleport { id: teleport, .. } = event {
+            server.handle(Inbound::Input {
+                player: player.id,
+                input: PlayerInput::TeleportConfirm(teleport),
+            });
+        }
+    }
+    server.handle(Inbound::Input {
+        player: player.id,
+        input: PlayerInput::Loaded,
+    });
+}
+
+fn join_as(
+    server: &mut Server<Link>,
+    name: &str,
+    address: IpAddr,
+    settings: ClientSettings,
+) -> Player {
+    let link = Link::default();
+    let id = PlayerId::offline(name);
+    let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+    server.handle(Inbound::Join {
+        profile: GameProfile {
+            id,
+            name: name.to_owned(),
+            properties: Vec::new(),
+        },
+        settings,
+        link: link.clone(),
         address,
+        session,
     });
     server.deliver();
     for event in link.take() {
@@ -189,7 +254,7 @@ pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Play
         player: id,
         input: PlayerInput::Loaded,
     });
-    Player { id, link }
+    Player { id, link, session }
 }
 
 pub fn observe(id: u32, event: EventKind) -> HandlerSpec {
@@ -307,7 +372,64 @@ pub fn scene(names: &[&str]) -> Scene {
 }
 
 pub fn scene_with(names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
-    let mut server = server(PluginSettings::default());
+    scene_on(server(PluginSettings::default()), names, handlers)
+}
+
+#[derive(Default)]
+pub struct Saves(Mutex<HashMap<PlayerId, Compound>>);
+
+impl Saves {
+    pub fn items(&self, player: PlayerId) -> Vec<(String, u8)> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let saved = loop {
+            let found = self
+                .0
+                .lock()
+                .ok()
+                .and_then(|files| files.get(&player).cloned());
+            match found {
+                Some(saved) => break saved,
+                None if std::time::Instant::now() > deadline => panic!("the player was not saved"),
+                None => std::thread::sleep(Duration::from_millis(5)),
+            }
+        };
+        let save = PlayerSave::from_nbt(&saved).expect("the save decodes");
+        save.inventory
+            .slots()
+            .iter()
+            .flatten()
+            .map(|stack: &ItemStack| {
+                let name = stack.item.kind().map_or("unknown", |kind| kind.name());
+                (name.to_owned(), stack.count.get())
+            })
+            .collect()
+    }
+}
+
+impl PlayerStore for Saves {
+    fn load_player(&self, player: PlayerId) -> Result<Option<Compound>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .ok()
+            .and_then(|files| files.get(&player).cloned()))
+    }
+
+    fn save_player(&self, player: PlayerId, data: &Compound) -> Result<(), StoreError> {
+        if let Ok(mut files) = self.0.lock() {
+            files.insert(player, data.clone());
+        }
+        Ok(())
+    }
+}
+
+pub fn saving_scene(names: &[&str], handlers: Vec<HandlerSpec>) -> (Scene, Arc<Saves>) {
+    let saves = Arc::new(Saves::default());
+    let server = server(PluginSettings::default()).with_player_store(Arc::clone(&saves));
+    (scene_on(server, names, handlers), saves)
+}
+
+pub fn scene_on(mut server: Server<Link>, names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
     let plugin = connect_with(&mut server, 1, "tester", handlers);
     let players: Vec<Player> = names.iter().map(|name| join(&mut server, name)).collect();
     server.deliver();
@@ -394,4 +516,125 @@ pub fn to(player: &Player, order: PlayerOrder) -> Order {
         player: player.id,
         order,
     }
+}
+
+pub fn deciding(id: u32, event: EventKind) -> HandlerSpec {
+    HandlerSpec {
+        id,
+        event,
+        access: Access::Decide,
+        priority: Priority::Normal,
+        ignore_cancelled: false,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fired {
+    pub id: u64,
+    pub phase: Phase,
+    pub cancelled: bool,
+    pub payload: EventPayload,
+}
+
+pub fn fired(mailbox: &Mailbox) -> Vec<Fired> {
+    mailbox
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            ToPlugin::Event {
+                id,
+                phase,
+                cancelled,
+                payload,
+                ..
+            } => Some(Fired {
+                id,
+                phase,
+                cancelled,
+                payload,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+pub fn fired_kinds(mailbox: &Mailbox) -> Vec<(Phase, EventKind)> {
+    fired(mailbox)
+        .into_iter()
+        .map(|event| (event.phase, event.payload.kind()))
+        .collect()
+}
+
+pub fn asked_for(mailbox: &Mailbox, kind: EventKind) -> Vec<Fired> {
+    fired(mailbox)
+        .into_iter()
+        .filter(|event| event.phase == Phase::Decide && event.payload.kind() == kind)
+        .collect()
+}
+
+pub fn settled_for(mailbox: &Mailbox, kind: EventKind) -> Vec<Fired> {
+    fired(mailbox)
+        .into_iter()
+        .filter(|event| event.phase == Phase::Settled && event.payload.kind() == kind)
+        .collect()
+}
+
+pub fn last_asked(mailbox: &Mailbox, kind: EventKind) -> Fired {
+    asked_for(mailbox, kind)
+        .pop()
+        .unwrap_or_else(|| panic!("a {kind:?} was asked"))
+}
+
+pub fn rule_on(
+    server: &mut Server<Link>,
+    connection: u64,
+    event: u64,
+    cancel: bool,
+    patch: Option<EventPatch>,
+) {
+    judge(server, connection, event, 1, cancel, patch);
+}
+
+pub fn judge(
+    server: &mut Server<Link>,
+    connection: u64,
+    event: u64,
+    handler: u32,
+    cancel: bool,
+    patch: Option<EventPatch>,
+) {
+    server.handle(Inbound::PluginMessage {
+        connection,
+        message: FromPlugin::Decision {
+            event,
+            verdicts: vec![Verdict {
+                handler,
+                cancel,
+                patch,
+            }],
+        },
+    });
+    server.deliver();
+}
+
+pub fn send_input(server: &mut Server<Link>, player: &Player, input: PlayerInput) {
+    server.handle(Inbound::Input {
+        player: player.id,
+        input,
+    });
+    server.deliver();
+}
+
+pub fn system_texts(player: &Player) -> Vec<String> {
+    player
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::SystemChat { message, .. } => {
+                Some(rspigot_core::console::console_text(&message))
+            }
+            _ => None,
+        })
+        .collect()
 }

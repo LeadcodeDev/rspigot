@@ -222,10 +222,13 @@ impl<L: ClientLink> Server<L> {
                 "Player {} tried to attack an invalid entity",
                 attacker.name()
             );
-            attacker.link.disconnect(Component::translatable(
-                "multiplayer.disconnect.invalid_entity_attacked",
-                Vec::new(),
-            ));
+            self.disconnect_player(
+                id,
+                Component::translatable(
+                    "multiplayer.disconnect.invalid_entity_attacked",
+                    Vec::new(),
+                ),
+            );
             return;
         }
         self.attack(id, victim);
@@ -347,16 +350,12 @@ impl<L: ClientLink> Server<L> {
             }
         }
         if let Target::Player(victim_id) = victim.target
-            && let Some(target) = self.players.get_mut(&victim_id)
-            && target.vitals.sync_velocity
+            && self
+                .players
+                .get(&victim_id)
+                .is_some_and(|target| target.vitals.sync_velocity)
         {
-            target.vitals.sync_velocity = false;
-            let velocity = std::mem::replace(&mut target.vitals.velocity, victim.velocity);
-            let entity = target.entity_id;
-            self.push(
-                Audience::One(victim_id),
-                ClientEvent::EntityVelocity { entity, velocity },
-            );
+            self.knock_velocity(victim_id, victim.velocity);
         }
         if sweep {
             let sweep = Sweep {

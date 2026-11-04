@@ -100,16 +100,26 @@ impl<L: ClientLink> Server<L> {
         self.send_menu_data(pos, PAGE_DATA, i16::try_from(page).unwrap_or(i16::MAX));
     }
 
-    fn take_book(&mut self, id: PlayerId, pos: BlockPos) -> bool {
-        let may_build = self.players.get(&id).is_some_and(|player| {
-            matches!(player.game_mode, GameMode::Survival | GameMode::Creative)
-        });
-        if !may_build {
-            return false;
+    fn take_book(&mut self, id: PlayerId, pos: BlockPos, window: i32) {
+        if !self.may_build(id) {
+            return;
         }
         let Some(book) = self.lectern_book(pos) else {
-            return false;
+            return;
         };
+        self.ask_take_book(id, pos, window, book);
+    }
+
+    fn may_build(&self, id: PlayerId) -> bool {
+        self.players.get(&id).is_some_and(|player| {
+            matches!(player.game_mode, GameMode::Survival | GameMode::Creative)
+        })
+    }
+
+    pub(crate) fn take_book_now(&mut self, id: PlayerId, pos: BlockPos, book: ItemStack) {
+        if !self.may_build(id) {
+            return;
+        }
         self.store_lectern(pos, None, 0);
         if let Some(state) = self.world.chunks.block(pos)
             && let Some(next) = state
@@ -119,7 +129,6 @@ impl<L: ClientLink> Server<L> {
             self.set_block(pos, next);
         }
         self.give_or_drop(id, book);
-        true
     }
 
     fn give_or_drop(&mut self, id: PlayerId, book: ItemStack) {
@@ -152,9 +161,7 @@ impl<L: ClientLink> Server<L> {
         match button {
             PREVIOUS_PAGE => self.turn_to_page(pos, page - 1),
             NEXT_PAGE => self.turn_to_page(pos, page + 1),
-            TAKE_BOOK => {
-                self.take_book(id, pos);
-            }
+            TAKE_BOOK => self.take_book(id, pos, window),
             jump if jump >= PAGE_JUMP_START => self.turn_to_page(pos, jump - PAGE_JUMP_START),
             _ => {}
         }

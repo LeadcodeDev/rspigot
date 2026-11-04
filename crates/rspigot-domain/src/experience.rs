@@ -15,6 +15,7 @@ pub struct PlayerExperience {
     pub take_delay: i32,
     pub last_sent: i32,
     pub last_level_up: i32,
+    pub old_level: i32,
 }
 
 impl Default for PlayerExperience {
@@ -26,6 +27,7 @@ impl Default for PlayerExperience {
             take_delay: 0,
             last_sent: INITIAL_SENT,
             last_level_up: 0,
+            old_level: -1,
         }
     }
 }

@@ -227,6 +227,7 @@ pub fn decode(packet: ServerboundPlay) -> Decoded {
             target: EntityId(p.entity_id),
             hand: hand(p.hand),
             sneaking: p.using_secondary_action,
+            location: Vec3::new(p.location.0.x, p.location.0.y, p.location.0.z),
         }),
         ServerboundPlay::ContainerClick(p) => input(PlayerInput::ContainerClick(ContainerClick {
             container: p.container_id,

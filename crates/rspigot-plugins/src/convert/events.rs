@@ -25,22 +25,23 @@ use rspigot_core::plugins::events::{
     InventoryTypeSlotType, LightningStrikeCause, LootGeneratePatch, MainHand, PigZombieAngerPatch,
     PlayerAnimationType, PlayerBedEnterPatch, PlayerBedEnterResult, PlayerBedLeavePatch,
     PlayerBucketEmptyPatch, PlayerBucketFillPatch, PlayerCommandPreprocessPatch,
-    PlayerCommandSendPatch, PlayerDeathPatch, PlayerEditBookPatch, PlayerEggThrowPatch,
-    PlayerExpChangePatch, PlayerExpCooldownChangePatch, PlayerExpCooldownChangeReason,
-    PlayerFishPatch, PlayerFishState, PlayerHarvestBlockPatch, PlayerInteractPatch,
-    PlayerItemConsumePatch, PlayerItemDamagePatch, PlayerItemMendPatch, PlayerJoinPatch,
-    PlayerKickPatch, PlayerLeavePatch, PlayerLoginPatch, PlayerLoginResult, PlayerMovePatch,
-    PlayerPortalPatch, PlayerRecipeBookClickPatch, PlayerRecipeBookSettingsChangeRecipeBookType,
-    PlayerRespawnPatch, PlayerRespawnReason, PlayerSignOpenCause, PlayerSpawnChangeCause,
-    PlayerSpawnChangePatch, PlayerSwapHandItemsPatch, PlayerTeleportCause, PlayerTeleportPatch,
-    PlayerVelocityPatch, PortalCreateReason, Pose, PotionSplashPatch, PrepareAnvilPatch,
-    PrepareGrindstonePatch, PrepareItemCraftPatch, PrepareSmithingPatch, RaidStopReason,
-    RemoteServerCommandPatch, ResourcePackStatus, SculkBloomPatch, ServerCommandPatch,
-    ServerListPingPatch, ServerLoadType, SheepDyeWoolPatch, Side, SignChangePatch, SmithItemPatch,
-    SpellcasterSpell, Statistic, TNTPrimeCause, TabCompletePatch, TimeSkipPatch, TimeSkipReason,
-    TradeSelectPatch, TreeType, VaultDisplayItemPatch, VehicleDamagePatch,
-    VehicleEntityCollisionPatch, VillagerAcquireTradePatch, VillagerCareerChangePatch,
-    VillagerCareerChangeReason, VillagerReplenishTradePatch, VillagerReputationChangePatch,
+    PlayerCommandSendPatch, PlayerDeathPatch, PlayerDropItemPatch, PlayerEditBookPatch,
+    PlayerEggThrowPatch, PlayerExpChangePatch, PlayerExpCooldownChangePatch,
+    PlayerExpCooldownChangeReason, PlayerFishPatch, PlayerFishState, PlayerHarvestBlockPatch,
+    PlayerInteractPatch, PlayerItemConsumePatch, PlayerItemDamagePatch, PlayerItemMendPatch,
+    PlayerJoinPatch, PlayerKickPatch, PlayerLeavePatch, PlayerLoginPatch, PlayerLoginResult,
+    PlayerMovePatch, PlayerPortalPatch, PlayerRecipeBookClickPatch,
+    PlayerRecipeBookSettingsChangeRecipeBookType, PlayerRespawnPatch, PlayerRespawnReason,
+    PlayerSignOpenCause, PlayerSpawnChangeCause, PlayerSpawnChangePatch, PlayerSwapHandItemsPatch,
+    PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocityPatch, PortalCreateReason, Pose,
+    PotionSplashPatch, PrepareAnvilPatch, PrepareGrindstonePatch, PrepareItemCraftPatch,
+    PrepareSmithingPatch, RaidStopReason, RemoteServerCommandPatch, ResourcePackStatus,
+    SculkBloomPatch, ServerCommandPatch, ServerListPingPatch, ServerLoadType, SheepDyeWoolPatch,
+    Side, SignChangePatch, SmithItemPatch, SpellcasterSpell, Statistic, TNTPrimeCause,
+    TabCompletePatch, TimeSkipPatch, TimeSkipReason, TradeSelectPatch, TreeType,
+    VaultDisplayItemPatch, VehicleDamagePatch, VehicleEntityCollisionPatch,
+    VillagerAcquireTradePatch, VillagerCareerChangePatch, VillagerCareerChangeReason,
+    VillagerReplenishTradePatch, VillagerReputationChangePatch,
 };
 use rspigot_plugin_protocol::v1::{self, event, patch};
 
@@ -1447,8 +1448,8 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
             new_total_exp: event.new_total_exp,
         }),
         EventPayload::PlayerDropItem(event) => event::Payload::PlayerDropItem(v1::PlayerDropItem {
-            item_drop: Some(entity::wire_view(event.item_drop)),
             player: Some(player::wire_player(event.player)),
+            item: Some(shared::wire_item(event.item)),
         }),
         EventPayload::PlayerEditBook(event) => event::Payload::PlayerEditBook(v1::PlayerEditBook {
             new_book_meta: Some(contract::wire_book_meta(event.new_book_meta)),
@@ -1629,9 +1630,9 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
         EventPayload::PlayerPickupArrow(event) => {
             event::Payload::PlayerPickupArrow(v1::PlayerPickupArrow {
                 arrow: Some(entity::wire_view(event.arrow)),
-                item: Some(entity::wire_view(event.item)),
                 player: Some(player::wire_player(event.player)),
                 remaining: event.remaining,
+                item: Some(shared::wire_item(event.item)),
             })
         }
         EventPayload::PlayerPortal(event) => event::Payload::PlayerPortal(v1::PlayerPortal {
@@ -2519,6 +2520,9 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             new_exp: patch.new_exp,
             new_level: patch.new_level,
             new_total_exp: patch.new_total_exp,
+        }),
+        patch::Change::PlayerDropItem(patch) => EventPatch::PlayerDropItem(PlayerDropItemPatch {
+            item: patch.item.map(shared::item),
         }),
         patch::Change::PlayerEditBook(patch) => EventPatch::PlayerEditBook(PlayerEditBookPatch {
             new_book_meta: patch.new_book_meta.map(contract::book_meta).transpose()?,

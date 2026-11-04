@@ -13,6 +13,16 @@ use crate::server::Server;
 
 pub const MAX_TARGET_DISTANCE: f64 = 120.0;
 const PLAYER_WIDTH: f32 = 0.6;
+const BLOCK_RANGE: f64 = 4.5;
+const CREATIVE_BLOCK_RANGE: f64 = 5.0;
+const ENTITY_RANGE: f64 = 3.0;
+const CREATIVE_ENTITY_RANGE: f64 = 5.0;
+
+pub(crate) enum Punched {
+    Nothing,
+    Block(BlockHit),
+    Entity,
+}
 
 struct Sight {
     from: Vec3,
@@ -50,6 +60,53 @@ impl<L: ClientLink> Server<L> {
 
     pub(super) fn target_entity(&self, id: PlayerId, max_distance: f64) -> Answer {
         self.aim(id, max_distance, |sight| self.entity_target(id, sight))
+    }
+
+    pub(crate) fn look_block(&self, id: PlayerId, rotation: Rotation) -> Option<BlockHit> {
+        let player = self.players.get(&id)?;
+        let reach = if player.game_mode == GameMode::Creative {
+            CREATIVE_BLOCK_RANGE
+        } else {
+            BLOCK_RANGE
+        };
+        let from = player.eye_position();
+        let sightline = Sightline {
+            chunks: &self.world.chunks,
+            eyes: from.block(),
+        };
+        raycast::clip_blocks_with(
+            &sightline,
+            from,
+            ray_end(from, rotation, reach),
+            sight_shape,
+        )
+    }
+
+    pub(crate) fn punch_target(&self, id: PlayerId) -> Punched {
+        let Some(player) = self.players.get(&id) else {
+            return Punched::Nothing;
+        };
+        let reach = if player.game_mode == GameMode::Creative {
+            CREATIVE_BLOCK_RANGE.max(CREATIVE_ENTITY_RANGE)
+        } else {
+            BLOCK_RANGE.max(ENTITY_RANGE)
+        };
+        let from = player.eye_position();
+        let to = ray_end(from, player.rotation, reach);
+        let sightline = Sightline {
+            chunks: &self.world.chunks,
+            eyes: from.block(),
+        };
+        let sight = Sight {
+            from,
+            to,
+            length: reach,
+            block: raycast::clip_blocks_with(&sightline, from, to, sight_shape),
+        };
+        if self.entity_target(id, &sight).is_some() {
+            return Punched::Entity;
+        }
+        sight.block.map_or(Punched::Nothing, Punched::Block)
     }
 
     fn aim(
@@ -156,7 +213,7 @@ fn sight_shape(state: BlockStateId) -> &'static [rspigot_blocks::Aabb] {
     }
 }
 
-const fn direction_of(face: Face) -> Direction {
+pub(crate) const fn direction_of(face: Face) -> Direction {
     match face {
         Face::Down => Direction::Down,
         Face::Up => Direction::Up,

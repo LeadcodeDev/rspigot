@@ -8,7 +8,9 @@ use rspigot_domain::damage::{self, DamageTag, DamageType, java_clamp};
 use rspigot_domain::effect::EffectId;
 use rspigot_domain::experience::PlayerExperience;
 use rspigot_domain::food::{FoodData, FoodEffect};
-use rspigot_domain::item::{HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE};
+use rspigot_domain::item::{
+    HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE, same_item_same_components,
+};
 use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
@@ -19,6 +21,14 @@ use rspigot_items::EquipmentSlot as ItemSlot;
 
 use crate::events::{ClientEvent, EntityStatus, GameEvent, MetadataEntry, MetadataValue};
 use crate::player::Player;
+use crate::plugins::events::{
+    PlayerDeath, PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch,
+    PlayerRespawnReason,
+};
+use crate::plugins::{
+    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, spec_of,
+    stack_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -145,6 +155,7 @@ pub struct Vitals {
     pub last_hurt: f32,
     pub hurt_time: u32,
     pub dead: bool,
+    pub dying: bool,
     pub death_time: u32,
     pub removed: bool,
     pub combat: CombatTracker,
@@ -164,7 +175,16 @@ pub struct Vitals {
     pub fire_ticks: i32,
     pub arrow_count: i32,
     pub remove_arrow_time: i32,
+    pub death_experience: Option<DeathExperience>,
     sent: Option<SentVitals>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeathExperience {
+    pub keep_level: bool,
+    pub level: i32,
+    pub total: i32,
+    pub points: i32,
 }
 
 impl Default for Vitals {
@@ -178,6 +198,7 @@ impl Default for Vitals {
             last_hurt: 0.0,
             hurt_time: 0,
             dead: false,
+            dying: false,
             death_time: 0,
             removed: false,
             combat: CombatTracker::default(),
@@ -197,6 +218,7 @@ impl Default for Vitals {
             fire_ticks: 0,
             arrow_count: 0,
             remove_arrow_time: 0,
+            death_experience: None,
             sent: None,
         }
     }
@@ -204,7 +226,7 @@ impl Default for Vitals {
 
 impl Vitals {
     pub fn is_dead(&self) -> bool {
-        self.dead || self.health <= 0.0
+        self.dead || self.dying || self.health <= 0.0
     }
 
     pub fn client_loaded(&self) -> bool {
@@ -447,7 +469,7 @@ impl<L: ClientLink> Server<L> {
             if full {
                 self.play_player_sound(id, Kind::Player.sounds().map(|s| s.death));
             }
-            self.die(id);
+            self.die(id, source);
         } else if full {
             self.play_player_sound(id, Kind::Player.sounds().map(|s| s.hurt));
         }
@@ -488,74 +510,150 @@ impl<L: ClientLink> Server<L> {
         self.hurt(id, &DamageSource::new(DamageType::GenericKill), f32::MAX)
     }
 
-    fn die(&mut self, id: PlayerId) {
-        self.close_open_menu(id, true);
-        self.decisions.forget(id);
-        let show = self.config.rules.show_death_messages;
-        let keep = self.config.rules.keep_inventory;
-        let now = self.current_tick();
+    fn die(&mut self, id: PlayerId, source: &DamageSource) {
+        let keep_rule = self.config.rules.keep_inventory;
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if player.vitals.dead {
+        if player.vitals.dead || player.vitals.dying {
             return;
         }
-        let vitals = &mut player.vitals;
-        vitals.dead = true;
-        vitals.death_time = 0;
-        vitals.waiting_for_respawn = true;
-        vitals.death_location = Some(player.position.block());
+        player.vitals.dying = true;
         let victim = Component::text(player.profile.name.clone());
-        let message = if show {
-            let credit = vitals.kill_credit.as_ref().map(|c| &c.name);
-            vitals.combat.death_message(&victim, credit)
-        } else {
-            Component::text("")
-        };
-        vitals.combat.recheck(now, false);
-        let entity = player.entity_id;
-        let origin = Vec3::new(
-            player.position.x,
-            player.position.y + player.eye_height() - DROP_EYE_OFFSET,
-            player.position.z,
-        );
-        let spectator = player.game_mode == GameMode::Spectator;
-        let experience = if keep || spectator {
+        let credit = player.vitals.kill_credit.as_ref().map(|c| &c.name);
+        let message = player.vitals.combat.death_message(&victim, credit);
+        let keep = keep_rule || player.game_mode == GameMode::Spectator;
+        let experience = if keep {
             0
         } else {
             player.vitals.experience.death_reward()
         };
-        let feet = player.position;
-        let drops: Vec<ItemStack> = if keep || spectator {
-            Vec::new()
-        } else {
-            (0..PLAYER_INVENTORY_SIZE)
-                .filter_map(|slot| {
-                    let stack = player.inventory.get(slot).cloned();
-                    player.inventory.set(slot, None);
-                    stack
-                })
-                .collect()
+        let inventory: Vec<(usize, ItemStack)> = (0..PLAYER_INVENTORY_SIZE)
+            .filter_map(|slot| Some((slot, player.inventory.get(slot).cloned()?)))
+            .collect();
+        let text = crate::console::console_text(&message);
+        let damage_source = self.damage_view(source);
+        let forgotten = self.decisions.forget(id);
+        self.notify_undone(forgotten, Phase::Settled);
+        let payload = {
+            let text = text.clone();
+            move |server: &Self| {
+                let player = server.players.get(&id)?;
+                let drops = if keep {
+                    Vec::new()
+                } else {
+                    player.inventory.slots()[..PLAYER_INVENTORY_SIZE]
+                        .iter()
+                        .flatten()
+                        .map(spec_of)
+                        .collect()
+                };
+                Some(EventPayload::PlayerDeath(PlayerDeath {
+                    damage_source,
+                    death_message: Some(text),
+                    dropped_exp: experience,
+                    drops,
+                    entity: server.snapshot_of(id)?,
+                    entity_type: Kind::Player.name().to_owned(),
+                    keep_inventory: keep,
+                    keep_level: keep,
+                    new_exp: 0,
+                    new_level: 0,
+                    new_total_exp: 0,
+                }))
+            }
         };
+        let step = DeathStep {
+            player: id,
+            message,
+            text,
+            show: self.config.rules.show_death_messages,
+            keep,
+            inventory,
+            experience,
+        };
+        self.fire(id, Continuation::Death(Box::new(step)), payload);
+    }
+
+    pub(crate) fn finish_death(&mut self, step: DeathStep, patch: PlayerDeathPatch) {
+        let id = step.player;
+        let now = self.current_tick();
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        let vitals = &mut player.vitals;
+        vitals.dying = false;
+        vitals.dead = true;
+        vitals.death_time = 0;
+        vitals.waiting_for_respawn = true;
+        vitals.death_location = Some(player.position.block());
+        vitals.combat.recheck(now, false);
+        let entity = player.entity_id;
+        let feet = player.position;
+        let origin = Vec3::new(
+            feet.x,
+            feet.y + player.eye_height() - DROP_EYE_OFFSET,
+            feet.z,
+        );
+        self.close_open_menu(id, true);
+        let message = match patch
+            .death_message
+            .unwrap_or_else(|| Some(step.text.clone()))
+        {
+            Some(text) if text == step.text => Some(step.message),
+            Some(text) if !text.is_empty() => Some(Component::from_section_codes(&text)),
+            _ => None,
+        };
+        let spoken = message.filter(|_| step.show);
         self.push(
             Audience::One(id),
             ClientEvent::CombatKill {
                 player: entity,
-                message: message.clone(),
+                message: spoken.clone().unwrap_or_else(|| Component::text("")),
             },
         );
-        if show {
+        if let Some(message) = spoken {
             tracing::info!("{}", crate::console::console_text(&message));
             self.push(Audience::All, ClientEvent::system(message));
         }
-        if !drops.is_empty() {
-            for stack in drops {
+        let keep_inventory = patch.keep_inventory.unwrap_or(step.keep);
+        let dropped: &[(usize, ItemStack)] = if step.keep { &[] } else { &step.inventory };
+        let drops = match patch.drops {
+            None => dropped
+                .iter()
+                .map(|(_, stack)| (stack.clone(), true))
+                .collect(),
+            Some(specs) => marked_drops(dropped, &specs),
+        };
+        for (stack, from_inventory) in drops {
+            if from_inventory {
                 self.drop_randomly(origin, stack);
+            } else {
+                self.spawn_at_location(feet, 0.0, stack);
             }
+        }
+        let mut cleared = false;
+        if let Some(player) = self.players.get_mut(&id) {
+            if !keep_inventory {
+                for (slot, stack) in &step.inventory {
+                    if player.inventory.get(*slot) == Some(stack) {
+                        player.inventory.set(*slot, None);
+                        cleared = true;
+                    }
+                }
+            }
+            player.vitals.death_experience = Some(DeathExperience {
+                keep_level: patch.keep_level.unwrap_or(step.keep),
+                level: patch.new_level.unwrap_or(0),
+                total: patch.new_total_exp.unwrap_or(0),
+                points: patch.new_exp.unwrap_or(0),
+            });
+        }
+        if cleared {
             self.send_inventory(id);
             self.broadcast_held_item(id);
         }
-        self.award_experience(feet, experience);
+        self.award_experience(feet, patch.dropped_exp.unwrap_or(step.experience));
         let status = ClientEvent::EntityStatus {
             entity,
             status: EntityStatus::Death,
@@ -575,26 +673,73 @@ impl<L: ClientLink> Server<L> {
         self.spawn_item_entity(origin, velocity, DROP_PICKUP_DELAY, stack);
     }
 
-    pub(crate) fn respawn(&mut self, id: PlayerId) {
+    pub(crate) fn respawn(&mut self, id: PlayerId, reason: PlayerRespawnReason) {
+        if !self
+            .players
+            .get(&id)
+            .is_some_and(|player| player.vitals.is_dead())
+        {
+            return;
+        }
+        let location = self.location_of(
+            self.world.spawn,
+            Rotation::new(self.world.level.spawn_angle, 0.0),
+        );
+        let step = RespawnStep { player: id };
+        self.fire(id, Continuation::Respawn(step), move |server| {
+            server.snapshot_of(id).map(|player| {
+                EventPayload::PlayerRespawn(PlayerRespawn {
+                    anchor_spawn: false,
+                    bed_spawn: false,
+                    player,
+                    respawn_location: location,
+                    respawn_reason: reason,
+                })
+            })
+        });
+    }
+
+    pub(crate) fn finish_respawn(&mut self, step: RespawnStep, patch: PlayerRespawnPatch) {
+        let id = step.player;
         let hardcore = self.config.hardcore;
         let keep_experience = self.config.rules.keep_inventory;
         let spawn = self.world.spawn;
         let angle = self.world.level.spawn_angle;
         let dimension = self.world.dimension.key.clone();
+        let (position, rotation) = patch
+            .respawn_location
+            .map_or((spawn, Rotation::new(angle, 0.0)), |location| {
+                (location.position, location.rotation)
+            });
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if !player.vitals.is_dead() {
+        if !player.vitals.dead || !player.link.is_connected() {
             return;
         }
         let death_location = player.vitals.death_location;
+        let kept = player.vitals.experience;
         let mut experience = PlayerExperience::default();
-        if keep_experience {
-            let kept = player.vitals.experience;
-            experience.level = kept.level;
-            experience.progress = kept.progress;
-            experience.total = kept.total;
+        let mut points = 0;
+        match player.vitals.death_experience.take() {
+            Some(stored) if !stored.keep_level => {
+                experience.level = stored.level;
+                experience.total = stored.total;
+                points = stored.points;
+            }
+            Some(_) => {
+                experience.level = kept.level;
+                experience.progress = kept.progress;
+                experience.total = kept.total;
+            }
+            None if keep_experience => {
+                experience.level = kept.level;
+                experience.progress = kept.progress;
+                experience.total = kept.total;
+            }
+            None => {}
         }
+        experience.give_points(points, 0);
         experience.last_sent = -1;
         player.vitals = Vitals {
             death_location,
@@ -605,7 +750,7 @@ impl<L: ClientLink> Server<L> {
         player.sneaking = false;
         player.sprinting = false;
         player.loaded = false;
-        player.rotation = Rotation::new(angle, 0.0);
+        player.rotation = rotation;
         let entity = player.entity_id;
         for other in self.players.values_mut() {
             if other.tracked.remove(&entity) {
@@ -621,12 +766,11 @@ impl<L: ClientLink> Server<L> {
             spawn: spawn_info,
             keep_data: 0,
         });
-        crate::commands::CommandContext::teleport(self, id, spawn);
+        self.teleport_now(id, position);
         let time = self.time_event();
         let difficulty = self.world.difficulty;
         let raining = self.world.level.raining;
         let thundering = self.world.level.thundering;
-        let tree = self.command_tree(self.players.get(&id).is_some_and(|p| p.operator));
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -651,7 +795,6 @@ impl<L: ClientLink> Server<L> {
             entity,
             level: if player.operator { 4 } else { 0 },
         });
-        link.send(ClientEvent::Commands(tree));
         link.send(time);
         if raining {
             link.send(ClientEvent::GameEvent(GameEvent::StartRaining));
@@ -670,8 +813,9 @@ impl<L: ClientLink> Server<L> {
             carried: None,
         });
         player.menu = InventoryMenu::synced(&player.inventory);
+        self.send_commands(id);
         if hardcore {
-            self.apply_game_mode(id, GameMode::Spectator);
+            self.change_game_mode(id, GameMode::Spectator, Vec::new());
         }
     }
 
@@ -851,6 +995,8 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn sync_vitals(&mut self) {
         let mut updates = Vec::new();
+        let mut pushed = Vec::new();
+        let mut levels = Vec::new();
         for player in self.players.values_mut() {
             let current = player.vitals.snapshot();
             let previous = player.vitals.sent;
@@ -898,20 +1044,36 @@ impl<L: ClientLink> Server<L> {
                     },
                 ));
             }
+            let experience = &mut player.vitals.experience;
+            if experience.old_level == -1 {
+                experience.old_level = experience.level;
+            } else if experience.old_level != experience.level {
+                levels.push((player.id, experience.old_level, experience.level));
+                experience.old_level = experience.level;
+            }
             if player.vitals.sync_velocity {
-                let event = ClientEvent::EntityVelocity {
-                    entity,
-                    velocity: player.vitals.velocity,
-                };
-                updates.push((Audience::One(player.id), event.clone()));
-                updates.push((Audience::Trackers(entity), event));
-                player.vitals.sync_velocity = false;
-                player.vitals.velocity = Vec3::ZERO;
+                pushed.push(player.id);
             }
             player.vitals.sent = Some(current);
         }
         for (audience, event) in updates {
             self.push(audience, event);
+        }
+        for id in pushed {
+            self.sync_velocity(id);
+        }
+        for (id, old_level, new_level) in levels {
+            self.fire(
+                id,
+                Continuation::Notice(EventKind::PlayerLevelChange),
+                move |server| {
+                    Some(EventPayload::PlayerLevelChange(PlayerLevelChange {
+                        new_level,
+                        old_level,
+                        player: server.snapshot_of(id)?,
+                    }))
+                },
+            );
         }
     }
 
@@ -940,4 +1102,21 @@ impl<L: ClientLink> Server<L> {
     pub fn player_is_dead(&self, id: PlayerId) -> Option<bool> {
         self.players.get(&id).map(|p| p.vitals.is_dead())
     }
+}
+
+fn marked_drops(taken: &[(usize, ItemStack)], specs: &[ItemSpec]) -> Vec<(ItemStack, bool)> {
+    let mut unmatched: Vec<&ItemStack> = taken.iter().map(|(_, stack)| stack).collect();
+    specs
+        .iter()
+        .filter_map(|spec| stack_of(spec).ok().flatten())
+        .map(|stack| {
+            let found = unmatched
+                .iter()
+                .position(|original| same_item_same_components(original, &stack));
+            if let Some(index) = found {
+                unmatched.swap_remove(index);
+            }
+            (stack, found.is_some())
+        })
+        .collect()
 }

@@ -37,6 +37,7 @@ pub async fn run<V: SessionVerifier>(
     let reader_link = link.clone();
     let player = profile.id;
     let name = profile.name.clone();
+    let id = shared.next_session();
     if shared
         .game
         .send(Inbound::Join {
@@ -44,6 +45,7 @@ pub async fn run<V: SessionVerifier>(
             settings,
             link,
             address: session.addr.ip(),
+            session: id,
         })
         .is_err()
     {
@@ -68,7 +70,10 @@ pub async fn run<V: SessionVerifier>(
     let result = write_loop(&shared, writer, receiver, &keep_alive).await;
     connected.store(false, Ordering::Release);
     read_task.abort();
-    let _ = shared.game.send(Inbound::Leave { player });
+    let _ = shared.game.send(Inbound::Leave {
+        player,
+        session: id,
+    });
     match &result {
         Ok(reason) => tracing::info!("{name} ({addr}) lost connection: {reason}"),
         Err(error) => tracing::info!("{name} ({addr}) lost connection: {error}"),

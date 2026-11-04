@@ -26,38 +26,64 @@ ServiceRegister = "the Java service manager is out of scope"
 ServiceUnregister = "the Java service manager is out of scope"
 
 [fired]
-PlayerJoin = "observers only; deciding handlers are asked once the player events land"
-PlayerQuit = "observers only; deciding handlers are asked once the player events land"
-PlayerMove = "observers and deciding handlers; only set_to is applied"
 InventoryClick = "plugin inventories only, and only the plugin that made the inventory observes it"
 InventoryClose = "plugin inventories only, and only the plugin that made the inventory observes it"
+PlayerJoin = "the join message is announced once the event settles"
+PlayerQuit = "the quit message is announced once the event settles, after the player is removed"
+AsyncPlayerPreLogin = "the login waits for the core; a refusal ends it with the literal kick message"
+PlayerLogin = "hostname is empty and the real address is the remote address, neither is tracked"
+PlayerKick = "every server-side disconnect of a player in game, never at shutdown or during the login"
+PlayerLocaleChange = "at join when the locale is not en_us and on every settings packet that changes it"
+PlayerChangedMainHand = "carries the old hand, as the Spigot bytecode does"
+PlayerCommandSend = "at join, at respawn and when the operator status changes; only root commands can be removed"
+AsyncPlayerChat = "from chat packets and plugin chat orders; the display name is the profile name and there is no chat visibility or text filter"
+PlayerCommandPreprocess = "from command packets and plugin chat orders starting with /, not from perform_command"
+PlayerMove = "observers and deciding handlers; a changed to moves the player through PlayerTeleport (PLUGIN), only its position applies"
+PlayerTeleport = "COMMAND for /tp and PLUGIN for plugin orders and a changed PlayerMove destination; never at respawn"
+PlayerVelocity = "at the velocity sync and when a player hits a player; asked only when a deciding handler exists, one at a time"
+PlayerRespawn = "DEATH and PLUGIN; there is no bed, anchor or End respawn"
+PlayerDeath = "also reaches EntityDeath handlers; the new level fields wait for the respawn"
+PlayerInput = "compared with the last input when the packet reaches the head of the lane"
+PlayerToggleSneak = "after PlayerInput of the same packet, compared at the head of the lane"
+PlayerToggleSprint = "on every start and stop sprinting packet of a loaded client"
+PlayerToggleFlight = "only for a player who may fly and changes flight; a cancel resends the abilities"
+PlayerGameModeChange = "from /gamemode, the game mode packet, plugin orders and the hardcore respawn; the mode is read at the head of the lane"
+PlayerHideEntity = "players only, after the effect of the first plugin hiding them"
+PlayerShowEntity = "players only, after the effect of the last plugin showing them"
+PlayerItemHeld = "the previous slot is read at the head of the lane; a cancel sends it back"
+PlayerAnimation = "ARM_SWING from the punch packet only"
+PlayerSwapHandItems = "the items are those after the swap; an outdated swap is refused and resynced"
+PlayerInteract = "LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result ask the deciding handlers and drop their verdicts; no PHYSICAL block exists yet"
+PlayerInteractAtEntity = "one fire per entity click, settled once for both handler types"
+PlayerInteractEntity = "reached through PlayerInteractAtEntity, as Spigot never builds it alone"
+PlayerDropItem = "carries the dropped stack, which a deciding handler may replace; the item entity spawns once settled"
+PlayerItemDamage = "fires with 0 for creative players and unbreakable items; every wear is a distinct event, read when it reaches the head of the lane"
+PlayerTakeLecternBook = "the book stays on the lectern until the event settles"
+PlayerItemBreak = "after the PlayerItemDamage of the same wear"
+PlayerExpCooldownChange = "PICKUP_ORB only, as no plugin order sets the cooldown; a negative cooldown blocks the pickup for good, as in Spigot"
+PlayerExpChange = "orb pickups only; the amount is the orb value since there is no Mending yet"
+PlayerLevelChange = "compared once per tick at the experience sync, from any cause, never at respawn"
+PlayerPickupArrow = "arrows that allow pickup only; not asked again for an arrow while a deciding handler answers for it; carries the stack the arrow gives, read-only"
+PlayerShearEntity = "sheep only; saddles are sheared without the event, as in Spigot"
 
 [states]
 ready = [
-    "AsyncPlayerChat", "AsyncPlayerPreLogin", "BlockBreak", "BlockCanBuild", "BlockCook",
-    "BlockDamage", "BlockDamageAbort", "BlockDropItem", "BlockExp", "BlockExplode",
-    "BlockMultiPlace", "BlockPhysics", "BlockPlace", "BroadcastMessage", "CampfireStart",
-    "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem", "CreatureSpawn", "EntitiesLoad",
-    "EntitiesUnload", "EntityBreed", "EntityChangeBlock", "EntityCombust", "EntityCombustByBlock",
-    "EntityCombustByEntity", "EntityDamage", "EntityDamageByBlock", "EntityDamageByEntity",
-    "EntityDeath", "EntityDropItem", "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode",
-    "EntityInteract", "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem",
-    "EntityPoseChange", "EntityPotionEffect", "EntityRegainHealth", "EntityRemove",
-    "EntityShootBow", "EntitySpawn", "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport",
-    "ExplosionPrime", "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt",
-    "FurnaceStartSmelt", "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",
-    "ItemSpawn", "PlayerAnimation", "PlayerChangedMainHand", "PlayerCommandPreprocess",
-    "PlayerCommandSend", "PlayerDeath", "PlayerDropItem", "PlayerExpChange",
-    "PlayerExpCooldownChange", "PlayerGameModeChange", "PlayerHideEntity", "PlayerInput",
-    "PlayerInteract", "PlayerInteractAtEntity", "PlayerInteractEntity", "PlayerItemBreak",
-    "PlayerItemDamage", "PlayerItemHeld", "PlayerKick", "PlayerLevelChange", "PlayerLocaleChange",
-    "PlayerLogin", "PlayerPickupArrow", "PlayerRespawn", "PlayerShearEntity", "PlayerShowEntity",
-    "PlayerSwapHandItems", "PlayerTakeLecternBook", "PlayerTeleport", "PlayerToggleFlight",
-    "PlayerToggleSneak", "PlayerToggleSprint", "PlayerVelocity", "PluginDisable", "PluginEnable",
-    "PrepareItemCraft", "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand",
-    "ServerListPing", "ServerLoad", "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange",
-    "TabComplete", "ThunderChange", "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad",
-    "WorldSave",
+    "BlockBreak", "BlockCanBuild", "BlockCook", "BlockDamage", "BlockDamageAbort", "BlockDropItem",
+    "BlockExp", "BlockExplode", "BlockMultiPlace", "BlockPhysics", "BlockPlace",
+    "BroadcastMessage", "CampfireStart", "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem",
+    "CreatureSpawn", "EntitiesLoad", "EntitiesUnload", "EntityBreed", "EntityChangeBlock",
+    "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity", "EntityDamage",
+    "EntityDamageByBlock", "EntityDamageByEntity", "EntityDeath", "EntityDropItem",
+    "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
+    "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
+    "EntityPotionEffect", "EntityRegainHealth", "EntityRemove", "EntityShootBow", "EntitySpawn",
+    "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
+    "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
+    "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
+    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
+    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
+    "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete", "ThunderChange", "TimeSkip",
+    "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
 ]
 
 [states.blocked]
@@ -238,6 +264,18 @@ getters = ["iterator"]
 rename = { iterator = "players" }
 extra = [
     { name = "hidden_players", java = "java.util.List<java.util.UUID>", patch = true, number = 100, reason = "Spigot reads back the players removed through iterator(): they leave the sample and the count" },
+]
+
+[events.PlayerDropItem]
+omit = { getItemDrop = "the item entity does not exist until the drop applies; item carries its stack" }
+extra = [
+    { name = "item", java = "org.bukkit.inventory.ItemStack", patch = true, number = 100, reason = "Spigot reads getItemDrop().getItemStack() back after the event" },
+]
+
+[events.PlayerPickupArrow]
+omit = { getItem = "the item entity never enters the world; item carries its stack" }
+extra = [
+    { name = "item", java = "org.bukkit.inventory.ItemStack", number = 100, reason = "the stack the arrow gives, read-only: a plugin out of process cannot write through the item handle" },
 ]
 
 [events.AsyncPlayerChat]

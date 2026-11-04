@@ -21,6 +21,7 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::{ClientEvent, GameEvent};
 use crate::mobs::ServerRandom;
+use crate::plugins::events::PlayerTeleportCause;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -88,13 +89,17 @@ impl<L: ClientLink> CommandContext for Server<L> {
         self.players.get(&player).map(|p| p.position)
     }
 
-    fn set_game_mode(&mut self, player: PlayerId, mode: GameMode) {
-        self.apply_game_mode(player, mode);
+    fn set_game_mode(
+        &mut self,
+        player: PlayerId,
+        mode: GameMode,
+        replies: Vec<(CommandSender, Component)>,
+    ) {
+        self.change_game_mode(player, mode, replies);
     }
 
     fn teleport(&mut self, player: PlayerId, position: Vec3) {
-        self.decisions.forget(player);
-        self.teleport_player(player, position);
+        self.ask_teleport(player, position, None, PlayerTeleportCause::Command, None);
     }
 
     fn day_time(&self) -> i64 {
@@ -139,15 +144,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn kick(&mut self, player: PlayerId, reason: Component) {
-        if let Some(p) = self.players.get(&player) {
-            tracing::info!(
-                "Kicked {}: {}",
-                p.profile.name,
-                crate::console::console_text(&reason)
-            );
-            p.link.disconnect(reason);
-        }
-        self.remove_player(player, true);
+        self.disconnect_player(player, reason);
     }
 
     fn set_operator(&mut self, name: &str, operator: bool) -> bool {
@@ -164,15 +161,14 @@ impl<L: ClientLink> CommandContext for Server<L> {
             self.publish_admin();
         }
         if let Some(id) = online {
-            let tree = self.command_tree(operator);
             if let Some(p) = self.players.get_mut(&id) {
                 p.operator = operator;
                 p.link.send(ClientEvent::OperatorLevel {
                     entity: p.entity_id,
                     level: if operator { 4 } else { 0 },
                 });
-                p.link.send(ClientEvent::Commands(tree));
             }
+            self.send_commands(id);
         }
         changed
     }

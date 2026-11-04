@@ -505,7 +505,7 @@ fn out_of_range_values_give_one_warning_and_change_nothing() {
 fn an_order_for_a_player_who_left_is_dropped_silently() {
     let mut s = scene(&["Alice", "Bob"]);
     let alice = s.players[0].clone();
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     s.server.deliver();
     s.act(to(&alice, PlayerOrder::SetHealth(5.0)));
     s.act(to(&alice, PlayerOrder::SetHealth(-1.0)));

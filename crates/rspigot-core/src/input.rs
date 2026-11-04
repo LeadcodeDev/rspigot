@@ -10,10 +10,12 @@ use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 use crate::block_tools::ToolUse;
 use crate::chests;
 use crate::events::{
-    Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
+    ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
 use crate::loot::{self, LootContext, LootEntity};
-use crate::plugins::Held;
+use crate::plugins::events::PlayerRespawnReason;
+use crate::plugins::steps::{ClickStep, FinishStep, UseOnStep};
+use crate::plugins::{Continuation, Held};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -23,7 +25,11 @@ const MAX_MOVE_SQUARED: f64 = 100.0 * 100.0;
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn handle_input(&mut self, id: PlayerId, input: PlayerInput) {
-        if !self.players.contains_key(&id) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if player.vitals.dying && acts(&input) {
+            self.refuse_while_dying(id, &input);
             return;
         }
         match input {
@@ -55,71 +61,25 @@ impl<L: ClientLink> Server<L> {
                 sequence,
                 ..
             } => self.handle_use_item_on(id, hand, pos, face, cursor, sequence),
-            PlayerInput::UseItem { hand, sequence, .. } => {
-                self.start_using_item(id, hand);
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
-            }
+            PlayerInput::UseItem {
+                hand,
+                sequence,
+                rotation,
+            } => self.use_item(id, hand, sequence, rotation),
             PlayerInput::HeldSlot(slot) => {
-                if slot < 9
-                    && let Some(player) = self.players.get_mut(&id)
-                {
-                    let changed = player.inventory.selected_hotbar != slot;
-                    player.inventory.selected_hotbar = slot;
-                    if changed {
-                        self.stop_using_main_hand(id);
-                    }
-                    self.broadcast_held_item(id);
+                if slot < 9 {
+                    self.select_slot(id, slot);
                 }
             }
             PlayerInput::CreativeSlot { slot, stack } => self.handle_creative_slot(id, slot, stack),
-            PlayerInput::Swing(hand) => {
-                if let Some(player) = self.players.get_mut(&id)
-                    && !player.vitals.is_dead()
-                {
-                    player.vitals.attack_ticker = 0;
-                }
-                if let Some(entity) = self.players.get(&id).map(|p| p.entity_id) {
-                    let animation = match hand {
-                        Hand::Main => Animation::SwingMainArm,
-                        Hand::Off => Animation::SwingOffHand,
-                    };
-                    self.push(
-                        Audience::Trackers(entity),
-                        ClientEvent::EntityAnimation { entity, animation },
-                    );
-                }
-            }
-            PlayerInput::Movement(action) => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    match action {
-                        MovementAction::StartSprinting => player.sprinting = true,
-                        MovementAction::StopSprinting => player.sprinting = false,
-                        _ => return,
-                    }
-                    self.broadcast_metadata(id);
-                }
-            }
-            PlayerInput::Input(state) => {
-                if let Some(player) = self.players.get_mut(&id)
-                    && player.sneaking != state.shift
-                {
-                    player.sneaking = state.shift;
-                    self.broadcast_metadata(id);
-                }
-            }
-            PlayerInput::Settings(settings) => {
-                let max = self.config.view_distance;
-                if let Some(player) = self.players.get_mut(&id) {
-                    let view = max.min(settings.view_distance.max(2));
-                    player.settings = settings;
-                    player.streamer.set_view_distance(
-                        view,
-                        &mut self.world.chunks,
-                        &self.workers,
-                        &player.link,
-                    );
-                }
-            }
+            PlayerInput::Swing(hand) => self.punch(id, hand),
+            PlayerInput::Movement(action) => match action {
+                MovementAction::StartSprinting => self.toggle_sprint(id, true),
+                MovementAction::StopSprinting => self.toggle_sprint(id, false),
+                _ => {}
+            },
+            PlayerInput::Input(state) => self.press(id, state),
+            PlayerInput::Settings(settings) => self.change_settings(id, settings),
             PlayerInput::ChunkBatchReceived { chunks_per_tick } => {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.streamer.on_batch_received(chunks_per_tick);
@@ -131,21 +91,17 @@ impl<L: ClientLink> Server<L> {
                     player.vitals.load_timeout = 0;
                 }
             }
-            PlayerInput::Abilities { flying } => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    player.flying = flying && player.abilities().may_fly;
-                }
-            }
+            PlayerInput::Abilities { flying } => self.toggle_flight(id, flying),
             PlayerInput::ChangeGameMode(mode) => {
                 if self.players.get(&id).is_some_and(|p| p.operator) {
-                    self.apply_game_mode(id, mode);
+                    self.change_game_mode(id, mode, Vec::new());
                 }
             }
             PlayerInput::PickBlock { pos, .. } => self.handle_pick_block(id, pos),
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn => self.respawn(id),
+            PlayerInput::Respawn => self.respawn(id, PlayerRespawnReason::Death),
             PlayerInput::ClientTickEnd => {
                 if let Some(player) = self.players.get_mut(&id) {
                     if !player.moved_this_tick {
@@ -159,7 +115,8 @@ impl<L: ClientLink> Server<L> {
                 target,
                 hand,
                 sneaking,
-            } => self.handle_interact(id, target, hand, sneaking),
+                location,
+            } => self.handle_interact(id, target, hand, sneaking, location),
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
             PlayerInput::ContainerClose(window) => self.handle_container_close(id, window),
             PlayerInput::ContainerButtonClick { window, button } => {
@@ -176,14 +133,20 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn run_player_command(&mut self, id: PlayerId, command: &str) {
-        let name = self
-            .players
-            .get(&id)
-            .map(|p| p.profile.name.clone())
-            .unwrap_or_default();
-        tracing::info!("{name} issued server command: /{command}");
-        crate::commands::execute(self, crate::commands::CommandSender::Player(id), command);
+    fn refuse_while_dying(&mut self, id: PlayerId, input: &PlayerInput) {
+        match input {
+            PlayerInput::Dig { pos, sequence, .. }
+            | PlayerInput::UseItemOn { pos, sequence, .. } => {
+                self.refuse_block(id, *pos, *sequence);
+            }
+            PlayerInput::UseItem { sequence, .. } => {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(*sequence));
+            }
+            PlayerInput::ContainerClick(_) | PlayerInput::CreativeSlot { .. } => {
+                self.send_inventory(id);
+            }
+            _ => {}
+        }
     }
 
     fn handle_move(
@@ -207,10 +170,13 @@ impl<L: ClientLink> Server<L> {
                 || target.z.abs() > 3.0e7
                 || target.y.abs() > 2.0e7
             {
-                player.link.disconnect(Component::translatable(
-                    "multiplayer.disconnect.invalid_player_movement",
-                    Vec::new(),
-                ));
+                self.disconnect_player(
+                    id,
+                    Component::translatable(
+                        "multiplayer.disconnect.invalid_player_movement",
+                        Vec::new(),
+                    ),
+                );
                 return;
             }
             if from.distance_squared(target) > MAX_MOVE_SQUARED {
@@ -298,32 +264,17 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn handle_chat(&mut self, id: PlayerId, message: &str) {
-        let Some(player) = self.players.get(&id) else {
+        if !self.players.contains_key(&id) {
             return;
-        };
+        }
         if message.chars().count() > 256 || message.chars().any(|c| c == '§' || c.is_control()) {
-            player.link.disconnect(Component::translatable(
-                "multiplayer.disconnect.illegal_characters",
-                Vec::new(),
-            ));
+            self.disconnect_player(
+                id,
+                Component::translatable("multiplayer.disconnect.illegal_characters", Vec::new()),
+            );
             return;
         }
         self.broadcast_chat(id, message);
-    }
-
-    pub(crate) fn broadcast_chat(&mut self, id: PlayerId, message: &str) {
-        let Some(name) = self.players.get(&id).map(|p| p.profile.name.clone()) else {
-            return;
-        };
-        tracing::info!("<{name}> {message}");
-        self.push(
-            Audience::All,
-            ClientEvent::PlayerChat {
-                sender: id,
-                sender_name: Component::text(name),
-                message: message.to_owned(),
-            },
-        );
     }
 
     pub(crate) fn within_reach(&self, id: PlayerId, pos: BlockPos) -> bool {
@@ -346,7 +297,7 @@ impl<L: ClientLink> Server<L> {
         (pos.x - spawn.x).abs() <= radius && (pos.z - spawn.z).abs() <= radius
     }
 
-    fn refuse_block(&mut self, id: PlayerId, pos: BlockPos, sequence: i32) {
+    pub(crate) fn refuse_block(&mut self, id: PlayerId, pos: BlockPos, sequence: i32) {
         if let Some(state) = self.world.chunks.block(pos) {
             self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
         }
@@ -358,58 +309,61 @@ impl<L: ClientLink> Server<L> {
         id: PlayerId,
         action: DigAction,
         pos: BlockPos,
-        _face: Direction,
+        face: Direction,
         sequence: i32,
     ) {
-        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
+        if !self.players.contains_key(&id) {
             return;
-        };
+        }
         match action {
-            DigAction::Start | DigAction::Finish => {
-                let Some(state) = self.world.chunks.block(pos) else {
-                    self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-                    return;
-                };
-                let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
-                let breaks = match (action, mode) {
-                    (DigAction::Start, GameMode::Creative) => true,
-                    (DigAction::Start, GameMode::Survival) => hardness == 0.0,
-                    (DigAction::Finish, GameMode::Survival) => true,
-                    _ => false,
-                };
-                if breaks {
-                    let unbreakable = mode == GameMode::Survival && hardness < 0.0;
-                    if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
-                        self.refuse_block(id, pos, sequence);
-                        return;
-                    }
-                    self.set_block(pos, BlockStateId::AIR);
-                    if mode == GameMode::Survival {
-                        self.drop_block_loot(id, pos, state);
-                        self.wear_tool_for_mining(id, hardness);
-                    }
-                }
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            }
+            DigAction::Start => self.start_digging(id, pos, face, sequence),
+            DigAction::Finish => self.fire_deferred(
+                id,
+                Continuation::FinishDig(FinishStep {
+                    player: id,
+                    pos,
+                    sequence,
+                }),
+            ),
             DigAction::Cancel => {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
             }
-            DigAction::SwapHands => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    let main = HOTBAR_START + usize::from(player.inventory.selected_hotbar);
-                    let main_stack = player.inventory.get(main).cloned();
-                    let off_stack = player.inventory.get(OFFHAND_SLOT).cloned();
-                    player.inventory.set(main, off_stack);
-                    player.inventory.set(OFFHAND_SLOT, main_stack);
-                    self.send_inventory(id);
-                    self.broadcast_held_item(id);
-                }
-            }
+            DigAction::SwapHands => self.swap_hands(id),
             DigAction::DropItem => self.handle_drop_action(id, false),
             DigAction::DropStack => self.handle_drop_action(id, true),
             DigAction::ReleaseUseItem => self.release_use_item(id),
             DigAction::Stab => self.send_inventory(id),
         }
+    }
+
+    pub(crate) fn dig_block(&mut self, id: PlayerId, start: bool, pos: BlockPos, sequence: i32) {
+        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
+            return;
+        };
+        let Some(state) = self.world.chunks.block(pos) else {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        };
+        let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
+        let breaks = match (start, mode) {
+            (true, GameMode::Creative) => true,
+            (true, GameMode::Survival) => hardness == 0.0,
+            (false, GameMode::Survival) => true,
+            _ => false,
+        };
+        if breaks {
+            let unbreakable = mode == GameMode::Survival && hardness < 0.0;
+            if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
+                self.refuse_block(id, pos, sequence);
+                return;
+            }
+            self.set_block(pos, BlockStateId::AIR);
+            if mode == GameMode::Survival {
+                self.drop_block_loot(id, pos, state);
+                self.wear_tool_for_mining(id, hardness);
+            }
+        }
+        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
     }
 
     fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
@@ -482,40 +436,61 @@ impl<L: ClientLink> Server<L> {
         cursor: Vec3,
         sequence: i32,
     ) {
+        self.click_block(ClickStep {
+            player: id,
+            hand,
+            pos,
+            face,
+            cursor,
+            sequence,
+        });
+    }
+
+    pub(crate) fn use_item_on_now(&mut self, step: &UseOnStep, block_ok: bool, item_ok: bool) {
+        let (id, hand, slot, pos, face, cursor, sequence) = (
+            step.player,
+            step.hand,
+            step.slot,
+            step.pos,
+            step.face,
+            step.cursor,
+            step.sequence,
+        );
         let Some(player) = self.players.get(&id) else {
             return;
-        };
-        let slot = match hand {
-            Hand::Main => HOTBAR_START + usize::from(player.inventory.selected_hotbar),
-            Hand::Off => OFFHAND_SLOT,
         };
         let sneaking = player.sneaking;
         let game_mode = player.game_mode;
         let rotation = player.rotation;
         let stack = player.inventory.get(slot).cloned();
-        let Some(clicked) = self.world.chunks.block(pos) else {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        };
-        if !sneaking && self.use_block(pos, clicked, sneaking) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
+        let clicked = step.clicked;
+        if block_ok {
+            if !sneaking && self.use_block(pos, clicked, sneaking) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            let holding = stack.is_some()
+                || self
+                    .players
+                    .get(&id)
+                    .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
+            if !(sneaking && holding) && self.place_book_on_lectern(id, slot, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+        } else {
+            self.resync_denied_block(id, pos, face, clicked, stack.as_ref());
         }
-        let holding = stack.is_some()
-            || self
-                .players
-                .get(&id)
-                .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
-        if !(sneaking && holding) && self.place_book_on_lectern(id, slot, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        }
-        if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        }
-        if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        if !item_ok {
+            self.refuse_click(id, pos, face, sequence);
             return;
         }
         let usage = ToolUse {
@@ -587,6 +562,34 @@ impl<L: ClientLink> Server<L> {
         if game_mode == GameMode::Survival {
             self.consume_one(id, slot, stack);
         }
+    }
+
+    fn resync_denied_block(
+        &mut self,
+        id: PlayerId,
+        pos: BlockPos,
+        face: Direction,
+        clicked: BlockStateId,
+        stack: Option<&ItemStack>,
+    ) {
+        let (dx, dy, dz) = face.offset();
+        let halves: Vec<BlockPos> = match clicked.property("half") {
+            Some("lower") if is_door(clicked) => vec![pos.offset(0, 1, 0)],
+            Some("upper") if is_door(clicked) => vec![pos.offset(0, -1, 0)],
+            _ if stack.is_some_and(places_two_blocks) => {
+                vec![pos.offset(dx, dy + 1, dz), pos.offset(0, 1, 0)]
+            }
+            _ => Vec::new(),
+        };
+        for at in std::iter::once(pos).chain(halves) {
+            if let Some(state) = self.world.chunks.block(at) {
+                self.push(
+                    Audience::One(id),
+                    ClientEvent::BlockUpdate { pos: at, state },
+                );
+            }
+        }
+        self.send_inventory(id);
     }
 
     fn use_block(&mut self, pos: BlockPos, state: BlockStateId, sneaking: bool) -> bool {
@@ -757,7 +760,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn apply_game_mode(&mut self, id: PlayerId, mode: GameMode) {
+    pub(crate) fn set_game_mode_now(&mut self, id: PlayerId, mode: GameMode) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -784,8 +787,46 @@ impl<L: ClientLink> Server<L> {
     }
 }
 
+const fn acts(input: &PlayerInput) -> bool {
+    matches!(
+        input,
+        PlayerInput::Dig { .. }
+            | PlayerInput::UseItemOn { .. }
+            | PlayerInput::UseItem { .. }
+            | PlayerInput::CreativeSlot { .. }
+            | PlayerInput::PickBlock { .. }
+            | PlayerInput::Attack(_)
+            | PlayerInput::Interact { .. }
+            | PlayerInput::ContainerClick(_)
+            | PlayerInput::ContainerClose(_)
+            | PlayerInput::ContainerButtonClick { .. }
+            | PlayerInput::SetBeacon { .. }
+    )
+}
+
 fn to_pitch(rotation: Option<Rotation>) -> f32 {
     rotation.map_or(0.0, |r| r.pitch.clamp(-90.0, 90.0))
+}
+
+fn is_door(state: BlockStateId) -> bool {
+    state
+        .kind()
+        .is_some_and(|kind| kind.name().ends_with("_door"))
+}
+
+fn places_two_blocks(stack: &ItemStack) -> bool {
+    BlockKind::from_item(stack.item.0).is_some_and(|kind| {
+        let context = PlaceContext {
+            default_state: kind.default_state(),
+            wall_variant: None,
+            face: Face::Up,
+            yaw: 0.0,
+            pitch: 0.0,
+            cursor_y: 0.0,
+        };
+        kind.place(&context)
+            .is_some_and(|placement| placement.linked.is_some())
+    })
 }
 
 fn is_replaceable(state: BlockStateId) -> bool {

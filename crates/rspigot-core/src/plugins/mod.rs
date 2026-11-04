@@ -1,17 +1,23 @@
 mod block;
+mod chat;
 mod contract;
 mod decisions;
 mod entity;
 pub mod events;
+mod inputs;
 mod inventory;
 mod items;
 mod menus;
+mod objects;
 mod orders;
 mod patch;
 mod player;
+mod position;
 mod registry;
 mod resolve;
 mod server;
+mod session;
+pub(crate) mod steps;
 mod targets;
 mod visibility;
 mod world;
@@ -32,17 +38,21 @@ pub use contract::{
     Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location, LootContext,
     MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
 };
-pub(crate) use decisions::{Decisions, Held};
+pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
 pub use events::{EventKind, EventPatch, EventPayload};
 pub use items::ItemSpec;
+pub(crate) use items::{spec_of, stack_of};
 pub use menus::MAX_PLUGIN_INVENTORIES;
 pub(crate) use menus::{PluginInventories, PluginMenu};
+pub(crate) use objects::UseMemo;
 pub use orders::{
     BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
     ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
 pub use patch::Verdict;
 pub(crate) use registry::Registry;
+pub(crate) use session::{Arrival, Refusal};
+pub(crate) use steps::{DeathStep, RespawnStep};
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 

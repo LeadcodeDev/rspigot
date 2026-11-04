@@ -402,6 +402,7 @@ fn inventory_of_an_offline_player_is_not_found_and_orders_are_dropped() {
     let ghost = Player {
         id: rspigot_domain::player::PlayerId::offline("Ghost"),
         link: Link::default(),
+        session: 0,
     };
     s.act(inv(&ghost, set(0, "minecraft:nope", 1)));
     assert_eq!(s.ask(Question::Inventory(ghost.id)), Answer::NotFound);

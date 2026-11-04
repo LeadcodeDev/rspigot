@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use rspigot_core::events::{Inbound, PreLoginVerdict};
 use rspigot_core::ports::SessionVerifier;
 use rspigot_domain::player::{ClientSettings, GameProfile, MainHand, PlayerId, ProfileProperty};
 use rspigot_domain::text::Component;
@@ -175,7 +176,8 @@ pub async fn handle<V: SessionVerifier>(
                 let message = template.replace("{0}", rspigot_data::VERSION_NAME);
                 return reject(&mut session, Component::text(message)).await;
             }
-            login(shared, session).await
+            let transferred = intention.intent == ClientIntent::Transfer;
+            login(shared, session, transferred).await
         }
     }
 }
@@ -240,6 +242,7 @@ async fn next_login(session: &mut Session) -> Result<ServerboundLogin, Connectio
 async fn login<V: SessionVerifier>(
     shared: Arc<Shared<V>>,
     mut session: Session,
+    transferred: bool,
 ) -> Result<(), ConnectionError> {
     let ServerboundLogin::Hello(hello) = next_login(&mut session).await? else {
         return Err(ConnectionError::Rejected("expected hello".to_owned()));
@@ -271,6 +274,11 @@ async fn login<V: SessionVerifier>(
         }
     };
     tracing::info!("UUID of player {} is {}", profile.name, profile.id);
+    if let PreLoginVerdict::Refused(message) =
+        pre_login(&shared, &profile, session.addr.ip(), transferred).await?
+    {
+        return reject(&mut session, Component::text(message)).await;
+    }
     if let Some(threshold) = shared.config.compression_threshold {
         session
             .writer
@@ -308,6 +316,29 @@ async fn login<V: SessionVerifier>(
     }
     let settings = configure(&shared, &mut session).await?;
     play::run(shared, session, profile, settings).await
+}
+
+async fn pre_login<V>(
+    shared: &Shared<V>,
+    profile: &GameProfile,
+    address: std::net::IpAddr,
+    transferred: bool,
+) -> Result<PreLoginVerdict, ConnectionError> {
+    let (reply, verdict) = crossbeam_channel::bounded(1);
+    shared
+        .game
+        .send(Inbound::PreLogin {
+            name: profile.name.clone(),
+            id: profile.id,
+            address,
+            transferred,
+            reply,
+        })
+        .map_err(|_| ConnectionError::Closed)?;
+    tokio::task::spawn_blocking(move || verdict.recv())
+        .await
+        .map_err(|e| ConnectionError::Rejected(e.to_string()))?
+        .map_err(|_| ConnectionError::Closed)
 }
 
 async fn authenticate<V: SessionVerifier>(

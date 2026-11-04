@@ -20,6 +20,7 @@ pub struct Player<L> {
     pub profile: GameProfile,
     pub link: L,
     pub address: IpAddr,
+    pub session: u64,
     pub entity_id: EntityId,
     pub position: Vec3,
     pub rotation: Rotation,
@@ -53,6 +54,10 @@ pub struct Player<L> {
     pub(crate) plugin_menu: Option<PluginMenu>,
     pub(crate) window_counter: u8,
     pub ender_items: Vec<rspigot_domain::item::Slot>,
+    pub kick_leave_message: Option<String>,
+    pub last_input: crate::events::InputState,
+    pub(crate) dig_refused: Option<rspigot_domain::BlockPos>,
+    pub(crate) use_memo: Option<crate::plugins::UseMemo>,
 }
 
 impl<L> Player<L> {

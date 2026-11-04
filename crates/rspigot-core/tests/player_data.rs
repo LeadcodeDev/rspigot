@@ -199,6 +199,7 @@ fn join(server: &mut Server<Link>, name: &str) -> (PlayerId, Link, Vec<ClientEve
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     let mut events = link.take();
@@ -342,7 +343,10 @@ fn position_game_mode_and_inventory_survive_a_reconnect() {
     console(&mut server, "tp Alice 100 64 100");
     run_ticks(&mut server, alice, &link, 5, &mut events);
 
-    server.handle(Inbound::Leave { player: alice });
+    server.handle(Inbound::Leave {
+        player: alice,
+        session: 0,
+    });
     server.deliver();
     assert_eq!(server.players_online(), 0);
     assert!(players.wait_saved(alice).is_some());
@@ -364,7 +368,10 @@ fn a_survival_player_a_plugin_made_fly_comes_back_not_flying() {
     let granted = abilities(&link.take());
     assert!(granted.last().is_some_and(|a| a.may_fly && a.flying));
 
-    server.handle(Inbound::Leave { player: alice });
+    server.handle(Inbound::Leave {
+        player: alice,
+        session: 0,
+    });
     server.deliver();
     let saved = players.wait_saved(alice).unwrap();
     assert_eq!(
@@ -391,7 +398,10 @@ fn a_dead_player_comes_back_at_the_world_spawn_with_full_health() {
     console(&mut server, "kill Alice");
     run_ticks(&mut server, alice, &link, 5, &mut events);
 
-    server.handle(Inbound::Leave { player: alice });
+    server.handle(Inbound::Leave {
+        player: alice,
+        session: 0,
+    });
     server.deliver();
 
     let (_, _, events) = join(&mut server, "Alice");
@@ -404,7 +414,10 @@ fn unreadable_player_data_does_not_block_the_login() {
     let players = Arc::new(Players::default());
     let mut server = server(&players, 6000);
     let (alice, _, _) = join(&mut server, "Alice");
-    server.handle(Inbound::Leave { player: alice });
+    server.handle(Inbound::Leave {
+        player: alice,
+        session: 0,
+    });
     server.deliver();
     players.fail_loads.store(true, Ordering::Release);
 
@@ -528,7 +541,10 @@ fn ender_chest_items_survive_leaving_and_rejoining() {
         player: alice,
         input: PlayerInput::ContainerClose(window),
     });
-    server.handle(Inbound::Leave { player: alice });
+    server.handle(Inbound::Leave {
+        player: alice,
+        session: 0,
+    });
     server.deliver();
     assert!(players.wait_saved(alice).is_some());
 
