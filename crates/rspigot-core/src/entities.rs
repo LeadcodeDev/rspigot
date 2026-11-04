@@ -215,6 +215,7 @@ impl<L: ClientLink> Server<L> {
         entity.base.removal = Some(reason);
         self.entities.tracked.remove(&id);
         self.entities.mobs.entries.remove(&id);
+        self.entities.mobs.initial_targets.remove(&id);
         for player in self.players.values_mut() {
             if player.tracked.remove(&id) {
                 player.link.send(ClientEvent::RemoveEntities(vec![id]));
