@@ -797,6 +797,22 @@ impl<L: ClientLink> Server<L> {
                 self.finish_pickup(*step, cancelled);
                 Vec::new()
             }
+            Continuation::ChangeBlock(step) => {
+                self.finish_change(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::Regrow(sheep) => {
+                if !cancelled {
+                    self.regrow_wool(sheep);
+                }
+                Vec::new()
+            }
+            Continuation::EggBreak { mob, pos } => {
+                if !cancelled {
+                    self.break_turtle_egg(mob, pos);
+                }
+                Vec::new()
+            }
         }
     }
 

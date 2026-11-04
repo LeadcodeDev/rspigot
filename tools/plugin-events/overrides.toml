@@ -110,12 +110,15 @@ EntityKnockback = "the hurt knockback (ENTITY_ATTACK with a direct entity, DAMAG
 EntityKnockbackByEntity = "every knockback whose source is an entity: the direct entity of the hurt, the attacker or the explosion source; reaches EntityKnockback handlers"
 ItemDespawn = "an item entity that reaches item-despawn-rate while it ticks; one ask per item while it waits, a cancel resets its age; items do not age while inactive, unlike Spigot"
 EntityPickupItem = "players touching an item they can hold, with what does not fit as remaining; one ask per player and item while it waits; mobs never pick up items yet"
+EntityChangeBlock = "a falling block leaving its place (before the block turns to air and the entity spawns) and landing (a cancel removes it without placing or dropping), and a grazing sheep (to air also for grass that turns to dirt); without mobGriefing the grazing is born cancelled and asks nobody"
+EntityInteract = "a zombie breaking a turtle egg, before the egg goes; there are no pressure plates, farmland or tripwires yet"
+SheepRegrowWool = "after the grazing of a sheep settled, also when it was cancelled; a cancel keeps the sheep sheared"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
-    "EntityBreed", "EntityChangeBlock",
-    "EntityEnterLoveMode", "EntityExplode", "EntityInteract",
+    "EntityBreed",
+    "EntityEnterLoveMode", "EntityExplode",
     "EntityPoseChange",
     "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
@@ -123,7 +126,7 @@ ready = [
     "InventoryCreative", "InventoryDrag", "InventoryOpen",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
     "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
-    "SheepRegrowWool", "SmithItem", "TabComplete",
+    "SmithItem", "TabComplete",
 ]
 
 [states.blocked]

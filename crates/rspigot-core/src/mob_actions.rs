@@ -11,7 +11,9 @@ use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, EntityStatus};
-use crate::plugins::events::CreatureSpawnReason;
+use crate::plugins::events::{CreatureSpawnReason, EntityInteract, SheepRegrowWool};
+use crate::plugins::steps::Grief;
+use crate::plugins::{Continuation, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -73,16 +75,7 @@ impl<L: ClientLink> Server<L> {
                 );
                 self.play_sound(None, at, sound, source, volume, pitch);
             }
-            MobAction::RemoveTurtleEgg(pos) => {
-                self.set_block(pos, BlockStateId::AIR);
-                let pitch = 0.9 + self.rng.random::<f32>() * 0.2;
-                let at = Vec3::new(
-                    f64::from(pos.x) + 0.5,
-                    f64::from(pos.y) + 0.5,
-                    f64::from(pos.z) + 0.5,
-                );
-                self.play_sound(None, at, TURTLE_EGG_BREAK, SoundSource::Blocks, 0.7, pitch);
-            }
+            MobAction::RemoveTurtleEgg(pos) => self.interact_with_egg(id, pos),
             MobAction::LevelEvent { event, pos, data } => self.level_event(event, pos, data),
             MobAction::DestroyProgress { pos, stage } => self.push(
                 Audience::ChunkViewers(pos.chunk()),
@@ -123,33 +116,83 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn eat_grass(&mut self, id: EntityId) {
-        let Some(pos) = self.entities.store.get(id).map(|e| e.base.position.block()) else {
+    fn interact_with_egg(&mut self, id: EntityId, pos: BlockPos) {
+        let Some(mob) = self.entity_view(id) else {
             return;
         };
-        let griefing = self.config.rules.mob_griefing;
-        let here = self.world.chunks.block(pos);
-        if is_edible_for_sheep(here) {
-            if griefing {
-                self.destroy_block_silently(pos);
-            }
-            self.mob_ate(id);
+        let lane = self.lane_for(None, id);
+        self.fire_heard(lane, Continuation::EggBreak { mob: id, pos }, move |_| {
+            Some(EventPayload::EntityInteract(EntityInteract {
+                block: pos,
+                entity_type: mob.kind.clone(),
+                entity: mob,
+            }))
+        });
+    }
+
+    pub(crate) fn break_turtle_egg(&mut self, id: EntityId, pos: BlockPos) {
+        let egg = self.world.chunks.block(pos).and_then(BlockStateId::kind);
+        if egg != Some(BlockKind::TurtleEgg) || self.entities.store.get(id).is_none() {
             return;
         }
+        self.set_block(pos, BlockStateId::AIR);
+        let pitch = 0.9 + self.rng.random::<f32>() * 0.2;
+        let at = Vec3::new(
+            f64::from(pos.x) + 0.5,
+            f64::from(pos.y) + 0.5,
+            f64::from(pos.z) + 0.5,
+        );
+        self.play_sound(None, at, TURTLE_EGG_BREAK, SoundSource::Blocks, 0.7, pitch);
+    }
+
+    fn eat_grass(&mut self, id: EntityId) {
+        let Some(sheep) = self.entity_view(id) else {
+            return;
+        };
+        let pos = sheep.position.block();
+        let refused = !self.config.rules.mob_griefing;
+        let here = self.world.chunks.block(pos);
         let below = pos.offset(0, -1, 0);
-        if self.world.chunks.block(below).and_then(BlockStateId::kind)
+        let (target, grazed) = if is_edible_for_sheep(here) {
+            (pos, false)
+        } else if self.world.chunks.block(below).and_then(BlockStateId::kind)
             == Some(BlockKind::GrassBlock)
         {
-            if griefing {
-                self.level_event(
-                    BLOCK_BREAK_EVENT,
-                    below,
-                    i32::from(BlockKind::GrassBlock.default_state().0),
-                );
-                self.set_block(below, BlockKind::Dirt.default_state());
+            (below, true)
+        } else {
+            return;
+        };
+        let change = Grief::Graze {
+            sheep: id,
+            pos: target,
+            below: grazed,
+        };
+        self.change_block(sheep, target, BlockStateId::AIR, change, refused);
+    }
+
+    pub(crate) fn finish_graze(
+        &mut self,
+        id: EntityId,
+        pos: BlockPos,
+        below: bool,
+        cancelled: bool,
+    ) {
+        if !cancelled {
+            let state = self.world.chunks.block(pos);
+            if below {
+                if state.and_then(BlockStateId::kind) == Some(BlockKind::GrassBlock) {
+                    self.level_event(
+                        BLOCK_BREAK_EVENT,
+                        pos,
+                        i32::from(BlockKind::GrassBlock.default_state().0),
+                    );
+                    self.set_block(pos, BlockKind::Dirt.default_state());
+                }
+            } else if is_edible_for_sheep(state) {
+                self.destroy_block_silently(pos);
             }
-            self.mob_ate(id);
         }
+        self.mob_ate(id);
     }
 
     pub(crate) fn destroy_block_silently(&mut self, pos: BlockPos) {
@@ -164,6 +207,22 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn mob_ate(&mut self, id: EntityId) {
+        let Some(sheep) = self
+            .entity_view(id)
+            .filter(|view| view.kind == Kind::Sheep.name())
+        else {
+            return;
+        };
+        let lane = self.lane_for(None, id);
+        self.fire_heard(lane, Continuation::Regrow(id), move |_| {
+            Some(EventPayload::SheepRegrowWool(SheepRegrowWool {
+                entity_type: sheep.kind.clone(),
+                entity: sheep,
+            }))
+        });
+    }
+
+    pub(crate) fn regrow_wool(&mut self, id: EntityId) {
         let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -172,7 +231,7 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        if base.kind != Kind::Sheep {
+        if base.kind != Kind::Sheep || living::is_dead_or_dying(base, state) {
             return;
         }
         species::set_sheared(base, false);

@@ -629,6 +629,36 @@ pub(crate) enum Potion {
 }
 
 #[derive(Debug)]
+pub(crate) struct Landing {
+    pub(crate) falling: EntityId,
+    pub(crate) pos: BlockPos,
+    pub(crate) original: BlockStateId,
+    pub(crate) replaced: BlockStateId,
+    pub(crate) state: BlockStateId,
+    pub(crate) drop_item: bool,
+}
+
+#[derive(Debug)]
+pub(crate) enum Grief {
+    Fall {
+        pos: BlockPos,
+        state: BlockStateId,
+        entity: Box<Entity>,
+    },
+    Land(Box<Landing>),
+    Graze {
+        sheep: EntityId,
+        pos: BlockPos,
+        below: bool,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct ChangeStep {
+    pub(crate) change: Grief,
+}
+
+#[derive(Debug)]
 pub(crate) struct PickupStep {
     pub(crate) player: PlayerId,
     pub(crate) collector: EntityId,
@@ -745,6 +775,9 @@ pub(crate) enum Continuation {
     Knock(KnockStep),
     ItemDespawn(EntityId),
     PickupItem(Box<PickupStep>),
+    ChangeBlock(Box<ChangeStep>),
+    Regrow(EntityId),
+    EggBreak { mob: EntityId, pos: BlockPos },
 }
 
 impl Continuation {
@@ -812,6 +845,9 @@ impl Continuation {
             Self::Knock(step) => step.kind,
             Self::ItemDespawn(_) => EventKind::ItemDespawn,
             Self::PickupItem(_) => EventKind::EntityPickupItem,
+            Self::ChangeBlock(_) => EventKind::EntityChangeBlock,
+            Self::Regrow(_) => EventKind::SheepRegrowWool,
+            Self::EggBreak { .. } => EventKind::EntityInteract,
         }
     }
 
@@ -843,6 +879,13 @@ impl Continuation {
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
             (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
             (Self::ItemDespawn(one), Self::ItemDespawn(other)) => one == other,
+            (Self::ChangeBlock(one), Self::ChangeBlock(other)) => {
+                match (&one.change, &other.change) {
+                    (Grief::Fall { pos: one, .. }, Grief::Fall { pos: other, .. }) => one == other,
+                    _ => false,
+                }
+            }
+            (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
             (Self::PickupItem(one), Self::PickupItem(other)) => {
                 one.player == other.player && one.item == other.item
             }
@@ -862,6 +905,8 @@ impl Continuation {
             Self::Hurt(step) => step.repeats(),
             Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
             Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
+            Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
+            Self::EggBreak { .. } => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
