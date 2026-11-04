@@ -25,7 +25,9 @@ use crate::plugins::SignData;
 use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
-use crate::plugins::patch::{location_refusal, merge_indexed, number_refusal, vector_refusal};
+use crate::plugins::patch::{
+    icon_refusal, location_refusal, merge_indexed, number_refusal, vector_refusal,
+};
 use rspigot_domain::BlockPos;
 use rspigot_domain::Vec3;
 use rspigot_domain::player::GameMode;
@@ -6939,6 +6941,12 @@ impl ServerListPingPatch {
             event.hidden_players = value;
         }
     }
+
+    fn refusal(&self) -> Option<String> {
+        self.server_icon
+            .as_deref()
+            .and_then(|value| icon_refusal("server_icon", value))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -8684,6 +8692,7 @@ impl EventPatch {
             Self::PlayerTeleport(patch) => patch.refusal(),
             Self::PlayerVelocity(patch) => patch.refusal(),
             Self::PotionSplash(patch) => patch.refusal(),
+            Self::ServerListPing(patch) => patch.refusal(),
             Self::VehicleDamage(patch) => patch.refusal(),
             _ => None,
         }

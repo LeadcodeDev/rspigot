@@ -951,12 +951,14 @@ def core_patch_type(f):
     return f"Option<{leaf.core}>"
 
 
-REFUSALS = ("location_refusal", "number_refusal", "vector_refusal")
+REFUSALS = ("icon_refusal", "location_refusal", "number_refusal", "vector_refusal")
 
 
 def refusal_check(f):
     proto = f.ty.leaf.proto
     name = f.name
+    if f.ty.leaf.id == "icon" and not f.ty.many and not f.index and not f.patch_nullable:
+        return f'self.{name}.as_deref().and_then(|value| icon_refusal("{name}", value))'
     if proto == "Location":
         if f.ty.many:
             return f"self.{name}.as_ref().and_then(|values| values.iter().find_map(location_refusal))"
