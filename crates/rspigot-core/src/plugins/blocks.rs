@@ -9,7 +9,7 @@ use crate::plugins::events::{
     ExplosionResult,
 };
 use crate::plugins::steps::{CookStep, ExpStep, ExplodeStep, PhysicsStep};
-use crate::plugins::{EventKind, EventPayload, spec_of};
+use crate::plugins::{EventKind, EventPayload, SetDiff, spec_of};
 use crate::ports::ClientLink;
 use crate::server::Server;
 use rspigot_domain::campfire::Campfire;
@@ -115,12 +115,12 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         step: ExplodeStep,
         cancelled: bool,
-        block_list: Option<Vec<BlockPos>>,
+        block_list: SetDiff<BlockPos>,
         explosion_yield: Option<f32>,
     ) {
         let chunks = &self.world.chunks;
         let blocks: Vec<BlockPos> = block_list
-            .unwrap_or(step.blocks)
+            .apply(step.blocks)
             .into_iter()
             .filter(|pos| chunks.block(*pos).is_some_and(|state| !state.is_air()))
             .collect();

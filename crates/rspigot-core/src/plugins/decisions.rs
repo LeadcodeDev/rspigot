@@ -135,7 +135,10 @@ impl Pending {
                 }
                 None => None,
             };
-            if let Some(reason) = patch.as_ref().and_then(EventPatch::refusal) {
+            if let Some(reason) = patch
+                .as_ref()
+                .and_then(|patch| patch.refusal(&self.payload))
+            {
                 warnings.push(format!("patch of event {event} was refused: {reason}"));
                 patch = None;
             }
@@ -634,15 +637,19 @@ mod tests {
 
     use super::*;
     use crate::plugins::events::{
-        Action, ClickKind, EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause,
-        EntityDamagePatch, EventResult, Face, InventoryAction, InventoryClick, InventoryClickPatch,
-        InventoryTypeSlotType, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
+        Action, AsyncPlayerChat, AsyncPlayerChatPatch, BlockDropItem, BlockDropItemPatch,
+        BlockExplode, BlockExplodePatch, BroadcastMessage, BroadcastMessagePatch, ClickKind,
+        EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch,
+        EntityDeathPatch, EventResult, ExplosionResult, Face, InventoryAction, InventoryClick,
+        InventoryClickPatch, InventoryTypeSlotType, PlayerCommandSend, PlayerCommandSendPatch,
+        PlayerDeath, PlayerDeathPatch, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
         PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport,
         PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
+        ServerListPing, ServerListPingPatch, TabComplete, TabCompletePatch,
     };
     use crate::plugins::{
-        DamageSourceView, EntityView, InventoryOwner, InventoryRef, InventoryView, Location,
-        PlayerSnapshot,
+        BlockSnapshot, BlockState, DamageSourceView, DroppedItem, EntityView, InventoryOwner,
+        InventoryRef, InventoryView, ItemSpec, ListDiff, Location, PlayerSnapshot, SenderView,
     };
 
     fn snapshot(player: PlayerId, position: Vec3) -> PlayerSnapshot {
@@ -1769,5 +1776,463 @@ mod tests {
         );
         let ready = decisions.next_settled(0).expect("the hit settles");
         assert_eq!(ready.settlement, Settlement::Applied(None));
+    }
+
+    fn listener(name: &str) -> PlayerSnapshot {
+        PlayerSnapshot {
+            name: name.to_owned(),
+            ..snapshot(PlayerId::offline(name), Vec3::new(0.0, 64.0, 0.0))
+        }
+    }
+
+    fn chat(names: &[&str]) -> EventPayload {
+        EventPayload::AsyncPlayerChat(AsyncPlayerChat {
+            format: "<%1$s> %2$s".to_owned(),
+            message: "hello".to_owned(),
+            player: listener("Alice"),
+            recipients: names.iter().map(|name| listener(name)).collect(),
+        })
+    }
+
+    fn recipients(removed: &[u32], added: &[&str]) -> EventPatch {
+        EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
+            recipients: ListDiff {
+                removed: removed.to_vec(),
+                replaced: Vec::new(),
+                added: added.iter().map(|name| listener(name)).collect(),
+            },
+            ..AsyncPlayerChatPatch::default()
+        })
+    }
+
+    fn lists_settled(payload: &EventPayload, rulings: &[Verdict]) -> Vec<Settlement> {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let asked: Vec<Asked> = rulings
+            .iter()
+            .zip(1..)
+            .map(|(ruling, connection)| Asked {
+                connection,
+                handler: 1,
+                kind: ruling
+                    .patch
+                    .as_ref()
+                    .map_or(payload.kind(), EventPatch::kind),
+            })
+            .collect();
+        arrivals(rulings.len())
+            .into_iter()
+            .map(|arrival| {
+                let mut decisions = Decisions::default();
+                let pending = Pending::new(
+                    alice,
+                    payload.clone(),
+                    asked.clone(),
+                    5,
+                    20,
+                    step(alice, at, at),
+                );
+                decisions.queue(1, pending);
+                for index in arrival {
+                    let ruling = rulings[index].clone();
+                    let (_, warnings) =
+                        decisions.decide(asked[index].connection, 1, vec![ruling], 0);
+                    assert!(warnings.is_empty(), "{warnings:?}");
+                }
+                decisions
+                    .next_settled(0)
+                    .expect("the event settles")
+                    .settlement
+            })
+            .collect()
+    }
+
+    fn settled_lists(payload: &EventPayload, patches: &[EventPatch]) -> EventPayload {
+        let rulings: Vec<Verdict> = patches
+            .iter()
+            .map(|patch| Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(patch.clone()),
+            })
+            .collect();
+        let outcomes: Vec<EventPayload> = lists_settled(payload, &rulings)
+            .into_iter()
+            .map(|settlement| {
+                let Settlement::Applied(Some(patch)) = settlement else {
+                    panic!("expected an applied patch, got {settlement:?}");
+                };
+                let mut settled = payload.clone();
+                patch.settle(&mut settled);
+                settled
+            })
+            .collect();
+        assert!(outcomes.windows(2).all(|pair| pair[0] == pair[1]));
+        outcomes[0].clone()
+    }
+
+    fn names_of(payload: &EventPayload) -> Vec<&str> {
+        let EventPayload::AsyncPlayerChat(chat) = payload else {
+            panic!("expected a chat");
+        };
+        chat.recipients
+            .iter()
+            .map(|player| player.name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn the_removals_of_every_handler_apply_whatever_order_the_answers_arrive_in() {
+        let payload = chat(&["Alice", "Bob", "Carol", "Dave"]);
+        for patches in [
+            [recipients(&[1], &[]), recipients(&[2], &[])],
+            [recipients(&[2], &[]), recipients(&[1], &[])],
+        ] {
+            assert_eq!(
+                names_of(&settled_lists(&payload, &patches)),
+                ["Alice", "Dave"]
+            );
+        }
+    }
+
+    #[test]
+    fn additions_follow_the_registry_order_and_an_element_added_back_is_present_once() {
+        let payload = chat(&["Alice", "Bob", "Carol", "Dave"]);
+        let patches = [
+            recipients(&[1], &["Erin"]),
+            recipients(&[3], &[]),
+            recipients(&[], &["Bob", "Frank"]),
+        ];
+        assert_eq!(
+            names_of(&settled_lists(&payload, &patches)),
+            ["Alice", "Carol", "Erin", "Bob", "Frank"]
+        );
+        let reversed = [patches[2].clone(), patches[1].clone(), patches[0].clone()];
+        assert_eq!(
+            names_of(&settled_lists(&payload, &reversed)),
+            ["Alice", "Carol", "Bob", "Frank", "Erin"]
+        );
+    }
+
+    #[test]
+    fn completions_commands_and_hidden_players_accumulate_too() {
+        let console = SenderView::Console;
+        let completions = |removed: &[u32], added: &[&str]| {
+            EventPatch::TabComplete(TabCompletePatch {
+                completions: ListDiff {
+                    removed: removed.to_vec(),
+                    replaced: Vec::new(),
+                    added: added.iter().map(|text| (*text).to_owned()).collect(),
+                },
+            })
+        };
+        let typed = EventPayload::TabComplete(TabComplete {
+            buffer: "/give ".to_owned(),
+            completions: ["alice", "bob", "carol"].map(str::to_owned).to_vec(),
+            sender: console,
+        });
+        let EventPayload::TabComplete(settled) = settled_lists(
+            &typed,
+            &[completions(&[0], &["erin"]), completions(&[2], &[])],
+        ) else {
+            panic!("expected a tab completion");
+        };
+        assert_eq!(settled.completions, ["bob", "erin"]);
+        let sent = EventPayload::PlayerCommandSend(PlayerCommandSend {
+            commands: ["help", "me", "msg", "tell"].map(str::to_owned).to_vec(),
+            player: listener("Alice"),
+        });
+        let removing = |index: u32| {
+            EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
+                commands: ListDiff {
+                    removed: vec![index],
+                    replaced: Vec::new(),
+                    added: Vec::new(),
+                },
+            })
+        };
+        let EventPayload::PlayerCommandSend(settled) =
+            settled_lists(&sent, &[removing(1), removing(3)])
+        else {
+            panic!("expected a command send");
+        };
+        assert_eq!(settled.commands, ["help", "msg"]);
+        let bob = uuid::Uuid::from_u128(2);
+        let carol = uuid::Uuid::from_u128(3);
+        let pinged = EventPayload::ServerListPing(ServerListPing {
+            address: std::net::IpAddr::from([127, 0, 0, 1]),
+            hostname: "localhost".to_owned(),
+            players: vec![listener("Bob"), listener("Carol")],
+            max_players: 20,
+            motd: "A Minecraft Server".to_owned(),
+            num_players: 2,
+            hidden_players: Vec::new(),
+        });
+        let hiding = |uuid| {
+            EventPatch::ServerListPing(ServerListPingPatch {
+                hidden_players: ListDiff {
+                    removed: Vec::new(),
+                    replaced: Vec::new(),
+                    added: vec![uuid],
+                },
+                ..ServerListPingPatch::default()
+            })
+        };
+        let EventPayload::ServerListPing(settled) =
+            settled_lists(&pinged, &[hiding(bob), hiding(carol)])
+        else {
+            panic!("expected a ping");
+        };
+        assert_eq!(settled.hidden_players, [bob, carol]);
+    }
+
+    #[test]
+    fn a_parent_handler_and_a_child_handler_both_remove_a_drop() {
+        let dying = EventPayload::PlayerDeath(PlayerDeath {
+            damage_source: DamageSourceView {
+                kind: "minecraft:generic_kill".to_owned(),
+                causing: None,
+                direct: None,
+                location: None,
+            },
+            death_message: None,
+            dropped_exp: 0,
+            drops: vec![
+                ItemSpec::of("minecraft:diamond", 5),
+                ItemSpec::of("minecraft:stick", 2),
+                ItemSpec::of("minecraft:dirt", 1),
+            ],
+            entity: listener("Alice"),
+            entity_type: "minecraft:player".to_owned(),
+            keep_inventory: false,
+            keep_level: false,
+            new_exp: 0,
+            new_level: 0,
+            new_total_exp: 0,
+        });
+        let parent = EventPatch::EntityDeath(EntityDeathPatch {
+            drops: ListDiff {
+                removed: vec![0],
+                replaced: Vec::new(),
+                added: vec![ItemSpec::of("minecraft:apple", 1)],
+            },
+            ..EntityDeathPatch::default()
+        });
+        let child = EventPatch::PlayerDeath(PlayerDeathPatch {
+            drops: ListDiff {
+                removed: vec![2],
+                replaced: Vec::new(),
+                added: Vec::new(),
+            },
+            ..PlayerDeathPatch::default()
+        });
+        for patches in [[parent.clone(), child.clone()], [child, parent]] {
+            let EventPayload::PlayerDeath(settled) = settled_lists(&dying, &patches) else {
+                panic!("expected a player death");
+            };
+            assert_eq!(
+                settled.drops,
+                [
+                    ItemSpec::of("minecraft:stick", 2),
+                    ItemSpec::of("minecraft:apple", 1)
+                ]
+            );
+        }
+    }
+
+    fn dropped(id: i32, key: &str, count: i32) -> DroppedItem {
+        DroppedItem {
+            entity: entity(id),
+            item: ItemSpec::of(key, count),
+        }
+    }
+
+    fn dropping() -> EventPayload {
+        let at = rspigot_domain::BlockPos::new(1, 63, 0);
+        EventPayload::BlockDropItem(BlockDropItem {
+            block: at,
+            block_state: BlockSnapshot {
+                pos: at,
+                state: BlockState {
+                    kind: "minecraft:air".to_owned(),
+                    properties: Vec::new(),
+                },
+            },
+            items: vec![
+                dropped(7, "minecraft:dirt", 1),
+                dropped(8, "minecraft:dirt", 1),
+            ],
+            player: listener("Alice"),
+        })
+    }
+
+    fn items(removed: &[u32], replaced: Vec<(u32, DroppedItem)>) -> EventPatch {
+        EventPatch::BlockDropItem(BlockDropItemPatch {
+            items: ListDiff {
+                removed: removed.to_vec(),
+                replaced,
+                added: Vec::new(),
+            },
+        })
+    }
+
+    fn items_of(payload: &EventPayload) -> Vec<DroppedItem> {
+        let EventPayload::BlockDropItem(dropping) = payload else {
+            panic!("expected a block drop");
+        };
+        dropping.items.clone()
+    }
+
+    #[test]
+    fn an_item_cleared_by_one_handler_is_gone_even_if_another_doubles_it() {
+        let cleared = items(&[0, 1], Vec::new());
+        let doubled = items(&[], vec![(0, dropped(7, "minecraft:dirt", 2))]);
+        for patches in [[cleared.clone(), doubled.clone()], [doubled, cleared]] {
+            assert!(items_of(&settled_lists(&dropping(), &patches)).is_empty());
+        }
+    }
+
+    #[test]
+    fn two_replacements_of_one_item_keep_the_later_handler_one() {
+        let diamond = items(&[], vec![(0, dropped(7, "minecraft:diamond", 1))]);
+        let emerald = items(&[], vec![(0, dropped(7, "minecraft:emerald", 3))]);
+        assert_eq!(
+            items_of(&settled_lists(
+                &dropping(),
+                &[diamond.clone(), emerald.clone()]
+            )),
+            [
+                dropped(7, "minecraft:emerald", 3),
+                dropped(8, "minecraft:dirt", 1)
+            ]
+        );
+        assert_eq!(
+            items_of(&settled_lists(&dropping(), &[emerald, diamond])),
+            [
+                dropped(7, "minecraft:diamond", 1),
+                dropped(8, "minecraft:dirt", 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn two_handlers_adding_the_same_broadcast_recipient_give_it_once() {
+        let broadcast = EventPayload::BroadcastMessage(BroadcastMessage {
+            message: "restarting".to_owned(),
+            recipients: vec![SenderView::Console, SenderView::Player(listener("Alice"))],
+        });
+        let adding = |name: &str| {
+            EventPatch::BroadcastMessage(BroadcastMessagePatch {
+                recipients: ListDiff {
+                    removed: Vec::new(),
+                    replaced: Vec::new(),
+                    added: vec![SenderView::Player(listener(name))],
+                },
+                ..BroadcastMessagePatch::default()
+            })
+        };
+        let EventPayload::BroadcastMessage(settled) =
+            settled_lists(&broadcast, &[adding("Bob"), adding("Bob"), adding("Alice")])
+        else {
+            panic!("expected a broadcast");
+        };
+        assert_eq!(
+            settled.recipients,
+            [
+                SenderView::Console,
+                SenderView::Player(listener("Alice")),
+                SenderView::Player(listener("Bob"))
+            ]
+        );
+    }
+
+    #[test]
+    fn two_handlers_adding_the_same_explosion_position_break_it_once() {
+        let at = rspigot_domain::BlockPos::new(2, 63, 0);
+        let far = rspigot_domain::BlockPos::new(5, 60, 5);
+        let blast = EventPayload::BlockExplode(BlockExplode {
+            block: at,
+            block_list: vec![at],
+            exploded_block_state: BlockSnapshot {
+                pos: at,
+                state: BlockState {
+                    kind: "minecraft:air".to_owned(),
+                    properties: Vec::new(),
+                },
+            },
+            explosion_result: ExplosionResult::Destroy,
+            explosion_yield: 1.0,
+        });
+        let adding = EventPatch::BlockExplode(BlockExplodePatch {
+            block_list: ListDiff {
+                removed: Vec::new(),
+                replaced: Vec::new(),
+                added: vec![far, at],
+            },
+            ..BlockExplodePatch::default()
+        });
+        let EventPayload::BlockExplode(settled) = settled_lists(&blast, &[adding.clone(), adding])
+        else {
+            panic!("expected a block explosion");
+        };
+        assert_eq!(settled.block_list, [at, far]);
+    }
+
+    #[test]
+    fn a_diff_naming_a_missing_element_is_refused_and_the_others_still_apply() {
+        let payload = chat(&["Alice", "Bob"]);
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let asked = asked_in(&[
+            (1, 1, EventKind::AsyncPlayerChat),
+            (2, 1, EventKind::AsyncPlayerChat),
+        ]);
+        let mut decisions = Decisions::default();
+        decisions.queue(
+            1,
+            Pending::new(alice, payload, asked, 5, 20, step(alice, at, at)),
+        );
+        let wrong = Verdict {
+            handler: 1,
+            cancel: false,
+            patch: Some(recipients(&[0, 2], &[])),
+        };
+        let (_, warnings) = decisions.decide(1, 1, vec![wrong], 0);
+        assert_eq!(
+            warnings,
+            ["patch of event 1 was refused: recipients has no element 2"]
+        );
+        let right = Verdict {
+            handler: 1,
+            cancel: false,
+            patch: Some(recipients(&[1], &[])),
+        };
+        let (_, warnings) = decisions.decide(2, 1, vec![right], 0);
+        assert!(warnings.is_empty());
+        let ready = decisions.next_settled(0).expect("the chat settles");
+        assert_eq!(
+            ready.settlement,
+            Settlement::Applied(Some(recipients(&[1], &[])))
+        );
+    }
+
+    #[test]
+    fn a_cancel_drops_every_list_diff() {
+        let payload = chat(&["Alice", "Bob", "Carol"]);
+        let rulings = [
+            Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(recipients(&[1], &["Erin"])),
+            },
+            Verdict {
+                handler: 1,
+                cancel: true,
+                patch: None,
+            },
+        ];
+        for settlement in lists_settled(&payload, &rulings) {
+            assert_eq!(settlement, Settlement::Cancelled(None));
+        }
     }
 }

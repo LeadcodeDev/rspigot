@@ -7,8 +7,8 @@ use rspigot_core::plugins::events::{
     EntityExplodePatch, EntityRemoveCause, EntityTeleportPatch, ExplosionPrimePatch,
 };
 use rspigot_core::plugins::{
-    Answer, EntityOrder, EntityView, EventKind, EventPatch, EventPayload, HandlerSpec, Location,
-    Order, Question,
+    Answer, BlockOrder, EntityOrder, EntityView, EventKind, EventPatch, EventPayload, HandlerSpec,
+    Location, Order, Priority, Question,
 };
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
@@ -199,6 +199,9 @@ fn a_patched_block_list_is_what_the_explosion_breaks() {
     creeper(&mut s);
     s.tick(5);
     let asked = last_asked(&s.plugin, EventKind::EntityExplode);
+    let EventPayload::EntityExplode(blast) = &asked.payload else {
+        panic!("an entity explosion");
+    };
     let far = BlockPos::new(3, 60, 3);
     rule_on(
         &mut s.server,
@@ -206,13 +209,62 @@ fn a_patched_block_list_is_what_the_explosion_breaks() {
         asked.id,
         false,
         Some(EventPatch::EntityExplode(EntityExplodePatch {
-            block_list: Some(vec![far]),
+            block_list: replacing(&blast.block_list, vec![far]),
             explosion_yield: Some(0.0),
         })),
     );
     assert_eq!(block(&mut s, far), "minecraft:air");
     assert_ne!(block(&mut s, BlockPos::new(8, 63, 8)), "minecraft:air");
     assert_eq!(s.server.items_on_ground(), 0);
+}
+
+#[test]
+fn two_plugins_that_each_spare_a_block_both_keep_it_standing() {
+    let exploding = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::EntityExplode)
+    };
+    for later_answers_first in [false, true] {
+        let mut s = waiting_scene(vec![exploding(Priority::Low)]);
+        connect_with(&mut s.server, 2, "second", vec![exploding(Priority::High)]);
+        creeper(&mut s);
+        for (x, z) in [(7, 8), (9, 8), (8, 7), (8, 9)] {
+            s.act(Order::Block {
+                pos: BlockPos::new(x, 64, z),
+                order: BlockOrder::Set("minecraft:dirt".to_owned()),
+            });
+        }
+        s.tick(5);
+        let asked = last_asked(&s.plugin, EventKind::EntityExplode);
+        let EventPayload::EntityExplode(blast) = &asked.payload else {
+            panic!("an entity explosion");
+        };
+        let solid: Vec<BlockPos> = blast
+            .block_list
+            .iter()
+            .copied()
+            .filter(|pos| block(&mut s, *pos) != "minecraft:air")
+            .collect();
+        assert!(solid.len() > 2, "{solid:?}");
+        let spared = [solid[0], solid[1]];
+        let [first, second] = spared.map(|kept| {
+            Some(EventPatch::EntityExplode(EntityExplodePatch {
+                block_list: removing(&blast.block_list, |pos| *pos == kept),
+                ..EntityExplodePatch::default()
+            }))
+        });
+        let mut answers = vec![(1, first), (2, second)];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, patch);
+        }
+        for pos in spared {
+            assert_ne!(block(&mut s, pos), "minecraft:air", "{later_answers_first}");
+        }
+        assert_eq!(block(&mut s, solid[2]), "minecraft:air");
+    }
 }
 
 #[test]

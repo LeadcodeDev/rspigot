@@ -438,28 +438,44 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn send_commands(&mut self, id: PlayerId) {
-        self.fire(id, Continuation::CommandSend(id), move |server| {
-            let operator = server.players.get(&id)?.operator;
-            let player = server.snapshot_of(id)?;
+        let offered = if self.listened(EventKind::PlayerCommandSend) {
+            self.players
+                .get(&id)
+                .map(|player| root_names(&self.command_tree(player.operator)))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let described = offered.clone();
+        self.fire(id, Continuation::CommandSend(id, offered), move |server| {
             Some(EventPayload::PlayerCommandSend(PlayerCommandSend {
-                commands: root_names(&server.command_tree(operator)),
-                player,
+                commands: described,
+                player: server.snapshot_of(id)?,
             }))
         });
     }
 
-    pub(super) fn finish_command_send(&mut self, id: PlayerId, patch: PlayerCommandSendPatch) {
-        let Some(operator) = self.players.get(&id).map(|player| player.operator) else {
+    pub(super) fn finish_command_send(
+        &mut self,
+        id: PlayerId,
+        offered: Vec<String>,
+        patch: PlayerCommandSendPatch,
+    ) {
+        let Some(player) = self.players.get(&id) else {
             return;
         };
-        let tree = self.command_tree(operator);
-        let tree = match patch.commands {
-            Some(kept) => Arc::new(pruned(&tree, &kept)),
-            None => tree,
+        let tree = self.command_tree(player.operator);
+        let tree = if patch.commands.is_empty() {
+            tree
+        } else {
+            let settled = patch.commands.apply(offered.clone());
+            let kept: Vec<String> = root_names(&tree)
+                .into_iter()
+                .filter(|name| settled.contains(name) || !offered.contains(name))
+                .collect();
+            Arc::new(pruned(&tree, &kept))
         };
-        if let Some(player) = self.players.get(&id) {
-            player.link.send(ClientEvent::Commands(tree));
-        }
+        player.link.send(ClientEvent::Commands(tree));
     }
 }
 

@@ -26,7 +26,8 @@ use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
 use crate::plugins::patch::{
-    icon_refusal, location_refusal, merge_indexed, number_refusal, text_refusal, vector_refusal,
+    ListDiff, SetDiff, icon_refusal, location_refusal, merge_indexed, number_refusal, text_refusal,
+    vector_refusal,
 };
 use rspigot_domain::BlockPos;
 use rspigot_domain::Vec3;
@@ -4575,7 +4576,7 @@ impl ArrowBodyCountChangePatch {
 pub struct AsyncPlayerChatPatch {
     pub format: Option<String>,
     pub message: Option<String>,
-    pub recipients: Option<Vec<PlayerSnapshot>>,
+    pub recipients: SetDiff<PlayerSnapshot>,
 }
 
 impl AsyncPlayerChatPatch {
@@ -4583,7 +4584,7 @@ impl AsyncPlayerChatPatch {
         Self {
             format: later.format.or(self.format),
             message: later.message.or(self.message),
-            recipients: later.recipients.or(self.recipients),
+            recipients: self.recipients.then(later.recipients),
         }
     }
 
@@ -4594,9 +4595,12 @@ impl AsyncPlayerChatPatch {
         if let Some(value) = self.message {
             event.message = value;
         }
-        if let Some(value) = self.recipients {
-            event.recipients = value;
-        }
+        event.recipients = self.recipients.apply(std::mem::take(&mut event.recipients));
+    }
+
+    fn refusal(&self, event: &AsyncPlayerChat) -> Option<String> {
+        self.recipients
+            .refusal("recipients", event.recipients.len())
     }
 }
 
@@ -4765,39 +4769,46 @@ impl BlockDispenseArmorPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockDispenseLootPatch {
-    pub dispensed_loot: Option<Vec<ItemSpec>>,
+    pub dispensed_loot: ListDiff<ItemSpec>,
 }
 
 impl BlockDispenseLootPatch {
     fn then(self, later: Self) -> Self {
         Self {
-            dispensed_loot: later.dispensed_loot.or(self.dispensed_loot),
+            dispensed_loot: self.dispensed_loot.then(later.dispensed_loot),
         }
     }
 
     fn settle(self, event: &mut BlockDispenseLoot) {
-        if let Some(value) = self.dispensed_loot {
-            event.dispensed_loot = value;
-        }
+        event.dispensed_loot = self
+            .dispensed_loot
+            .apply(std::mem::take(&mut event.dispensed_loot));
+    }
+
+    fn refusal(&self, event: &BlockDispenseLoot) -> Option<String> {
+        self.dispensed_loot
+            .refusal("dispensed_loot", event.dispensed_loot.len())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockDropItemPatch {
-    pub items: Option<Vec<DroppedItem>>,
+    pub items: ListDiff<DroppedItem>,
 }
 
 impl BlockDropItemPatch {
     fn then(self, later: Self) -> Self {
         Self {
-            items: later.items.or(self.items),
+            items: self.items.then(later.items),
         }
     }
 
     fn settle(self, event: &mut BlockDropItem) {
-        if let Some(value) = self.items {
-            event.items = value;
-        }
+        event.items = self.items.apply(std::mem::take(&mut event.items));
+    }
+
+    fn refusal(&self, event: &BlockDropItem) -> Option<String> {
+        self.items.refusal("items", event.items.len())
     }
 }
 
@@ -4822,30 +4833,32 @@ impl BlockExpPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockExplodePatch {
-    pub block_list: Option<Vec<BlockPos>>,
+    pub block_list: SetDiff<BlockPos>,
     pub explosion_yield: Option<f32>,
 }
 
 impl BlockExplodePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            block_list: later.block_list.or(self.block_list),
+            block_list: self.block_list.then(later.block_list),
             explosion_yield: later.explosion_yield.or(self.explosion_yield),
         }
     }
 
     fn settle(self, event: &mut BlockExplode) {
-        if let Some(value) = self.block_list {
-            event.block_list = value;
-        }
+        event.block_list = self.block_list.apply(std::mem::take(&mut event.block_list));
         if let Some(value) = self.explosion_yield {
             event.explosion_yield = value;
         }
     }
 
-    fn refusal(&self) -> Option<String> {
-        self.explosion_yield
-            .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
+    fn refusal(&self, event: &BlockExplode) -> Option<String> {
+        self.block_list
+            .refusal("block_list", event.block_list.len())
+            .or_else(|| {
+                self.explosion_yield
+                    .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
+            })
     }
 }
 
@@ -4952,14 +4965,14 @@ impl BrewingStartPatch {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BroadcastMessagePatch {
     pub message: Option<String>,
-    pub recipients: Option<Vec<SenderView>>,
+    pub recipients: SetDiff<SenderView>,
 }
 
 impl BroadcastMessagePatch {
     fn then(self, later: Self) -> Self {
         Self {
             message: later.message.or(self.message),
-            recipients: later.recipients.or(self.recipients),
+            recipients: self.recipients.then(later.recipients),
         }
     }
 
@@ -4967,9 +4980,12 @@ impl BroadcastMessagePatch {
         if let Some(value) = self.message {
             event.message = value;
         }
-        if let Some(value) = self.recipients {
-            event.recipients = value;
-        }
+        event.recipients = self.recipients.apply(std::mem::take(&mut event.recipients));
+    }
+
+    fn refusal(&self, event: &BroadcastMessage) -> Option<String> {
+        self.recipients
+            .refusal("recipients", event.recipients.len())
     }
 }
 
@@ -5310,14 +5326,14 @@ impl EntityDamageByEntityPatch {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EntityDeathPatch {
     pub dropped_exp: Option<i32>,
-    pub drops: Option<Vec<ItemSpec>>,
+    pub drops: ListDiff<ItemSpec>,
 }
 
 impl EntityDeathPatch {
     fn then(self, later: Self) -> Self {
         Self {
             dropped_exp: later.dropped_exp.or(self.dropped_exp),
-            drops: later.drops.or(self.drops),
+            drops: self.drops.then(later.drops),
         }
     }
 
@@ -5325,9 +5341,11 @@ impl EntityDeathPatch {
         if let Some(value) = self.dropped_exp {
             event.dropped_exp = value;
         }
-        if let Some(value) = self.drops {
-            event.drops = value;
-        }
+        event.drops = self.drops.apply(std::mem::take(&mut event.drops));
+    }
+
+    fn refusal(&self, event: &EntityDeath) -> Option<String> {
+        self.drops.refusal("drops", event.drops.len())
     }
 }
 
@@ -5376,30 +5394,32 @@ impl EntityExhaustionPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EntityExplodePatch {
-    pub block_list: Option<Vec<BlockPos>>,
+    pub block_list: SetDiff<BlockPos>,
     pub explosion_yield: Option<f32>,
 }
 
 impl EntityExplodePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            block_list: later.block_list.or(self.block_list),
+            block_list: self.block_list.then(later.block_list),
             explosion_yield: later.explosion_yield.or(self.explosion_yield),
         }
     }
 
     fn settle(self, event: &mut EntityExplode) {
-        if let Some(value) = self.block_list {
-            event.block_list = value;
-        }
+        event.block_list = self.block_list.apply(std::mem::take(&mut event.block_list));
         if let Some(value) = self.explosion_yield {
             event.explosion_yield = value;
         }
     }
 
-    fn refusal(&self) -> Option<String> {
-        self.explosion_yield
-            .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
+    fn refusal(&self, event: &EntityExplode) -> Option<String> {
+        self.block_list
+            .refusal("block_list", event.block_list.len())
+            .or_else(|| {
+                self.explosion_yield
+                    .and_then(|value| number_refusal("explosion_yield", f64::from(value)))
+            })
     }
 }
 
@@ -6011,20 +6031,22 @@ impl InventoryMoveItemPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LootGeneratePatch {
-    pub loot: Option<Vec<ItemSpec>>,
+    pub loot: ListDiff<ItemSpec>,
 }
 
 impl LootGeneratePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            loot: later.loot.or(self.loot),
+            loot: self.loot.then(later.loot),
         }
     }
 
     fn settle(self, event: &mut LootGenerate) {
-        if let Some(value) = self.loot {
-            event.loot = value;
-        }
+        event.loot = self.loot.apply(std::mem::take(&mut event.loot));
+    }
+
+    fn refusal(&self, event: &LootGenerate) -> Option<String> {
+        self.loot.refusal("loot", event.loot.len())
     }
 }
 
@@ -6144,20 +6166,22 @@ impl PlayerCommandPreprocessPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerCommandSendPatch {
-    pub commands: Option<Vec<String>>,
+    pub commands: SetDiff<String>,
 }
 
 impl PlayerCommandSendPatch {
     fn then(self, later: Self) -> Self {
         Self {
-            commands: later.commands.or(self.commands),
+            commands: self.commands.then(later.commands),
         }
     }
 
     fn settle(self, event: &mut PlayerCommandSend) {
-        if let Some(value) = self.commands {
-            event.commands = value;
-        }
+        event.commands = self.commands.apply(std::mem::take(&mut event.commands));
+    }
+
+    fn refusal(&self, event: &PlayerCommandSend) -> Option<String> {
+        self.commands.refusal("commands", event.commands.len())
     }
 }
 
@@ -6165,7 +6189,7 @@ impl PlayerCommandSendPatch {
 pub struct PlayerDeathPatch {
     pub death_message: Option<Option<String>>,
     pub dropped_exp: Option<i32>,
-    pub drops: Option<Vec<ItemSpec>>,
+    pub drops: ListDiff<ItemSpec>,
     pub keep_inventory: Option<bool>,
     pub keep_level: Option<bool>,
     pub new_exp: Option<i32>,
@@ -6178,7 +6202,7 @@ impl PlayerDeathPatch {
         Self {
             death_message: later.death_message.or(self.death_message),
             dropped_exp: later.dropped_exp.or(self.dropped_exp),
-            drops: later.drops.or(self.drops),
+            drops: self.drops.then(later.drops),
             keep_inventory: later.keep_inventory.or(self.keep_inventory),
             keep_level: later.keep_level.or(self.keep_level),
             new_exp: later.new_exp.or(self.new_exp),
@@ -6194,9 +6218,7 @@ impl PlayerDeathPatch {
         if let Some(value) = self.dropped_exp {
             event.dropped_exp = value;
         }
-        if let Some(value) = self.drops {
-            event.drops = value;
-        }
+        event.drops = self.drops.apply(std::mem::take(&mut event.drops));
         if let Some(value) = self.keep_inventory {
             event.keep_inventory = value;
         }
@@ -6212,6 +6234,10 @@ impl PlayerDeathPatch {
         if let Some(value) = self.new_total_exp {
             event.new_total_exp = value;
         }
+    }
+
+    fn refusal(&self, event: &PlayerDeath) -> Option<String> {
+        self.drops.refusal("drops", event.drops.len())
     }
 }
 
@@ -6346,20 +6372,25 @@ impl PlayerFishPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerHarvestBlockPatch {
-    pub items_harvested: Option<Vec<ItemSpec>>,
+    pub items_harvested: ListDiff<ItemSpec>,
 }
 
 impl PlayerHarvestBlockPatch {
     fn then(self, later: Self) -> Self {
         Self {
-            items_harvested: later.items_harvested.or(self.items_harvested),
+            items_harvested: self.items_harvested.then(later.items_harvested),
         }
     }
 
     fn settle(self, event: &mut PlayerHarvestBlock) {
-        if let Some(value) = self.items_harvested {
-            event.items_harvested = value;
-        }
+        event.items_harvested = self
+            .items_harvested
+            .apply(std::mem::take(&mut event.items_harvested));
+    }
+
+    fn refusal(&self, event: &PlayerHarvestBlock) -> Option<String> {
+        self.items_harvested
+            .refusal("items_harvested", event.items_harvested.len())
     }
 }
 
@@ -6917,7 +6948,7 @@ pub struct ServerListPingPatch {
     pub max_players: Option<i32>,
     pub motd: Option<String>,
     pub server_icon: Option<Vec<u8>>,
-    pub hidden_players: Option<Vec<Uuid>>,
+    pub hidden_players: SetDiff<Uuid>,
 }
 
 impl ServerListPingPatch {
@@ -6926,7 +6957,7 @@ impl ServerListPingPatch {
             max_players: later.max_players.or(self.max_players),
             motd: later.motd.or(self.motd),
             server_icon: later.server_icon.or(self.server_icon),
-            hidden_players: later.hidden_players.or(self.hidden_players),
+            hidden_players: self.hidden_players.then(later.hidden_players),
         }
     }
 
@@ -6937,12 +6968,12 @@ impl ServerListPingPatch {
         if let Some(value) = self.motd {
             event.motd = value;
         }
-        if let Some(value) = self.hidden_players {
-            event.hidden_players = value;
-        }
+        event.hidden_players = self
+            .hidden_players
+            .apply(std::mem::take(&mut event.hidden_players));
     }
 
-    fn refusal(&self) -> Option<String> {
+    fn refusal(&self, event: &ServerListPing) -> Option<String> {
         self.motd
             .as_deref()
             .and_then(|value| text_refusal("motd", value, 32767))
@@ -6950,6 +6981,10 @@ impl ServerListPingPatch {
                 self.server_icon
                     .as_deref()
                     .and_then(|value| icon_refusal("server_icon", value))
+            })
+            .or_else(|| {
+                self.hidden_players
+                    .refusal("hidden_players", event.hidden_players.len())
             })
     }
 }
@@ -6975,20 +7010,22 @@ impl SheepDyeWoolPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SignChangePatch {
-    pub lines: Option<Vec<String>>,
+    pub lines: ListDiff<String>,
 }
 
 impl SignChangePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            lines: later.lines.or(self.lines),
+            lines: self.lines.then(later.lines),
         }
     }
 
     fn settle(self, event: &mut SignChange) {
-        if let Some(value) = self.lines {
-            event.lines = value;
-        }
+        event.lines = self.lines.apply(std::mem::take(&mut event.lines));
+    }
+
+    fn refusal(&self, event: &SignChange) -> Option<String> {
+        self.lines.slot_refusal("lines", event.lines.len())
     }
 }
 
@@ -7032,20 +7069,25 @@ impl SmithItemPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TabCompletePatch {
-    pub completions: Option<Vec<String>>,
+    pub completions: ListDiff<String>,
 }
 
 impl TabCompletePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            completions: later.completions.or(self.completions),
+            completions: self.completions.then(later.completions),
         }
     }
 
     fn settle(self, event: &mut TabComplete) {
-        if let Some(value) = self.completions {
-            event.completions = value;
-        }
+        event.completions = self
+            .completions
+            .apply(std::mem::take(&mut event.completions));
+    }
+
+    fn refusal(&self, event: &TabComplete) -> Option<String> {
+        self.completions
+            .refusal("completions", event.completions.len())
     }
 }
 
@@ -8670,35 +8712,62 @@ impl EventPatch {
         }
     }
 
-    pub(crate) fn refusal(&self) -> Option<String> {
-        match self {
-            Self::BlockDispense(patch) => patch.refusal(),
-            Self::BlockDispenseArmor(patch) => patch.refusal(),
-            Self::BlockExplode(patch) => patch.refusal(),
-            Self::EntityCombust(patch) => patch.refusal(),
-            Self::EntityCombustByBlock(patch) => patch.refusal(),
-            Self::EntityCombustByEntity(patch) => patch.refusal(),
-            Self::EntityDamage(patch) => patch.refusal(),
-            Self::EntityDamageByBlock(patch) => patch.refusal(),
-            Self::EntityDamageByEntity(patch) => patch.refusal(),
-            Self::EntityExhaustion(patch) => patch.refusal(),
-            Self::EntityExplode(patch) => patch.refusal(),
-            Self::EntityKnockback(patch) => patch.refusal(),
-            Self::EntityKnockbackByEntity(patch) => patch.refusal(),
-            Self::EntityPortal(patch) => patch.refusal(),
-            Self::EntityPortalExit(patch) => patch.refusal(),
-            Self::EntityRegainHealth(patch) => patch.refusal(),
-            Self::EntityTeleport(patch) => patch.refusal(),
-            Self::ExplosionPrime(patch) => patch.refusal(),
-            Self::PlayerMove(patch) => patch.refusal(),
-            Self::PlayerPortal(patch) => patch.refusal(),
-            Self::PlayerRespawn(patch) => patch.refusal(),
-            Self::PlayerSpawnChange(patch) => patch.refusal(),
-            Self::PlayerTeleport(patch) => patch.refusal(),
-            Self::PlayerVelocity(patch) => patch.refusal(),
-            Self::PotionSplash(patch) => patch.refusal(),
-            Self::ServerListPing(patch) => patch.refusal(),
-            Self::VehicleDamage(patch) => patch.refusal(),
+    pub(crate) fn refusal(&self, payload: &EventPayload) -> Option<String> {
+        match (self, payload) {
+            (Self::AsyncPlayerChat(patch), EventPayload::AsyncPlayerChat(event)) => {
+                patch.refusal(event)
+            }
+            (Self::BlockDispense(patch), _) => patch.refusal(),
+            (Self::BlockDispenseArmor(patch), _) => patch.refusal(),
+            (Self::BlockDispenseLoot(patch), EventPayload::BlockDispenseLoot(event)) => {
+                patch.refusal(event)
+            }
+            (Self::BlockDropItem(patch), EventPayload::BlockDropItem(event)) => {
+                patch.refusal(event)
+            }
+            (Self::BlockExplode(patch), EventPayload::BlockExplode(event)) => patch.refusal(event),
+            (Self::BroadcastMessage(patch), EventPayload::BroadcastMessage(event)) => {
+                patch.refusal(event)
+            }
+            (Self::EntityCombust(patch), _) => patch.refusal(),
+            (Self::EntityCombustByBlock(patch), _) => patch.refusal(),
+            (Self::EntityCombustByEntity(patch), _) => patch.refusal(),
+            (Self::EntityDamage(patch), _) => patch.refusal(),
+            (Self::EntityDamageByBlock(patch), _) => patch.refusal(),
+            (Self::EntityDamageByEntity(patch), _) => patch.refusal(),
+            (Self::EntityDeath(patch), EventPayload::EntityDeath(event)) => patch.refusal(event),
+            (Self::EntityExhaustion(patch), _) => patch.refusal(),
+            (Self::EntityExplode(patch), EventPayload::EntityExplode(event)) => {
+                patch.refusal(event)
+            }
+            (Self::EntityKnockback(patch), _) => patch.refusal(),
+            (Self::EntityKnockbackByEntity(patch), _) => patch.refusal(),
+            (Self::EntityPortal(patch), _) => patch.refusal(),
+            (Self::EntityPortalExit(patch), _) => patch.refusal(),
+            (Self::EntityRegainHealth(patch), _) => patch.refusal(),
+            (Self::EntityTeleport(patch), _) => patch.refusal(),
+            (Self::ExplosionPrime(patch), _) => patch.refusal(),
+            (Self::LootGenerate(patch), EventPayload::LootGenerate(event)) => patch.refusal(event),
+            (Self::PlayerCommandSend(patch), EventPayload::PlayerCommandSend(event)) => {
+                patch.refusal(event)
+            }
+            (Self::PlayerDeath(patch), EventPayload::PlayerDeath(event)) => patch.refusal(event),
+            (Self::PlayerHarvestBlock(patch), EventPayload::PlayerHarvestBlock(event)) => {
+                patch.refusal(event)
+            }
+            (Self::PlayerMove(patch), _) => patch.refusal(),
+            (Self::PlayerPortal(patch), _) => patch.refusal(),
+            (Self::PlayerRespawn(patch), _) => patch.refusal(),
+            (Self::PlayerSpawnChange(patch), _) => patch.refusal(),
+            (Self::PlayerTeleport(patch), _) => patch.refusal(),
+            (Self::PlayerVelocity(patch), _) => patch.refusal(),
+            (Self::PotionSplash(patch), _) => patch.refusal(),
+            (Self::ServerListPing(patch), EventPayload::ServerListPing(event)) => {
+                patch.refusal(event)
+            }
+            (Self::SignChange(patch), EventPayload::SignChange(event)) => patch.refusal(event),
+            (Self::TabComplete(patch), EventPayload::TabComplete(event)) => patch.refusal(event),
+            (Self::VehicleDamage(patch), _) => patch.refusal(),
             _ => None,
         }
     }

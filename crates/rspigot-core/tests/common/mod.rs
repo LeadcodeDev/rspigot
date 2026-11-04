@@ -10,8 +10,8 @@ use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::player_data::PlayerSave;
 use rspigot_core::plugins::{
-    Access, Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
-    PlayerOrder, PluginIntro, Priority, Question, ToPlugin, Verdict,
+    Access, Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, ListDiff, Order,
+    Phase, PlayerOrder, PluginIntro, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox, StoreError,
@@ -637,4 +637,29 @@ pub fn system_texts(player: &Player) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+fn indices<T>(snapshot: &[T], chosen: impl Fn(&T) -> bool) -> Vec<u32> {
+    snapshot
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| chosen(value))
+        .filter_map(|(index, _)| u32::try_from(index).ok())
+        .collect()
+}
+
+pub fn removing<T, const SET: bool>(snapshot: &[T], gone: impl Fn(&T) -> bool) -> ListDiff<T, SET> {
+    ListDiff {
+        removed: indices(snapshot, gone),
+        replaced: Vec::new(),
+        added: Vec::new(),
+    }
+}
+
+pub fn replacing<T, const SET: bool>(snapshot: &[T], added: Vec<T>) -> ListDiff<T, SET> {
+    ListDiff {
+        removed: indices(snapshot, |_| true),
+        replaced: Vec::new(),
+        added,
+    }
 }

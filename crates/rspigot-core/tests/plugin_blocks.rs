@@ -7,7 +7,8 @@ use rspigot_core::plugins::events::{
     BlockDropItemPatch,
 };
 use rspigot_core::plugins::{
-    Answer, BlockOrder, EventKind, EventPatch, EventPayload, ItemSpec, Order, Phase, Question,
+    Answer, BlockOrder, DroppedItem, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec,
+    ListDiff, Order, Phase, Priority, Question,
 };
 use rspigot_domain::BlockPos;
 
@@ -444,7 +445,7 @@ fn a_drop_patch_keeps_only_the_listed_items_and_a_cancel_keeps_the_experience() 
         1,
         false,
         Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(Vec::new()),
+            items: replacing(&offered.items, Vec::new()),
         })),
     );
     assert_eq!(s.server.items_on_ground(), 0);
@@ -467,9 +468,7 @@ fn a_drop_patch_keeps_only_the_listed_items_and_a_cancel_keeps_the_experience() 
         asked.id,
         1,
         false,
-        Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(drop_of(&asked).items),
-        })),
+        Some(EventPatch::BlockDropItem(BlockDropItemPatch::default())),
     );
     assert_eq!(s.server.items_on_ground(), 1);
     let third = BlockPos::new(4, 63, 0);
@@ -499,8 +498,9 @@ fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
     let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockDropItem)]);
     mine(&mut s, &alice, DIRT);
     let asked = last_asked(&s.plugin, EventKind::BlockDropItem);
-    let mut kept = drop_of(&asked).items;
-    assert_eq!(kept.len(), 1);
+    let offered = drop_of(&asked).items;
+    assert_eq!(offered.len(), 1);
+    let mut kept = offered.clone();
     kept[0].item = ItemSpec::of("minecraft:diamond", 3);
     rule_on(
         &mut s.server,
@@ -508,7 +508,7 @@ fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
         asked.id,
         false,
         Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(kept),
+            items: replacing(&offered, kept),
         })),
     );
     let thrown: Vec<String> = s
@@ -630,4 +630,98 @@ fn a_born_cancelled_break_nobody_listens_to_applies_at_once_behind_a_waiting_mov
     dig(&mut s, &alice, DigAction::Start, DIRT, 4);
     assert_eq!(block_updates_and_acks(&alice.link.take()), ["ack 4"]);
     assert_eq!(kind_at(&mut s, DIRT), "minecraft:dirt");
+}
+
+type Restack = fn(&DroppedItem) -> ListDiff<DroppedItem>;
+
+fn drops_settled_by_two_plugins(first: Restack, second: Restack) -> Vec<Vec<String>> {
+    let dropping = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::BlockDropItem)
+    };
+    let mut outcomes = Vec::new();
+    for later_answers_first in [false, true] {
+        let (mut s, alice) = dirt_scene(vec![dropping(Priority::Low)]);
+        connect_with(&mut s.server, 2, "second", vec![dropping(Priority::High)]);
+        mine(&mut s, &alice, DIRT);
+        let asked = last_asked(&s.plugin, EventKind::BlockDropItem);
+        let offered = drop_of(&asked).items;
+        assert_eq!(offered.len(), 1);
+        let mut answers = vec![(1, first(&offered[0])), (2, second(&offered[0]))];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, items) in answers {
+            rule_on(
+                &mut s.server,
+                connection,
+                asked.id,
+                false,
+                Some(EventPatch::BlockDropItem(BlockDropItemPatch { items })),
+            );
+        }
+        outcomes.push(
+            s.server
+                .ground_items()
+                .iter()
+                .filter_map(|(_, stack)| {
+                    Some(format!("{} {}", stack.item.kind()?.name(), stack.count))
+                })
+                .collect(),
+        );
+    }
+    outcomes
+}
+
+fn restacked(dirt: &DroppedItem, key: &str, count: i32) -> ListDiff<DroppedItem> {
+    ListDiff {
+        removed: Vec::new(),
+        replaced: vec![(
+            0,
+            DroppedItem {
+                item: ItemSpec::of(key, count),
+                ..dirt.clone()
+            },
+        )],
+        added: Vec::new(),
+    }
+}
+
+fn cleared(_: &DroppedItem) -> ListDiff<DroppedItem> {
+    ListDiff {
+        removed: vec![0],
+        replaced: Vec::new(),
+        added: Vec::new(),
+    }
+}
+
+fn doubled(dirt: &DroppedItem) -> ListDiff<DroppedItem> {
+    restacked(dirt, "minecraft:dirt", 2)
+}
+
+fn diamond(dirt: &DroppedItem) -> ListDiff<DroppedItem> {
+    restacked(dirt, "minecraft:diamond", 1)
+}
+
+fn emerald(dirt: &DroppedItem) -> ListDiff<DroppedItem> {
+    restacked(dirt, "minecraft:emerald", 3)
+}
+
+#[test]
+fn a_drop_cleared_by_one_plugin_is_gone_even_if_another_doubles_it() {
+    for (first, second) in [(cleared as Restack, doubled as Restack), (doubled, cleared)] {
+        for thrown in drops_settled_by_two_plugins(first, second) {
+            assert!(thrown.is_empty(), "{thrown:?}");
+        }
+    }
+}
+
+#[test]
+fn two_plugins_that_restack_one_drop_leave_the_later_stack() {
+    for thrown in drops_settled_by_two_plugins(diamond, emerald) {
+        assert_eq!(thrown, ["minecraft:emerald 3"]);
+    }
+    for thrown in drops_settled_by_two_plugins(emerald, diamond) {
+        assert_eq!(thrown, ["minecraft:diamond 1"]);
+    }
 }

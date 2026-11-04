@@ -27,6 +27,7 @@ OUTPUTS = {
 }
 RUST = {"core", "host", "sdk", "macro", "test"}
 PAYLOAD_OFFSET = 9
+DIFF_OFFSET = 1000
 KEYWORDS = {
     "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if",
     "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
@@ -141,6 +142,8 @@ class Leaf:
 class Ty:
     leaf: Leaf
     many: bool = False
+    array: bool = False
+    set: bool = False
 
     def same(self, other):
         return self.leaf.proto == other.leaf.proto and self.many == other.many
@@ -341,6 +344,7 @@ class Field:
     direct: bool = False
     index: Leaf = None
     limit: int = None
+    set: bool = False
 
 
 @dataclass
@@ -469,11 +473,11 @@ class Model:
         if java in MAPS:
             return Ty(MAPS[java], many=True)
         if java.endswith("[]"):
-            return Ty(self.leaf(java[:-2]), many=True)
+            return Ty(self.leaf(java[:-2]), many=True, array=True)
         generic = re.match(r"^([\w.$]+)<(.*)>$", java)
         if generic and generic[1] in CONTAINERS:
             inner = re.sub(r"^\?( (extends|super) )?", "", generic[2]).strip()
-            return Ty(self.leaf(inner), many=True)
+            return Ty(self.leaf(inner), many=True, set=generic[1] == "java.util.Set")
         if generic:
             return Ty(self.leaf(generic[1]))
         return Ty(self.leaf(java))
@@ -524,7 +528,7 @@ class Model:
 
     def event(self, record, sdk_name, state, note, extra):
         allowed = {"getters", "rename", "collections", "omit", "unread", "revive", "applies_when_cancelled",
-                   "pairs", "extra", "indexed", "limits"}
+                   "pairs", "extra", "indexed", "limits", "sets"}
         for option in extra:
             if option not in allowed:
                 fail(f"{record['name']}: unknown override `{option}`")
@@ -682,6 +686,16 @@ class Model:
                 target.setter_method = "set_" + name
                 target.patch_nullable = item.get("nullable", False)
             fields[name] = target
+        readers = {f.getter: f for f in fields.values()}
+        for getter in extra.get("sets", []):
+            target = readers.get(getter)
+            if target is None or not listed(target) or not target.setter:
+                fail(f"{record['name']}: the set {getter} is not a list patch")
+            if target.ty.set:
+                fail(f"{record['name']}: {getter} is already a Java Set")
+            target.set = True
+        for f in fields.values():
+            f.set = f.set or (listed(f) and f.ty.set)
         cancel_sets = {}
         main_result = None
         owner = next((java for java in [record["java"]] + record["parents"] if java in self.results), None)
@@ -703,6 +717,13 @@ class Model:
                 fail(f"{record['name']}: a result cancels an event that cannot be cancelled")
         if indexed_setters:
             fail(f"{record['name']}: the indexed setters {sorted(indexed_setters)} match nothing")
+        for f in fields.values():
+            if f.number >= DIFF_OFFSET:
+                fail(f"{record['name']}.{f.name}: the field number {f.number} reaches the list diff numbers, which start at {DIFF_OFFSET}")
+            if listed(f) and f.setter and not f.getter:
+                fail(f"{record['name']}.{f.name}: a list patch is a diff against the list its getter reads, and that getter is left out")
+            if listed(f) and f.setter and snapshot_field(f) in fields:
+                fail(f"{record['name']}: the field {snapshot_field(f)} clashes with the snapshot of {f.name}")
         for kind, values in (("omit", omit), ("unread", unread), ("revive", revive), ("getters", extra_getters),
                              ("rename", rename), ("applies_when_cancelled", direct), ("pairs", pairs),
                              ("indexed", indexed), ("limits", limits)):
@@ -789,13 +810,36 @@ class Model:
                         fail(f"{fired.name} lacks the field {f.name} of {handler.name}")
                     if f.getter and not other.getter:
                         fail(f"{fired.name}.{f.name} is not readable as in {handler.name}")
-                    if f.setter and (not other.setter or other.patch_nullable != f.patch_nullable or not other.ty.same(f.ty)):
+                    if f.setter and (not other.setter or other.patch_nullable != f.patch_nullable or not other.ty.same(f.ty) or other.set != f.set):
                         fail(f"{fired.name}.{f.name} cannot carry a patch of {handler.name}")
                     if f.getter and not projection(other, f):
                         fail(f"{fired.name}.{f.name} cannot be read as {handler.name}.{f.name}")
 
     def ordered_enums(self):
         return sorted(self.enums.values(), key=lambda definition: definition.name)
+
+
+def listed(f):
+    return f.ty.many and not f.index
+
+
+def snapshot_field(f):
+    return f"{f.name}_snapshot"
+
+
+def list_diff(f):
+    return f"{f.ty.leaf.base}ListDiff"
+
+
+def replacement(f):
+    return f"{f.ty.leaf.base}Replacement"
+
+
+KIN = {"Item": "diff::same_item", "DroppedItem": "diff::same_entity"}
+
+
+def patch_number(f):
+    return f.number + DIFF_OFFSET if listed(f) else f.number
 
 
 def wire_copy(event):
@@ -867,7 +911,7 @@ def proto_patch(f):
     if f.index:
         return f"repeated {entry_name(f)}"
     if f.ty.many:
-        return f"{leaf.base}List"
+        return list_diff(f)
     if f.patch_nullable:
         return f"Nullable{leaf.base}"
     if leaf.shape == "message":
@@ -903,7 +947,8 @@ def emit_proto(model):
             if f.index:
                 continue
             if f.ty.many:
-                wrappers[f"{leaf.base}List"] = f"repeated {leaf.proto} values = 1;"
+                wrappers[list_diff(f)] = f"repeated uint32 removed = 1; repeated {leaf.proto} added = 2; repeated {replacement(f)} replaced = 3;"
+                wrappers[replacement(f)] = f"uint32 index = 1; {leaf.proto} value = 2;"
             elif f.patch_nullable:
                 inner = leaf.proto if leaf.shape == "message" else f"optional {leaf.proto}"
                 wrappers[f"Nullable{leaf.base}"] = f"{inner} value = 1;"
@@ -914,7 +959,10 @@ def emit_proto(model):
         body = " ".join(f"{proto_payload(f)} {f.name} = {f.number};" for f in event.readable)
         w(f"message {event.name} {{{' ' + body + ' ' if body else ''}}}")
         if event.patched:
-            body = " ".join(f"{proto_patch(f)} {f.name} = {f.number};" for f in event.patched)
+            body = " ".join(f"{proto_patch(f)} {f.name} = {patch_number(f)};" for f in event.patched)
+            replaced = [str(f.number) for f in event.patched if listed(f)]
+            if replaced:
+                body += f" reserved {', '.join(replaced)};"
             w(f"message {event.name}Patch {{ {body} }}")
     w()
     payloads = ", ".join(str(number + PAYLOAD_OFFSET) for number in model.reserved)
@@ -955,7 +1003,7 @@ def core_patch_type(f):
     if f.index:
         return f"Vec<({f.index.core}, {leaf.core})>"
     if f.ty.many:
-        return f"Option<Vec<{leaf.core}>>"
+        return f"{'SetDiff' if f.set else 'ListDiff'}<{leaf.core}>"
     if f.patch_nullable:
         return f"Option<Option<{leaf.core}>>"
     return f"Option<{leaf.core}>"
@@ -964,7 +1012,7 @@ def core_patch_type(f):
 REFUSALS = ("icon_refusal", "location_refusal", "number_refusal", "text_refusal", "vector_refusal")
 
 
-def refusal_check(f):
+def value_check(f):
     proto = f.ty.leaf.proto
     name = f.name
     if f.limit:
@@ -972,8 +1020,8 @@ def refusal_check(f):
     if f.ty.leaf.id == "icon" and not f.ty.many and not f.index and not f.patch_nullable:
         return f'self.{name}.as_deref().and_then(|value| icon_refusal("{name}", value))'
     if proto == "Location":
-        if f.ty.many:
-            return f"self.{name}.as_ref().and_then(|values| values.iter().find_map(location_refusal))"
+        if listed(f):
+            return f"self.{name}.added.iter().chain(self.{name}.replaced.iter().map(|(_, value)| value)).find_map(location_refusal)"
         if f.patch_nullable:
             return f"self.{name}.as_ref().and_then(Option::as_ref).and_then(location_refusal)"
         return f"self.{name}.as_ref().and_then(location_refusal)"
@@ -987,13 +1035,25 @@ def refusal_check(f):
     helper, value = checks[proto]
     if f.index:
         return f'self.{name}.iter().find_map(|(_, value)| {helper}("{name}", {value.format("*value")}))'
-    if f.ty.many:
-        each = f'|value| {helper}("{name}", {value.format("*value")})'
-        return f"self.{name}.as_ref().and_then(|values| values.iter().find_map({each}))"
+    if listed(f):
+        return f'self.{name}.added.iter().chain(self.{name}.replaced.iter().map(|(_, value)| value)).find_map(|value| {helper}("{name}", {value.format("*value")}))'
     each = f'|value| {helper}("{name}", {value.format("value")})'
     if f.patch_nullable:
         return f"self.{name}.flatten().and_then({each})"
     return f"self.{name}.and_then({each})"
+
+
+def refusal_check(f):
+    values = value_check(f)
+    if not listed(f):
+        return values
+    method = "slot_refusal" if f.ty.array else "refusal"
+    index = f'self.{f.name}.{method}("{f.name}", event.{f.name}.len())'
+    return index if values is None else f"{index}.or_else(|| {values})"
+
+
+def reads_snapshot(e):
+    return any(listed(f) for f in e.patched)
 
 
 def emit_core(model):
@@ -1086,6 +1146,8 @@ def emit_core(model):
         for f in e.patched:
             if f.index:
                 body(f"            {f.name}: merge_indexed(self.{f.name}, later.{f.name}),")
+            elif listed(f):
+                body(f"            {f.name}: self.{f.name}.then(later.{f.name}),")
             else:
                 body(f"            {f.name}: later.{f.name}.or(self.{f.name}),")
         body("        }")
@@ -1097,6 +1159,9 @@ def emit_core(model):
         for f in settled:
             if f.index:
                 body(f"        event.{f.name} = merge_indexed(std::mem::take(&mut event.{f.name}), self.{f.name});")
+                continue
+            if listed(f):
+                body(f"        event.{f.name} = self.{f.name}.apply(std::mem::take(&mut event.{f.name}));")
                 continue
             value = "Some(value)" if f.nullable and not f.patch_nullable and not f.ty.many else "value"
             body(f"        if let Some(value) = self.{f.name} {{")
@@ -1115,7 +1180,7 @@ def emit_core(model):
         checks = [refusal_check(f) for f in e.patched if refusal_check(f)]
         if checks:
             body()
-            body("    fn refusal(&self) -> Option<String> {")
+            body(f"    fn refusal(&self, event: &{e.name}) -> Option<String> {{" if reads_snapshot(e) else "    fn refusal(&self) -> Option<String> {")
             expression = checks[0] + "".join(f".or_else(|| {check})" for check in checks[1:])
             body(f"        {expression}")
             body("    }")
@@ -1200,10 +1265,13 @@ def emit_core(model):
     body("    }")
     body()
     located_events = [e for e in patched if any(refusal_check(f) for f in e.patched)]
-    body("    pub(crate) fn refusal(&self) -> Option<String> {")
-    body("        match self {")
+    body("    pub(crate) fn refusal(&self, payload: &EventPayload) -> Option<String> {")
+    body("        match (self, payload) {")
     for e in located_events:
-        body(f"            Self::{e.name}(patch) => patch.refusal(),")
+        if reads_snapshot(e):
+            body(f"            (Self::{e.name}(patch), EventPayload::{e.name}(event)) => patch.refusal(event),")
+        else:
+            body(f"            (Self::{e.name}(patch), _) => patch.refusal(),")
     body("            _ => None,")
     body("        }")
     body("    }")
@@ -1229,6 +1297,10 @@ def emit_core(model):
     helpers = sorted({name for e in located_events for f in e.patched for name in REFUSALS if name in (refusal_check(f) or "")})
     if any(f.index for e in patched for f in e.patched):
         helpers.append("merge_indexed")
+    if any(listed(f) and not f.set for e in patched for f in e.patched):
+        helpers.append("ListDiff")
+    if any(listed(f) and f.set for e in patched for f in e.patched):
+        helpers.append("SetDiff")
     if helpers:
         head(f"use crate::plugins::patch::{{{', '.join(sorted(helpers))}}};")
     head()
@@ -1304,10 +1376,15 @@ def host_patch_field(f, usage):
     tail = ".transpose()?" if leaf.host_in_try else ""
     if f.ty.many:
         if simple_in:
-            return f"{value}.map(|list| list.values)"
-        if leaf.host_in_try:
-            return f"{value}.map(|list| list.values.into_iter().map({convert}).collect::<Result<Vec<_>, _>>()).transpose()?"
-        return f"{value}.map(|list| list.values.into_iter().map({convert}).collect())"
+            added = "diff.added"
+        elif leaf.host_in_try:
+            added = f"diff.added.into_iter().map({convert}).collect::<Result<Vec<_>, _>>()?"
+        else:
+            added = f"diff.added.into_iter().map({convert}).collect()"
+        wire = "shared::required(entry.value)?" if leaf.shape == "message" else "entry.value"
+        each = apply(leaf.host_in, wire) + ("?" if leaf.host_in_try else "")
+        replaced = f"diff.replaced.into_iter().map(|entry| Ok((entry.index, {each}))).collect::<Result<Vec<_>, Malformed>>()?"
+        return f"match {value} {{ Some(diff) => ListDiff {{ removed: diff.removed, replaced: {replaced}, added: {added} }}, None => ListDiff::default() }}"
     if f.patch_nullable:
         if simple_in:
             return f"{value}.map(|wrapped| wrapped.value)"
@@ -1376,6 +1453,8 @@ def emit_host(model):
     core_names = sorted({"EventKind", "EventPatch", "EventPayload"} | {f"{e.name}Patch" for e in patched} | set(enum_names))
     head = Writer()
     head(f"use rspigot_core::plugins::events::{{{', '.join(core_names)}}};")
+    if any(listed(f) for e in patched for f in e.patched):
+        head("use rspigot_core::plugins::ListDiff;")
     head("use rspigot_plugin_protocol::v1::{self, event, patch};")
     head()
     sources = {"block", "contract", "entity", "player", "shared"}
@@ -1462,14 +1541,6 @@ def sdk_out_patch(f, usage):
     usage.uses.update(leaf.sdk_uses)
     cloned = leaf.sdk_out == "{}.clone()"
     plain = identity(leaf.sdk_out)
-    if f.ty.many:
-        if plain or cloned:
-            values = "value.clone()"
-        elif leaf.sdk_copy:
-            values = f"value.iter().copied().map({closure(leaf.sdk_out)}).collect()"
-        else:
-            values = f"value.iter().map({closure(leaf.sdk_out)}).collect()"
-        return f"Some(v1::{pn(leaf.base + "List")} {{ values: {values} }})"
     if f.patch_nullable:
         if plain and leaf.sdk_copy:
             inner = "value"
@@ -1481,6 +1552,18 @@ def sdk_out_patch(f, usage):
             inner = f"value.as_ref().map({closure(leaf.sdk_out)})"
         return f"Some(v1::{pn("Nullable" + leaf.base)} {{ value: {inner} }})"
     return f"Some({apply(leaf.sdk_out, 'value')})"
+
+
+def sdk_wire_lists(f, usage):
+    leaf = f.ty.leaf
+    if leaf.enum:
+        usage.out.add(leaf.enum.java)
+    usage.uses.update(leaf.sdk_uses)
+    usage.uses.add("crate::diff")
+    if identity(leaf.sdk_out) or leaf.sdk_out == "{}.clone()":
+        return "snapshot", "value.clone()"
+    mapped = f".iter(){'.copied()' if leaf.sdk_copy else ''}.map({closure(leaf.sdk_out)})"
+    return f"&snapshot{mapped}.collect::<Vec<_>>()", f"value{mapped}.collect()"
 
 
 def emit_sdk(model):
@@ -1519,6 +1602,9 @@ def emit_sdk(model):
             body("    rolled_back: bool,")
         for f in e.readable:
             body(f"    {f.name}: {sdk_type(f)},")
+        for f in e.patched:
+            if listed(f):
+                body(f"    {snapshot_field(f)}: Option<{sdk_type(f)}>,")
         if e.patched:
             body(f"    patch: v1::{pn(e.name + "Patch")},")
         body("}")
@@ -1536,6 +1622,9 @@ def emit_sdk(model):
             body("            rolled_back: meta.rolled_back,")
         for name, value in values:
             body(f"            {name}: {value},")
+        for f in e.patched:
+            if listed(f):
+                body(f"            {snapshot_field(f)}: None,")
         if e.patched:
             body(f"            patch: v1::{pn(e.name + "Patch")}::default(),")
         body("        })")
@@ -1569,6 +1658,22 @@ def emit_sdk(model):
                 body("            Some((_, known)) => *known = value,")
                 body(f"            None => self.{f.name}.push((key.clone(), value)),")
                 body("        }")
+                body("    }")
+                continue
+            if listed(f):
+                before, after = sdk_wire_lists(f, usage)
+                body()
+                body(f"    pub fn {f.setter_method}(&mut self, value: {sdk_setter_type(f)}) {{")
+                body(f"        let snapshot = self.{snapshot_field(f)}.get_or_insert_with(|| std::mem::take(&mut self.{f.name}));")
+                if f.ty.array:
+                    diffed = f"diff::slots({before}, {after})"
+                elif f.ty.leaf.proto in KIN:
+                    diffed = f"diff::list_by({before}, {after}, {KIN[f.ty.leaf.proto]})"
+                else:
+                    diffed = f"diff::list({before}, {after})"
+                value = "value: Some(value)" if f.ty.leaf.shape == "message" else "value"
+                body(f"        self.patch.{f.name} = {diffed}.map(|diff| v1::{pn(list_diff(f))} {{ removed: diff.removed, replaced: diff.replaced.into_iter().map(|(index, value)| v1::{pn(replacement(f))} {{ index, {value} }}).collect(), added: diff.added }});")
+                body(f"        self.{f.name} = value;")
                 body("    }")
                 continue
             body()
@@ -1768,6 +1873,14 @@ def emit_test(model):
     return w.text()
 
 
+def setter_note(f):
+    if f.direct:
+        return " (applies even when cancelled)"
+    if listed(f) and not f.set and not f.ty.array:
+        return " (a reorder alone changes nothing)"
+    return ""
+
+
 def emit_doc(model):
     events = sorted(model.events, key=lambda e: e.bukkit)
     w = Writer()
@@ -1783,10 +1896,18 @@ def emit_doc(model):
     by_result = sorted((e for e in events if e.cancels_by_result), key=lambda e: e.name)
     w(f"{', '.join(f'`{e.name}`' for e in by_result)} are cancelled through their result, as in Bukkit: `cancel()` sets {', '.join(sorted({f'`{name}`' for e in by_result for name in e.cancel_sets}))} to `Deny`, `is_cancelled()` reads the main result only, and a later handler that sets the result back lifts the cancel.")
     w()
+    listed_setters = sorted({f.setter_method for e in events for f in e.patched if listed(f) and not f.ty.array})
+    slot_setters = sorted({f"`{e.name}.{f.setter_method}`" for e in events for f in e.patched if listed(f) and f.ty.array})
+    set_setters = sorted({f"`{e.name}.{f.setter_method}`" for e in events for f in e.patched if listed(f) and f.set})
+    arrays = f" An array setter ({', '.join(slot_setters)}) keeps the length of the array: it only replaces elements in place." if slot_setters else ""
+    w(f"A list setter ({', '.join(f'`{name}`' for name in listed_setters)}) sends what the handler changed in the list it received, in three parts: the elements it removed, the elements it changed in place (an item stack of the same item at the same place, a dropped item of the same entity) and the elements it added. The server folds the handlers in handler order: an element any handler removed is gone even if another handler changed it, the last handler to change an element wins it, and additions are appended in handler order. Every handler receives the original list, so a handler that wants an element there whatever the earlier handlers did pushes it again. A reorder alone carries nothing: the list keeps the order the server sent.{arrays}")
+    w()
+    w(f"These setters write sets, where an element added twice is there once: {', '.join(set_setters)}.")
+    w()
     w("| Bukkit event | SDK type | Cancellable | Setters | Also receives | State |")
     w("|---|---|---|---|---|---|")
     for e in events:
-        setters = ", ".join(f"`{f.setter_method}`" + (" (applies even when cancelled)" if f.direct else "") for f in e.patched) or "-"
+        setters = ", ".join(f"`{f.setter_method}`" + setter_note(f) for f in e.patched) or "-"
         also = ", ".join(f"`{other.name}`" for other in sorted(model.events, key=lambda o: o.name) if e in other.receivers and other is not e) or "-"
         if e.state == "fired":
             state = "fired" + (f": {e.state_note}" if e.state_note else "")

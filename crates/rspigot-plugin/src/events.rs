@@ -37,6 +37,7 @@ use crate::TrialSpawnerData;
 use crate::Uuid;
 use crate::Vector;
 use crate::World;
+use crate::diff;
 use crate::link::Link;
 use crate::listener::Verdict;
 use crate::runtime::{Meta, Received};
@@ -1536,6 +1537,7 @@ pub struct AsyncPlayerChat {
     message: String,
     player: Player,
     recipients: Vec<Player>,
+    recipients_snapshot: Option<Vec<Player>>,
     patch: v1::AsyncPlayerChatPatch,
 }
 
@@ -1553,6 +1555,7 @@ impl AsyncPlayerChat {
                 .into_iter()
                 .map(|value| Player::from_snapshot(value, link))
                 .collect::<Result<Vec<_>, _>>()?,
+            recipients_snapshot: None,
             patch: v1::AsyncPlayerChatPatch::default(),
         })
     }
@@ -1588,8 +1591,27 @@ impl AsyncPlayerChat {
     }
 
     pub fn set_recipients(&mut self, value: Vec<Player>) {
-        self.patch.recipients = Some(v1::PlayerSnapshotList {
-            values: value.iter().map(|value| value.to_snapshot()).collect(),
+        let snapshot = self
+            .recipients_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.recipients));
+        self.patch.recipients = diff::list(
+            &snapshot
+                .iter()
+                .map(|value| value.to_snapshot())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_snapshot()).collect(),
+        )
+        .map(|diff| v1::PlayerSnapshotListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::PlayerSnapshotReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.recipients = value;
     }
@@ -2611,6 +2633,7 @@ pub struct BlockDispenseLoot {
     block: Block,
     dispensed_loot: Vec<ItemStack>,
     player: Option<Player>,
+    dispensed_loot_snapshot: Option<Vec<ItemStack>>,
     patch: v1::BlockDispenseLootPatch,
 }
 
@@ -2630,6 +2653,7 @@ impl BlockDispenseLoot {
                 .player
                 .map(|value| Player::from_snapshot(value, link))
                 .transpose()?,
+            dispensed_loot_snapshot: None,
             patch: v1::BlockDispenseLootPatch::default(),
         })
     }
@@ -2651,8 +2675,28 @@ impl BlockDispenseLoot {
     }
 
     pub fn set_dispensed_loot(&mut self, value: Vec<ItemStack>) {
-        self.patch.dispensed_loot = Some(v1::ItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .dispensed_loot_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.dispensed_loot));
+        self.patch.dispensed_loot = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
+        )
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.dispensed_loot = value;
     }
@@ -2692,6 +2736,7 @@ pub struct BlockDropItem {
     block_state: BlockSnapshot,
     items: Vec<DroppedItem>,
     player: Player,
+    items_snapshot: Option<Vec<DroppedItem>>,
     patch: v1::BlockDropItemPatch,
 }
 
@@ -2712,6 +2757,7 @@ impl BlockDropItem {
                 .map(|value| DroppedItem::from_wire(value, link))
                 .collect::<Result<Vec<_>, _>>()?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            items_snapshot: None,
             patch: v1::BlockDropItemPatch::default(),
         })
     }
@@ -2737,8 +2783,28 @@ impl BlockDropItem {
     }
 
     pub fn set_items(&mut self, value: Vec<DroppedItem>) {
-        self.patch.items = Some(v1::DroppedItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .items_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.items));
+        self.patch.items = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_entity,
+        )
+        .map(|diff| v1::DroppedItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::DroppedItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.items = value;
     }
@@ -2828,6 +2894,7 @@ pub struct BlockExplode {
     exploded_block_state: BlockSnapshot,
     explosion_result: ExplosionResult,
     explosion_yield: f32,
+    block_list_snapshot: Option<Vec<Block>>,
     patch: v1::BlockExplodePatch,
 }
 
@@ -2849,6 +2916,7 @@ impl BlockExplode {
             )?,
             explosion_result: ExplosionResult::from_wire(message.explosion_result)?,
             explosion_yield: message.explosion_yield,
+            block_list_snapshot: None,
             patch: v1::BlockExplodePatch::default(),
         })
     }
@@ -2878,8 +2946,27 @@ impl BlockExplode {
     }
 
     pub fn set_block_list(&mut self, value: Vec<Block>) {
-        self.patch.block_list = Some(v1::BlockPosList {
-            values: value.iter().map(|value| value.pos.to_wire()).collect(),
+        let snapshot = self
+            .block_list_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.block_list));
+        self.patch.block_list = diff::list(
+            &snapshot
+                .iter()
+                .map(|value| value.pos.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.pos.to_wire()).collect(),
+        )
+        .map(|diff| v1::BlockPosListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::BlockPosReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.block_list = value;
     }
@@ -4180,6 +4267,7 @@ pub struct BroadcastMessage {
     rolled_back: bool,
     message: String,
     recipients: Vec<CommandSender>,
+    recipients_snapshot: Option<Vec<CommandSender>>,
     patch: v1::BroadcastMessagePatch,
 }
 
@@ -4195,6 +4283,7 @@ impl BroadcastMessage {
                 .into_iter()
                 .map(|value| CommandSender::from_wire(value, link))
                 .collect::<Result<Vec<_>, _>>()?,
+            recipients_snapshot: None,
             patch: v1::BroadcastMessagePatch::default(),
         })
     }
@@ -4217,8 +4306,27 @@ impl BroadcastMessage {
     }
 
     pub fn set_recipients(&mut self, value: Vec<CommandSender>) {
-        self.patch.recipients = Some(v1::CommandSenderList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .recipients_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.recipients));
+        self.patch.recipients = diff::list(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+        )
+        .map(|diff| v1::CommandSenderListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::CommandSenderReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.recipients = value;
     }
@@ -6172,6 +6280,7 @@ pub struct EntityDeath {
     drops: Vec<ItemStack>,
     entity: Entity,
     entity_type: EntityType,
+    drops_snapshot: Option<Vec<ItemStack>>,
     patch: v1::EntityDeathPatch,
 }
 
@@ -6191,6 +6300,7 @@ impl EntityDeath {
                 .collect::<Result<Vec<_>, _>>()?,
             entity: Entity::from_wire(required(message.entity, "entity")?, link)?,
             entity_type: entity_type(message.entity_type)?,
+            drops_snapshot: None,
             patch: v1::EntityDeathPatch::default(),
         })
     }
@@ -6225,8 +6335,28 @@ impl EntityDeath {
     }
 
     pub fn set_drops(&mut self, value: Vec<ItemStack>) {
-        self.patch.drops = Some(v1::ItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .drops_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.drops));
+        self.patch.drops = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
+        )
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.drops = value;
     }
@@ -6593,6 +6723,7 @@ pub struct EntityExplode {
     explosion_result: ExplosionResult,
     location: Location,
     explosion_yield: f32,
+    block_list_snapshot: Option<Vec<Block>>,
     patch: v1::EntityExplodePatch,
 }
 
@@ -6612,6 +6743,7 @@ impl EntityExplode {
             explosion_result: ExplosionResult::from_wire(message.explosion_result)?,
             location: Location::from_wire(required(message.location, "location")?, link)?,
             explosion_yield: message.explosion_yield,
+            block_list_snapshot: None,
             patch: v1::EntityExplodePatch::default(),
         })
     }
@@ -6645,8 +6777,27 @@ impl EntityExplode {
     }
 
     pub fn set_block_list(&mut self, value: Vec<Block>) {
-        self.patch.block_list = Some(v1::BlockPosList {
-            values: value.iter().map(|value| value.pos.to_wire()).collect(),
+        let snapshot = self
+            .block_list_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.block_list));
+        self.patch.block_list = diff::list(
+            &snapshot
+                .iter()
+                .map(|value| value.pos.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.pos.to_wire()).collect(),
+        )
+        .map(|diff| v1::BlockPosListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::BlockPosReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.block_list = value;
     }
@@ -10747,6 +10898,7 @@ pub struct LootGenerate {
     loot_table: String,
     plugin: bool,
     world: World,
+    loot_snapshot: Option<Vec<ItemStack>>,
     patch: v1::LootGeneratePatch,
 }
 
@@ -10776,6 +10928,7 @@ impl LootGenerate {
             loot_table: message.loot_table,
             plugin: message.plugin,
             world: world(message.world, link),
+            loot_snapshot: None,
             patch: v1::LootGeneratePatch::default(),
         })
     }
@@ -10813,8 +10966,28 @@ impl LootGenerate {
     }
 
     pub fn set_loot(&mut self, value: Vec<ItemStack>) {
-        self.patch.loot = Some(v1::ItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .loot_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.loot));
+        self.patch.loot = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
+        )
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.loot = value;
     }
@@ -12001,6 +12174,7 @@ pub struct PlayerCommandSend {
     id: u64,
     commands: Vec<String>,
     player: Player,
+    commands_snapshot: Option<Vec<String>>,
     patch: v1::PlayerCommandSendPatch,
 }
 
@@ -12010,6 +12184,7 @@ impl PlayerCommandSend {
             id: meta.id,
             commands: message.commands,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            commands_snapshot: None,
             patch: v1::PlayerCommandSendPatch::default(),
         })
     }
@@ -12027,8 +12202,17 @@ impl PlayerCommandSend {
     }
 
     pub fn set_commands(&mut self, value: Vec<String>) {
-        self.patch.commands = Some(v1::StringList {
-            values: value.clone(),
+        let snapshot = self
+            .commands_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.commands));
+        self.patch.commands = diff::list(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
         });
         self.commands = value;
     }
@@ -12096,6 +12280,7 @@ pub struct PlayerDeath {
     new_exp: i32,
     new_level: i32,
     new_total_exp: i32,
+    drops_snapshot: Option<Vec<ItemStack>>,
     patch: v1::PlayerDeathPatch,
 }
 
@@ -12121,6 +12306,7 @@ impl PlayerDeath {
             new_exp: message.new_exp,
             new_level: message.new_level,
             new_total_exp: message.new_total_exp,
+            drops_snapshot: None,
             patch: v1::PlayerDeathPatch::default(),
         })
     }
@@ -12186,8 +12372,28 @@ impl PlayerDeath {
     }
 
     pub fn set_drops(&mut self, value: Vec<ItemStack>) {
-        self.patch.drops = Some(v1::ItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .drops_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.drops));
+        self.patch.drops = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
+        )
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.drops = value;
     }
@@ -12728,6 +12934,7 @@ pub struct PlayerHarvestBlock {
     harvested_block: Block,
     items_harvested: Vec<ItemStack>,
     player: Player,
+    items_harvested_snapshot: Option<Vec<ItemStack>>,
     patch: v1::PlayerHarvestBlockPatch,
 }
 
@@ -12745,6 +12952,7 @@ impl PlayerHarvestBlock {
                 .map(ItemStack::from_wire)
                 .collect::<Result<Vec<_>, _>>()?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            items_harvested_snapshot: None,
             patch: v1::PlayerHarvestBlockPatch::default(),
         })
     }
@@ -12770,8 +12978,28 @@ impl PlayerHarvestBlock {
     }
 
     pub fn set_items_harvested(&mut self, value: Vec<ItemStack>) {
-        self.patch.items_harvested = Some(v1::ItemList {
-            values: value.iter().map(|value| value.to_wire()).collect(),
+        let snapshot = self
+            .items_harvested_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.items_harvested));
+        self.patch.items_harvested = diff::list_by(
+            &snapshot
+                .iter()
+                .map(|value| value.to_wire())
+                .collect::<Vec<_>>(),
+            value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
+        )
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
         });
         self.items_harvested = value;
     }
@@ -16432,6 +16660,7 @@ pub struct ServerListPing {
     motd: String,
     num_players: i32,
     hidden_players: Vec<Uuid>,
+    hidden_players_snapshot: Option<Vec<Uuid>>,
     patch: v1::ServerListPingPatch,
 }
 
@@ -16454,6 +16683,7 @@ impl ServerListPing {
                 .into_iter()
                 .map(uuid)
                 .collect::<Result<Vec<_>, _>>()?,
+            hidden_players_snapshot: None,
             patch: v1::ServerListPingPatch::default(),
         })
     }
@@ -16505,12 +16735,29 @@ impl ServerListPing {
     }
 
     pub fn set_hidden_players(&mut self, value: Vec<Uuid>) {
-        self.patch.hidden_players = Some(v1::StringList {
-            values: value
+        let snapshot = self
+            .hidden_players_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.hidden_players));
+        self.patch.hidden_players = diff::list(
+            &snapshot
+                .iter()
+                .copied()
+                .map(|value| value.hyphenated().to_string())
+                .collect::<Vec<_>>(),
+            value
                 .iter()
                 .copied()
                 .map(|value| value.hyphenated().to_string())
                 .collect(),
+        )
+        .map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
         });
         self.hidden_players = value;
     }
@@ -16695,6 +16942,7 @@ pub struct SignChange {
     lines: Vec<String>,
     player: Player,
     side: Side,
+    lines_snapshot: Option<Vec<String>>,
     patch: v1::SignChangePatch,
 }
 
@@ -16708,6 +16956,7 @@ impl SignChange {
             lines: message.lines,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
             side: Side::from_wire(message.side)?,
+            lines_snapshot: None,
             patch: v1::SignChangePatch::default(),
         })
     }
@@ -16733,8 +16982,17 @@ impl SignChange {
     }
 
     pub fn set_lines(&mut self, value: Vec<String>) {
-        self.patch.lines = Some(v1::StringList {
-            values: value.clone(),
+        let snapshot = self
+            .lines_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.lines));
+        self.patch.lines = diff::slots(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
         });
         self.lines = value;
     }
@@ -17324,6 +17582,7 @@ pub struct TabComplete {
     buffer: String,
     completions: Vec<String>,
     sender: CommandSender,
+    completions_snapshot: Option<Vec<String>>,
     patch: v1::TabCompletePatch,
 }
 
@@ -17336,6 +17595,7 @@ impl TabComplete {
             buffer: message.buffer,
             completions: message.completions,
             sender: CommandSender::from_wire(required(message.sender, "sender")?, link)?,
+            completions_snapshot: None,
             patch: v1::TabCompletePatch::default(),
         })
     }
@@ -17357,9 +17617,19 @@ impl TabComplete {
     }
 
     pub fn set_completions(&mut self, value: Vec<String>) {
-        self.patch.completions = Some(v1::StringList {
-            values: value.clone(),
-        });
+        let snapshot = self
+            .completions_snapshot
+            .get_or_insert_with(|| std::mem::take(&mut self.completions));
+        self.patch.completions =
+            diff::list(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+                removed: diff.removed,
+                replaced: diff
+                    .replaced
+                    .into_iter()
+                    .map(|(index, value)| v1::StringReplacement { index, value })
+                    .collect(),
+                added: diff.added,
+            });
         self.completions = value;
     }
 

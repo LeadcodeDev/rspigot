@@ -7,7 +7,10 @@ use rspigot_core::plugins::events::{
     PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport, PlayerTeleportCause,
     PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
 };
-use rspigot_core::plugins::{EventKind, EventPatch, EventPayload, ItemSpec, Location, PlayerOrder};
+use rspigot_core::plugins::{
+    Answer, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, ListDiff, Location,
+    PlayerOrder, Priority, Question,
+};
 use rspigot_domain::{EntityId, Rotation, Vec3};
 
 const SPAWN: Vec3 = Vec3::new(0.5, 64.0, 0.5);
@@ -403,7 +406,7 @@ fn a_death_with_cleared_drops_and_no_message_drops_nothing_and_says_nothing() {
     let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
     give(&mut s, "give Alice diamond 5");
     kill(&mut s, &alice);
-    let (event, _) = death_of(&s);
+    let (event, death) = death_of(&s);
     bob.link.take();
     alice.link.take();
     rule_on(
@@ -413,7 +416,7 @@ fn a_death_with_cleared_drops_and_no_message_drops_nothing_and_says_nothing() {
         false,
         Some(EventPatch::PlayerDeath(PlayerDeathPatch {
             death_message: Some(None),
-            drops: Some(Vec::new()),
+            drops: replacing(&death.drops, Vec::new()),
             dropped_exp: Some(0),
             ..PlayerDeathPatch::default()
         })),
@@ -509,10 +512,11 @@ fn an_entity_death_handler_also_decides_the_death_of_a_player() {
         false,
         Some(EventPatch::EntityDeath(EntityDeathPatch {
             dropped_exp: None,
-            drops: Some(vec![
-                ItemSpec::of("minecraft:diamond", 5),
-                ItemSpec::of("minecraft:stick", 2),
-            ]),
+            drops: ListDiff {
+                removed: Vec::new(),
+                replaced: Vec::new(),
+                added: vec![ItemSpec::of("minecraft:stick", 2)],
+            },
         })),
     );
     assert_eq!(s.server.items_on_ground(), 2);
@@ -602,6 +606,118 @@ fn the_items_of_a_dying_player_stay_in_the_inventory_until_the_death_settles() {
     assert_eq!(s.server.items_on_ground(), 1);
 }
 
+fn ground_heights(s: &mut Scene) -> Vec<(String, f64)> {
+    let mut heights: Vec<(String, f64)> = s
+        .server
+        .ground_items()
+        .into_iter()
+        .filter_map(|(id, stack)| {
+            let Answer::Entity(details) = s.ask(Question::Entity(id)) else {
+                return None;
+            };
+            Some((
+                stack.item.kind()?.name().to_owned(),
+                details.entity.position.y,
+            ))
+        })
+        .collect();
+    heights.sort_by(|a, b| a.0.cmp(&b.0));
+    heights
+}
+
+#[test]
+fn a_replaced_drop_is_still_thrown_from_the_inventory() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+    let alice = s.players[0].clone();
+    give(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    let (event, death) = death_of(&s);
+    assert_eq!(death.drops, [ItemSpec::of("minecraft:diamond", 5)]);
+    rule_on(
+        &mut s.server,
+        1,
+        event,
+        false,
+        Some(EventPatch::PlayerDeath(PlayerDeathPatch {
+            drops: ListDiff {
+                removed: Vec::new(),
+                replaced: vec![(0, ItemSpec::of("minecraft:diamond", 9))],
+                added: vec![ItemSpec::of("minecraft:stick", 2)],
+            },
+            ..PlayerDeathPatch::default()
+        })),
+    );
+    let heights = ground_heights(&mut s);
+    let [(diamond, thrown), (stick, spawned)] = heights.as_slice() else {
+        panic!("two drops, got {heights:?}");
+    };
+    assert_eq!(
+        (diamond.as_str(), stick.as_str()),
+        ("minecraft:diamond", "minecraft:stick")
+    );
+    assert_eq!(
+        s.server
+            .ground_items()
+            .iter()
+            .map(|(_, stack)| stack.count.get())
+            .max(),
+        Some(9)
+    );
+    assert!(thrown - spawned > 1.0, "{heights:?}");
+}
+
+#[test]
+fn an_entity_death_plugin_and_a_player_death_plugin_both_remove_a_drop() {
+    for later_answers_first in [false, true] {
+        let mut s = scene_with(
+            &["Alice"],
+            vec![HandlerSpec {
+                priority: Priority::Low,
+                ..deciding(1, EventKind::EntityDeath)
+            }],
+        );
+        connect_with(
+            &mut s.server,
+            2,
+            "second",
+            vec![HandlerSpec {
+                priority: Priority::High,
+                ..deciding(1, EventKind::PlayerDeath)
+            }],
+        );
+        let alice = s.players[0].clone();
+        give(&mut s, "give Alice diamond 5");
+        give(&mut s, "give Alice stick 2");
+        kill(&mut s, &alice);
+        let (event, death) = death_of(&s);
+        assert_eq!(death.drops.len(), 2);
+        let gone = |key: &'static str| removing(&death.drops, move |drop| drop.key == key);
+        let mut answers = vec![
+            (
+                1,
+                EventPatch::EntityDeath(EntityDeathPatch {
+                    drops: gone("minecraft:diamond"),
+                    ..EntityDeathPatch::default()
+                }),
+            ),
+            (
+                2,
+                EventPatch::PlayerDeath(PlayerDeathPatch {
+                    drops: gone("minecraft:stick"),
+                    ..PlayerDeathPatch::default()
+                }),
+            ),
+        ];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, event, false, Some(patch));
+        }
+        assert_eq!(s.server.items_on_ground(), 0, "{later_answers_first}");
+    }
+}
+
 #[test]
 fn a_slot_filled_while_the_death_waits_loses_nothing() {
     for keep in [true, false] {
@@ -610,11 +726,11 @@ fn a_slot_filled_while_the_death_waits_loses_nothing() {
         give(&mut s, "give Alice diamond 5");
         kill(&mut s, &alice);
         give(&mut s, "give Alice gold_ingot 2");
-        let (event, _) = death_of(&s);
+        let (event, death) = death_of(&s);
         let patch = keep.then(|| {
             EventPatch::PlayerDeath(PlayerDeathPatch {
                 keep_inventory: Some(true),
-                drops: Some(Vec::new()),
+                drops: replacing(&death.drops, Vec::new()),
                 ..PlayerDeathPatch::default()
             })
         });

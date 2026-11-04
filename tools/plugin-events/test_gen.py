@@ -163,6 +163,61 @@ class Generator(unittest.TestCase):
         self.assertEqual(failed.returncode, 1)
         self.assertIn("MIDDLE_CLICK", failed.stderr)
 
+    def test_every_list_patch_travels_as_a_diff_against_the_snapshot(self):
+        self.assertEqual(generator(self.root).returncode, 0)
+        proto = (self.root / OUTPUTS[0]).read_text()
+        self.assertIn(
+            "message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; "
+            "repeated PlayerSnapshotReplacement replaced = 3; }",
+            proto,
+        )
+        self.assertIn("message ItemReplacement { uint32 index = 1; Item value = 2; }", proto)
+        self.assertRegex(proto, r"message AsyncPlayerChatPatch {[^}]* PlayerSnapshotListDiff recipients = 1004; reserved 4; }")
+        self.assertRegex(proto, r"message EntityDeathPatch {[^}]* ItemListDiff drops = 1003; reserved 3; }")
+        self.assertRegex(proto, r"message ServerListPingPatch {[^}]* StringListDiff hidden_players = 1100; reserved 100; }")
+        self.assertNotRegex(proto, r"(?m)^message \w+List {")
+        core = (self.root / OUTPUTS[1]).read_text()
+        self.assertIn("pub recipients: SetDiff<PlayerSnapshot>,", core)
+        self.assertIn("pub commands: SetDiff<String>,", core)
+        self.assertIn("pub block_list: SetDiff<BlockPos>,", core)
+        self.assertIn("pub hidden_players: SetDiff<Uuid>,", core)
+        self.assertIn("pub drops: ListDiff<ItemSpec>,", core)
+        self.assertIn("pub completions: ListDiff<String>,", core)
+        self.assertIn("recipients: self.recipients.then(later.recipients),", core)
+        self.assertIn("lines: self.lines.then(later.lines),", core)
+        self.assertIn('self.lines.slot_refusal("lines", event.lines.len())', core)
+        sdk = (self.root / OUTPUTS[3]).read_text()
+        self.assertIn("recipients_snapshot: Option<Vec<Player>>,", sdk)
+        self.assertIn("diff::same_item,", sdk)
+        self.assertIn("diff::same_entity,", sdk)
+        self.assertIn("diff::slots(snapshot, value.clone())", sdk)
+
+    def test_a_field_number_past_the_diff_offset_fails_the_generation(self):
+        catalog = self.catalog()
+        event = next(event for event in catalog["events"] if event["name"] == "PlayerJoin")
+        event["getters"].append(
+            {"name": "getMystery", "declared_in": event["java"], "type": "int", "nullable": None, "key": "mystery"}
+        )
+        event["fields"]["mystery"] = 1000
+        self.write_catalog(catalog)
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("PlayerJoin.mystery", failed.stderr)
+
+    def test_a_set_override_on_a_field_that_is_not_a_list_patch_fails_the_generation(self):
+        overrides = self.root / INPUTS[1]
+        overrides.write_text(overrides.read_text() + '\n[events.TabComplete]\nsets = ["getBuffer"]\n')
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("TabComplete: the set getBuffer is not a list patch", failed.stderr)
+
+    def test_a_list_patch_without_its_getter_fails_the_generation(self):
+        overrides = self.root / INPUTS[1]
+        overrides.write_text(overrides.read_text() + '\n[events.TabComplete]\nomit = { getCompletions = "hidden" }\n')
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("TabComplete.completions", failed.stderr)
+
     @unittest.skipUnless(DUMP.exists(), "the API dump is not on this machine")
     def test_check_dump_passes_on_the_api_dump_and_fails_when_the_catalog_lacks_an_event(self):
         self.assertEqual(generator(self.root, "--check-dump", str(DUMP)).returncode, 0)

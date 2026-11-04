@@ -10,6 +10,159 @@ pub struct Verdict {
     pub patch: Option<EventPatch>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListDiff<T, const SET: bool = false> {
+    pub removed: Vec<u32>,
+    pub replaced: Vec<(u32, T)>,
+    pub added: Vec<T>,
+}
+
+pub type SetDiff<T> = ListDiff<T, true>;
+
+impl<T, const SET: bool> Default for ListDiff<T, SET> {
+    fn default() -> Self {
+        Self {
+            removed: Vec::new(),
+            replaced: Vec::new(),
+            added: Vec::new(),
+        }
+    }
+}
+
+impl<T, const SET: bool> ListDiff<T, SET> {
+    pub const fn is_empty(&self) -> bool {
+        self.removed.is_empty() && self.replaced.is_empty() && self.added.is_empty()
+    }
+
+    pub fn keeps(&self, index: usize) -> bool {
+        u32::try_from(index).map_or(true, |index| !self.removed.contains(&index))
+    }
+
+    pub fn replacement(&self, index: usize) -> Option<&T> {
+        let index = u32::try_from(index).ok()?;
+        self.replaced
+            .iter()
+            .find(|(known, _)| *known == index)
+            .map(|(_, value)| value)
+    }
+
+    #[must_use]
+    pub fn then(mut self, later: Self) -> Self {
+        for index in later.removed {
+            if !self.removed.contains(&index) {
+                self.removed.push(index);
+            }
+        }
+        for (index, value) in later.replaced {
+            match self.replaced.iter_mut().find(|(known, _)| *known == index) {
+                Some((_, known)) => *known = value,
+                None => self.replaced.push((index, value)),
+            }
+        }
+        self.added.extend(later.added);
+        self
+    }
+
+    fn merge<U>(
+        self,
+        snapshot: Vec<U>,
+        mut replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
+        if self.is_empty() {
+            return snapshot;
+        }
+        let mut kept = vec![true; snapshot.len()];
+        for index in self.removed {
+            if let Some(slot) = usize::try_from(index)
+                .ok()
+                .and_then(|index| kept.get_mut(index))
+            {
+                *slot = false;
+            }
+        }
+        let mut replacements: Vec<Option<T>> = std::iter::repeat_with(|| None)
+            .take(snapshot.len())
+            .collect();
+        for (index, value) in self.replaced {
+            if let Some(slot) = usize::try_from(index)
+                .ok()
+                .and_then(|index| replacements.get_mut(index))
+            {
+                *slot = Some(value);
+            }
+        }
+        snapshot
+            .into_iter()
+            .zip(kept)
+            .zip(replacements)
+            .filter_map(|((old, kept), new)| match (kept, new) {
+                (false, _) => None,
+                (true, Some(new)) => replace(old, new),
+                (true, None) => Some(old),
+            })
+            .chain(self.added.into_iter().filter_map(add))
+            .collect()
+    }
+
+    pub fn refusal(&self, name: &str, len: usize) -> Option<String> {
+        self.removed
+            .iter()
+            .chain(self.replaced.iter().map(|(index, _)| index))
+            .find(|index| usize::try_from(**index).map_or(true, |index| index >= len))
+            .map(|index| format!("{name} has no element {index}"))
+    }
+
+    pub fn slot_refusal(&self, name: &str, len: usize) -> Option<String> {
+        if self.removed.is_empty() && self.added.is_empty() {
+            self.refusal(name, len)
+        } else {
+            Some(format!(
+                "{name} keeps its length: it only replaces elements in place"
+            ))
+        }
+    }
+}
+
+impl<T> ListDiff<T> {
+    pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
+        self.merge(snapshot, |_, value| Some(value), Some)
+    }
+
+    pub fn apply_with<U>(
+        self,
+        snapshot: Vec<U>,
+        replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
+        self.merge(snapshot, replace, add)
+    }
+}
+
+impl<T: PartialEq> SetDiff<T> {
+    pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
+        self.apply_with(snapshot, |_, value| Some(value), Some)
+    }
+
+    pub fn apply_with<U: PartialEq>(
+        self,
+        snapshot: Vec<U>,
+        replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
+        if self.is_empty() {
+            return snapshot;
+        }
+        let mut unique: Vec<U> = Vec::new();
+        for value in self.merge(snapshot, replace, add) {
+            if !unique.contains(&value) {
+                unique.push(value);
+            }
+        }
+        unique
+    }
+}
+
 pub(crate) fn location_refusal(location: &Location) -> Option<String> {
     let rotation = location.rotation;
     position_of(location.position).err().or_else(|| {
@@ -88,7 +241,8 @@ mod tests {
         EventResult, InventoryClickPatch, InventoryDragPatch, PlayerMovePatch, PlayerVelocityPatch,
         PotionSplashPatch, ServerListPingPatch,
     };
-    use crate::plugins::{EventKind, ItemSpec};
+    use crate::plugins::events::{MapInitialize, ServerListPing};
+    use crate::plugins::{EventKind, EventPayload, ItemSpec};
 
     fn at(x: f64) -> Location {
         Location {
@@ -98,8 +252,178 @@ mod tests {
         }
     }
 
+    const ELSEWHERE: EventPayload = EventPayload::MapInitialize(MapInitialize);
+
     fn moving(to: Option<Location>) -> EventPatch {
         EventPatch::PlayerMove(PlayerMovePatch { to })
+    }
+
+    fn diff(
+        removed: &[u32],
+        replaced: &[(u32, &'static str)],
+        added: &[&'static str],
+    ) -> ListDiff<&'static str> {
+        ListDiff {
+            removed: removed.to_vec(),
+            replaced: replaced.to_vec(),
+            added: added.to_vec(),
+        }
+    }
+
+    const SNAPSHOT: [&str; 4] = ["alice", "bob", "carol", "dave"];
+
+    #[test]
+    fn removals_of_two_handlers_both_apply() {
+        let folded = diff(&[1], &[], &[]).then(diff(&[3], &[], &[]));
+        assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["alice", "carol"]);
+        let folded = diff(&[3], &[], &[]).then(diff(&[1], &[], &[]));
+        assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["alice", "carol"]);
+    }
+
+    #[test]
+    fn additions_append_in_fold_order_after_the_kept_elements() {
+        let folded = diff(&[0], &[], &["erin"])
+            .then(diff(&[], &[], &["frank", "gina"]))
+            .then(diff(&[0, 2], &[], &[]));
+        assert_eq!(folded.removed, [0, 2]);
+        assert_eq!(
+            folded.apply(SNAPSHOT.to_vec()),
+            ["bob", "dave", "erin", "frank", "gina"]
+        );
+    }
+
+    #[test]
+    fn an_element_removed_then_added_back_is_present_once() {
+        let folded = diff(&[1], &[], &[]).then(diff(&[], &[], &["bob"]));
+        assert_eq!(
+            folded.apply(SNAPSHOT.to_vec()),
+            ["alice", "carol", "dave", "bob"]
+        );
+    }
+
+    #[test]
+    fn an_empty_diff_keeps_the_snapshot() {
+        let empty = ListDiff::<&str>::default();
+        assert!(empty.is_empty());
+        assert!(empty.keeps(0));
+        assert_eq!(empty.replacement(0), None);
+        assert_eq!(empty.clone().then(empty.clone()), empty);
+        assert_eq!(empty.apply(SNAPSHOT.to_vec()), SNAPSHOT);
+    }
+
+    #[test]
+    fn a_replaced_element_keeps_its_place() {
+        let folded = diff(&[], &[(1, "bea")], &["erin"]);
+        assert!(!folded.is_empty());
+        assert_eq!(folded.replacement(1), Some(&"bea"));
+        assert_eq!(
+            folded.apply(SNAPSHOT.to_vec()),
+            ["alice", "bea", "carol", "dave", "erin"]
+        );
+    }
+
+    #[test]
+    fn a_removal_by_any_handler_wins_over_a_replacement_in_both_orders() {
+        let removing = diff(&[0], &[], &[]);
+        let replacing = diff(&[], &[(0, "ada")], &[]);
+        for folded in [
+            removing.clone().then(replacing.clone()),
+            replacing.then(removing),
+        ] {
+            assert!(!folded.keeps(0));
+            assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["bob", "carol", "dave"]);
+        }
+    }
+
+    #[test]
+    fn two_replacements_of_one_element_keep_the_later_one() {
+        let earlier = diff(&[], &[(2, "cleo"), (3, "dina")], &[]);
+        let later = diff(&[], &[(2, "cora")], &[]);
+        assert_eq!(
+            earlier.clone().then(later.clone()),
+            diff(&[], &[(2, "cora"), (3, "dina")], &[])
+        );
+        assert_eq!(
+            later.then(earlier).apply(SNAPSHOT.to_vec()),
+            ["alice", "bob", "cleo", "dina"]
+        );
+    }
+
+    #[test]
+    fn a_diff_applies_to_the_server_side_copy_of_the_snapshot() {
+        let folded = diff(&[0, 2], &[(1, "bea"), (2, "cleo")], &["erin", "", "frank"]);
+        assert!(!folded.keeps(0));
+        assert!(folded.keeps(1));
+        let lengths = folded.apply_with(
+            vec![10, 20, 30, 40],
+            |old, name| Some(old + name.len()),
+            |name| (!name.is_empty()).then_some(name.len() * 100),
+        );
+        assert_eq!(lengths, [23, 40, 400, 500]);
+    }
+
+    #[test]
+    fn a_set_keeps_one_of_each_element_and_a_list_keeps_them_all() {
+        let set: SetDiff<&str> = SetDiff {
+            removed: vec![0],
+            replaced: vec![(1, "carol")],
+            added: vec!["erin", "dave", "erin", "alice"],
+        };
+        assert_eq!(
+            set.apply(SNAPSHOT.to_vec()),
+            ["carol", "dave", "erin", "alice"]
+        );
+        let list = diff(&[0], &[(1, "carol")], &["erin", "dave", "erin", "alice"]);
+        assert_eq!(
+            list.apply(SNAPSHOT.to_vec()),
+            ["carol", "carol", "dave", "erin", "dave", "erin", "alice"]
+        );
+        let ids = SetDiff {
+            removed: Vec::new(),
+            replaced: Vec::new(),
+            added: vec!["bob"],
+        };
+        assert_eq!(
+            ids.apply_with(
+                vec![1, 2],
+                |_, name| Some(name.len()),
+                |name| Some(name.len() - 1)
+            ),
+            [1, 2]
+        );
+    }
+
+    #[test]
+    fn a_diff_naming_an_element_the_snapshot_lacks_is_refused() {
+        assert_eq!(
+            diff(&[0, 3], &[(2, "x")], &["erin"]).refusal("recipients", 4),
+            None
+        );
+        assert_eq!(
+            diff(&[1, 4], &[], &[]).refusal("recipients", 4),
+            Some("recipients has no element 4".to_owned())
+        );
+        assert_eq!(
+            diff(&[], &[(5, "x")], &[]).refusal("recipients", 4),
+            Some("recipients has no element 5".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_array_only_takes_replacements() {
+        assert_eq!(diff(&[], &[(3, "x")], &[]).slot_refusal("lines", 4), None);
+        assert_eq!(
+            diff(&[0], &[], &[]).slot_refusal("lines", 4),
+            Some("lines keeps its length: it only replaces elements in place".to_owned())
+        );
+        assert_eq!(
+            diff(&[], &[], &["x"]).slot_refusal("lines", 4),
+            Some("lines keeps its length: it only replaces elements in place".to_owned())
+        );
+        assert_eq!(
+            diff(&[], &[(4, "x")], &[]).slot_refusal("lines", 4),
+            Some("lines has no element 4".to_owned())
+        );
     }
 
     #[test]
@@ -127,27 +451,40 @@ mod tests {
         png
     }
 
+    fn pinged() -> EventPayload {
+        EventPayload::ServerListPing(ServerListPing {
+            address: std::net::IpAddr::from([127, 0, 0, 1]),
+            hostname: "localhost".to_owned(),
+            players: Vec::new(),
+            max_players: 20,
+            motd: "A Minecraft Server".to_owned(),
+            num_players: 0,
+            hidden_players: Vec::new(),
+        })
+    }
+
     #[test]
     fn a_server_icon_must_be_a_64_pixel_square_png() {
+        let pinged = pinged();
         let icon = |png| {
             EventPatch::ServerListPing(ServerListPingPatch {
                 server_icon: Some(png),
                 ..ServerListPingPatch::default()
             })
         };
-        assert_eq!(icon(png(64, 64)).refusal(), None);
+        assert_eq!(icon(png(64, 64)).refusal(&pinged), None);
         assert_eq!(
-            EventPatch::ServerListPing(ServerListPingPatch::default()).refusal(),
+            EventPatch::ServerListPing(ServerListPingPatch::default()).refusal(&pinged),
             None
         );
         assert_eq!(
-            icon(png(64, 32)).refusal(),
+            icon(png(64, 32)).refusal(&pinged),
             Some("server_icon is a 64x32 image, not 64x64".to_owned())
         );
         let mut heavy = png(64, 64);
         heavy.resize(24_600, 0);
         assert_eq!(
-            icon(heavy).refusal(),
+            icon(heavy).refusal(&pinged),
             Some(
                 "server_icon takes 32822 characters once encoded, more than a status answer holds (32767)"
                     .to_owned()
@@ -155,11 +492,11 @@ mod tests {
         );
         let mut largest = png(64, 64);
         largest.resize(24_558, 0);
-        assert_eq!(icon(largest).refusal(), None);
+        assert_eq!(icon(largest).refusal(&pinged), None);
         let truncated = png(64, 64)[..20].to_vec();
         for broken in [Vec::new(), b"GIF89a".to_vec(), truncated] {
             assert_eq!(
-                icon(broken).refusal(),
+                icon(broken).refusal(&pinged),
                 Some("server_icon is not a PNG image".to_owned())
             );
         }
@@ -173,21 +510,21 @@ mod tests {
                 ..ServerListPingPatch::default()
             })
         };
-        assert_eq!(motd("é".repeat(32_767)).refusal(), None);
+        assert_eq!(motd("é".repeat(32_767)).refusal(&pinged()), None);
         assert_eq!(
-            motd("a".repeat(32_768)).refusal(),
+            motd("a".repeat(32_768)).refusal(&pinged()),
             Some("motd is 32768 characters long, more than 32767".to_owned())
         );
         assert_eq!(
-            motd("🙂".repeat(16_384)).refusal(),
+            motd("🙂".repeat(16_384)).refusal(&pinged()),
             Some("motd is 32768 characters long, more than 32767".to_owned())
         );
     }
 
     #[test]
     fn a_destination_outside_the_world_is_refused() {
-        assert_eq!(moving(Some(at(1.0))).refusal(), None);
-        assert_eq!(moving(None).refusal(), None);
+        assert_eq!(moving(Some(at(1.0))).refusal(&ELSEWHERE), None);
+        assert_eq!(moving(None).refusal(&ELSEWHERE), None);
         for nowhere in [
             Vec3::new(f64::NAN, 64.0, 0.0),
             Vec3::new(0.0, f64::INFINITY, 0.0),
@@ -195,7 +532,7 @@ mod tests {
         ] {
             let mut location = at(0.0);
             location.position = nowhere;
-            assert!(moving(Some(location)).refusal().is_some());
+            assert!(moving(Some(location)).refusal(&ELSEWHERE).is_some());
         }
     }
 
@@ -206,9 +543,9 @@ mod tests {
                 damage: Some(damage),
             })
         };
-        assert_eq!(damage(2.5).refusal(), None);
+        assert_eq!(damage(2.5).refusal(&ELSEWHERE), None);
         assert_eq!(
-            damage(f64::NAN).refusal(),
+            damage(f64::NAN).refusal(&ELSEWHERE),
             Some("damage NaN is not finite".to_owned())
         );
         let tired = |exhaustion| {
@@ -216,9 +553,9 @@ mod tests {
                 exhaustion: Some(exhaustion),
             })
         };
-        assert_eq!(tired(0.5).refusal(), None);
+        assert_eq!(tired(0.5).refusal(&ELSEWHERE), None);
         assert_eq!(
-            tired(f32::INFINITY).refusal(),
+            tired(f32::INFINITY).refusal(&ELSEWHERE),
             Some("exhaustion inf is not finite".to_owned())
         );
         let pushed = |velocity| {
@@ -226,18 +563,18 @@ mod tests {
                 velocity: Some(velocity),
             })
         };
-        assert_eq!(pushed(Vec3::new(0.0, 1.0, 0.0)).refusal(), None);
+        assert_eq!(pushed(Vec3::new(0.0, 1.0, 0.0)).refusal(&ELSEWHERE), None);
         assert_eq!(
-            pushed(Vec3::new(0.0, f64::NAN, 0.0)).refusal(),
+            pushed(Vec3::new(0.0, f64::NAN, 0.0)).refusal(&ELSEWHERE),
             Some("velocity 0 NaN 0 is not finite".to_owned())
         );
         let mut turned = at(1.0);
         turned.rotation = Rotation::new(f32::NAN, 0.0);
         let teleported = |to| EventPatch::EntityTeleport(EntityTeleportPatch { to: Some(to) });
-        assert_eq!(teleported(None).refusal(), None);
-        assert_eq!(teleported(Some(at(1.0))).refusal(), None);
+        assert_eq!(teleported(None).refusal(&ELSEWHERE), None);
+        assert_eq!(teleported(Some(at(1.0))).refusal(&ELSEWHERE), None);
         assert_eq!(
-            teleported(Some(turned)).refusal(),
+            teleported(Some(turned)).refusal(&ELSEWHERE),
             Some("rotation NaN 0 is not finite".to_owned())
         );
     }
@@ -266,9 +603,9 @@ mod tests {
             intensities(&[(1, 0.5), (2, 0.2)]).then(intensities(&[(1, 0.9), (3, 1.0)])),
             intensities(&[(1, 0.9), (2, 0.2), (3, 1.0)])
         );
-        assert_eq!(intensities(&[(1, 0.5)]).refusal(), None);
+        assert_eq!(intensities(&[(1, 0.5)]).refusal(&ELSEWHERE), None);
         assert_eq!(
-            intensities(&[(1, 0.5), (2, f64::NAN)]).refusal(),
+            intensities(&[(1, 0.5), (2, f64::NAN)]).refusal(&ELSEWHERE),
             Some("intensities NaN is not finite".to_owned())
         );
     }

@@ -14,6 +14,21 @@ use crate::server::{Audience, Server};
 
 const REACTION_TICKS: u64 = 6000;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Recipient {
+    Console,
+    Player(PlayerId),
+}
+
+impl Recipient {
+    fn of(sender: &SenderView) -> Self {
+        match sender {
+            SenderView::Console => Self::Console,
+            SenderView::Player(player) => Self::Player(player.id),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Broadcasts(VecDeque<(u64, u64)>);
 
@@ -47,19 +62,15 @@ impl<L: ClientLink> Server<L> {
         let event = self.next_event_id();
         self.broadcasts.remember(event, tick);
         let text = message.clone();
+        let recipients: Vec<SenderView> = std::iter::once(SenderView::Console)
+            .chain(self.online_snapshots().into_iter().map(SenderView::Player))
+            .collect();
+        let offered = recipients.iter().map(Recipient::of).collect();
         self.fire_numbered(
             Lane::Broadcast,
             event,
-            Continuation::Broadcast(message),
-            move |server| {
-                let recipients = std::iter::once(SenderView::Console)
-                    .chain(
-                        server
-                            .online_snapshots()
-                            .into_iter()
-                            .map(SenderView::Player),
-                    )
-                    .collect();
+            Continuation::Broadcast(message, offered),
+            move |_| {
                 Some(EventPayload::BroadcastMessage(BroadcastMessage {
                     message: text,
                     recipients,
@@ -68,28 +79,29 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(super) fn finish_broadcast(&mut self, message: &str, patch: BroadcastMessagePatch) {
+    pub(super) fn finish_broadcast(
+        &mut self,
+        message: &str,
+        offered: Vec<Recipient>,
+        patch: BroadcastMessagePatch,
+    ) {
         let line = resolve::text(patch.message.as_deref().unwrap_or(message));
-        let Some(recipients) = patch.recipients else {
+        if patch.recipients.is_empty() {
             CommandContext::broadcast(self, line);
             return;
-        };
-        let mut console = false;
-        let mut players: Vec<PlayerId> = Vec::with_capacity(recipients.len());
-        for recipient in recipients {
+        }
+        let settled = patch.recipients.apply_with(
+            offered,
+            |_, sender| Some(Recipient::of(&sender)),
+            |sender| Some(Recipient::of(&sender)),
+        );
+        for recipient in settled {
             match recipient {
-                SenderView::Console => console = true,
-                SenderView::Player(player) if !players.contains(&player.id) => {
-                    players.push(player.id);
+                Recipient::Console => tracing::info!("{}", console_text(&line)),
+                Recipient::Player(id) => {
+                    self.push(Audience::One(id), ClientEvent::system(line.clone()));
                 }
-                SenderView::Player(_) => {}
             }
-        }
-        if console {
-            tracing::info!("{}", console_text(&line));
-        }
-        for player in players {
-            self.push(Audience::One(player), ClientEvent::system(line.clone()));
         }
     }
 }

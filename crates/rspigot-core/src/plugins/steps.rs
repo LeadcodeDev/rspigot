@@ -15,6 +15,7 @@ use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
 use crate::plugins::EventKind;
+use crate::plugins::broadcast::Recipient;
 use crate::plugins::clicks::{CreativePacket, CreativeStep, DragStep, WindowClick, WindowPacket};
 use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 use crate::plugins::furnaces::{ExtractStep, FurnaceStep};
@@ -831,8 +832,8 @@ pub(crate) enum Continuation {
     Leave(LeaveStep),
     Kick(KickStep),
     Settings(SettingsStep),
-    CommandSend(PlayerId),
-    Chat(ChatStep),
+    CommandSend(PlayerId, Vec<String>),
+    Chat(ChatStep, Vec<PlayerId>),
     Command(ChatStep),
     Teleport(TeleportStep),
     Velocity(VelocityStep),
@@ -918,7 +919,7 @@ pub(crate) enum Continuation {
     Ping(Box<PingStep>),
     ServerCommand(String),
     TabComplete(Box<SuggestStep>),
-    Broadcast(String),
+    Broadcast(String, Vec<Recipient>),
 }
 
 impl Continuation {
@@ -932,8 +933,8 @@ impl Continuation {
             Self::Leave(_) => EventKind::PlayerLeave,
             Self::Kick(_) => EventKind::PlayerKick,
             Self::Settings(step) => step.kind,
-            Self::CommandSend(_) => EventKind::PlayerCommandSend,
-            Self::Chat(_) => EventKind::AsyncPlayerChat,
+            Self::CommandSend(..) => EventKind::PlayerCommandSend,
+            Self::Chat(..) => EventKind::AsyncPlayerChat,
             Self::Command(_) => EventKind::PlayerCommandPreprocess,
             Self::Teleport(_) => EventKind::PlayerTeleport,
             Self::Velocity(_) => EventKind::PlayerVelocity,
@@ -1011,7 +1012,7 @@ impl Continuation {
             Self::Ping(_) => EventKind::ServerListPing,
             Self::ServerCommand(_) => EventKind::ServerCommand,
             Self::TabComplete(_) => EventKind::TabComplete,
-            Self::Broadcast(_) => EventKind::BroadcastMessage,
+            Self::Broadcast(..) => EventKind::BroadcastMessage,
         }
     }
 
