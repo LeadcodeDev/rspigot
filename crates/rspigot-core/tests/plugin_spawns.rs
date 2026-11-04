@@ -1,0 +1,371 @@
+mod common;
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use common::*;
+use rspigot_blocks::{Block, GrassBlock, Stone};
+use rspigot_core::config::{GameConfig, LevelData, PluginSettings, SpawningConfig};
+use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
+use rspigot_core::plugins::{
+    Answer, EntityOrder, EntityView, EventKind, EventPayload, ItemSpec, Order, Phase, Question,
+};
+use rspigot_core::ports::ChunkGenerator;
+use rspigot_core::server::Server;
+use rspigot_core::status::StatusBoard;
+use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::spawn::state::{CategorySettings, SpawnSettings};
+use rspigot_domain::world::Dimension;
+use rspigot_domain::{BiomeId, BlockPos, ChunkPos, EntityId, Vec3};
+
+fn console(s: &mut Scene, line: &str) {
+    s.server.handle(Inbound::Console(line.to_owned()));
+    s.server.deliver();
+}
+
+fn spawn(s: &mut Scene, kind: &str, position: Vec3) -> EntityView {
+    let Answer::Spawned(view) = s.ask(Question::Spawn {
+        kind: kind.into(),
+        position,
+    }) else {
+        panic!("expected the spawned {kind}");
+    };
+    view
+}
+
+fn drop_item(s: &mut Scene, position: Vec3) -> EntityView {
+    let Answer::Spawned(view) = s.ask(Question::DropItem {
+        position,
+        item: ItemSpec::of("minecraft:stick", 1),
+    }) else {
+        panic!("expected the dropped stick");
+    };
+    view
+}
+
+fn exists(s: &mut Scene, id: EntityId) -> bool {
+    !matches!(s.ask(Question::Entity(id)), Answer::NotFound)
+}
+
+fn spawned_to(player: &Player, id: EntityId) -> bool {
+    player
+        .link
+        .take()
+        .iter()
+        .any(|event| matches!(event, ClientEvent::SpawnEntity { entity, .. } if *entity == id))
+}
+
+fn reasons(s: &Scene) -> Vec<(Phase, CreatureSpawnReason)> {
+    fired(&s.plugin)
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            EventPayload::CreatureSpawn(spawn) => Some((event.phase, spawn.spawn_reason)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn removals(s: &Scene) -> Vec<(EntityId, EntityRemoveCause)> {
+    fired(&s.plugin)
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            EventPayload::EntityRemove(removed) => Some((removed.entity.id, removed.cause)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_summoned_creature_reaches_the_entity_spawn_and_creature_spawn_handlers() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            observe(1, EventKind::EntitySpawn),
+            observe(2, EventKind::CreatureSpawn),
+            observe(3, EventKind::ItemSpawn),
+        ],
+    );
+    console(&mut s, "summon minecraft:cow 2.5 64 2.5");
+    let cow = spawn(&mut s, "minecraft:cow", Vec3::new(4.5, 64.0, 4.5));
+    assert_eq!(
+        reasons(&s),
+        [
+            (Phase::Settled, CreatureSpawnReason::Command),
+            (Phase::Settled, CreatureSpawnReason::Custom),
+        ]
+    );
+    let heard = s
+        .plugin
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            rspigot_core::plugins::ToPlugin::Event {
+                handlers, payload, ..
+            } => Some((payload.kind(), handlers)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        heard,
+        [
+            (EventKind::CreatureSpawn, vec![1, 2]),
+            (EventKind::CreatureSpawn, vec![1, 2]),
+        ]
+    );
+    let EventPayload::CreatureSpawn(spawn) =
+        &settled_for(&s.plugin, EventKind::CreatureSpawn)[1].payload
+    else {
+        panic!("a creature spawn");
+    };
+    assert_eq!(spawn.entity, cow);
+    assert_eq!(spawn.entity_type, "minecraft:cow");
+    assert_eq!(spawn.location.position, cow.position);
+    assert!(exists(&mut s, cow.id));
+    assert!(s.warnings().is_empty());
+}
+
+#[test]
+fn a_cancelled_creature_spawn_never_enters_the_world_nor_fires_a_removal() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::CreatureSpawn),
+            observe(2, EventKind::EntityRemove),
+            observe(3, EventKind::CreatureSpawn),
+        ],
+    );
+    let alice = s.players[0].clone();
+    let at = Vec3::new(4.5, 64.0, 4.5);
+    stream_chunk_of(&mut s, at.block());
+    let zombie = spawn(&mut s, "minecraft:zombie", at);
+    assert!(!exists(&mut s, zombie.id));
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    s.tick(2);
+    assert!(!exists(&mut s, zombie.id));
+    assert!(!spawned_to(&alice, zombie.id));
+    assert!(removals(&s).is_empty());
+    let settled = settled_for(&s.plugin, EventKind::CreatureSpawn);
+    assert_eq!(settled.len(), 1);
+    assert!(settled[0].cancelled);
+
+    let cow = spawn(&mut s, "minecraft:cow", at);
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    s.tick(1);
+    assert!(exists(&mut s, cow.id));
+    assert!(spawned_to(&alice, cow.id));
+}
+
+#[test]
+fn an_entity_spawn_decider_decides_the_items_of_its_family() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::EntitySpawn)]);
+    let at = Vec3::new(2.5, 64.0, 2.5);
+    let stick = drop_item(&mut s, at);
+    let asked = last_asked(&s.plugin, EventKind::ItemSpawn);
+    let EventPayload::ItemSpawn(spawn) = &asked.payload else {
+        panic!("an item spawn");
+    };
+    assert_eq!(spawn.entity, stick);
+    assert!(!exists(&mut s, stick.id));
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert!(!exists(&mut s, stick.id));
+    let kept = drop_item(&mut s, at);
+    let asked = last_asked(&s.plugin, EventKind::ItemSpawn);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert!(exists(&mut s, kept.id));
+}
+
+#[test]
+fn a_summon_waits_for_its_spawn_to_reply() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::CreatureSpawn)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "op Alice");
+    alice.link.take();
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Command("summon minecraft:cow 2.5 64 2.5".to_owned()),
+    );
+    assert!(system_texts(&alice).is_empty());
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert_eq!(
+        system_texts(&alice),
+        ["Unable to summon entity due to duplicate UUIDs"]
+    );
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Command("summon minecraft:cow 2.5 64 2.5".to_owned()),
+    );
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(
+        system_texts(&alice),
+        ["commands.summon.success entity.minecraft.cow"]
+    );
+}
+
+#[test]
+fn every_removal_carries_its_bukkit_cause() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::EntityRemove)]);
+    let at = Vec3::new(4.5, 64.0, 4.5);
+    stream_chunk_of(&mut s, at.block());
+    let cow = spawn(&mut s, "minecraft:cow", at);
+    s.act(Order::Entity {
+        entity: cow.id,
+        order: EntityOrder::Remove,
+    });
+    let far = Vec3::new(9.5, 64.0, 9.5);
+    let stick = drop_item(&mut s, far);
+    s.act(Order::Entity {
+        entity: stick.id,
+        order: EntityOrder::Kill,
+    });
+    let near = drop_item(&mut s, Vec3::new(0.5, 64.0, 0.5));
+    s.tick(20);
+    assert_eq!(
+        removals(&s),
+        [
+            (cow.id, EntityRemoveCause::Plugin),
+            (stick.id, EntityRemoveCause::Death),
+            (near.id, EntityRemoveCause::Pickup),
+        ]
+    );
+    assert!(s.warnings().is_empty());
+}
+
+struct Meadow;
+
+impl ChunkGenerator for Meadow {
+    fn generate(&self, dimension: &Dimension, pos: ChunkPos) -> ChunkColumn {
+        let plains = BiomeId(rspigot_data::registries::biome_id("minecraft:plains").unwrap_or(0));
+        let mut chunk = ChunkColumn::empty(pos, dimension.height, plains);
+        for x in 0..16 {
+            for z in 0..16 {
+                let (x, z) = (pos.min_block_x() + x, pos.min_block_z() + z);
+                for y in 60..63 {
+                    chunk.set_block(BlockPos::new(x, y, z), Stone::DEFAULT_STATE);
+                }
+                chunk.set_block(BlockPos::new(x, 63, z), GrassBlock::DEFAULT_STATE);
+            }
+        }
+        chunk
+    }
+
+    fn spawn_point(&self, _: &Dimension) -> Vec3 {
+        Vec3::new(8.5, 64.0, 8.5)
+    }
+}
+
+fn meadow(handlers: Vec<rspigot_core::plugins::HandlerSpec>) -> Scene {
+    let every_tick = |limit| CategorySettings {
+        limit,
+        ticks_per: 1,
+    };
+    let config = GameConfig {
+        view_distance: 3,
+        simulation_distance: 3,
+        chunk_workers: 2,
+        spawn_protection: 0,
+        plugins: PluginSettings {
+            decision_ticks: 10_000,
+            ..PluginSettings::default()
+        },
+        spawning: SpawningConfig {
+            categories: SpawnSettings {
+                monster: every_tick(1),
+                creature: every_tick(0),
+                ambient: every_tick(0),
+                axolotls: every_tick(0),
+                underground_water_creature: every_tick(0),
+                water_creature: every_tick(0),
+                water_ambient: every_tick(0),
+            },
+            ..SpawningConfig::default()
+        },
+        ..GameConfig::default()
+    };
+    let level = LevelData {
+        day_time: 18000,
+        daylight_cycle: false,
+        ..LevelData::default()
+    };
+    let mut server: Server<Link> = Server::new(
+        config,
+        level,
+        Arc::new(NoStore),
+        Arc::new(Meadow),
+        StatusBoard::new(20),
+    );
+    server.wait_for_spawn(Duration::from_secs(10));
+    let plugin = connect_with(&mut server, 1, "tester", handlers);
+    let alice = join(&mut server, "Alice");
+    Scene {
+        server,
+        plugin,
+        players: vec![alice],
+    }
+}
+
+fn natural_asks(s: &Scene) -> Vec<u64> {
+    asked_for(&s.plugin, EventKind::CreatureSpawn)
+        .into_iter()
+        .filter(|event| {
+            matches!(&event.payload, EventPayload::CreatureSpawn(spawn)
+                if spawn.spawn_reason == CreatureSpawnReason::Natural)
+        })
+        .map(|event| event.id)
+        .collect()
+}
+
+fn tick_until_asked(s: &mut Scene, count: usize) {
+    for _ in 0..1200 {
+        if natural_asks(s).len() >= count {
+            return;
+        }
+        s.server.wait_for_spawn(Duration::from_millis(5));
+        s.tick(1);
+        for event in s.players[0].link.take() {
+            if let ClientEvent::ChunkBatchFinished { .. } = event {
+                send_input(
+                    &mut s.server,
+                    &s.players[0].clone(),
+                    PlayerInput::ChunkBatchReceived {
+                        chunks_per_tick: 64.0,
+                    },
+                );
+            }
+        }
+    }
+    panic!("the spawner asked {count} natural spawns");
+}
+
+#[test]
+fn a_waiting_natural_spawn_holds_its_slot_and_a_cancelled_one_frees_it() {
+    let mut s = meadow(vec![deciding(1, EventKind::CreatureSpawn)]);
+    tick_until_asked(&mut s, 1);
+    let pack = natural_asks(&s);
+    s.tick(40);
+    assert_eq!(
+        natural_asks(&s),
+        pack,
+        "the waiting pack holds the only slot"
+    );
+    for event in &pack {
+        rule_on(&mut s.server, 1, *event, true, None);
+    }
+    tick_until_asked(&mut s, pack.len() + 1);
+    let second = natural_asks(&s)[pack.len()..].to_vec();
+    for event in &second {
+        rule_on(&mut s.server, 1, *event, false, None);
+    }
+    s.tick(40);
+    assert_eq!(
+        natural_asks(&s).len(),
+        pack.len() + second.len(),
+        "the spawned creatures fill the slot"
+    );
+}

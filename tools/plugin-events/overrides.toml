@@ -89,21 +89,27 @@ WorldSave = "before /save-all, the plugin save orders and the autosave write, an
 SpawnChange = "from /setworldspawn and the plugin spawn order, after the change and only when the spawn moves"
 WeatherChange = "from /weather and the plugin weather order when the rain flag changes, before ThunderChange; a cancel keeps the sky and sends nothing, as there is no natural weather cycle or timer"
 ThunderChange = "from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own"
+CreatureSpawn = "every creature added to the world: NATURAL, COMMAND, CUSTOM, SPAWNER_EGG, BREEDING, REINFORCEMENTS, DROWNED and FROZEN; a waiting natural spawn holds its slot and a cancel frees it; chunk-loaded entities and players fire nothing"
+EntitySpawn = "experience orbs and falling blocks, the entities that are neither creatures, items nor projectiles; its handlers also hear CreatureSpawn, ItemSpawn and ProjectileLaunch"
+ItemSpawn = "every item entity added to the world; a cancel discards it without EntityRemove"
+ProjectileLaunch = "arrows shot by players and skeletons; a cancel discards the arrow"
+EntityRemove = "every removal of an entity in the world, before it leaves, with DEATH, DESPAWN, DROP, EXPLODE, HIT, MERGE, OUT_OF_WORLD, PICKUP, PLUGIN, TRANSFORMATION or UNLOAD; never for players or a cancelled spawn"
+EntityDropItem = "chicken eggs, sheared wool and saddles, the item of a stopped arrow and of a falling block that cannot land; a cancel keeps the rest of the action"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
-    "CreatureSpawn", "EntityBreed", "EntityChangeBlock",
+    "EntityBreed", "EntityChangeBlock",
     "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity", "EntityDamage",
-    "EntityDamageByBlock", "EntityDamageByEntity", "EntityDeath", "EntityDropItem",
+    "EntityDamageByBlock", "EntityDamageByEntity", "EntityDeath",
     "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
     "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
-    "EntityPotionEffect", "EntityRegainHealth", "EntityRemove", "EntityShootBow", "EntitySpawn",
+    "EntityPotionEffect", "EntityRegainHealth", "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
-    "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
+    "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
-    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
+    "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
     "SheepRegrowWool", "SmithItem", "TabComplete",
 ]
 

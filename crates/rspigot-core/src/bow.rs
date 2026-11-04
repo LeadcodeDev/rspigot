@@ -11,6 +11,7 @@ use rspigot_items::ItemKind;
 
 use crate::events::Hand;
 use crate::player::Player;
+use crate::plugins::events::CreatureSpawnReason;
 use crate::ports::ClientLink;
 use crate::projectiles::{EYE_OFFSET, is_arrow_item};
 use crate::server::Server;
@@ -189,7 +190,10 @@ impl<L: ClientLink> Server<L> {
                 shooter_on_ground: shot.on_ground,
             },
         );
-        let _ = self.add_entity(Entity::new(base, EntityState::Arrow(Box::new(state))));
+        self.add_entity(
+            Entity::new(base, EntityState::Arrow(Box::new(state))),
+            CreatureSpawnReason::Default,
+        );
         let pitch = 1.0 / (self.rng.random::<f32>() * 0.4 + 1.2) + shot.power * 0.5;
         self.play_sound(
             None,

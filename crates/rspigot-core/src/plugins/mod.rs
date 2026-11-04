@@ -22,6 +22,7 @@ mod registry;
 mod resolve;
 mod server;
 mod session;
+mod spawns;
 pub(crate) mod steps;
 mod targets;
 mod visibility;
@@ -59,7 +60,8 @@ pub use orders::{
 pub use patch::Verdict;
 pub(crate) use registry::Registry;
 pub(crate) use session::{Arrival, Refusal};
-pub(crate) use steps::{DeathStep, RespawnStep};
+pub(crate) use spawns::{name_of_entity, view_of_entity};
+pub(crate) use steps::{Birth, DeathStep, RespawnStep, Spawned};
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 

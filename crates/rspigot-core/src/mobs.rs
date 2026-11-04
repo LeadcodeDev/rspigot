@@ -40,6 +40,7 @@ use crate::health::{DamageSource, SourceEntity};
 use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
+use crate::plugins::events::EntityRemoveCause;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -109,6 +110,7 @@ pub(crate) struct MobTable {
     pub entries: FxHashMap<EntityId, MobEntry>,
     pub players: Vec<Living>,
     pub spawn_randoms: FxHashMap<EntityId, LegacyRandom>,
+    pub initial_targets: FxHashMap<EntityId, EntityId>,
 }
 
 fn range_of(activation: ActivationType, ranges: &ActivationRanges) -> i32 {
@@ -503,6 +505,9 @@ impl<L: ClientLink> Server<L> {
         let mut ai = MobAi::new(kind, seed, settings);
         if let Some(random) = self.entities.mobs.spawn_randoms.remove(&id) {
             ai.brain_mut().random = random;
+        }
+        if let Some(target) = self.entities.mobs.initial_targets.remove(&id) {
+            ai.set_target(Some(target));
         }
         let hard = self.world.difficulty == Difficulty::Hard;
         if let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) {
@@ -1308,7 +1313,7 @@ impl<L: ClientLink> Server<L> {
         if living {
             self.hurt_mob(id, &DamageSource::new(DamageType::GenericKill), f32::MAX);
         } else {
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Death));
         }
         true
     }

@@ -8,8 +8,8 @@ use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::events::ClientEvent;
 use crate::plugins::events::{
-    PlayerExpChange, PlayerExpChangePatch, PlayerExpCooldownChange, PlayerExpCooldownChangePatch,
-    PlayerExpCooldownChangeReason,
+    CreatureSpawnReason, EntityRemoveCause, PlayerExpChange, PlayerExpChangePatch,
+    PlayerExpCooldownChange, PlayerExpCooldownChangePatch, PlayerExpCooldownChangeReason,
 };
 use crate::plugins::steps::{CooldownStep, OrbStep};
 use crate::plugins::{Continuation, EventPayload, Lane};
@@ -97,7 +97,10 @@ impl<L: ClientLink> Server<L> {
         let mut next_double = || rng.random::<f64>();
         base.velocity = orb::spawn_velocity(&mut next_double);
         let state = OrbState::new(&mut base, value);
-        let _ = self.add_entity(Entity::new(base, EntityState::Orb(state)));
+        self.add_entity(
+            Entity::new(base, EntityState::Orb(state)),
+            CreatureSpawnReason::Default,
+        );
     }
 
     pub(crate) fn tick_orb(&mut self, id: EntityId) {
@@ -115,7 +118,11 @@ impl<L: ClientLink> Server<L> {
             _ => return,
         };
         if below {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::OutOfWorld),
+            );
             return;
         }
         let chunks = &self.world.chunks;
@@ -144,7 +151,11 @@ impl<L: ClientLink> Server<L> {
         let mut next_float = || rng.random::<f32>();
         let expired = orb::after_follow(base, state, chunks, following, stuck, &mut next_float);
         if expired {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Despawn),
+            );
         }
     }
 
@@ -184,7 +195,11 @@ impl<L: ClientLink> Server<L> {
                 state.count += absorbed.count;
                 state.age = state.age.min(absorbed.age);
             }
-            self.remove_entity(other, RemovalReason::Discarded);
+            self.remove_entity(
+                other,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Merge),
+            );
         }
     }
 
@@ -392,7 +407,11 @@ impl<L: ClientLink> Server<L> {
             _ => false,
         };
         if emptied {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Pickup),
+            );
         }
     }
 

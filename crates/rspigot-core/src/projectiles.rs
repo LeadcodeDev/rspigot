@@ -14,7 +14,7 @@ use rspigot_items::{EquipmentSlot, ItemKind};
 
 use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
-use crate::plugins::events::PlayerPickupArrow;
+use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause, PlayerPickupArrow};
 use crate::plugins::steps::ArrowStep;
 use crate::plugins::{Continuation, EventPayload, spec_of};
 use crate::ports::ClientLink;
@@ -106,7 +106,10 @@ impl<L: ClientLink> Server<L> {
             MOB_ARROW_SPEED,
             uncertainty,
         );
-        let _ = self.add_entity(Entity::new(base, EntityState::Arrow(Box::new(state))));
+        self.add_entity(
+            Entity::new(base, EntityState::Arrow(Box::new(state))),
+            CreatureSpawnReason::Default,
+        );
         let mut random = self.mob_random(shooter);
         let pitch = 1.0 / (random.next_float() * 0.4 + 0.8);
         self.store_mob_random(shooter, random);
@@ -282,7 +285,11 @@ impl<L: ClientLink> Server<L> {
         }
         if ground.grounded {
             if ground.despawn {
-                self.remove_entity(id, RemovalReason::Discarded);
+                self.remove_entity(
+                    id,
+                    RemovalReason::Discarded,
+                    Some(EntityRemoveCause::Despawn),
+                );
                 return;
             }
             self.apply_fire_inside(id);
@@ -475,7 +482,7 @@ impl<L: ClientLink> Server<L> {
                     sound_pitch,
                 );
             }
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Hit));
         } else {
             self.restore_fire_ticks(target, saved_fire);
             let Some(Entity {
@@ -494,11 +501,10 @@ impl<L: ClientLink> Server<L> {
             if base.velocity.length_sqr() < STOP_SQR {
                 let pickup = state.pickup == Pickup::Allowed;
                 let item = state.item.clone();
-                let position = base.position;
-                self.remove_entity(id, RemovalReason::Killed);
                 if pickup {
-                    self.spawn_at_location(position, 0.1, item);
+                    self.drop_at_location(id, 0.1, item, Vec3::ZERO);
                 }
+                self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Hit));
             }
         }
     }
@@ -700,7 +706,11 @@ impl<L: ClientLink> Server<L> {
             self.sync_inventory(player_id);
             self.broadcast_held_item(player_id);
         }
-        self.remove_entity(id, RemovalReason::Discarded);
+        self.remove_entity(
+            id,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Pickup),
+        );
     }
 
     pub fn arrows(&self) -> Vec<(EntityId, Vec3, bool)> {

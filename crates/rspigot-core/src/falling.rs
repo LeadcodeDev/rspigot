@@ -18,6 +18,8 @@ use rustc_hash::FxHashSet;
 
 use crate::health::{DamageSource, SourceEntity};
 use crate::loot::{self, LootContext};
+use crate::plugins::EntityView;
+use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -388,7 +390,10 @@ impl<L: ClientLink> Server<L> {
             falling.fall_hurt_amount = hurt.per_distance;
             falling.fall_hurt_max = hurt.max;
         }
-        let _ = self.add_entity(Entity::new(base, EntityState::Falling(falling)));
+        self.add_entity(
+            Entity::new(base, EntityState::Falling(falling)),
+            CreatureSpawnReason::Default,
+        );
     }
 
     fn water_on_path(&self, from: BlockPos, to: BlockPos) -> Option<BlockPos> {
@@ -413,7 +418,7 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         if state.state.is_air() {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(id, RemovalReason::Discarded, None);
             return;
         }
         let original = state.state;
@@ -549,8 +554,9 @@ impl<L: ClientLink> Server<L> {
         let cancel_drop = falling.cancel_drop;
         let drop_item = falling.drop_item;
         let block = falling.state;
+        let dropper = self.entity_view(id);
         if cancel_drop {
-            self.remove_falling(id);
+            self.remove_falling(id, EntityRemoveCause::Despawn);
             return;
         }
         let replaced = self.block_or_air(pos);
@@ -568,17 +574,17 @@ impl<L: ClientLink> Server<L> {
             } else {
                 block
             };
-            self.remove_falling(id);
+            self.remove_falling(id, EntityRemoveCause::Despawn);
             if self.set_block(pos, state) {
                 self.on_land(pos, original, replaced);
             } else if drop_item {
-                self.drop_item(original, pos);
+                self.drop_item(dropper, original, pos);
             }
             return;
         }
-        self.remove_falling(id);
+        self.remove_falling(id, EntityRemoveCause::Drop);
         if drop_item {
-            self.drop_item(original, pos);
+            self.drop_item(dropper, original, pos);
         }
     }
 
@@ -595,20 +601,28 @@ impl<L: ClientLink> Server<L> {
             self.entities.store.get(id).map(|e| &e.state),
             Some(EntityState::Falling(state)) if state.drop_item
         );
-        self.remove_falling(id);
+        let dropper = self.entity_view(id);
+        self.remove_falling(id, EntityRemoveCause::Drop);
         if drop_item {
-            self.drop_item(original, pos);
+            self.drop_item(dropper, original, pos);
         }
     }
 
-    fn drop_item(&mut self, original: BlockStateId, pos: BlockPos) {
-        if let Some(item) = original.kind().and_then(BlockKind::item) {
-            self.spawn_item(pos, ItemStack::new(ItemId(item), NonZeroU8::MIN));
+    fn drop_item(&mut self, dropper: Option<EntityView>, original: BlockStateId, pos: BlockPos) {
+        let Some(item) = original.kind().and_then(BlockKind::item) else {
+            return;
+        };
+        let stack = ItemStack::new(ItemId(item), NonZeroU8::MIN);
+        let launch = self.block_drop_launch(pos);
+        let item = crate::items::launched(launch, stack);
+        match dropper {
+            Some(dropper) => self.drop_from(dropper, item),
+            None => self.add_entity(item, CreatureSpawnReason::Default),
         }
     }
 
-    fn remove_falling(&mut self, id: EntityId) {
-        self.remove_entity(id, RemovalReason::Discarded);
+    fn remove_falling(&mut self, id: EntityId, cause: EntityRemoveCause) {
+        self.remove_entity(id, RemovalReason::Discarded, Some(cause));
     }
 
     pub fn falling_blocks(&self) -> usize {

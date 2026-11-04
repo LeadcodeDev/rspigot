@@ -16,9 +16,9 @@ use rspigot_items::{EquipmentSlot, ItemKind};
 use crate::events::{Animation, ClientEvent, EquipmentSlot as WireSlot, Hand};
 use crate::loot::{self, LootContext};
 use crate::mob_actions::new_mob;
-use crate::plugins::events::{EquipmentSlot as Slot, PlayerShearEntity};
+use crate::plugins::events::{CreatureSpawnReason, EquipmentSlot as Slot, PlayerShearEntity};
 use crate::plugins::steps::ShearStep;
-use crate::plugins::{Continuation, EventPayload, Lane, spec_of};
+use crate::plugins::{Birth, Continuation, EventPayload, Lane, Spawned, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -407,9 +407,17 @@ impl<L: ClientLink> Server<L> {
                 mob.can_pick_up_loot = loot;
             }
         }
-        let _ = self.add_entity(child);
-        self.consume_held(id, hand, 1);
+        self.spawn_entity(
+            child,
+            Birth::of(CreatureSpawnReason::SpawnerEgg)
+                .by(id)
+                .then(Spawned::Hatched { player: id, hand }),
+        );
         true
+    }
+
+    pub(crate) fn use_spawn_egg(&mut self, id: PlayerId, hand: Hand) {
+        self.consume_held(id, hand, 1);
     }
 
     fn shear_saddle(&mut self, id: PlayerId, target: EntityId, hand: Hand) {
@@ -417,7 +425,6 @@ impl<L: ClientLink> Server<L> {
         let Some(entity) = self.entities.store.get_mut(target) else {
             return;
         };
-        let position = entity.base.position;
         let height = f64::from(entity.base.dimensions.height);
         let Some(living) = entity.living_mut() else {
             return;
@@ -432,7 +439,7 @@ impl<L: ClientLink> Server<L> {
                 slots: vec![(WireSlot::Saddle, None)],
             },
         );
-        self.spawn_at_location(position, height, saddle);
+        self.drop_at_location(target, height, saddle, Vec3::ZERO);
         self.entity_sound(target, "minecraft:item.saddle.unequip", 1.0, 1.0);
     }
 
@@ -640,9 +647,6 @@ impl<L: ClientLink> Server<L> {
                     count: NonZeroU8::MIN,
                     ..stack.clone()
                 };
-                let Some(spawned) = self.spawn_at_location(position, 1.0, single) else {
-                    continue;
-                };
                 let mut random = self.mob_random(target);
                 let push = Vec3::new(
                     f64::from((random.next_float() - random.next_float()) * 0.1),
@@ -650,9 +654,7 @@ impl<L: ClientLink> Server<L> {
                     f64::from((random.next_float() - random.next_float()) * 0.1),
                 );
                 self.store_mob_random(target, random);
-                if let Some(item) = self.entities.store.get_mut(spawned) {
-                    item.base.velocity = item.base.velocity + push;
-                }
+                self.drop_at_location(target, 1.0, single, push);
             }
         }
         if let Some(entity) = self.entities.store.get_mut(target) {

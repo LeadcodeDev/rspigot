@@ -6,7 +6,9 @@ use rspigot_domain::{BlockPos, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::events::ClientEvent;
+use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
 use crate::plugins::steps::Announced;
+use crate::plugins::{EntityView, view_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -16,6 +18,18 @@ const ITEM_HEIGHT: f64 = 0.25;
 const PLAYER_HALF_WIDTH: f64 = 0.3;
 const PLAYER_HEIGHT: f64 = 1.8;
 const BELOW_WORLD: i32 = 64;
+
+pub(crate) fn launched(launch: Announced, stack: ItemStack) -> Entity {
+    let Announced {
+        mut base,
+        velocity,
+        yaw,
+    } = launch;
+    base.set_yaw(yaw);
+    base.velocity = velocity;
+    let state = ItemState::new(&mut base, stack, i32::from(PICKUP_DELAY));
+    Entity::new(base, EntityState::Item(state))
+}
 
 fn touches_player(position: Vec3, player: Vec3) -> bool {
     let reach_x = PLAYER_HALF_WIDTH + 1.0 + ITEM_HALF_WIDTH;
@@ -57,15 +71,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn drop_launched(&mut self, launch: Announced, stack: ItemStack) {
-        let Announced {
-            mut base,
-            velocity,
-            yaw,
-        } = launch;
-        base.set_yaw(yaw);
-        base.velocity = velocity;
-        let state = ItemState::new(&mut base, stack, i32::from(PICKUP_DELAY));
-        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
+        self.add_entity(launched(launch, stack), CreatureSpawnReason::Default);
     }
 
     pub(crate) fn spawn_item_from_face(
@@ -115,7 +121,20 @@ impl<L: ClientLink> Server<L> {
         velocity: Vec3,
         pickup_delay: u16,
         stack: ItemStack,
-    ) -> Option<EntityId> {
+    ) -> EntityView {
+        let item = self.item_entity(position, velocity, pickup_delay, stack);
+        let view = view_of_entity(&item);
+        self.add_entity(item, CreatureSpawnReason::Default);
+        view
+    }
+
+    pub(crate) fn item_entity(
+        &mut self,
+        position: Vec3,
+        velocity: Vec3,
+        pickup_delay: u16,
+        stack: ItemStack,
+    ) -> Entity {
         let mut base = self.new_entity_base(Kind::Item);
         base.position = position;
         base.old_position = position;
@@ -123,8 +142,7 @@ impl<L: ClientLink> Server<L> {
         base.set_yaw(yaw);
         base.velocity = velocity;
         let state = ItemState::new(&mut base, stack, i32::from(pickup_delay));
-        self.add_entity(Entity::new(base, EntityState::Item(state)))
-            .ok()
+        Entity::new(base, EntityState::Item(state))
     }
 
     pub(crate) fn tick_item_entity(&mut self, id: EntityId) {
@@ -140,8 +158,10 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        let mut discard = item::stack(base).is_none();
-        if !discard {
+        let mut discard = item::stack(base)
+            .is_none()
+            .then_some(EntityRemoveCause::Despawn);
+        if discard.is_none() {
             base.old_position = base.position;
             base.tick_count = base.tick_count.wrapping_add(1);
             if base.remaining_fire_ticks > 0 {
@@ -153,15 +173,16 @@ impl<L: ClientLink> Server<L> {
             }
             base.set_shared_flag(FLAG_ON_FIRE, base.remaining_fire_ticks > 0);
             if base.position.y < floor {
-                discard = true;
+                discard = Some(EntityRemoveCause::OutOfWorld);
             } else {
                 let mut next_float = || rng.random::<f32>();
                 item::tick_item(base, state, chunks, &mut next_float);
-                discard = i64::from(state.age) >= despawn_after;
+                discard =
+                    (i64::from(state.age) >= despawn_after).then_some(EntityRemoveCause::Despawn);
             }
         }
-        if discard {
-            self.remove_entity(id, RemovalReason::Discarded);
+        if let Some(cause) = discard {
+            self.remove_entity(id, RemovalReason::Discarded, Some(cause));
         }
     }
 
@@ -233,7 +254,11 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn remove_item(&mut self, id: EntityId) {
-        self.remove_entity(id, RemovalReason::Discarded);
+        self.remove_entity(
+            id,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Pickup),
+        );
     }
 
     pub fn ground_items(&self) -> Vec<(EntityId, ItemStack)> {

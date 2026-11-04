@@ -6,6 +6,7 @@ use rspigot_domain::text::Component;
 use uuid::Uuid;
 
 use crate::plugins::Continuation;
+use crate::plugins::events::CreatureSpawnReason;
 use crate::plugins::steps::{DropSource, DropStep, Launch, SelectedDrop};
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -129,6 +130,9 @@ impl<L: ClientLink> Server<L> {
         base.velocity = velocity;
         let mut state = ItemState::new(&mut base, stack, THROWN_PICKUP_DELAY);
         state.thrower = thrower;
-        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
+        self.add_entity(
+            Entity::new(base, EntityState::Item(state)),
+            CreatureSpawnReason::Default,
+        );
     }
 }

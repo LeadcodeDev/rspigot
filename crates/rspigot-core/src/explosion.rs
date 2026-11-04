@@ -12,6 +12,7 @@ use crate::events::ClientEvent;
 use crate::health::DamageSource;
 use crate::loot::{self, LootContext, LootEntity};
 use crate::mobs::ServerRandom;
+use crate::plugins::events::EntityRemoveCause;
 use crate::plugins::steps::ExplodeStep;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -72,7 +73,11 @@ impl<L: ClientLink> Server<L> {
             BlockInteraction::Keep
         };
         self.explode(Some(id), &damage, center, radius, interaction);
-        self.remove_entity(id, RemovalReason::Discarded);
+        self.remove_entity(
+            id,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Explode),
+        );
         true
     }
 
@@ -290,7 +295,7 @@ impl<L: ClientLink> Server<L> {
             _ => false,
         };
         if destroyed {
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Death));
         }
     }
 

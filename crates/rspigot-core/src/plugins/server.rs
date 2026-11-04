@@ -169,10 +169,10 @@ impl<L: ClientLink> Server<L> {
                 .map_or(Answer::NotFound, Answer::Entity),
             Question::Spawn { kind, position } => self
                 .spawn_for_plugin(&kind, position)
-                .map_or_else(Answer::Refused, |id| self.spawned(id)),
+                .map_or_else(Answer::Refused, Answer::Spawned),
             Question::DropItem { position, item } => self
                 .drop_for_plugin(position, &item)
-                .map_or_else(Answer::Refused, |id| self.spawned(id)),
+                .map_or_else(Answer::Refused, Answer::Spawned),
             Question::CustomInventory(inventory) => self
                 .custom_inventory_state(connection, inventory)
                 .map_or(Answer::NotFound, Answer::CustomInventory),
@@ -730,6 +730,14 @@ impl<L: ClientLink> Server<L> {
                 self.finish_thunder(to, cancelled);
                 Vec::new()
             }
+            Continuation::Spawn(step) => {
+                self.finish_spawn(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::EntityDrop(item) => {
+                self.finish_entity_drop(*item, cancelled);
+                Vec::new()
+            }
         }
     }
 
@@ -743,8 +751,10 @@ impl<L: ClientLink> Server<L> {
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::World, Undo::SendBack(_)) => {
-            }
+            (
+                Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::Entity(_) | Lane::World,
+                Undo::SendBack(_),
+            ) => {}
         }
     }
 

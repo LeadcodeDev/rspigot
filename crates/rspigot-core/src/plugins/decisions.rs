@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{BlockPos, ChunkPos, Vec3};
+use rspigot_domain::{BlockPos, ChunkPos, EntityId, Vec3};
 use rustc_hash::FxHashMap;
 
 pub(crate) use crate::plugins::steps::{Continuation, Held, MoveStep, Undo};
@@ -13,6 +13,7 @@ pub(crate) enum Lane {
     Login(u64),
     Block(BlockPos),
     Chunk(ChunkPos),
+    Entity(EntityId),
     World,
 }
 
@@ -362,6 +363,21 @@ impl Decisions {
         self.lanes
             .get(&lane)
             .is_some_and(|queue| queue.iter().any(|queued| matches(queued.then())))
+    }
+
+    pub(crate) fn anywhere(&self, matches: impl Fn(&Continuation) -> bool) -> bool {
+        self.lanes
+            .values()
+            .flatten()
+            .any(|queued| matches(queued.then()))
+    }
+
+    pub(crate) fn waiting(&self) -> impl Iterator<Item = &Continuation> {
+        self.lanes.values().flatten().map(Queued::then)
+    }
+
+    pub(crate) fn current(&self) -> Option<Lane> {
+        self.heads.last().map(|(lane, _)| *lane)
     }
 
     pub(crate) fn queue(&mut self, event: u64, pending: Pending) {
@@ -922,6 +938,26 @@ mod tests {
         assert!(decisions.in_flight(lane, |then| then.kind() == EventKind::PlayerJoin));
         assert!(!decisions.in_flight(lane, Continuation::is_move));
         assert!(!decisions.in_flight(Lane::Login(1), |_| true));
+    }
+
+    #[test]
+    fn the_lane_being_applied_is_the_current_one_and_entries_are_found_in_any_lane() {
+        let alice = PlayerId::offline("Alice");
+        let mob = Lane::Entity(rspigot_domain::EntityId(7));
+        let mut decisions = Decisions::default();
+        assert_eq!(decisions.current(), None);
+        decisions.queue(1, notice(alice, &[7]));
+        decisions.defer(2, mob, Continuation::Notice(EventKind::EntityRemove));
+        assert!(decisions.anywhere(|then| then.kind() == EventKind::EntityRemove));
+        assert!(!decisions.anywhere(|then| then.kind() == EventKind::EntityDeath));
+        assert_eq!(decisions.waiting().count(), 2);
+        decisions.enter(mob);
+        decisions.enter(alice.into());
+        assert_eq!(decisions.current(), Some(Lane::Player(alice)));
+        decisions.leave();
+        assert_eq!(decisions.current(), Some(mob));
+        decisions.leave();
+        assert_eq!(decisions.current(), None);
     }
 
     #[test]

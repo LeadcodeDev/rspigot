@@ -1,7 +1,8 @@
 use crossbeam_channel::Sender;
-use rspigot_domain::entity::EntityBase;
+use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
+use rspigot_domain::random::LegacyRandom;
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
@@ -9,7 +10,7 @@ use crate::commands::CommandSender;
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::explosion::BlockInteraction;
 use crate::plugins::EventKind;
-use crate::plugins::events::PlayerTeleportCause;
+use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Held {
@@ -428,6 +429,68 @@ pub(crate) struct WeatherStep {
 }
 
 #[derive(Debug)]
+pub(crate) enum Spawned {
+    Nothing,
+    Summoned {
+        sender: CommandSender,
+        name: Component,
+    },
+    Hatched {
+        player: PlayerId,
+        hand: Hand,
+    },
+    Converted {
+        old: EntityId,
+        event: i32,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct Birth {
+    pub(crate) reason: CreatureSpawnReason,
+    pub(crate) random: Option<LegacyRandom>,
+    pub(crate) cause: Option<PlayerId>,
+    pub(crate) then: Spawned,
+}
+
+impl Birth {
+    pub(crate) const fn of(reason: CreatureSpawnReason) -> Self {
+        Self {
+            reason,
+            random: None,
+            cause: None,
+            then: Spawned::Nothing,
+        }
+    }
+
+    pub(crate) fn with_random(self, random: LegacyRandom) -> Self {
+        Self {
+            random: Some(random),
+            ..self
+        }
+    }
+
+    pub(crate) fn by(self, cause: PlayerId) -> Self {
+        Self {
+            cause: Some(cause),
+            ..self
+        }
+    }
+
+    pub(crate) fn then(self, then: Spawned) -> Self {
+        Self { then, ..self }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SpawnStep {
+    pub(crate) kind: EventKind,
+    pub(crate) entity: Entity,
+    pub(crate) loaded: bool,
+    pub(crate) birth: Birth,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -484,10 +547,12 @@ pub(crate) enum Continuation {
     SetWeather(Sky),
     Weather(WeatherStep),
     Thunder(bool),
+    Spawn(Box<SpawnStep>),
+    EntityDrop(Box<Entity>),
 }
 
 impl Continuation {
-    pub(crate) const fn kind(&self) -> EventKind {
+    pub(crate) fn kind(&self) -> EventKind {
         match self {
             Self::PlayerMove(_) => EventKind::PlayerMove,
             Self::Notice(kind) => *kind,
@@ -539,6 +604,8 @@ impl Continuation {
             Self::TimeSkip(_) => EventKind::TimeSkip,
             Self::SetWeather(_) | Self::Weather(_) => EventKind::WeatherChange,
             Self::Thunder(_) => EventKind::ThunderChange,
+            Self::Spawn(step) => step.kind,
+            Self::EntityDrop(_) => EventKind::EntityDropItem,
         }
     }
 

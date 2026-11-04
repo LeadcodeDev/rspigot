@@ -11,6 +11,7 @@ use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, EntityStatus};
+use crate::plugins::events::CreatureSpawnReason;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -268,7 +269,7 @@ impl<L: ClientLink> Server<L> {
         if self.config.rules.mob_drops && experience > 0 {
             self.spawn_orb(position, experience);
         }
-        let _ = self.add_entity(child);
+        self.add_entity(child, CreatureSpawnReason::Breeding);
     }
 
     pub(crate) fn set_in_love(&mut self, id: EntityId, cause: Option<uuid::Uuid>) {

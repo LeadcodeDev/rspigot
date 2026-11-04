@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use rspigot_domain::effect::{EffectId, EffectInstance};
 use rspigot_domain::entity::spawn;
-use rspigot_domain::entity::{Aabb, EntityState, living, save};
+use rspigot_domain::entity::{Aabb, Entity, EntityState, living, save};
 use rspigot_domain::item::PLAYER_INVENTORY_SIZE;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::random::LegacyRandom;
@@ -21,7 +21,8 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::ClientEvent;
 use crate::mobs::ServerRandom;
-use crate::plugins::events::{PlayerTeleportCause, TimeSkipReason};
+use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause, TimeSkipReason};
+use crate::plugins::{Birth, Spawned, name_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -524,14 +525,22 @@ impl<L: ClientLink> CommandContext for Server<L> {
 
     fn summon(
         &mut self,
-        _sender: CommandSender,
+        sender: CommandSender,
         kind: Kind,
         position: Vec3,
         nbt: Option<Compound>,
-    ) -> Result<Component, Component> {
+    ) -> Result<(), Component> {
         let failed = |key: &str| Component::translatable(key, Vec::new());
-        let id = self.summon_entity(kind, position, nbt).map_err(failed)?;
-        self.entity_name(id).ok_or_else(|| failed(SUMMON_FAILED))
+        let (entity, random) = self.summon_entity(kind, position, nbt).map_err(failed)?;
+        let name = name_of_entity(&entity);
+        let mut birth = Birth::of(CreatureSpawnReason::Command)
+            .with_random(random)
+            .then(Spawned::Summoned { sender, name });
+        if let CommandSender::Player(player) = sender {
+            birth = birth.by(player);
+        }
+        self.spawn_entity(entity, birth);
+        Ok(())
     }
 }
 
@@ -594,7 +603,7 @@ impl<L: ClientLink> Server<L> {
         kind: Kind,
         position: Vec3,
         nbt: Option<Compound>,
-    ) -> Result<EntityId, &'static str> {
+    ) -> Result<(Entity, LegacyRandom), &'static str> {
         let block = position.block();
         if !(-20_000_000..20_000_000).contains(&block.y)
             || !(-30_000_000..30_000_000).contains(&block.x)
@@ -628,8 +637,7 @@ impl<L: ClientLink> Server<L> {
                 &mut own,
             );
         }
-        self.add_mob_entity(entity, own)
-            .map_err(|_| SUMMON_DUPLICATE_UUID)
+        Ok((entity, own))
     }
 
     pub(crate) fn teleport_player(&mut self, player: PlayerId, position: Vec3) {

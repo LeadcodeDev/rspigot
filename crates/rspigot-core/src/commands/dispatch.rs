@@ -185,7 +185,7 @@ pub trait CommandContext {
         _entity: rspigot_entities::EntityKind,
         _position: Vec3,
         _nbt: Option<Compound>,
-    ) -> Result<Component, Component> {
+    ) -> Result<(), Component> {
         Err(Component::translatable(
             "commands.summon.failed",
             Vec::new(),
@@ -805,13 +805,7 @@ fn summon<C: CommandContext>(
         }
     };
     match ctx.summon(sender, kind, position, nbt) {
-        Ok(name) => {
-            ctx.reply(
-                sender,
-                Component::translatable("commands.summon.success", vec![name]),
-            );
-            Ok(CommandOutcome::Success)
-        }
+        Ok(()) => Ok(CommandOutcome::Success),
         Err(message) => {
             ctx.reply(sender, message.color(NamedColor::Red));
             Err(CommandOutcome::Failure)
