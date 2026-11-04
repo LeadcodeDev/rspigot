@@ -18,7 +18,7 @@ use crate::plugins::steps::{
     BookStep, DigStep, DropSource, DropStep, InteractStep, Launch, UseOnStep, UseStep, WearStep,
 };
 use crate::plugins::targets::{Punched, direction_of};
-use crate::plugins::{EntityView, EventKind, EventPayload, LecternData, spec_of};
+use crate::plugins::{Access, EntityView, EventKind, EventPayload, LecternData, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -327,6 +327,13 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         if player.vitals.is_dead() {
+            return;
+        }
+        if !self
+            .plugins
+            .listens(EventKind::PlayerInteract, Access::Observe)
+        {
+            self.swing_arm(id, hand);
             return;
         }
         let game_mode = player.game_mode;
