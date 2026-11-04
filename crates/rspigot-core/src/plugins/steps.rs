@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crossbeam_channel::Sender;
 use futures_channel::oneshot;
 use rspigot_domain::effect::EffectInstance;
@@ -12,7 +10,7 @@ use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
 use crate::combat::{Strike, Victim};
-use crate::commands::{CommandSender, CommandTree, Target};
+use crate::commands::{CommandSender, Target};
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::explosion::BlockInteraction;
 use crate::health::DamageSource;
@@ -834,7 +832,7 @@ pub(crate) enum Continuation {
     Leave(LeaveStep),
     Kick(KickStep),
     Settings(SettingsStep),
-    CommandSend(PlayerId, Arc<CommandTree>),
+    CommandSend(PlayerId, Vec<String>),
     Chat(ChatStep, Vec<PlayerId>),
     Command(ChatStep),
     Teleport(TeleportStep),

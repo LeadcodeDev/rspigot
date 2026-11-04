@@ -705,8 +705,8 @@ impl<L: ClientLink> Server<L> {
             | Continuation::Wear(_)
             | Continuation::SetWeather(_)
             | Continuation::Strike(_) => Vec::new(),
-            Continuation::CommandSend(id, tree) => {
-                self.finish_command_send(id, &tree, patch_of!(patch, PlayerCommandSend));
+            Continuation::CommandSend(id, offered) => {
+                self.finish_command_send(id, offered, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
             }
             Continuation::Damage(step) => {

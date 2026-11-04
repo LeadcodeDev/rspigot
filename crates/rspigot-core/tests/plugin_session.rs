@@ -943,3 +943,34 @@ fn two_plugins_that_each_remove_a_command_both_prune_it() {
         assert_eq!(sent[0], expected, "{later_answers_first}");
     }
 }
+
+#[test]
+fn a_command_send_settled_after_an_op_prunes_the_operator_tree() {
+    let mut s = scene_with(&[], vec![deciding(1, EventKind::PlayerCommandSend)]);
+    let alice = join(&mut s.server, "Alice");
+    let asked = last_asked(&s.plugin, EventKind::PlayerCommandSend);
+    let EventPayload::PlayerCommandSend(PlayerCommandSend { commands, .. }) = &asked.payload else {
+        panic!("expected a command send");
+    };
+    assert!(commands.iter().any(|name| name == "help"));
+    s.server.handle(Inbound::Console("op Alice".to_owned()));
+    s.server.deliver();
+    alice.link.take();
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
+            commands: removing(commands, |name| name == "help"),
+        })),
+    );
+    let sent = command_roots(&alice);
+    assert_eq!(sent.len(), 1);
+    assert!(!sent[0].iter().any(|name| name == "help"));
+    assert!(
+        sent[0].iter().any(|name| !commands.contains(name)),
+        "the operator commands are sent: {:?}",
+        sent[0]
+    );
+}

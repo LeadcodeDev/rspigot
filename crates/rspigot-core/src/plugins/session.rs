@@ -438,14 +438,18 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn send_commands(&mut self, id: PlayerId) {
-        let Some(operator) = self.players.get(&id).map(|player| player.operator) else {
-            return;
+        let offered = if self.listened(EventKind::PlayerCommandSend) {
+            self.players
+                .get(&id)
+                .map(|player| root_names(&self.command_tree(player.operator)))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
         };
-        let tree = self.command_tree(operator);
-        let described = Arc::clone(&tree);
-        self.fire(id, Continuation::CommandSend(id, tree), move |server| {
+        let described = offered.clone();
+        self.fire(id, Continuation::CommandSend(id, offered), move |server| {
             Some(EventPayload::PlayerCommandSend(PlayerCommandSend {
-                commands: root_names(&described),
+                commands: described,
                 player: server.snapshot_of(id)?,
             }))
         });
@@ -454,16 +458,22 @@ impl<L: ClientLink> Server<L> {
     pub(super) fn finish_command_send(
         &mut self,
         id: PlayerId,
-        tree: &Arc<CommandTree>,
+        offered: Vec<String>,
         patch: PlayerCommandSendPatch,
     ) {
         let Some(player) = self.players.get(&id) else {
             return;
         };
+        let tree = self.command_tree(player.operator);
         let tree = if patch.commands.is_empty() {
-            Arc::clone(tree)
+            tree
         } else {
-            Arc::new(pruned(tree, &patch.commands.apply(root_names(tree))))
+            let settled = patch.commands.apply(offered.clone());
+            let kept: Vec<String> = root_names(&tree)
+                .into_iter()
+                .filter(|name| settled.contains(name) || !offered.contains(name))
+                .collect();
+            Arc::new(pruned(&tree, &kept))
         };
         player.link.send(ClientEvent::Commands(tree));
     }
