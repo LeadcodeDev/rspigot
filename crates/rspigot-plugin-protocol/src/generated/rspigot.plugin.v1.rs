@@ -480,6 +480,12 @@ pub struct BlockPosList {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandSenderList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<CommandSender>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntitySnapshotList {
     #[prost(message, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<EntitySnapshot>,
@@ -525,6 +531,12 @@ pub struct NullableLocation {
 pub struct NullableString {
     #[prost(string, optional, tag = "1")]
     pub value: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSnapshotList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<PlayerSnapshot>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -681,12 +693,14 @@ pub struct AsyncPlayerChat {
     pub recipients: ::prost::alloc::vec::Vec<PlayerSnapshot>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AsyncPlayerChatPatch {
     #[prost(string, optional, tag = "1")]
     pub format: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "2")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "4")]
+    pub recipients: ::core::option::Option<PlayerSnapshotList>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1229,10 +1243,12 @@ pub struct BroadcastMessage {
     pub recipients: ::prost::alloc::vec::Vec<CommandSender>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BroadcastMessagePatch {
     #[prost(string, optional, tag = "1")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub recipients: ::core::option::Option<CommandSenderList>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3077,6 +3093,12 @@ pub struct PlayerHarvestBlock {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerHarvestBlockPatch {
+    #[prost(message, optional, tag = "3")]
+    pub items_harvested: ::core::option::Option<ItemList>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlayerHideEntity {
     #[prost(message, optional, tag = "1")]
     pub entity: ::core::option::Option<EntitySnapshot>,
@@ -3844,6 +3866,8 @@ pub struct ServerListPing {
     pub motd: ::prost::alloc::string::String,
     #[prost(int32, tag = "6")]
     pub num_players: i32,
+    #[prost(string, repeated, tag = "100")]
+    pub hidden_players: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3854,6 +3878,8 @@ pub struct ServerListPingPatch {
     pub motd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bytes = "vec", optional, tag = "8")]
     pub server_icon: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    #[prost(message, optional, tag = "100")]
+    pub hidden_players: ::core::option::Option<StringList>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -4840,7 +4866,7 @@ pub mod event {
 pub struct Patch {
     #[prost(
         oneof = "patch::Change",
-        tags = "10, 11, 12, 13, 16, 17, 18, 24, 27, 28, 30, 31, 32, 33, 34, 35, 36, 43, 47, 49, 53, 54, 55, 56, 60, 61, 62, 65, 66, 67, 70, 73, 75, 76, 77, 78, 79, 80, 81, 85, 86, 87, 89, 90, 95, 96, 98, 99, 102, 106, 107, 108, 109, 114, 115, 117, 118, 119, 120, 121, 122, 123, 127, 130, 131, 133, 142, 147, 153, 154, 155, 157, 160, 161, 163, 165, 166, 167, 168, 169, 176, 178, 179, 181, 182, 187, 189, 190, 195, 200, 202, 204, 210, 215, 216, 218, 220, 227, 228, 229, 230, 234, 236, 237, 244, 246, 247, 249, 252, 255, 259, 260, 261, 262"
+        tags = "10, 11, 12, 13, 16, 17, 18, 24, 27, 28, 30, 31, 32, 33, 34, 35, 36, 43, 47, 49, 53, 54, 55, 56, 60, 61, 62, 65, 66, 67, 70, 73, 75, 76, 77, 78, 79, 80, 81, 85, 86, 87, 89, 90, 95, 96, 98, 99, 102, 106, 107, 108, 109, 114, 115, 117, 118, 119, 120, 121, 122, 123, 127, 130, 131, 133, 142, 147, 153, 154, 155, 157, 160, 161, 163, 165, 166, 167, 168, 169, 171, 176, 178, 179, 181, 182, 187, 189, 190, 195, 200, 202, 204, 210, 215, 216, 218, 220, 227, 228, 229, 230, 234, 236, 237, 244, 246, 247, 249, 252, 255, 259, 260, 261, 262"
     )]
     pub change: ::core::option::Option<patch::Change>,
 }
@@ -5009,6 +5035,8 @@ pub mod patch {
         PlayerExpCooldownChange(super::PlayerExpCooldownChangePatch),
         #[prost(message, tag = "169")]
         PlayerFish(super::PlayerFishPatch),
+        #[prost(message, tag = "171")]
+        PlayerHarvestBlock(super::PlayerHarvestBlockPatch),
         #[prost(message, tag = "176")]
         PlayerInteract(super::PlayerInteractPatch),
         #[prost(message, tag = "178")]

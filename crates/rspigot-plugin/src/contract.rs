@@ -189,6 +189,16 @@ impl CommandSender {
             command_sender::Sender::Console(_) => Self::Console,
         })
     }
+
+    pub(crate) fn to_wire(&self) -> v1::CommandSender {
+        let sender = match self {
+            Self::Player(player) => command_sender::Sender::Player(player.to_snapshot()),
+            Self::Console => command_sender::Sender::Console(v1::Empty {}),
+        };
+        v1::CommandSender {
+            sender: Some(sender),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -477,5 +487,46 @@ impl LootContext {
             killer: entity(context.killer)?,
             looted: entity(context.looted)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn steve() -> v1::PlayerSnapshot {
+        v1::PlayerSnapshot {
+            uuid: "00000000-0000-0000-0000-000000000001".to_owned(),
+            name: "Steve".to_owned(),
+            entity_id: 12,
+            world: "minecraft:overworld".to_owned(),
+            position: Some(v1::Vec3 {
+                x: 1.0,
+                y: 64.0,
+                z: -3.5,
+            }),
+            rotation: Some(v1::Rotation {
+                yaw: 90.0,
+                pitch: -30.0,
+            }),
+            game_mode: v1::GameMode::Creative as i32,
+        }
+    }
+
+    #[test]
+    fn a_player_and_a_sender_go_back_to_the_wire_unchanged() {
+        let link = Link::default();
+        let player = Player::from_snapshot(steve(), &link).unwrap();
+        assert_eq!(player.to_snapshot(), steve());
+        for sender in [
+            command_sender::Sender::Player(steve()),
+            command_sender::Sender::Console(v1::Empty {}),
+        ] {
+            let wire = v1::CommandSender {
+                sender: Some(sender),
+            };
+            let read = CommandSender::from_wire(wire.clone(), &link).unwrap();
+            assert_eq!(read.to_wire(), wire);
+        }
     }
 }

@@ -30,6 +30,8 @@ pub(crate) enum Malformed {
     Player(String),
     #[error("`{0}` is not an entity UUID")]
     Entity(String),
+    #[error("`{0}` is not a UUID")]
+    Uuid(String),
     #[error("the message carries nothing")]
     Empty,
     #[error("the plugin already introduced itself")]

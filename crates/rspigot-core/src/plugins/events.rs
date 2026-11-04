@@ -4287,6 +4287,7 @@ pub struct ServerListPing {
     pub max_players: i32,
     pub motd: String,
     pub num_players: i32,
+    pub hidden_players: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4567,6 +4568,7 @@ impl ArrowBodyCountChangePatch {
 pub struct AsyncPlayerChatPatch {
     pub format: Option<String>,
     pub message: Option<String>,
+    pub recipients: Option<Vec<PlayerSnapshot>>,
 }
 
 impl AsyncPlayerChatPatch {
@@ -4574,6 +4576,7 @@ impl AsyncPlayerChatPatch {
         Self {
             format: later.format.or(self.format),
             message: later.message.or(self.message),
+            recipients: later.recipients.or(self.recipients),
         }
     }
 
@@ -4583,6 +4586,9 @@ impl AsyncPlayerChatPatch {
         }
         if let Some(value) = self.message {
             event.message = value;
+        }
+        if let Some(value) = self.recipients {
+            event.recipients = value;
         }
     }
 }
@@ -4939,18 +4945,23 @@ impl BrewingStartPatch {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BroadcastMessagePatch {
     pub message: Option<String>,
+    pub recipients: Option<Vec<SenderView>>,
 }
 
 impl BroadcastMessagePatch {
     fn then(self, later: Self) -> Self {
         Self {
             message: later.message.or(self.message),
+            recipients: later.recipients.or(self.recipients),
         }
     }
 
     fn settle(self, event: &mut BroadcastMessage) {
         if let Some(value) = self.message {
             event.message = value;
+        }
+        if let Some(value) = self.recipients {
+            event.recipients = value;
         }
     }
 }
@@ -6328,6 +6339,25 @@ impl PlayerFishPatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlayerHarvestBlockPatch {
+    pub items_harvested: Option<Vec<ItemSpec>>,
+}
+
+impl PlayerHarvestBlockPatch {
+    fn then(self, later: Self) -> Self {
+        Self {
+            items_harvested: later.items_harvested.or(self.items_harvested),
+        }
+    }
+
+    fn settle(self, event: &mut PlayerHarvestBlock) {
+        if let Some(value) = self.items_harvested {
+            event.items_harvested = value;
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerInteractPatch {
     pub use_interacted_block: Option<EventResult>,
     pub use_item_in_hand: Option<EventResult>,
@@ -6866,6 +6896,7 @@ pub struct ServerListPingPatch {
     pub max_players: Option<i32>,
     pub motd: Option<String>,
     pub server_icon: Option<Vec<u8>>,
+    pub hidden_players: Option<Vec<Uuid>>,
 }
 
 impl ServerListPingPatch {
@@ -6874,6 +6905,7 @@ impl ServerListPingPatch {
             max_players: later.max_players.or(self.max_players),
             motd: later.motd.or(self.motd),
             server_icon: later.server_icon.or(self.server_icon),
+            hidden_players: later.hidden_players.or(self.hidden_players),
         }
     }
 
@@ -6883,6 +6915,9 @@ impl ServerListPingPatch {
         }
         if let Some(value) = self.motd {
             event.motd = value;
+        }
+        if let Some(value) = self.hidden_players {
+            event.hidden_players = value;
         }
     }
 }
@@ -7777,6 +7812,7 @@ pub enum EventPatch {
     PlayerExpChange(PlayerExpChangePatch),
     PlayerExpCooldownChange(PlayerExpCooldownChangePatch),
     PlayerFish(PlayerFishPatch),
+    PlayerHarvestBlock(PlayerHarvestBlockPatch),
     PlayerInteract(PlayerInteractPatch),
     PlayerItemConsume(PlayerItemConsumePatch),
     PlayerItemDamage(PlayerItemDamagePatch),
@@ -7896,6 +7932,7 @@ impl EventPatch {
             Self::PlayerExpChange(_) => EventKind::PlayerExpChange,
             Self::PlayerExpCooldownChange(_) => EventKind::PlayerExpCooldownChange,
             Self::PlayerFish(_) => EventKind::PlayerFish,
+            Self::PlayerHarvestBlock(_) => EventKind::PlayerHarvestBlock,
             Self::PlayerInteract(_) => EventKind::PlayerInteract,
             Self::PlayerItemConsume(_) => EventKind::PlayerItemConsume,
             Self::PlayerItemDamage(_) => EventKind::PlayerItemDamage,
@@ -8166,6 +8203,9 @@ impl EventPatch {
             }
             (Self::PlayerFish(earlier), Self::PlayerFish(later)) => {
                 Self::PlayerFish(earlier.then(later))
+            }
+            (Self::PlayerHarvestBlock(earlier), Self::PlayerHarvestBlock(later)) => {
+                Self::PlayerHarvestBlock(earlier.then(later))
             }
             (Self::PlayerInteract(earlier), Self::PlayerInteract(later)) => {
                 Self::PlayerInteract(earlier.then(later))
@@ -8453,6 +8493,9 @@ impl EventPatch {
                 EventPayload::PlayerExpCooldownChange(event),
             ) => patch.settle(event),
             (Self::PlayerFish(patch), EventPayload::PlayerFish(event)) => patch.settle(event),
+            (Self::PlayerHarvestBlock(patch), EventPayload::PlayerHarvestBlock(event)) => {
+                patch.settle(event)
+            }
             (Self::PlayerInteract(patch), EventPayload::PlayerInteract(event)) => {
                 patch.settle(event)
             }
@@ -8705,6 +8748,7 @@ impl EventPatch {
                 Some(patch)
             }
             (patch @ Self::PlayerFish(_), EventKind::PlayerFish) => Some(patch),
+            (patch @ Self::PlayerHarvestBlock(_), EventKind::PlayerHarvestBlock) => Some(patch),
             (patch @ Self::PlayerInteract(_), EventKind::PlayerInteract) => Some(patch),
             (patch @ Self::PlayerItemConsume(_), EventKind::PlayerItemConsume) => Some(patch),
             (patch @ Self::PlayerItemDamage(_), EventKind::PlayerItemDamage) => Some(patch),
