@@ -517,6 +517,7 @@ fn cow_ai_is_rebuilt_after_reload_and_keeps_its_home() {
     walk(&mut server, &alice, Vec3::new(2000.5, 64.0, 2000.5));
     pump(&mut server, &mut alice, 10);
     assert!(server.entities_of(Kind::Cow).is_empty());
+    server.wait_for_entity_saves();
     let saved = store.stored(ChunkPos::new(6, 6));
     assert_eq!(saved.len(), 1);
     assert_eq!(saved[0].get_i32("home_radius"), Some(8));
