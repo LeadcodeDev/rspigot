@@ -27,17 +27,17 @@ use rspigot_core::plugins::events::{
     PlayerBucketEmptyPatch, PlayerBucketFillPatch, PlayerCommandPreprocessPatch,
     PlayerCommandSendPatch, PlayerDeathPatch, PlayerEditBookPatch, PlayerEggThrowPatch,
     PlayerExpChangePatch, PlayerExpCooldownChangePatch, PlayerExpCooldownChangeReason,
-    PlayerFishPatch, PlayerFishState, PlayerInteractPatch, PlayerItemConsumePatch,
-    PlayerItemDamagePatch, PlayerItemMendPatch, PlayerJoinPatch, PlayerKickPatch, PlayerLeavePatch,
-    PlayerLoginPatch, PlayerLoginResult, PlayerMovePatch, PlayerPortalPatch,
-    PlayerRecipeBookClickPatch, PlayerRecipeBookSettingsChangeRecipeBookType, PlayerRespawnPatch,
-    PlayerRespawnReason, PlayerSignOpenCause, PlayerSpawnChangeCause, PlayerSpawnChangePatch,
-    PlayerSwapHandItemsPatch, PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocityPatch,
-    PortalCreateReason, Pose, PrepareAnvilPatch, PrepareGrindstonePatch, PrepareItemCraftPatch,
-    PrepareSmithingPatch, RaidStopReason, RemoteServerCommandPatch, ResourcePackStatus,
-    SculkBloomPatch, ServerCommandPatch, ServerListPingPatch, ServerLoadType, SheepDyeWoolPatch,
-    Side, SignChangePatch, SmithItemPatch, SpellcasterSpell, Statistic, TNTPrimeCause,
-    TabCompletePatch, TimeSkipPatch, TimeSkipReason, TradeSelectPatch, TreeType,
+    PlayerFishPatch, PlayerFishState, PlayerHarvestBlockPatch, PlayerInteractPatch,
+    PlayerItemConsumePatch, PlayerItemDamagePatch, PlayerItemMendPatch, PlayerJoinPatch,
+    PlayerKickPatch, PlayerLeavePatch, PlayerLoginPatch, PlayerLoginResult, PlayerMovePatch,
+    PlayerPortalPatch, PlayerRecipeBookClickPatch, PlayerRecipeBookSettingsChangeRecipeBookType,
+    PlayerRespawnPatch, PlayerRespawnReason, PlayerSignOpenCause, PlayerSpawnChangeCause,
+    PlayerSpawnChangePatch, PlayerSwapHandItemsPatch, PlayerTeleportCause, PlayerTeleportPatch,
+    PlayerVelocityPatch, PortalCreateReason, Pose, PrepareAnvilPatch, PrepareGrindstonePatch,
+    PrepareItemCraftPatch, PrepareSmithingPatch, RaidStopReason, RemoteServerCommandPatch,
+    ResourcePackStatus, SculkBloomPatch, ServerCommandPatch, ServerListPingPatch, ServerLoadType,
+    SheepDyeWoolPatch, Side, SignChangePatch, SmithItemPatch, SpellcasterSpell, Statistic,
+    TNTPrimeCause, TabCompletePatch, TimeSkipPatch, TimeSkipReason, TradeSelectPatch, TreeType,
     VaultDisplayItemPatch, VehicleDamagePatch, VehicleEntityCollisionPatch,
     VillagerAcquireTradePatch, VillagerCareerChangePatch, VillagerCareerChangeReason,
     VillagerReplenishTradePatch, VillagerReputationChangePatch,
@@ -1904,6 +1904,11 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
             max_players: event.max_players,
             motd: event.motd,
             num_players: event.num_players,
+            hidden_players: event
+                .hidden_players
+                .into_iter()
+                .map(|value| value.hyphenated().to_string())
+                .collect(),
         }),
         EventPayload::ServerLoad(event) => event::Payload::ServerLoad(v1::ServerLoad {
             load_type: server_load_type_to_wire(event.load_type) as i32,
@@ -2132,6 +2137,15 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
                 format: patch.format,
                 message: patch.message,
+                recipients: patch
+                    .recipients
+                    .map(|list| {
+                        list.values
+                            .into_iter()
+                            .map(player::snapshot)
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .transpose()?,
             })
         }
         patch::Change::AsyncPlayerPreLogin(patch) => {
@@ -2214,6 +2228,15 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::BroadcastMessage(patch) => {
             EventPatch::BroadcastMessage(BroadcastMessagePatch {
                 message: patch.message,
+                recipients: patch
+                    .recipients
+                    .map(|list| {
+                        list.values
+                            .into_iter()
+                            .map(contract::command_sender)
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .transpose()?,
             })
         }
         patch::Change::CampfireStart(patch) => EventPatch::CampfireStart(CampfireStartPatch {
@@ -2514,6 +2537,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::PlayerFish(patch) => EventPatch::PlayerFish(PlayerFishPatch {
             exp_to_drop: patch.exp_to_drop,
         }),
+        patch::Change::PlayerHarvestBlock(patch) => {
+            EventPatch::PlayerHarvestBlock(PlayerHarvestBlockPatch {
+                items_harvested: patch
+                    .items_harvested
+                    .map(|list| list.values.into_iter().map(shared::item).collect()),
+            })
+        }
         patch::Change::PlayerInteract(patch) => EventPatch::PlayerInteract(PlayerInteractPatch {
             use_interacted_block: patch
                 .use_interacted_block
@@ -2632,6 +2662,15 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             max_players: patch.max_players,
             motd: patch.motd,
             server_icon: patch.server_icon,
+            hidden_players: patch
+                .hidden_players
+                .map(|list| {
+                    list.values
+                        .into_iter()
+                        .map(shared::uuid)
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?,
         }),
         patch::Change::SheepDyeWool(patch) => EventPatch::SheepDyeWool(SheepDyeWoolPatch {
             color: patch.color.map(dye_color_from_wire).transpose()?,

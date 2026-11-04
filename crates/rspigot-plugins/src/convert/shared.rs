@@ -5,8 +5,13 @@ use rspigot_core::plugins::{
 };
 use rspigot_domain::{BlockPos, Rotation, Vec3};
 use rspigot_plugin_protocol::v1::{self, particle};
+use uuid::Uuid;
 
 use super::Malformed;
+
+pub(super) fn uuid(raw: String) -> Result<Uuid, Malformed> {
+    Uuid::parse_str(&raw).map_err(|_| Malformed::Uuid(raw))
+}
 
 pub(super) fn required<T>(field: Option<T>) -> Result<T, Malformed> {
     field.ok_or(Malformed::Empty)

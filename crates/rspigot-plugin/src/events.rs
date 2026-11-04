@@ -1586,6 +1586,13 @@ impl AsyncPlayerChat {
         self.message = value;
     }
 
+    pub fn set_recipients(&mut self, value: Vec<Player>) {
+        self.patch.recipients = Some(v1::PlayerSnapshotList {
+            values: value.iter().map(|value| value.to_snapshot()).collect(),
+        });
+        self.recipients = value;
+    }
+
     pub const fn cancel(&mut self) {
         self.cancelled = true;
     }
@@ -4178,6 +4185,13 @@ impl BroadcastMessage {
     pub fn set_message(&mut self, value: String) {
         self.patch.message = Some(value.clone());
         self.message = value;
+    }
+
+    pub fn set_recipients(&mut self, value: Vec<CommandSender>) {
+        self.patch.recipients = Some(v1::CommandSenderList {
+            values: value.iter().map(|value| value.to_wire()).collect(),
+        });
+        self.recipients = value;
     }
 
     pub const fn cancel(&mut self) {
@@ -12689,6 +12703,7 @@ pub struct PlayerHarvestBlock {
     harvested_block: Block,
     items_harvested: Vec<ItemStack>,
     player: Player,
+    patch: v1::PlayerHarvestBlockPatch,
 }
 
 impl PlayerHarvestBlock {
@@ -12705,6 +12720,7 @@ impl PlayerHarvestBlock {
                 .map(ItemStack::from_wire)
                 .collect::<Result<Vec<_>, _>>()?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            patch: v1::PlayerHarvestBlockPatch::default(),
         })
     }
 
@@ -12728,6 +12744,13 @@ impl PlayerHarvestBlock {
         &self.player
     }
 
+    pub fn set_items_harvested(&mut self, value: Vec<ItemStack>) {
+        self.patch.items_harvested = Some(v1::ItemList {
+            values: value.iter().map(|value| value.to_wire()).collect(),
+        });
+        self.items_harvested = value;
+    }
+
     pub const fn cancel(&mut self) {
         self.cancelled = true;
     }
@@ -12745,7 +12768,11 @@ impl From<PlayerHarvestBlock> for Verdict {
     fn from(event: PlayerHarvestBlock) -> Self {
         Self {
             cancel: event.cancelled,
-            patch: None,
+            patch: (event.patch != v1::PlayerHarvestBlockPatch::default()).then(|| {
+                Box::new(v1::Patch {
+                    change: Some(patch::Change::PlayerHarvestBlock(event.patch)),
+                })
+            }),
         }
     }
 }
@@ -16335,6 +16362,7 @@ pub struct ServerListPing {
     max_players: i32,
     motd: String,
     num_players: i32,
+    hidden_players: Vec<Uuid>,
     patch: v1::ServerListPingPatch,
 }
 
@@ -16352,6 +16380,11 @@ impl ServerListPing {
             max_players: message.max_players,
             motd: message.motd,
             num_players: message.num_players,
+            hidden_players: message
+                .hidden_players
+                .into_iter()
+                .map(uuid)
+                .collect::<Result<Vec<_>, _>>()?,
             patch: v1::ServerListPingPatch::default(),
         })
     }
@@ -16384,6 +16417,10 @@ impl ServerListPing {
         self.num_players
     }
 
+    pub fn hidden_players(&self) -> &[Uuid] {
+        &self.hidden_players
+    }
+
     pub fn set_max_players(&mut self, value: i32) {
         self.patch.max_players = Some(value);
         self.max_players = value;
@@ -16396,6 +16433,17 @@ impl ServerListPing {
 
     pub fn set_server_icon(&mut self, value: Vec<u8>) {
         self.patch.server_icon = Some(value.clone());
+    }
+
+    pub fn set_hidden_players(&mut self, value: Vec<Uuid>) {
+        self.patch.hidden_players = Some(v1::StringList {
+            values: value
+                .iter()
+                .copied()
+                .map(|value| value.hyphenated().to_string())
+                .collect(),
+        });
+        self.hidden_players = value;
     }
 }
 

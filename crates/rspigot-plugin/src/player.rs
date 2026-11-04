@@ -118,6 +118,18 @@ impl Player {
         })
     }
 
+    pub(crate) fn to_snapshot(&self) -> v1::PlayerSnapshot {
+        v1::PlayerSnapshot {
+            uuid: self.uuid.hyphenated().to_string(),
+            name: self.name.clone(),
+            entity_id: self.entity_id,
+            world: self.world.clone(),
+            position: Some(self.position.to_wire()),
+            rotation: Some(self.rotation.to_wire()),
+            game_mode: self.game_mode.to_wire() as i32,
+        }
+    }
+
     pub fn send_message(&self, text: impl Into<String>) {
         self.order(Order::SendMessage(text.into()));
     }

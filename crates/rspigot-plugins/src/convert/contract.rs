@@ -93,6 +93,13 @@ pub(super) fn wire_damage_source(source: DamageSourceView) -> v1::DamageSource {
     }
 }
 
+pub(super) fn command_sender(sender: v1::CommandSender) -> Result<SenderView, Malformed> {
+    Ok(match required(sender.sender)? {
+        command_sender::Sender::Player(player) => SenderView::Player(player::snapshot(player)?),
+        command_sender::Sender::Console(_) => SenderView::Console,
+    })
+}
+
 pub(super) fn wire_command_sender(sender: SenderView) -> v1::CommandSender {
     let sender = match sender {
         SenderView::Player(player) => command_sender::Sender::Player(wire_player(player)),
@@ -254,6 +261,7 @@ pub(super) fn wire_loot_context(context: LootContext) -> v1::LootContext {
 
 #[cfg(test)]
 mod tests {
+    use rspigot_core::plugins::PlayerSnapshot;
     use rspigot_domain::player::PlayerId;
     use rspigot_domain::{BlockPos, Rotation, Vec3};
     use uuid::Uuid;
@@ -291,5 +299,25 @@ mod tests {
             ..v1::InventoryRef::default()
         };
         assert!(inventory_ref(stranger).is_err());
+    }
+
+    #[test]
+    fn a_command_sender_survives_the_round_trip() {
+        let steve = PlayerSnapshot {
+            id: PlayerId(Uuid::from_u128(1)),
+            name: "Steve".to_owned(),
+            entity_id: 12,
+            world: "minecraft:overworld".to_owned(),
+            position: Vec3::new(1.0, 64.0, -3.5),
+            rotation: Rotation::new(90.0, -30.0),
+            game_mode: rspigot_domain::player::GameMode::Creative,
+        };
+        for sender in [SenderView::Player(steve), SenderView::Console] {
+            assert_eq!(
+                command_sender(wire_command_sender(sender.clone())).ok(),
+                Some(sender)
+            );
+        }
+        assert!(command_sender(v1::CommandSender::default()).is_err());
     }
 }

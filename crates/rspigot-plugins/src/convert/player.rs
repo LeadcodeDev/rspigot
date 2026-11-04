@@ -142,6 +142,18 @@ pub(super) fn wire_state(state: PlayerState) -> v1::PlayerState {
     }
 }
 
+pub(super) fn snapshot(player: v1::PlayerSnapshot) -> Result<PlayerSnapshot, Malformed> {
+    Ok(PlayerSnapshot {
+        id: id(player.uuid)?,
+        name: player.name,
+        entity_id: player.entity_id,
+        world: player.world,
+        position: shared::vec3(required(player.position)?),
+        rotation: shared::rotation(required(player.rotation)?),
+        game_mode: game_mode(player.game_mode)?,
+    })
+}
+
 pub(super) fn wire_player(player: PlayerSnapshot) -> v1::PlayerSnapshot {
     v1::PlayerSnapshot {
         uuid: player.id.0.hyphenated().to_string(),
@@ -219,6 +231,30 @@ mod tests {
             rotation: Rotation::new(90.0, -30.0),
             game_mode: GameMode::Survival,
         }
+    }
+
+    #[test]
+    fn a_player_snapshot_survives_the_round_trip() {
+        assert_eq!(
+            super::snapshot(wire_player(snapshot())).ok(),
+            Some(snapshot())
+        );
+        let mut stranger = wire_player(snapshot());
+        stranger.uuid = "nobody".to_owned();
+        assert!(matches!(
+            super::snapshot(stranger),
+            Err(Malformed::Player(_))
+        ));
+        let mut lost = wire_player(snapshot());
+        lost.position = None;
+        assert!(super::snapshot(lost).is_err());
+        assert_eq!(
+            shared::uuid("00000000-0000-0000-0000-000000000001".to_owned()).ok(),
+            Some(Uuid::from_u128(1))
+        );
+        assert!(
+            matches!(shared::uuid("nobody".to_owned()), Err(Malformed::Uuid(raw)) if raw == "nobody")
+        );
     }
 
     #[test]

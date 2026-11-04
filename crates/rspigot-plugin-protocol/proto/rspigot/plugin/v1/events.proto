@@ -60,6 +60,7 @@ enum TreeType { TREE_TYPE_UNSPECIFIED = 0; TREE_TYPE_TREE = 1; TREE_TYPE_BIG_TRE
 enum VillagerCareerChangeReason { VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED = 0; VILLAGER_CAREER_CHANGE_REASON_LOSING_JOB = 1; VILLAGER_CAREER_CHANGE_REASON_EMPLOYED = 2; }
 
 message BlockPosList { repeated BlockPos values = 1; }
+message CommandSenderList { repeated CommandSender values = 1; }
 message EntitySnapshotList { repeated EntitySnapshot values = 1; }
 message ItemList { repeated Item values = 1; }
 message NullableBlockPos { BlockPos value = 1; }
@@ -68,6 +69,7 @@ message NullableInventoryRef { InventoryRef value = 1; }
 message NullableItem { Item value = 1; }
 message NullableLocation { Location value = 1; }
 message NullableString { optional string value = 1; }
+message PlayerSnapshotList { repeated PlayerSnapshot values = 1; }
 message StringList { repeated string values = 1; }
 
 message PlayerJoin { optional string join_message = 1; PlayerSnapshot player = 2; }
@@ -83,7 +85,7 @@ message AreaEffectCloudApply { repeated EntitySnapshot affected_entities = 1; En
 message ArrowBodyCountChange { EntitySnapshot entity = 1; string entity_type = 2; int32 new_amount = 3; int32 old_amount = 4; bool reset = 5; }
 message ArrowBodyCountChangePatch { optional int32 new_amount = 3; }
 message AsyncPlayerChat { string format = 1; string message = 2; PlayerSnapshot player = 3; repeated PlayerSnapshot recipients = 4; }
-message AsyncPlayerChatPatch { optional string format = 1; optional string message = 2; }
+message AsyncPlayerChatPatch { optional string format = 1; optional string message = 2; PlayerSnapshotList recipients = 4; }
 message AsyncPlayerPreLogin { string address = 1; string kick_message = 4; AsyncPlayerPreLoginResult login_result = 5; string name = 6; bool transferred = 8; string unique_id = 9; }
 message AsyncPlayerPreLoginPatch { optional string kick_message = 4; optional AsyncPlayerPreLoginResult login_result = 5; }
 message AsyncStructureGenerate { BoundingBox bounding_box = 3; AsyncStructureGenerateCause cause = 4; int32 chunk_x = 5; int32 chunk_z = 6; string structure = 11; string world = 12; }
@@ -138,7 +140,7 @@ message BrewingStandFuelPatch { optional bool consuming = 2; optional int32 fuel
 message BrewingStart { BlockPos block = 1; Item source = 2; int32 total_brew_time = 3; }
 message BrewingStartPatch { optional int32 total_brew_time = 3; }
 message BroadcastMessage { string message = 1; repeated CommandSender recipients = 2; }
-message BroadcastMessagePatch { optional string message = 1; }
+message BroadcastMessagePatch { optional string message = 1; CommandSenderList recipients = 2; }
 message CampfireStart { BlockPos block = 1; string recipe = 2; Item source = 3; int32 total_cook_time = 4; }
 message CampfireStartPatch { optional int32 total_cook_time = 4; }
 message CauldronLevelChange { BlockPos block = 1; EntitySnapshot entity = 2; BlockSnapshot new_state = 4; CauldronLevelChangeReason reason = 6; }
@@ -310,6 +312,7 @@ message PlayerFish { EntitySnapshot caught = 1; int32 exp_to_drop = 2; optional 
 message PlayerFishPatch { optional int32 exp_to_drop = 2; }
 message PlayerGameModeChange { GameMode new_game_mode = 1; PlayerSnapshot player = 2; }
 message PlayerHarvestBlock { EquipmentSlot hand = 1; BlockPos harvested_block = 2; repeated Item items_harvested = 3; PlayerSnapshot player = 4; }
+message PlayerHarvestBlockPatch { ItemList items_harvested = 3; }
 message PlayerHideEntity { EntitySnapshot entity = 1; PlayerSnapshot player = 2; }
 message PlayerInput { Input input = 1; PlayerSnapshot player = 2; }
 message PlayerInteractAtEntity { Vec3 clicked_position = 1; EquipmentSlot hand = 2; PlayerSnapshot player = 3; EntitySnapshot right_clicked = 4; }
@@ -385,8 +388,8 @@ message SculkBloom { BlockPos block = 1; int32 charge = 2; }
 message SculkBloomPatch { optional int32 charge = 2; }
 message ServerCommand { string command = 1; CommandSender sender = 2; }
 message ServerCommandPatch { optional string command = 1; }
-message ServerListPing { string address = 1; string hostname = 2; repeated PlayerSnapshot players = 3; int32 max_players = 4; string motd = 5; int32 num_players = 6; }
-message ServerListPingPatch { optional int32 max_players = 4; optional string motd = 5; optional bytes server_icon = 8; }
+message ServerListPing { string address = 1; string hostname = 2; repeated PlayerSnapshot players = 3; int32 max_players = 4; string motd = 5; int32 num_players = 6; repeated string hidden_players = 100; }
+message ServerListPingPatch { optional int32 max_players = 4; optional string motd = 5; optional bytes server_icon = 8; StringList hidden_players = 100; }
 message ServerLoad { ServerLoadType load_type = 1; }
 message SheepDyeWool { DyeColor color = 1; EntitySnapshot entity = 2; string entity_type = 3; PlayerSnapshot player = 4; }
 message SheepDyeWoolPatch { optional DyeColor color = 1; }
@@ -774,6 +777,7 @@ message Patch {
     PlayerExpChangePatch player_exp_change = 167;
     PlayerExpCooldownChangePatch player_exp_cooldown_change = 168;
     PlayerFishPatch player_fish = 169;
+    PlayerHarvestBlockPatch player_harvest_block = 171;
     PlayerInteractPatch player_interact = 176;
     PlayerItemConsumePatch player_item_consume = 178;
     PlayerItemDamagePatch player_item_damage = 179;

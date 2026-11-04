@@ -224,6 +224,18 @@ getters = ["whichButton"]
 [events.ServerListPing]
 getters = ["iterator"]
 rename = { iterator = "players" }
+extra = [
+    { name = "hidden_players", java = "java.util.List<java.util.UUID>", patch = true, number = 100, reason = "Spigot reads back the players removed through iterator(): they leave the sample and the count" },
+]
+
+[events.AsyncPlayerChat]
+collections = ["getRecipients"]
+
+[events.BroadcastMessage]
+collections = ["getRecipients"]
+
+[events.PlayerHarvestBlock]
+collections = ["getItemsHarvested"]
 
 [events.EntityExplode]
 getters = ["blockList"]
