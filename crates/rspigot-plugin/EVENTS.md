@@ -8,7 +8,9 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 
 `CraftItem`, `InventoryClick`, `InventoryCreative`, `InventoryDrag`, `PlayerInteract`, `SmithItem`, `TradeSelect` are cancelled through their result, as in Bukkit: `cancel()` sets `result`, `use_interacted_block`, `use_item_in_hand` to `Deny`, `is_cancelled()` reads the main result only, and a later handler that sets the result back lifts the cancel.
 
-A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispensed_loot`, `set_drops`, `set_hidden_players`, `set_items`, `set_items_harvested`, `set_loot`, `set_recipients`) sends what the handler changed in the list it received: the elements it removed and the ones it added. The server keeps the removals of every handler and appends their additions in handler order, so two plugins that each remove an element both see it gone, and an element removed by one handler and added back by a later one is there once. Moving an element inside the list changes nothing. An array setter (`SignChange.set_lines`) keeps the length of the array: it replaces elements in place, and the last handler to change an element wins it.
+A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispensed_loot`, `set_drops`, `set_hidden_players`, `set_items`, `set_items_harvested`, `set_loot`, `set_recipients`) sends what the handler changed in the list it received, in three parts: the elements it removed, the elements it changed in place (an item stack of the same item at the same place, a dropped item of the same entity) and the elements it added. The server folds the handlers in handler order: an element any handler removed is gone even if another handler changed it, the last handler to change an element wins it, and additions are appended in handler order. Every handler receives the original list, so a handler that wants an element there whatever the earlier handlers did pushes it again. A reorder alone carries nothing: the list keeps the order the server sent. An array setter (`SignChange.set_lines`) keeps the length of the array: it only replaces elements in place.
+
+These setters write sets, where an element added twice is there once: `AsyncPlayerChat.set_recipients`, `BlockExplode.set_block_list`, `BroadcastMessage.set_recipients`, `EntityExplode.set_block_list`, `PlayerCommandSend.set_commands`, `ServerListPing.set_hidden_players`.
 
 | Bukkit event | SDK type | Cancellable | Setters | Also receives | State |
 |---|---|---|---|---|---|
@@ -30,10 +32,10 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `BlockDamageAbortEvent` | `BlockDamageAbort` | no | - | - | fired: on every release in reach, and out of reach while a mining session runs |
 | `BlockDispenseEvent` | `BlockDispense` | yes | `set_item`, `set_velocity` | `BlockDispenseArmor` | not fired yet: needs redstone (#55) |
 | `BlockDispenseArmorEvent` | `BlockDispenseArmor` | yes | `set_item`, `set_velocity` | - | not fired yet: needs redstone (#55) |
-| `BlockDispenseLootEvent` | `BlockDispenseLoot` | yes | `set_dispensed_loot` | - | not fired yet: needs redstone (#55) |
-| `BlockDropItemEvent` | `BlockDropItem` | yes | `set_items` | - | fired: after every break that keeps its drops, also when empty; each item carries the handle of the item entity it will spawn and its stack, which a deciding handler may replace while keeping a subset; velocity and pickup delay are not exposed |
+| `BlockDispenseLootEvent` | `BlockDispenseLoot` | yes | `set_dispensed_loot` (a reorder alone changes nothing) | - | not fired yet: needs redstone (#55) |
+| `BlockDropItemEvent` | `BlockDropItem` | yes | `set_items` (a reorder alone changes nothing) | - | fired: after every break that keeps its drops, also when empty; each item carries the handle of the item entity it will spawn and its stack, which a deciding handler may replace while keeping a subset; velocity and pickup delay are not exposed |
 | `BlockExpEvent` | `BlockExp` | no | `set_exp_to_drop` | `BlockBreak`, `FurnaceExtract` | fired: the experience a furnace kept when its block entity goes and a furnace output taken by number key, one event per recipe used, also for 0 |
-| `BlockExplodeEvent` | `BlockExplode` | yes | `set_block_list`, `set_yield` | - | fired: explosions without a source entity or a causing entity, today the plugin explosion order; the block list patch replaces the blocks to destroy |
+| `BlockExplodeEvent` | `BlockExplode` | yes | `set_block_list`, `set_yield` | - | fired: explosions without a source entity or a causing entity, today the plugin explosion order; the block list patch removes and adds blocks to destroy |
 | `BlockFadeEvent` | `BlockFade` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `BlockFertilizeEvent` | `BlockFertilize` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `BlockFormEvent` | `BlockForm` | yes | - | `EntityBlockForm` | not fired yet: needs random ticks, fire and growth (#21) |
@@ -78,7 +80,7 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `EntityDamageEvent` | `EntityDamage` | yes | `set_damage` | `EntityDamageByBlock`, `EntityDamageByEntity` | fired: every hurt of a player, a mob or an item entity, asked before the invulnerability window and with a damage of 0; set_damage reruns the armor, resistance and absorption chain; FREEZING, BLOCKING and MAGIC do not exist; a cancel leaves the hit without effect and the attacker hears NODAMAGE |
 | `EntityDamageByBlockEvent` | `EntityDamageByBlock` | yes | `set_damage` | - | fired: lava with its block, the void with no block and stalagmites with their tip; a plugin explosion without a source is BLOCK_EXPLOSION with no block; lava and void are asked once per victim while one waits |
 | `EntityDamageByEntityEvent` | `EntityDamageByEntity` | yes | `set_damage` | - | fired: player and mob melee, sweeps, arrows (the damager is the arrow), creeper explosions and falling blocks; ENTITY_SWEEP_ATTACK never comes out, as in Spigot 26.3 |
-| `EntityDeathEvent` | `EntityDeath` | no | `set_dropped_exp`, `set_drops` | `PlayerDeath` | fired: mob deaths, also when the loot is empty; asked on a snapshot of the loot, the equipment drops and the experience while the mob lies dying, the death applies when the event settles: the settled drops spawn as items, each firing ItemSpawn, then the orbs fire EntitySpawn; PlayerDeath also reaches its handlers |
+| `EntityDeathEvent` | `EntityDeath` | no | `set_dropped_exp`, `set_drops` (a reorder alone changes nothing) | `PlayerDeath` | fired: mob deaths, also when the loot is empty; asked on a snapshot of the loot, the equipment drops and the experience while the mob lies dying, the death applies when the event settles: the settled drops spawn as items, each firing ItemSpawn, then the orbs fire EntitySpawn; PlayerDeath also reaches its handlers |
 | `EntityDismountEvent` | `EntityDismount` | yes | - | - | not fired yet: needs mounts, leads and taming |
 | `EntityDropItemEvent` | `EntityDropItem` | yes | - | - | fired: chicken eggs, sheared wool and saddles, the item of a stopped arrow and of a falling block that cannot land; a cancel keeps the rest of the action |
 | `EntityEnterBlockEvent` | `EntityEnterBlock` | yes | - | - | not fired yet: needs the mobs or objects involved |
@@ -139,7 +141,7 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `LeavesDecayEvent` | `LeavesDecay` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `LightningStrikeEvent` | `LightningStrike` | yes | - | - | not fired yet: needs lightning and Nether mobs |
 | `LingeringPotionSplashEvent` | `LingeringPotionSplash` | yes | - | - | not fired yet: needs thrown bottles and potions |
-| `LootGenerateEvent` | `LootGenerate` | yes | `set_loot` | - | not fired yet: needs chest loot |
+| `LootGenerateEvent` | `LootGenerate` | yes | `set_loot` (a reorder alone changes nothing) | - | not fired yet: needs chest loot |
 | `MapInitializeEvent` | `MapInitialize` | no | - | - | not fired yet: needs maps |
 | `MoistureChangeEvent` | `MoistureChange` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `NotePlayEvent` | `NotePlay` | yes | - | - | not fired yet: needs redstone (#55) |
@@ -160,7 +162,7 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `PlayerCommandPreprocessEvent` | `PlayerCommandPreprocess` | yes | `set_message` | - | fired: from command packets and plugin chat orders starting with /, not from perform_command |
 | `PlayerCommandSendEvent` | `PlayerCommandSend` | no | `set_commands` | - | fired: at join, at respawn and when the operator status changes; only root commands can be removed |
 | `PlayerCustomClickEvent` | `PlayerCustomClick` | no | - | - | not fired yet: needs resource packs, links and dialogs (#30) |
-| `PlayerDeathEvent` | `PlayerDeath` | no | `set_death_message`, `set_dropped_exp`, `set_drops`, `set_keep_inventory`, `set_keep_level`, `set_new_exp`, `set_new_level`, `set_new_total_exp` | - | fired: also reaches EntityDeath handlers; the new level fields wait for the respawn |
+| `PlayerDeathEvent` | `PlayerDeath` | no | `set_death_message`, `set_dropped_exp`, `set_drops` (a reorder alone changes nothing), `set_keep_inventory`, `set_keep_level`, `set_new_exp`, `set_new_level`, `set_new_total_exp` | - | fired: also reaches EntityDeath handlers; the new level fields wait for the respawn |
 | `PlayerDropItemEvent` | `PlayerDropItem` | yes | `set_item` | - | fired: carries the dropped stack, which a deciding handler may replace; the item entity spawns once settled |
 | `PlayerEditBookEvent` | `PlayerEditBook` | yes | `set_new_book_meta`, `set_signing` | - | not fired yet: needs books (#114) |
 | `PlayerEggThrowEvent` | `PlayerEggThrow` | no | `set_hatching`, `set_hatching_type`, `set_num_hatches` | - | not fired yet: needs egg throwing |
@@ -168,7 +170,7 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `PlayerExpCooldownChangeEvent` | `PlayerExpCooldownChange` | no | `set_new_cooldown` | - | fired: PICKUP_ORB only, as no plugin order sets the cooldown; a negative cooldown blocks the pickup for good, as in Spigot |
 | `PlayerFishEvent` | `PlayerFish` | yes | `set_exp_to_drop` | - | not fired yet: needs fishing |
 | `PlayerGameModeChangeEvent` | `PlayerGameModeChange` | yes | - | - | fired: from /gamemode, the game mode packet, plugin orders and the hardcore respawn; the mode is read at the head of the lane |
-| `PlayerHarvestBlockEvent` | `PlayerHarvestBlock` | yes | `set_items_harvested` | - | not fired yet: needs berry harvesting |
+| `PlayerHarvestBlockEvent` | `PlayerHarvestBlock` | yes | `set_items_harvested` (a reorder alone changes nothing) | - | not fired yet: needs berry harvesting |
 | `PlayerHideEntityEvent` | `PlayerHideEntity` | no | - | - | fired: players only, after the effect of the first plugin hiding them |
 | `PlayerInputEvent` | `PlayerInput` | no | - | - | fired: compared with the last input when the packet reaches the head of the lane |
 | `PlayerInteractEvent` | `PlayerInteract` | yes | `set_use_interacted_block`, `set_use_item_in_hand` | - | fired: LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result ask the deciding handlers and drop their verdicts; no PHYSICAL block exists yet |
@@ -239,7 +241,7 @@ A list setter (`set_block_list`, `set_commands`, `set_completions`, `set_dispens
 | `StriderTemperatureChangeEvent` | `StriderTemperatureChange` | yes | - | - | not fired yet: needs lightning and Nether mobs |
 | `StructureGrowEvent` | `StructureGrow` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `TNTPrimeEvent` | `TNTPrime` | yes | - | - | not fired yet: needs redstone (#55) |
-| `TabCompleteEvent` | `TabComplete` | yes | `set_completions` | - | fired: players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; an empty or cancelled completion sends no packet, as Spigot; there is no console completion |
+| `TabCompleteEvent` | `TabComplete` | yes | `set_completions` (a reorder alone changes nothing) | - | fired: players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; an empty or cancelled completion sends no packet, as Spigot; there is no console completion |
 | `ThunderChangeEvent` | `ThunderChange` | yes | - | - | fired: from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own |
 | `TimeSkipEvent` | `TimeSkip` | yes | `set_skip_amount` | - | fired: COMMAND for /time add and CUSTOM for the plugin time order; with a deciding handler the time moves once the event settles, by the settled amount, and a cancel keeps it, a documented deviation from Spigot 26.3 which moves it before firing; /time set fires nothing |
 | `TradeSelectEvent` | `TradeSelect` | yes | `set_result` | - | not fired yet: needs villagers and trading (#48) |

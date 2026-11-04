@@ -1873,6 +1873,14 @@ def emit_test(model):
     return w.text()
 
 
+def setter_note(f):
+    if f.direct:
+        return " (applies even when cancelled)"
+    if listed(f) and not f.set and not f.ty.array:
+        return " (a reorder alone changes nothing)"
+    return ""
+
+
 def emit_doc(model):
     events = sorted(model.events, key=lambda e: e.bukkit)
     w = Writer()
@@ -1890,13 +1898,16 @@ def emit_doc(model):
     w()
     listed_setters = sorted({f.setter_method for e in events for f in e.patched if listed(f) and not f.ty.array})
     slot_setters = sorted({f"`{e.name}.{f.setter_method}`" for e in events for f in e.patched if listed(f) and f.ty.array})
-    arrays = f" An array setter ({', '.join(slot_setters)}) keeps the length of the array: it replaces elements in place, and the last handler to change an element wins it." if slot_setters else ""
-    w(f"A list setter ({', '.join(f'`{name}`' for name in listed_setters)}) sends what the handler changed in the list it received: the elements it removed and the ones it added. The server keeps the removals of every handler and appends their additions in handler order, so two plugins that each remove an element both see it gone, and an element removed by one handler and added back by a later one is there once. Moving an element inside the list changes nothing.{arrays}")
+    set_setters = sorted({f"`{e.name}.{f.setter_method}`" for e in events for f in e.patched if listed(f) and f.set})
+    arrays = f" An array setter ({', '.join(slot_setters)}) keeps the length of the array: it only replaces elements in place." if slot_setters else ""
+    w(f"A list setter ({', '.join(f'`{name}`' for name in listed_setters)}) sends what the handler changed in the list it received, in three parts: the elements it removed, the elements it changed in place (an item stack of the same item at the same place, a dropped item of the same entity) and the elements it added. The server folds the handlers in handler order: an element any handler removed is gone even if another handler changed it, the last handler to change an element wins it, and additions are appended in handler order. Every handler receives the original list, so a handler that wants an element there whatever the earlier handlers did pushes it again. A reorder alone carries nothing: the list keeps the order the server sent.{arrays}")
+    w()
+    w(f"These setters write sets, where an element added twice is there once: {', '.join(set_setters)}.")
     w()
     w("| Bukkit event | SDK type | Cancellable | Setters | Also receives | State |")
     w("|---|---|---|---|---|---|")
     for e in events:
-        setters = ", ".join(f"`{f.setter_method}`" + (" (applies even when cancelled)" if f.direct else "") for f in e.patched) or "-"
+        setters = ", ".join(f"`{f.setter_method}`" + setter_note(f) for f in e.patched) or "-"
         also = ", ".join(f"`{other.name}`" for other in sorted(model.events, key=lambda o: o.name) if e in other.receivers and other is not e) or "-"
         if e.state == "fired":
             state = "fired" + (f": {e.state_note}" if e.state_note else "")
