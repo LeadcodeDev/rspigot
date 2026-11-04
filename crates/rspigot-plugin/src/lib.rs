@@ -1,10 +1,11 @@
 mod block;
 mod color;
+mod contract;
 mod custom_inventory;
 mod effect;
 mod entity;
 mod error;
-mod event;
+mod events;
 mod inventory;
 mod item;
 #[rustfmt::skip]
@@ -19,19 +20,22 @@ mod text;
 mod wire;
 mod world;
 
-pub use block::{Block, BlockPos, BlockState, Face};
+pub use block::{Block, BlockPos, BlockState};
 pub use color::Color;
-pub use custom_inventory::{ClickKind, ClickedSlot, CustomInventory, CustomInventoryState};
+pub use contract::{
+    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, CommandSender, DamageSource, EnchantOffer,
+    HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
+    LootContext, MerchantRef, OwnerRef, PluginInfo, SignData, SpawnerData, Trade, TrialSpawnerData,
+};
+pub use custom_inventory::{CustomInventory, CustomInventoryState};
 pub use effect::Effect;
 pub use entity::{Entities, Entity, EntityState};
 pub use error::Error;
-pub use event::{InventoryClick, InventoryClose, PlayerJoin, PlayerLeave, PlayerMove};
+pub use events::*;
 pub use inventory::{ArmorSlot, Inventory, InventorySlot, InventoryState};
 pub use item::ItemStack;
 pub use keys::{BlockType, EffectType, Enchantment, EntityType, Material, Particle, Sound};
-pub use listener::{
-    Access, Call, EventKind, HandlerSpec, Listeners, Outcome, Plugin, Priority, Verdict,
-};
+pub use listener::{Access, HandlerSpec, Listeners, Outcome, Plugin, Priority, Verdict};
 pub use player::{GameMode, Player, PlayerState, Position, Rotation, Vector};
 pub use rspigot_plugin_macros::{Plugin, listeners};
 pub use runtime::{run, run_with};
@@ -46,13 +50,14 @@ pub use uuid::Uuid;
 pub use world::{Difficulty, GameRule, Weather, World, WorldState};
 
 pub mod prelude {
+    pub use crate::events::*;
     pub use crate::{
-        ArmorSlot, Block, BlockPos, BlockState, BlockTarget, BlockType, ChatColor, ClickKind,
-        ClickedSlot, Color, CustomInventory, CustomInventoryState, Difficulty, Effect, EffectType,
-        Enchantment, Entity, EntityState, EntityType, Error, Face, GameMode, GameRule, Inventory,
-        InventoryClick, InventoryClose, InventorySlot, InventoryState, ItemStack, Listeners,
-        Material, Particle, Player, PlayerJoin, PlayerLeave, PlayerMove, PlayerState, Plugin,
-        Position, Priority, Rotation, Server, ServerState, Sound, Target, Title, Vector, Weather,
-        World, WorldState, listeners, run, run_with,
+        ArmorSlot, Block, BlockPos, BlockSnapshot, BlockState, BlockTarget, BlockType, ChatColor,
+        Color, CommandSender, CustomInventory, CustomInventoryState, DamageSource, Difficulty,
+        Effect, EffectType, Enchantment, Entity, EntityState, EntityType, Error, GameMode,
+        GameRule, Inventory, InventoryOwner, InventoryRef, InventorySlot, InventoryState,
+        InventoryView, ItemStack, Listeners, Location, Material, Particle, Player, PlayerState,
+        Plugin, Position, Priority, Rotation, Server, ServerState, Sound, Target, Title, Vector,
+        Weather, World, WorldState, listeners, run, run_with,
     };
 }

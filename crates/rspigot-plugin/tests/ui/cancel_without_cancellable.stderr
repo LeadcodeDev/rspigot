@@ -1,0 +1,11 @@
+error[E0599]: no method named `cancel` found for mutable reference `&mut rspigot_plugin::PlayerJoin` in the current scope
+  --> tests/ui/cancel_without_cancellable.rs:10:15
+   |
+10 |         event.cancel();
+   |               ^^^^^^ method not found in `&mut rspigot_plugin::PlayerJoin`
+
+error[E0599]: no method named `cancel` found for mutable reference `&mut rspigot_plugin::PlayerDeath` in the current scope
+  --> tests/ui/cancel_without_cancellable.rs:15:15
+   |
+15 |         event.cancel();
+   |               ^^^^^^ method not found in `&mut rspigot_plugin::PlayerDeath`

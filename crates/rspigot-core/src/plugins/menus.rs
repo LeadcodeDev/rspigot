@@ -9,11 +9,14 @@ use rspigot_domain::text::Component;
 
 use crate::containers::{next_window, sync_menu_view};
 use crate::events::{ClientEvent, ContainerClick};
+use crate::plugins::events::{
+    ClickKind, EventResult, InventoryAction, InventoryClick, InventoryClose, InventoryTypeSlotType,
+};
 use crate::plugins::items::{spec_of, stack_of};
 use crate::plugins::resolve::text;
 use crate::plugins::{
-    ClickKind, ClickedSlot, CustomInventoryOrder, CustomInventoryState, EventPayload,
-    PlayerSnapshot,
+    CustomInventoryOrder, CustomInventoryState, EventPayload, InventoryOwner, InventoryRef,
+    InventoryView, PlayerSnapshot,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -28,6 +31,15 @@ const OFFHAND_BUTTON: i8 = 40;
 const OFFHAND: i32 = 40;
 
 type Key = (u64, u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClickedSlot {
+    Menu(u16),
+    Player(i32),
+    Outside,
+}
+
+const PLAYER_SLOTS: i32 = 41;
 
 struct PluginInventory {
     rows: u8,
@@ -163,6 +175,7 @@ impl<L: ClientLink> Server<L> {
         let item = view(slot, &held.items, &player.inventory)
             .as_ref()
             .map(spec_of);
+        let cursor = open.menu.carried().as_ref().map(spec_of);
         let refused = held.locked || player.game_mode == GameMode::Spectator;
         let effects = if refused {
             Vec::new()
@@ -202,21 +215,92 @@ impl<L: ClientLink> Server<L> {
             }
         }
         self.sync_inventory(id);
-        if let (Some(kind), Some(player)) =
+        if let (Some((kind, hotbar_button)), Some(player)) =
             (click_kind(click.input, click.button), self.snapshot_of(id))
         {
+            let (inventory, view, viewers) = self.menu_view(key, &player);
+            let (clicked_inventory, index, slot_type) = match slot {
+                ClickedSlot::Menu(index) => (
+                    Some(inventory.clone()),
+                    i32::from(index),
+                    InventoryTypeSlotType::Container,
+                ),
+                ClickedSlot::Player(index) => (
+                    Some(view.bottom.clone()),
+                    index,
+                    if index < FIRST_MAIN {
+                        InventoryTypeSlotType::Quickbar
+                    } else {
+                        InventoryTypeSlotType::Container
+                    },
+                ),
+                ClickedSlot::Outside => (None, i32::from(OUTSIDE), InventoryTypeSlotType::Outside),
+            };
+            let raw_slot = if slot == ClickedSlot::Outside {
+                i32::from(OUTSIDE)
+            } else {
+                i32::from(click.slot)
+            };
             self.notify_owner(
                 key.0,
-                EventPayload::InventoryClick {
-                    player,
-                    inventory: key.1,
-                    slot,
-                    kind,
-                    item,
-                },
+                EventPayload::InventoryClick(InventoryClick {
+                    action: InventoryAction::Unknown,
+                    click: kind,
+                    clicked_inventory,
+                    current_item: item,
+                    cursor,
+                    hotbar_button,
+                    inventory,
+                    left_click: matches!(
+                        kind,
+                        ClickKind::Left | ClickKind::ShiftLeft | ClickKind::DoubleClick
+                    ),
+                    raw_slot,
+                    result: EventResult::Default,
+                    right_click: matches!(kind, ClickKind::Right | ClickKind::ShiftRight),
+                    shift_click: matches!(kind, ClickKind::ShiftLeft | ClickKind::ShiftRight),
+                    slot: index,
+                    slot_type,
+                    view,
+                    viewers,
+                    who_clicked: player,
+                }),
             );
         }
         true
+    }
+
+    fn menu_view(
+        &self,
+        key: Key,
+        player: &PlayerSnapshot,
+    ) -> (InventoryRef, InventoryView, Vec<PlayerSnapshot>) {
+        let held = self.plugin_inventories.held.get(&key);
+        let top = InventoryRef {
+            owner: InventoryOwner::Custom(key.1),
+            size: held.map_or(0, |held| {
+                i32::try_from(held.items.len()).unwrap_or(i32::MAX)
+            }),
+            kind: "CHEST".to_owned(),
+        };
+        let bottom = InventoryRef {
+            owner: InventoryOwner::Player(player.id),
+            size: PLAYER_SLOTS,
+            kind: "PLAYER".to_owned(),
+        };
+        let view = InventoryView {
+            top: top.clone(),
+            bottom,
+            title: held.map(|held| held.title.plain_text()).unwrap_or_default(),
+            player: player.clone(),
+        };
+        let mut viewers: Vec<PlayerSnapshot> = self
+            .plugin_viewers(|menu| menu.key() == key)
+            .into_iter()
+            .filter_map(|viewer| self.snapshot_of(viewer))
+            .collect();
+        viewers.sort_by_key(|viewer| viewer.entity_id);
+        (top, view, viewers)
     }
 
     pub(crate) fn close_plugin_menu(
@@ -239,13 +323,16 @@ impl<L: ClientLink> Server<L> {
         self.apply_menu_effects(id, effects);
         self.broadcast_equipment_changes(id, before);
         if let Some(player) = self.snapshot_of(id) {
+            let (inventory, view, viewers) = self.menu_view(open.key(), &player);
             self.notify_owner(
                 open.connection,
-                EventPayload::InventoryClose {
-                    player,
-                    inventory: open.inventory,
+                EventPayload::InventoryClose(InventoryClose {
                     by_player,
-                },
+                    inventory,
+                    player,
+                    view,
+                    viewers,
+                }),
             );
         }
         true
@@ -411,23 +498,21 @@ fn view(slot: ClickedSlot, items: &[Slot], inventory: &Inventory) -> Slot {
     }
 }
 
-fn click_kind(input: ClickInput, button: i8) -> Option<ClickKind> {
-    match (input, button) {
-        (ClickInput::Pickup, 0) => Some(ClickKind::Left),
-        (ClickInput::Pickup, 1) => Some(ClickKind::Right),
-        (ClickInput::QuickMove, 0) => Some(ClickKind::ShiftLeft),
-        (ClickInput::QuickMove, 1) => Some(ClickKind::ShiftRight),
-        (ClickInput::Swap, OFFHAND_BUTTON) => Some(ClickKind::SwapOffhand),
-        (ClickInput::Swap, key) => u8::try_from(key)
-            .ok()
-            .filter(|key| *key < 9)
-            .map(ClickKind::NumberKey),
-        (ClickInput::Clone, _) => Some(ClickKind::Middle),
-        (ClickInput::Throw, 0) => Some(ClickKind::Drop),
-        (ClickInput::Throw, 1) => Some(ClickKind::ControlDrop),
-        (ClickInput::PickupAll, _) => Some(ClickKind::DoubleClick),
-        _ => None,
-    }
+fn click_kind(input: ClickInput, button: i8) -> Option<(ClickKind, i32)> {
+    let kind = match (input, button) {
+        (ClickInput::Pickup, 0) => ClickKind::Left,
+        (ClickInput::Pickup, 1) => ClickKind::Right,
+        (ClickInput::QuickMove, 0) => ClickKind::ShiftLeft,
+        (ClickInput::QuickMove, 1) => ClickKind::ShiftRight,
+        (ClickInput::Swap, OFFHAND_BUTTON) => ClickKind::SwapOffhand,
+        (ClickInput::Swap, 0..=8) => return Some((ClickKind::NumberKey, i32::from(button))),
+        (ClickInput::Clone, _) => ClickKind::Middle,
+        (ClickInput::Throw, 0) => ClickKind::Drop,
+        (ClickInput::Throw, 1) => ClickKind::ControlDrop,
+        (ClickInput::PickupAll, _) => ClickKind::DoubleClick,
+        _ => return None,
+    };
+    Some((kind, -1))
 }
 
 #[cfg(test)]
@@ -452,23 +537,23 @@ mod tests {
     fn clicks_map_to_their_spigot_kind() {
         assert_eq!(
             click_kind(ClickInput::Swap, 0),
-            Some(ClickKind::NumberKey(0))
+            Some((ClickKind::NumberKey, 0))
         );
         assert_eq!(
             click_kind(ClickInput::Swap, 8),
-            Some(ClickKind::NumberKey(8))
+            Some((ClickKind::NumberKey, 8))
         );
         assert_eq!(click_kind(ClickInput::Swap, 9), None);
         assert_eq!(click_kind(ClickInput::Swap, -1), None);
         assert_eq!(
             click_kind(ClickInput::Swap, 40),
-            Some(ClickKind::SwapOffhand)
+            Some((ClickKind::SwapOffhand, -1))
         );
         assert_eq!(click_kind(ClickInput::Pickup, 2), None);
         assert_eq!(click_kind(ClickInput::QuickCraft, 0), None);
         assert_eq!(
             click_kind(ClickInput::Throw, 1),
-            Some(ClickKind::ControlDrop)
+            Some((ClickKind::ControlDrop, -1))
         );
     }
 }

@@ -1,7 +1,9 @@
 mod block;
+mod contract;
 mod custom_inventory;
 mod decision;
 mod entity;
+mod events;
 mod inventory;
 mod player;
 mod server;
@@ -9,14 +11,12 @@ mod shared;
 mod world;
 
 use rspigot_core::plugins::{
-    Access, Answer, EventKind, EventPayload, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority,
-    Question, ToPlugin,
+    Access, Answer, FromPlugin, HandlerSpec, Phase, PluginIntro, Priority, Question, ToPlugin,
 };
 use rspigot_domain::EntityId;
-use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
+use rspigot_plugin_protocol::v1::{self, answer, from_plugin, question, to_plugin};
 
 use player::{wire_player, wire_state};
-use shared::wire_vec;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Malformed {
@@ -28,6 +28,8 @@ pub(crate) enum Malformed {
     },
     #[error("`{0}` is not a player UUID")]
     Player(String),
+    #[error("`{0}` is not an entity UUID")]
+    Entity(String),
     #[error("the message carries nothing")]
     Empty,
     #[error("the plugin already introduced itself")]
@@ -36,6 +38,8 @@ pub(crate) enum Malformed {
     Enum { field: &'static str, value: i32 },
     #[error("{0} ms is not a time the server can hold")]
     Time(i64),
+    #[error("{value} is out of range for {field}")]
+    OutOfRange { field: &'static str, value: i64 },
 }
 
 pub(crate) fn intro(hello: v1::Hello) -> Result<PluginIntro, Malformed> {
@@ -56,14 +60,7 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
         field,
         value,
     };
-    let event = match v1::EventKind::try_from(handler.event) {
-        Ok(v1::EventKind::PlayerJoin) => EventKind::PlayerJoin,
-        Ok(v1::EventKind::PlayerLeave) => EventKind::PlayerLeave,
-        Ok(v1::EventKind::PlayerMove) => EventKind::PlayerMove,
-        Ok(v1::EventKind::InventoryClick) => EventKind::InventoryClick,
-        Ok(v1::EventKind::InventoryClose) => EventKind::InventoryClose,
-        Ok(v1::EventKind::Unspecified) | Err(_) => return Err(unknown("event", handler.event)),
-    };
+    let event = events::event_kind(handler.event).ok_or_else(|| unknown("event", handler.event))?;
     let access = match v1::Access::try_from(handler.access) {
         Ok(v1::Access::Observe) => Access::Observe,
         Ok(v1::Access::Decide) => Access::Decide,
@@ -89,7 +86,7 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
 pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malformed> {
     Ok(match message.body.ok_or(Malformed::Empty)? {
         from_plugin::Body::Hello(_) => return Err(Malformed::SecondHello),
-        from_plugin::Body::Decision(decided) => decision::decision(decided),
+        from_plugin::Body::Decision(decided) => decision::decision(decided)?,
         from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
         from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
         from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
@@ -144,7 +141,7 @@ pub(crate) fn to_plugin(message: ToPlugin) -> v1::ToPlugin {
             handlers,
             phase: wire_phase(phase) as i32,
             cancelled,
-            payload: Some(wire_payload(payload)),
+            payload: Some(events::wire_payload(payload)),
         }),
         ToPlugin::Answer { request, answer } => to_plugin::Body::Answer(v1::Answer {
             request,
@@ -161,36 +158,6 @@ const fn wire_phase(phase: Phase) -> v1::Phase {
         Phase::Decide => v1::Phase::Decide,
         Phase::Settled => v1::Phase::Settled,
         Phase::RolledBack => v1::Phase::RolledBack,
-    }
-}
-
-fn wire_payload(payload: EventPayload) -> event::Payload {
-    match payload {
-        EventPayload::PlayerJoin { player } => event::Payload::PlayerJoin(v1::PlayerJoin {
-            player: Some(wire_player(player)),
-        }),
-        EventPayload::PlayerLeave { player } => event::Payload::PlayerLeave(v1::PlayerLeave {
-            player: Some(wire_player(player)),
-        }),
-        EventPayload::PlayerMove { player, from, to } => {
-            event::Payload::PlayerMove(v1::PlayerMove {
-                player: Some(wire_player(player)),
-                from: Some(wire_vec(from)),
-                to: Some(wire_vec(to)),
-            })
-        }
-        EventPayload::InventoryClick {
-            player,
-            inventory,
-            slot,
-            kind,
-            item,
-        } => custom_inventory::wire_click(player, inventory, slot, kind, item),
-        EventPayload::InventoryClose {
-            player,
-            inventory,
-            by_player,
-        } => custom_inventory::wire_close(player, inventory, by_player),
     }
 }
 

@@ -1,7 +1,8 @@
 use rspigot_plugin_protocol::v1::{self, target};
 
-use crate::block::{Block, BlockPos, Face, block_type};
+use crate::block::{Block, BlockPos, block_type};
 use crate::entity::Entity;
+use crate::events::Face;
 use crate::link::Link;
 use crate::player::Player;
 use crate::{BlockType, Error};

@@ -1,10 +1,5 @@
-use rspigot_core::plugins::{
-    ClickKind, ClickedSlot, CustomInventoryOrder, CustomInventoryState, ItemSpec, Order,
-    PlayerSnapshot,
-};
-use rspigot_plugin_protocol::v1::{
-    self, clicked_slot, custom_inventory_order::Order as Wire, event,
-};
+use rspigot_core::plugins::{CustomInventoryOrder, CustomInventoryState, Order};
+use rspigot_plugin_protocol::v1::{self, custom_inventory_order::Order as Wire};
 
 use super::Malformed;
 use super::player::wire_player;
@@ -37,71 +32,21 @@ pub(super) fn wire_state(state: CustomInventoryState) -> v1::CustomInventoryStat
     }
 }
 
-pub(super) fn wire_click(
-    player: PlayerSnapshot,
-    inventory: u64,
-    slot: ClickedSlot,
-    kind: ClickKind,
-    item: Option<ItemSpec>,
-) -> event::Payload {
-    let (kind, hotbar_key) = wire_kind(kind);
-    event::Payload::InventoryClick(v1::InventoryClick {
-        player: Some(wire_player(player)),
-        inventory,
-        slot: Some(wire_slot(slot)),
-        kind: kind as i32,
-        hotbar_key,
-        item: item.map(shared::wire_item),
-    })
-}
-
-pub(super) fn wire_close(
-    player: PlayerSnapshot,
-    inventory: u64,
-    by_player: bool,
-) -> event::Payload {
-    event::Payload::InventoryClose(v1::InventoryClose {
-        player: Some(wire_player(player)),
-        inventory,
-        by_player,
-    })
-}
-
-fn wire_slot(slot: ClickedSlot) -> v1::ClickedSlot {
-    let slot = match slot {
-        ClickedSlot::Menu(index) => clicked_slot::Slot::Menu(i32::from(index)),
-        ClickedSlot::Player(spigot) => clicked_slot::Slot::Player(spigot),
-        ClickedSlot::Outside => clicked_slot::Slot::Outside(v1::Empty {}),
-    };
-    v1::ClickedSlot { slot: Some(slot) }
-}
-
-const fn wire_kind(kind: ClickKind) -> (v1::ClickKind, i32) {
-    match kind {
-        ClickKind::Left => (v1::ClickKind::Left, 0),
-        ClickKind::Right => (v1::ClickKind::Right, 0),
-        ClickKind::ShiftLeft => (v1::ClickKind::ShiftLeft, 0),
-        ClickKind::ShiftRight => (v1::ClickKind::ShiftRight, 0),
-        ClickKind::NumberKey(key) => (v1::ClickKind::NumberKey, key as i32),
-        ClickKind::SwapOffhand => (v1::ClickKind::SwapOffhand, 0),
-        ClickKind::Drop => (v1::ClickKind::Drop, 0),
-        ClickKind::ControlDrop => (v1::ClickKind::ControlDrop, 0),
-        ClickKind::DoubleClick => (v1::ClickKind::DoubleClick, 0),
-        ClickKind::Middle => (v1::ClickKind::Middle, 0),
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use rspigot_core::plugins::events::{
+        ClickKind, EventResult, InventoryAction, InventoryClick, InventoryClose,
+        InventoryTypeSlotType,
+    };
     use rspigot_core::plugins::{
-        Answer, ClickKind, ClickedSlot, CustomInventoryOrder, CustomInventoryState, EventKind,
-        EventPayload, FromPlugin, ItemSpec, Order, Phase, PlayerOrder, PlayerSnapshot, Question,
-        ServerOrder, ToPlugin,
+        Answer, CustomInventoryOrder, CustomInventoryState, EventKind, EventPayload, FromPlugin,
+        InventoryOwner, InventoryRef, InventoryView, ItemSpec, Order, Phase, PlayerOrder,
+        PlayerSnapshot, Question, ServerOrder, ToPlugin,
     };
     use rspigot_domain::player::{GameMode, PlayerId};
     use rspigot_domain::{Rotation, Vec3};
     use rspigot_plugin_protocol::v1::{
-        self, answer, clicked_slot, custom_inventory_order, event, player_order, server_order,
+        self, answer, custom_inventory_order, event, inventory_ref, player_order, server_order,
     };
     use uuid::Uuid;
 
@@ -154,80 +99,94 @@ mod tests {
 
     #[test]
     fn inventory_events_convert_to_the_wire() {
-        let clicked = payload(EventPayload::InventoryClick {
+        let menu = InventoryRef {
+            owner: InventoryOwner::Custom(7),
+            size: 9,
+            kind: "CHEST".to_owned(),
+        };
+        let own = InventoryRef {
+            owner: InventoryOwner::Player(steve().id),
+            size: 41,
+            kind: "PLAYER".to_owned(),
+        };
+        let view = InventoryView {
+            top: menu.clone(),
+            bottom: own.clone(),
+            title: "Menu".to_owned(),
             player: steve(),
-            inventory: 7,
-            slot: ClickedSlot::Player(39),
-            kind: ClickKind::NumberKey(3),
-            item: Some(ItemSpec::of("minecraft:diamond", 1)),
-        });
+        };
+        let clicked = payload(EventPayload::InventoryClick(InventoryClick {
+            action: InventoryAction::Unknown,
+            click: ClickKind::NumberKey,
+            clicked_inventory: Some(own),
+            current_item: Some(ItemSpec::of("minecraft:diamond", 1)),
+            cursor: None,
+            hotbar_button: 3,
+            inventory: menu,
+            left_click: false,
+            raw_slot: 39,
+            result: EventResult::Default,
+            right_click: false,
+            shift_click: false,
+            slot: 30,
+            slot_type: InventoryTypeSlotType::Container,
+            view: view.clone(),
+            viewers: vec![steve()],
+            who_clicked: steve(),
+        }));
+        let wire_menu = v1::InventoryRef {
+            owner: Some(inventory_ref::Owner::Custom(7)),
+            size: 9,
+            kind: "CHEST".into(),
+        };
+        let wire_own = v1::InventoryRef {
+            owner: Some(inventory_ref::Owner::Player(STEVE.into())),
+            size: 41,
+            kind: "PLAYER".into(),
+        };
+        let wire_view = v1::InventoryView {
+            top: Some(wire_menu.clone()),
+            bottom: Some(wire_own.clone()),
+            title: "Menu".into(),
+            player: Some(wire_player(steve())),
+        };
         assert_eq!(
             clicked,
             event::Payload::InventoryClick(v1::InventoryClick {
-                player: Some(wire_player(steve())),
-                inventory: 7,
-                slot: Some(v1::ClickedSlot {
-                    slot: Some(clicked_slot::Slot::Player(39)),
-                }),
-                kind: v1::ClickKind::NumberKey as i32,
-                hotbar_key: 3,
-                item: Some(wire_diamond()),
+                action: v1::InventoryAction::Unknown as i32,
+                click: v1::ClickKind::NumberKey as i32,
+                clicked_inventory: Some(wire_own),
+                current_item: Some(wire_diamond()),
+                cursor: None,
+                hotbar_button: 3,
+                inventory: Some(wire_menu.clone()),
+                left_click: false,
+                raw_slot: 39,
+                result: v1::EventResult::Default as i32,
+                right_click: false,
+                shift_click: false,
+                slot: 30,
+                slot_type: v1::InventoryTypeSlotType::Container as i32,
+                view: Some(wire_view.clone()),
+                viewers: vec![wire_player(steve())],
+                who_clicked: Some(wire_player(steve())),
             })
         );
-        for (slot, wire) in [
-            (ClickedSlot::Menu(53), clicked_slot::Slot::Menu(53)),
-            (
-                ClickedSlot::Outside,
-                clicked_slot::Slot::Outside(v1::Empty {}),
-            ),
-        ] {
-            let event::Payload::InventoryClick(click) = payload(EventPayload::InventoryClick {
-                player: steve(),
-                inventory: 7,
-                slot,
-                kind: ClickKind::ShiftRight,
-                item: None,
-            }) else {
-                panic!("expected a click");
-            };
-            assert_eq!(click.slot, Some(v1::ClickedSlot { slot: Some(wire) }));
-            assert_eq!(click.kind, v1::ClickKind::ShiftRight as i32);
-            assert_eq!(click.hotbar_key, 0);
-            assert_eq!(click.item, None);
-        }
-        let kinds = [
-            (ClickKind::Left, v1::ClickKind::Left),
-            (ClickKind::Right, v1::ClickKind::Right),
-            (ClickKind::ShiftLeft, v1::ClickKind::ShiftLeft),
-            (ClickKind::SwapOffhand, v1::ClickKind::SwapOffhand),
-            (ClickKind::Drop, v1::ClickKind::Drop),
-            (ClickKind::ControlDrop, v1::ClickKind::ControlDrop),
-            (ClickKind::DoubleClick, v1::ClickKind::DoubleClick),
-            (ClickKind::Middle, v1::ClickKind::Middle),
-        ];
-        for (kind, wire) in kinds {
-            let event::Payload::InventoryClick(click) = payload(EventPayload::InventoryClick {
-                player: steve(),
-                inventory: 7,
-                slot: ClickedSlot::Menu(0),
-                kind,
-                item: None,
-            }) else {
-                panic!("expected a click");
-            };
-            assert_eq!(click.kind, wire as i32);
-        }
 
         assert_eq!(
-            payload(EventPayload::InventoryClose {
+            payload(EventPayload::InventoryClose(InventoryClose {
+                by_player: true,
+                inventory: view.top.clone(),
                 player: steve(),
-                inventory: 7,
-                by_player: true,
-            }),
+                view,
+                viewers: Vec::new(),
+            })),
             event::Payload::InventoryClose(v1::InventoryClose {
-                player: Some(wire_player(steve())),
-                inventory: 7,
                 by_player: true,
+                inventory: Some(wire_menu),
+                player: Some(wire_player(steve())),
+                view: Some(wire_view),
+                viewers: Vec::new(),
             })
         );
     }

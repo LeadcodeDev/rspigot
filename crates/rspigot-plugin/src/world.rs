@@ -151,6 +151,7 @@ impl WorldState {
 #[derive(Debug, Clone)]
 pub struct World {
     pub entities: Entities,
+    name: Option<String>,
     link: Link,
 }
 
@@ -158,8 +159,20 @@ impl World {
     pub(crate) fn new(link: Link) -> Self {
         Self {
             entities: Entities::new(link.clone()),
+            name: None,
             link,
         }
+    }
+
+    pub(crate) fn named(name: String, link: Link) -> Self {
+        Self {
+            name: Some(name),
+            ..Self::new(link)
+        }
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     pub fn set_time(&self, time_of_day: i64) {

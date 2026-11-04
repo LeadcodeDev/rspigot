@@ -29,6 +29,15 @@ impl Entity {
         })
     }
 
+    pub(crate) fn to_wire(&self) -> v1::EntitySnapshot {
+        v1::EntitySnapshot {
+            entity_id: self.entity_id,
+            uuid: self.uuid.hyphenated().to_string(),
+            kind: self.kind.key().to_owned(),
+            position: Some(self.position.to_wire()),
+        }
+    }
+
     pub fn teleport(&self, position: Position) {
         self.order(entity_order::Order::Teleport(position.to_wire()));
     }

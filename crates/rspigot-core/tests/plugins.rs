@@ -6,8 +6,9 @@ use common::*;
 use crossbeam_channel::{RecvTimeoutError, Sender, bounded, unbounded};
 use rspigot_core::config::{GameConfig, PluginSettings, PriorityOverride};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::plugins::events::{PlayerJoin, PlayerLeave, PlayerMove, PlayerMovePatch};
 use rspigot_core::plugins::{
-    Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Phase, PlayerMovePatch,
+    Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Phase,
     PlayerOrder, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::PluginOutbox;
@@ -90,7 +91,11 @@ fn observers_hear_a_player_join_and_leave() {
         handlers,
         phase,
         cancelled,
-        payload: EventPayload::PlayerJoin { player },
+        payload:
+            EventPayload::PlayerJoin(PlayerJoin {
+                player,
+                join_message,
+            }),
     } = &joined[0]
     else {
         panic!("expected a join event, got {:?}", joined[0]);
@@ -104,6 +109,7 @@ fn observers_hear_a_player_join_and_leave() {
     assert_eq!(player.world, "minecraft:overworld");
     assert_eq!(player.position, Vec3::new(0.5, 64.0, 0.5));
     assert_eq!(player.game_mode, GameConfig::default().default_game_mode);
+    assert_eq!(join_message.as_deref(), Some("§eAlice joined the game"));
 
     server.handle(Inbound::Leave { player: alice.id });
 
@@ -114,7 +120,11 @@ fn observers_hear_a_player_join_and_leave() {
         handlers,
         phase,
         cancelled,
-        payload: EventPayload::PlayerLeave { player },
+        payload:
+            EventPayload::PlayerLeave(PlayerLeave {
+                player,
+                quit_message,
+            }),
     } = &left[1]
     else {
         panic!("expected a leave event, got {:?}", left[1]);
@@ -126,6 +136,7 @@ fn observers_hear_a_player_join_and_leave() {
     assert_eq!(player.id, alice.id);
     assert_eq!(player.name, "Alice");
     assert_eq!(player.position, Vec3::new(0.5, 64.0, 0.5));
+    assert_eq!(quit_message.as_deref(), Some("§eAlice left the game"));
 }
 
 #[test]
@@ -311,7 +322,15 @@ fn verdict(handler: u32, cancel: bool, to: Option<Vec3>) -> Verdict {
     Verdict {
         handler,
         cancel,
-        patch: to.map(|to| EventPatch::PlayerMove(PlayerMovePatch { to: Some(to) })),
+        patch: to.map(|to| {
+            EventPatch::PlayerMove(PlayerMovePatch {
+                to: Some(Location {
+                    world: "minecraft:overworld".to_owned(),
+                    position: to,
+                    rotation: Rotation::default(),
+                }),
+            })
+        }),
     }
 }
 
@@ -362,14 +381,14 @@ fn moves(mailbox: &Mailbox) -> Vec<Heard> {
                 handlers,
                 phase,
                 cancelled,
-                payload: EventPayload::PlayerMove { from, to, .. },
+                payload: EventPayload::PlayerMove(PlayerMove { from, to, .. }),
             } => Some(Heard {
                 id,
                 handlers,
                 phase,
                 cancelled,
-                from,
-                to,
+                from: from.position,
+                to: to.map_or(from.position, |to| to.position),
             }),
             _ => None,
         })
@@ -484,7 +503,7 @@ fn a_move_without_deciders_applies_at_once() {
         )]
     );
     let Some(ToPlugin::Event {
-        payload: EventPayload::PlayerMove { player, .. },
+        payload: EventPayload::PlayerMove(PlayerMove { player, .. }),
         ..
     }) = heard(&watch).pop()
     else {

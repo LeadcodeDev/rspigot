@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use fake_host::*;
 use rspigot_plugin::{
-    ArmorSlot, ClickKind, ClickedSlot, CustomInventory, Error, InventoryClick, InventoryClose,
-    InventorySlot, ItemStack, Material,
+    ClickKind, CustomInventory, Error, InventoryClose, InventoryOwner, InventoryTypeSlotType,
+    ItemStack, Material, Uuid,
 };
 use rspigot_plugin_protocol::v1::{
-    self, answer, clicked_slot, custom_inventory_order, event, from_plugin, player_order, question,
-    server_order, to_plugin,
+    self, answer, custom_inventory_order, event, from_plugin, inventory_ref, player_order,
+    question, server_order, to_plugin,
 };
 use tonic::Status;
 
@@ -47,35 +47,78 @@ fn item(key: &str, count: i32) -> v1::Item {
     }
 }
 
+fn custom(id: u64) -> v1::InventoryRef {
+    v1::InventoryRef {
+        owner: Some(inventory_ref::Owner::Custom(id)),
+        size: 54,
+        kind: "CHEST".to_owned(),
+    }
+}
+
+fn own() -> v1::InventoryRef {
+    v1::InventoryRef {
+        owner: Some(inventory_ref::Owner::Player(STEVE.to_owned())),
+        size: 41,
+        kind: "PLAYER".to_owned(),
+    }
+}
+
+fn view(id: u64) -> v1::InventoryView {
+    v1::InventoryView {
+        top: Some(custom(id)),
+        bottom: Some(own()),
+        title: "Menu".to_owned(),
+        player: Some(steve()),
+    }
+}
+
 fn click(
-    slot: Option<clicked_slot::Slot>,
+    clicked: Option<v1::InventoryRef>,
+    slot: i32,
     kind: v1::ClickKind,
-    hotbar_key: i32,
+    hotbar_button: i32,
     item: Option<v1::Item>,
 ) -> event::Payload {
     event::Payload::InventoryClick(v1::InventoryClick {
-        player: Some(steve()),
-        inventory: 7,
-        slot: Some(v1::ClickedSlot { slot }),
-        kind: kind as i32,
-        hotbar_key,
-        item,
+        action: v1::InventoryAction::Unknown as i32,
+        click: kind as i32,
+        clicked_inventory: clicked,
+        current_item: item,
+        cursor: None,
+        hotbar_button,
+        inventory: Some(custom(7)),
+        left_click: kind == v1::ClickKind::Left,
+        raw_slot: slot,
+        result: v1::EventResult::Default as i32,
+        right_click: false,
+        shift_click: false,
+        slot,
+        slot_type: v1::InventoryTypeSlotType::Container as i32,
+        view: Some(view(7)),
+        viewers: vec![steve()],
+        who_clicked: Some(steve()),
     })
 }
 
 fn close(inventory: u64, by_player: bool) -> event::Payload {
     event::Payload::InventoryClose(v1::InventoryClose {
-        player: Some(steve()),
-        inventory,
         by_player,
+        inventory: Some(custom(inventory)),
+        player: Some(steve()),
+        view: Some(view(inventory)),
+        viewers: Vec::new(),
     })
+}
+
+fn custom_id(click: &Clicked) -> Option<u64> {
+    click.inventory.custom().map(CustomInventory::id)
 }
 
 fn settled(id: u64, handler: u32, payload: event::Payload) -> to_plugin::Body {
     event(id, &[handler], v1::Phase::Settled, false, payload)
 }
 
-async fn clicked(marks: &mut Marks) -> InventoryClick {
+async fn clicked(marks: &mut Marks) -> Clicked {
     match marks.next().await {
         Mark::Clicked(click) => click,
         mark => panic!("expected a click, got {mark:?}"),
@@ -216,76 +259,85 @@ async fn inventory_events_reach_their_handlers() {
         2,
         2,
         click(
-            Some(clicked_slot::Slot::Player(39)),
+            Some(own()),
+            39,
             v1::ClickKind::NumberKey,
             3,
             Some(item("minecraft:diamond_helmet", 1)),
         ),
     ));
     let helmet = clicked(&mut called.marks).await;
-    assert_eq!(helmet.id(), 2);
-    assert_eq!(helmet.player.name, "Steve");
-    assert_eq!(helmet.inventory.id(), 7);
-    assert_eq!(
-        helmet.slot,
-        ClickedSlot::Player(InventorySlot::Armor(ArmorSlot::Helmet))
-    );
-    assert_eq!(helmet.kind, ClickKind::NumberKey(3));
+    assert_eq!(helmet.id, 2);
+    assert_eq!(helmet.who, "Steve");
+    assert_eq!(custom_id(&helmet), Some(7));
+    assert!(matches!(
+        helmet.clicked.as_ref().map(|inventory| &inventory.owner),
+        Some(InventoryOwner::Player(uuid)) if *uuid == Uuid::from_u128(1)
+    ));
+    assert_eq!((helmet.slot, helmet.raw_slot), (39, 39));
+    assert_eq!(helmet.slot_type, InventoryTypeSlotType::Container);
+    assert_eq!(helmet.click, ClickKind::NumberKey);
+    assert_eq!(helmet.hotbar_button, 3);
     assert_eq!(
         helmet.item.map(|item| item.material),
         Some(Material::DiamondHelmet)
     );
-    helmet.inventory.close();
+    assert_eq!(helmet.title, "Menu");
+    assert_eq!(helmet.viewers, 1);
+    if let Some(menu) = helmet.inventory.custom() {
+        menu.close();
+    }
     assert_eq!(
         called.session.hear().await,
         stocked(7, custom_inventory_order::Order::Close(v1::Empty {}))
     );
 
-    let menu = |slot| Some(clicked_slot::Slot::Menu(slot));
-    let own = |slot| Some(clicked_slot::Slot::Player(slot));
-    let outside = || Some(clicked_slot::Slot::Outside(v1::Empty {}));
-    for (slot, expected) in [
-        (menu(0), ClickedSlot::Menu(0)),
-        (menu(53), ClickedSlot::Menu(53)),
-        (own(0), ClickedSlot::Player(InventorySlot::Hotbar(0))),
-        (own(9), ClickedSlot::Player(InventorySlot::Main(0))),
-        (own(40), ClickedSlot::Player(InventorySlot::Offhand)),
-        (outside(), ClickedSlot::Outside),
+    for (kind, hotbar_button, expected) in [
+        (v1::ClickKind::Left, -1, ClickKind::Left),
+        (v1::ClickKind::Right, -1, ClickKind::Right),
+        (v1::ClickKind::ShiftLeft, -1, ClickKind::ShiftLeft),
+        (v1::ClickKind::ShiftRight, -1, ClickKind::ShiftRight),
+        (v1::ClickKind::NumberKey, 8, ClickKind::NumberKey),
+        (v1::ClickKind::SwapOffhand, -1, ClickKind::SwapOffhand),
+        (v1::ClickKind::Drop, -1, ClickKind::Drop),
+        (v1::ClickKind::ControlDrop, -1, ClickKind::ControlDrop),
+        (v1::ClickKind::DoubleClick, -1, ClickKind::DoubleClick),
+        (v1::ClickKind::Middle, -1, ClickKind::Middle),
+        (v1::ClickKind::Creative, -1, ClickKind::Creative),
     ] {
-        called
-            .session
-            .say(settled(3, 2, click(slot, v1::ClickKind::Left, 0, None)));
+        called.session.say(settled(
+            4,
+            2,
+            click(Some(custom(7)), 4, kind, hotbar_button, None),
+        ));
         let click = clicked(&mut called.marks).await;
-        assert_eq!((click.slot, click.kind), (expected, ClickKind::Left));
-        assert_eq!(click.item, None);
+        assert_eq!(
+            (click.slot, click.click, click.hotbar_button),
+            (4, expected, hotbar_button)
+        );
+        assert!(click.item.is_none());
     }
-    for (kind, hotbar_key, expected) in [
-        (v1::ClickKind::Right, 0, ClickKind::Right),
-        (v1::ClickKind::ShiftLeft, 0, ClickKind::ShiftLeft),
-        (v1::ClickKind::ShiftRight, 0, ClickKind::ShiftRight),
-        (v1::ClickKind::NumberKey, 8, ClickKind::NumberKey(8)),
-        (v1::ClickKind::SwapOffhand, 0, ClickKind::SwapOffhand),
-        (v1::ClickKind::Drop, 0, ClickKind::Drop),
-        (v1::ClickKind::ControlDrop, 0, ClickKind::ControlDrop),
-        (v1::ClickKind::DoubleClick, 0, ClickKind::DoubleClick),
-        (v1::ClickKind::Middle, 0, ClickKind::Middle),
-    ] {
-        called
-            .session
-            .say(settled(4, 2, click(menu(4), kind, hotbar_key, None)));
-        let click = clicked(&mut called.marks).await;
-        assert_eq!((click.slot, click.kind), (ClickedSlot::Menu(4), expected));
-    }
+    called.session.say(settled(
+        5,
+        2,
+        click(None, -999, v1::ClickKind::Left, -1, None),
+    ));
+    assert!(clicked(&mut called.marks).await.clicked.is_none());
 
-    let bad_item = Some(item("minecraft:nothing", 1));
+    let mut without_inventory = click(Some(custom(7)), 4, v1::ClickKind::Left, -1, None);
+    if let event::Payload::InventoryClick(click) = &mut without_inventory {
+        click.inventory = None;
+    }
     for unreadable in [
-        click(menu(4), v1::ClickKind::NumberKey, 9, None),
-        click(menu(4), v1::ClickKind::Unspecified, 0, None),
-        click(menu(-1), v1::ClickKind::Left, 0, None),
-        click(menu(65_536), v1::ClickKind::Left, 0, None),
-        click(own(41), v1::ClickKind::Left, 0, None),
-        click(None, v1::ClickKind::Left, 0, None),
-        click(outside(), v1::ClickKind::Left, 0, bad_item),
+        click(Some(custom(7)), 4, v1::ClickKind::Unspecified, -1, None),
+        without_inventory,
+        click(
+            None,
+            -999,
+            v1::ClickKind::Left,
+            -1,
+            Some(item("minecraft:nothing", 1)),
+        ),
     ] {
         called.session.say(settled(20, 2, unreadable));
     }
@@ -293,13 +345,19 @@ async fn inventory_events_reach_their_handlers() {
     called.session.say(settled(30, 3, close(7, true)));
     let by_player = closed(&mut called.marks).await;
     assert_eq!(by_player.id(), 30);
-    assert_eq!(by_player.player.name, "Steve");
-    assert_eq!(by_player.inventory.id(), 7);
-    assert!(by_player.by_player);
+    assert_eq!(by_player.player().name, "Steve");
+    assert_eq!(
+        by_player.inventory().custom().map(CustomInventory::id),
+        Some(7)
+    );
+    assert!(by_player.by_player());
     called.session.say(settled(31, 3, close(8, false)));
     let by_server = closed(&mut called.marks).await;
-    assert_eq!(by_server.inventory.id(), 8);
-    assert!(!by_server.by_player);
+    assert_eq!(
+        by_server.inventory().custom().map(CustomInventory::id),
+        Some(8)
+    );
+    assert!(!by_server.by_player());
     assert!(called.marks.left().is_empty());
 }
 

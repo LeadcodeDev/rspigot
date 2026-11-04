@@ -10,10 +10,11 @@ use crate::player::Player;
 use crate::plugins::decisions::{
     Asked, Continuation, Held, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
 };
+use crate::plugins::events::{PlayerJoin, PlayerLeave, PlayerMove, PlayerMovePatch};
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
-    Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
-    PlayerMovePatch, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
+    Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
+    Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -183,7 +184,7 @@ impl<L: ClientLink> Server<L> {
             on_ground,
         };
         self.fire(id, Continuation::PlayerMove(step), |server| {
-            server.move_payload(id, from, to)
+            server.move_payload(id, from, to, rotation)
         });
     }
 
@@ -223,6 +224,7 @@ impl<L: ClientLink> Server<L> {
             .map(|(connection, spec)| Asked {
                 connection: *connection,
                 handler: spec.id,
+                kind: spec.event,
             })
             .collect();
         for (connection, handlers) in recipients(deciders, false, Phase::Decide) {
@@ -316,14 +318,17 @@ impl<L: ClientLink> Server<L> {
             mut record,
         } = ready;
         match settlement {
-            Settlement::Cancelled => {
+            Settlement::Cancelled(written) => {
+                if let Some(written) = written {
+                    written.settle(&mut payload);
+                }
                 let dropped = self.call_off(then);
                 self.decisions.remember(event, record);
                 self.notify_plugins(event, &payload, true, Phase::Settled);
                 self.notify_undone(dropped, Phase::Settled);
             }
             Settlement::Applied(patch) => {
-                if let Some(patch) = patch {
+                if let Some(patch) = patch.clone() {
                     patch.settle(&mut payload);
                 }
                 self.notify_plugins(event, &payload, false, Phase::Settled);
@@ -345,7 +350,7 @@ impl<L: ClientLink> Server<L> {
             Continuation::PlayerMove(step) => {
                 let patch = match patch {
                     Some(EventPatch::PlayerMove(patch)) => patch,
-                    None => PlayerMovePatch::default(),
+                    _ => PlayerMovePatch::default(),
                 };
                 self.finish_move(step, patch, held)
             }
@@ -369,7 +374,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn finish_move(&mut self, step: MoveStep, patch: PlayerMovePatch, held: Vec<Held>) -> Undone {
-        if let Some(to) = patch.to.filter(|to| *to != step.to) {
+        if let Some(to) = patch.to.map(|to| to.position).filter(|to| *to != step.to) {
             let dropped = self.decisions.drop_pending(step.player);
             self.teleport_player(step.player, to);
             return dropped;
@@ -415,19 +420,51 @@ impl<L: ClientLink> Server<L> {
         });
     }
 
-    fn move_payload(&self, id: PlayerId, from: Vec3, to: Vec3) -> Option<EventPayload> {
+    fn move_payload(
+        &self,
+        id: PlayerId,
+        from: Vec3,
+        to: Vec3,
+        rotation: Option<Rotation>,
+    ) -> Option<EventPayload> {
         self.snapshot_of(id).map(|mut player| {
             player.position = from;
-            EventPayload::PlayerMove { player, from, to }
+            let from = Location {
+                world: player.world.clone(),
+                position: from,
+                rotation: player.rotation,
+            };
+            let to = Location {
+                position: to,
+                rotation: rotation.unwrap_or(player.rotation),
+                ..from.clone()
+            };
+            EventPayload::PlayerMove(PlayerMove {
+                player,
+                from,
+                to: Some(to),
+            })
         })
     }
 
     pub(crate) fn tell_plugins_of_join(&mut self, id: PlayerId) {
-        self.settle_for_plugins(id, |player| EventPayload::PlayerJoin { player });
+        self.settle_for_plugins(id, |player| {
+            let join_message = Some(format!("§e{} joined the game", player.name));
+            EventPayload::PlayerJoin(PlayerJoin {
+                player,
+                join_message,
+            })
+        });
     }
 
     pub(crate) fn tell_plugins_of_leave(&mut self, id: PlayerId) {
-        self.settle_for_plugins(id, |player| EventPayload::PlayerLeave { player });
+        self.settle_for_plugins(id, |player| {
+            let quit_message = Some(format!("§e{} left the game", player.name));
+            EventPayload::PlayerLeave(PlayerLeave {
+                player,
+                quit_message,
+            })
+        });
     }
 
     fn settle_for_plugins(

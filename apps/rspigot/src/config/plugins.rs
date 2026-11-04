@@ -92,12 +92,7 @@ fn priority(name: &str) -> Option<Priority> {
 }
 
 fn event_kind(name: &str) -> Option<EventKind> {
-    Some(match name {
-        "player_join" => EventKind::PlayerJoin,
-        "player_leave" => EventKind::PlayerLeave,
-        "player_move" => EventKind::PlayerMove,
-        _ => return None,
-    })
+    EventKind::from_key(name)
 }
 
 #[cfg(test)]
@@ -133,7 +128,7 @@ mod tests {
     #[test]
     fn priorities_parse_per_plugin_and_per_event() {
         let config = file(
-            "order: [guard, welcome]\npriorities:\n  welcome: high\n  welcome.player_move: lowest\n  guard.player_join: highest\n  guard.player_leave: low\n  guard.player_fly: high\n  ghost: urgent\n  guard:\n    player_move: high\n",
+            "order: [guard, welcome]\npriorities:\n  welcome: high\n  welcome.player_move: lowest\n  guard.player_join: highest\n  guard.player_leave: low\n  guard.entity_damage_by_entity: lowest\n  guard.player_fly: high\n  ghost: urgent\n  guard:\n    player_move: high\n",
         );
         let settings = settings(&config);
         assert_eq!(settings.order, vec!["guard", "welcome"]);
@@ -149,6 +144,11 @@ mod tests {
                 rule("welcome", Some(EventKind::PlayerMove), Priority::Lowest),
                 rule("guard", Some(EventKind::PlayerJoin), Priority::Highest),
                 rule("guard", Some(EventKind::PlayerLeave), Priority::Low),
+                rule(
+                    "guard",
+                    Some(EventKind::EntityDamageByEntity),
+                    Priority::Lowest
+                ),
             ]
         );
     }

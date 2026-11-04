@@ -4,9 +4,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rspigot_plugin_protocol::v1::{self, particle};
 use uuid::Uuid;
 
+use crate::link::Link;
 use crate::{
-    BlockPos, Effect, EffectType, Enchantment, Error, ItemStack, Material, Particle, Position,
-    Vector,
+    Block, BlockPos, Effect, EffectType, Enchantment, EntityType, Error, ItemStack, Material,
+    Particle, Position, Vector, World,
 };
 
 impl Position {
@@ -93,6 +94,10 @@ impl ItemStack {
             enchantments,
             components: item.components,
         })
+    }
+
+    pub(crate) fn to_wire(&self) -> v1::Item {
+        self.clone().into_wire()
     }
 
     pub(crate) fn into_wire(self) -> v1::Item {
@@ -198,4 +203,90 @@ pub(crate) fn parse_address(text: &str) -> Result<IpAddr, Error> {
 
 pub(crate) fn parse_uuid(text: &str, of: &str) -> Result<Uuid, Error> {
     Uuid::parse_str(text).map_err(|_| Error::Malformed(format!("`{text}`, which is not {of} UUID")))
+}
+
+pub(crate) fn required<T>(field: Option<T>, name: &str) -> Result<T, Error> {
+    field.ok_or_else(|| Error::Malformed(format!("a message without `{name}`")))
+}
+
+pub(crate) fn byte(value: i32) -> Result<i8, Error> {
+    i8::try_from(value).map_err(|_| Error::Malformed(format!("{value}, which is not a byte")))
+}
+
+pub(crate) fn note(value: i32) -> Result<u8, Error> {
+    u8::try_from(value)
+        .ok()
+        .filter(|note| *note <= 24)
+        .ok_or_else(|| Error::Malformed(format!("{value}, which is not a note")))
+}
+
+pub(crate) fn uuid(text: String) -> Result<Uuid, Error> {
+    parse_uuid(&text, "a")
+}
+
+pub(crate) fn address(text: String) -> Result<IpAddr, Error> {
+    parse_address(&text)
+}
+
+pub(crate) fn world(name: String, link: &Link) -> World {
+    World::named(name, link.clone())
+}
+
+pub(crate) fn material(key: String) -> Result<Material, Error> {
+    Material::from_key(&key).ok_or_else(|| Error::Malformed(format!("an unknown item `{key}`")))
+}
+
+pub(crate) fn entity_type(key: String) -> Result<EntityType, Error> {
+    EntityType::from_key(&key)
+        .ok_or_else(|| Error::Malformed(format!("an unknown entity type `{key}`")))
+}
+
+pub(crate) fn enchantment(key: String) -> Result<Enchantment, Error> {
+    Enchantment::from_key(&key)
+        .ok_or_else(|| Error::Malformed(format!("an unknown enchantment `{key}`")))
+}
+
+pub(crate) fn effect_type(key: String) -> Result<EffectType, Error> {
+    EffectType::from_key(&key).ok_or_else(|| Error::Malformed(format!("an unknown effect `{key}`")))
+}
+
+pub(crate) fn block(pos: v1::BlockPos, link: &Link) -> Block {
+    Block::new(
+        BlockPos {
+            x: pos.x,
+            y: pos.y,
+            z: pos.z,
+        },
+        link.clone(),
+    )
+}
+
+pub(crate) const fn vector(vec: v1::Vec3) -> Vector {
+    Vector {
+        x: vec.x,
+        y: vec.y,
+        z: vec.z,
+    }
+}
+
+pub(crate) fn enchant(enchant: v1::Enchant) -> Result<(Enchantment, u32), Error> {
+    let level = u32::try_from(enchant.level)
+        .map_err(|_| Error::Malformed(format!("an enchantment level {}", enchant.level)))?;
+    Ok((enchantment(enchant.key)?, level))
+}
+
+pub(crate) fn slot(slot: v1::Slot) -> Result<(i32, ItemStack), Error> {
+    Ok((
+        slot.slot,
+        ItemStack::from_wire(required(slot.item, "item")?)?,
+    ))
+}
+
+pub(crate) fn player_entity(player: &v1::PlayerSnapshot) -> v1::EntitySnapshot {
+    v1::EntitySnapshot {
+        entity_id: player.entity_id,
+        uuid: player.uuid.clone(),
+        kind: "minecraft:player".to_owned(),
+        position: player.position,
+    }
 }

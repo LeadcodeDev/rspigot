@@ -28,7 +28,7 @@ impl Welcome {
     }
 
     async fn on_player_join(&self, event: &PlayerJoin) {
-        let player = &event.player;
+        let player = event.player();
         player.send_message(format!("Welcome {}!", player.name));
         player.send_title(Title::new(format!("{}Welcome", ChatColor::Gold)).subtitle(&player.name));
         player
@@ -69,9 +69,14 @@ impl Welcome {
     }
 
     async fn on_inventory_click(&self, event: &InventoryClick) {
-        if event.slot == ClickedSlot::Menu(LEAVE_SLOT) {
-            event.player.close_inventory();
-            event.player.send_message("§aSee you around");
+        let in_menu = matches!(
+            event.clicked_inventory().map(|inventory| &inventory.owner),
+            Some(InventoryOwner::Custom(_))
+        );
+        if in_menu && event.slot() == i32::from(LEAVE_SLOT) {
+            let player = event.who_clicked();
+            player.close_inventory();
+            player.send_message("§aSee you around");
         }
     }
 
