@@ -19,6 +19,7 @@ use crate::events::{
     ClientEvent, EntityKind, EntityStatus, EquipmentSlot, MetadataEntry, MetadataValue,
 };
 use crate::player::Player;
+use crate::plugins::{Continuation, Lane};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -465,7 +466,12 @@ impl<L: ClientLink> Server<L> {
         }
         if events.autosaved {
             self.world_saving();
-            self.world.chunks.save_dirty(&self.workers);
+            let decisions = &self.decisions;
+            self.world.chunks.save_dirty_except(&self.workers, |pos| {
+                decisions.in_flight(Lane::Chunk(pos), |then| {
+                    matches!(then, Continuation::ChunkUnload(_))
+                })
+            });
             self.save_all_entities();
             self.persist_all_players();
         }

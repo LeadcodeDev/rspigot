@@ -35,6 +35,12 @@ impl Disk {
         self.saved.lock().is_ok_and(|saved| saved.contains(&pos))
     }
 
+    fn saves(&self, pos: ChunkPos) -> usize {
+        self.saved
+            .lock()
+            .map_or(0, |saved| saved.iter().filter(|at| **at == pos).count())
+    }
+
     fn saved_soon(&self, pos: ChunkPos) -> bool {
         for _ in 0..200 {
             if self.saved(pos) {
@@ -102,15 +108,22 @@ struct World {
 }
 
 fn world(handlers: Vec<HandlerSpec>) -> World {
+    world_saving_every(handlers, 0)
+}
+
+fn world_saving_every(handlers: Vec<HandlerSpec>, autosave: u64) -> World {
     let config = GameConfig {
         view_distance: 2,
         chunk_workers: 2,
         spawn_protection: 0,
         chunks: ChunkManagerConfig {
             unload_delay_ticks: 3,
-            autosave_interval_ticks: 0,
+            autosave_interval_ticks: autosave,
         },
-        plugins: PluginSettings::default(),
+        plugins: PluginSettings {
+            decision_ticks: if autosave > 0 { 20 } else { 1 },
+            ..PluginSettings::default()
+        },
         ..GameConfig::default()
     };
     let disk = Arc::new(Disk::default());
@@ -341,4 +354,41 @@ fn coming_back_while_the_unload_waits_keeps_the_chunk_and_tells_no_observer() {
         asked_for(&world.s.plugin, EventKind::ChunkUnload).len(),
         asked
     );
+}
+
+#[test]
+fn the_autosave_skips_a_chunk_whose_unload_waits() {
+    let mut world = world_saving_every(vec![deciding(1, EventKind::ChunkUnload)], 2);
+    world.go_far();
+    world.go_home();
+    let mut waiting = Vec::new();
+    for _ in 0..8 {
+        world.s.tick(1);
+        waiting = asked_for(&world.s.plugin, EventKind::ChunkUnload)
+            .into_iter()
+            .filter(|asked| chunk_of(&asked.payload) == Some(chunk_ref(FAR)))
+            .collect();
+        if !waiting.is_empty() {
+            break;
+        }
+    }
+    assert!(!waiting.is_empty());
+    world.s.act(rspigot_core::plugins::Order::Block {
+        pos: BlockPos::new(200, 63, 200),
+        order: rspigot_core::plugins::BlockOrder::Set("minecraft:dirt".to_owned()),
+    });
+    assert!(matches!(
+        world.s.ask(Question::Block(BlockPos::new(200, 63, 200))),
+        Answer::Block(state) if state.kind == "minecraft:dirt"
+    ));
+    std::thread::sleep(Duration::from_millis(200));
+    let before = world.disk.saves(FAR);
+    world.s.tick(4);
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(world.disk.saves(FAR), before);
+    let mut answered = Vec::new();
+    answer_unloads(&mut world, &mut answered, |pos| pos != FAR);
+    world.s.tick(4);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(world.disk.saves(FAR), before);
 }

@@ -275,9 +275,17 @@ impl ChunkManager {
     }
 
     pub fn save_dirty(&mut self, workers: &ChunkWorkers) -> usize {
+        self.save_dirty_except(workers, |_| false)
+    }
+
+    pub fn save_dirty_except(
+        &mut self,
+        workers: &ChunkWorkers,
+        skipped: impl Fn(ChunkPos) -> bool,
+    ) -> usize {
         let mut count = 0;
-        for loaded in self.loaded.values_mut() {
-            if loaded.dirty {
+        for (pos, loaded) in &mut self.loaded {
+            if loaded.dirty && !skipped(*pos) {
                 loaded.dirty = false;
                 workers.submit(
                     Priority::BACKGROUND,
