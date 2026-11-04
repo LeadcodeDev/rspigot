@@ -38,7 +38,7 @@ pub use contract::{
     Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location, LootContext,
     MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
 };
-pub(crate) use decisions::{Continuation, Decisions, Held};
+pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
 pub use events::{EventKind, EventPatch, EventPayload};
 pub use items::ItemSpec;
 pub(crate) use items::{spec_of, stack_of};

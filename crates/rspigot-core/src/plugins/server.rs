@@ -541,6 +541,14 @@ impl<L: ClientLink> Server<L> {
                 self.finish_take_book(*step);
                 Vec::new()
             }
+            Continuation::ExpCooldown(step) => {
+                self.finish_cooldown(step, patch_of!(patch, PlayerExpCooldownChange));
+                Vec::new()
+            }
+            Continuation::ExpChange(step) => {
+                self.finish_exp_change(step, patch_of!(patch, PlayerExpChange));
+                Vec::new()
+            }
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()

@@ -22,10 +22,11 @@ use rspigot_items::EquipmentSlot as ItemSlot;
 use crate::events::{ClientEvent, EntityStatus, GameEvent, MetadataEntry, MetadataValue};
 use crate::player::Player;
 use crate::plugins::events::{
-    PlayerDeath, PlayerDeathPatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
+    PlayerDeath, PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch,
+    PlayerRespawnReason,
 };
 use crate::plugins::{
-    Continuation, DeathStep, EventPayload, ItemSpec, RespawnStep, spec_of, stack_of,
+    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, RespawnStep, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -998,6 +999,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn sync_vitals(&mut self) {
         let mut updates = Vec::new();
         let mut pushed = Vec::new();
+        let mut levels = Vec::new();
         for player in self.players.values_mut() {
             let current = player.vitals.snapshot();
             let previous = player.vitals.sent;
@@ -1045,6 +1047,13 @@ impl<L: ClientLink> Server<L> {
                     },
                 ));
             }
+            let experience = &mut player.vitals.experience;
+            if experience.old_level == -1 {
+                experience.old_level = experience.level;
+            } else if experience.old_level != experience.level {
+                levels.push((player.id, experience.old_level, experience.level));
+                experience.old_level = experience.level;
+            }
             if player.vitals.sync_velocity {
                 pushed.push(player.id);
             }
@@ -1055,6 +1064,19 @@ impl<L: ClientLink> Server<L> {
         }
         for id in pushed {
             self.sync_velocity(id);
+        }
+        for (id, old_level, new_level) in levels {
+            self.fire(
+                id,
+                Continuation::Notice(EventKind::PlayerLevelChange),
+                move |server| {
+                    Some(EventPayload::PlayerLevelChange(PlayerLevelChange {
+                        new_level,
+                        old_level,
+                        player: server.snapshot_of(id)?,
+                    }))
+                },
+            );
         }
     }
 

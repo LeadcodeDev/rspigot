@@ -209,6 +209,20 @@ pub(crate) struct BookStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct CooldownStep {
+    pub(crate) player: PlayerId,
+    pub(crate) value: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct OrbStep {
+    pub(crate) player: PlayerId,
+    pub(crate) collector: EntityId,
+    pub(crate) orb: EntityId,
+    pub(crate) amount: i32,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -240,6 +254,8 @@ pub(crate) enum Continuation {
     Drop(Box<DropStep>),
     ItemDamage(Box<WearStep>),
     TakeBook(Box<BookStep>),
+    ExpCooldown(CooldownStep),
+    ExpChange(OrbStep),
 }
 
 impl Continuation {
@@ -273,6 +289,8 @@ impl Continuation {
             Self::Drop(_) => EventKind::PlayerDropItem,
             Self::ItemDamage(_) => EventKind::PlayerItemDamage,
             Self::TakeBook(_) => EventKind::PlayerTakeLecternBook,
+            Self::ExpCooldown(_) => EventKind::PlayerExpCooldownChange,
+            Self::ExpChange(_) => EventKind::PlayerExpChange,
         }
     }
 

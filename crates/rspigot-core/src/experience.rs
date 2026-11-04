@@ -7,6 +7,12 @@ use rspigot_domain::{EntityId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::events::ClientEvent;
+use crate::plugins::events::{
+    PlayerExpChange, PlayerExpChangePatch, PlayerExpCooldownChange, PlayerExpCooldownChangePatch,
+    PlayerExpCooldownChangeReason,
+};
+use crate::plugins::steps::{CooldownStep, OrbStep};
+use crate::plugins::{Continuation, EventPayload, Lane};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -237,6 +243,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn collect_orbs(&mut self) {
+        let decisions = &self.decisions;
         let collectors: Vec<(PlayerId, EntityId, Vec3, f64)> = self
             .players
             .values_mut()
@@ -245,10 +252,17 @@ impl<L: ClientLink> Server<L> {
                 if experience.take_delay > 0 {
                     experience.take_delay -= 1;
                 }
+                let collecting = decisions.in_flight(Lane::Player(p.id), |then| {
+                    matches!(
+                        then,
+                        Continuation::ExpCooldown(_) | Continuation::ExpChange(_)
+                    )
+                });
                 (p.game_mode != GameMode::Spectator
                     && p.pending_teleport.is_none()
-                    && !p.vitals.is_dead())
-                .then(|| (p.id, p.entity_id, p.position, p.height()))
+                    && !p.vitals.is_dead()
+                    && !collecting)
+                    .then(|| (p.id, p.entity_id, p.position, p.height()))
             })
             .collect();
         for (player, collector, position, height) in collectors {
@@ -282,21 +296,78 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let value = orb::value(base);
-        let Some(target) = self.players.get_mut(&player) else {
-            return;
-        };
-        if target.vitals.experience.take_delay != 0 {
+        if self
+            .players
+            .get(&player)
+            .is_none_or(|target| target.vitals.experience.take_delay != 0)
+        {
             return;
         }
-        target.vitals.experience.take_delay = PICKUP_DELAY;
+        let cooldown = CooldownStep {
+            player,
+            value: PICKUP_DELAY,
+        };
+        self.fire(player, Continuation::ExpCooldown(cooldown), move |server| {
+            Some(EventPayload::PlayerExpCooldownChange(
+                PlayerExpCooldownChange {
+                    new_cooldown: PICKUP_DELAY,
+                    player: server.snapshot_of(player)?,
+                    reason: PlayerExpCooldownChangeReason::PickupOrb,
+                },
+            ))
+        });
+        let step = OrbStep {
+            player,
+            collector,
+            orb: id,
+            amount: value,
+        };
+        self.fire(player, Continuation::ExpChange(step), move |server| {
+            Some(EventPayload::PlayerExpChange(PlayerExpChange {
+                amount: value,
+                player: server.snapshot_of(player)?,
+            }))
+        });
+    }
+
+    pub(crate) fn finish_cooldown(
+        &mut self,
+        step: CooldownStep,
+        patch: PlayerExpCooldownChangePatch,
+    ) {
+        if let Some(target) = self.players.get_mut(&step.player) {
+            target.vitals.experience.take_delay = patch.new_cooldown.unwrap_or(step.value);
+        }
+    }
+
+    pub(crate) fn finish_exp_change(&mut self, step: OrbStep, patch: PlayerExpChangePatch) {
+        let id = step.orb;
+        let present = matches!(
+            self.entities.store.get(id),
+            Some(Entity {
+                base,
+                state: EntityState::Orb(state),
+                ..
+            }) if !base.is_removed() && state.count > 0
+        );
+        let Some(target) = self.players.get_mut(&step.player) else {
+            return;
+        };
+        let able = target.game_mode != GameMode::Spectator
+            && target.pending_teleport.is_none()
+            && !target.vitals.is_dead();
+        if !present || !able {
+            return;
+        }
         let tick_count = target.vitals.tick_count as i32;
         let position = target.position;
-        let level_up = target.vitals.experience.give_points(value, tick_count);
+        let amount = patch.amount.unwrap_or(step.amount);
+        let level_up = target.vitals.experience.give_points(amount, tick_count);
         self.push(
             Audience::Trackers(id),
             ClientEvent::ItemPickup {
                 collected: id,
-                collector,
+                collector: step.collector,
                 amount: 1,
             },
         );
