@@ -878,6 +878,35 @@ def core_patch_type(f):
     return f"Option<{leaf.core}>"
 
 
+REFUSALS = ("location_refusal", "number_refusal", "vector_refusal")
+
+
+def refusal_check(f):
+    proto = f.ty.leaf.proto
+    name = f.name
+    if proto == "Location":
+        if f.ty.many:
+            return f"self.{name}.as_ref().and_then(|values| values.iter().find_map(location_refusal))"
+        if f.patch_nullable:
+            return f"self.{name}.as_ref().and_then(Option::as_ref).and_then(location_refusal)"
+        return f"self.{name}.as_ref().and_then(location_refusal)"
+    checks = {
+        "Vec3": ("vector_refusal", "{}"),
+        "double": ("number_refusal", "{}"),
+        "float": ("number_refusal", "f64::from({})"),
+    }
+    if proto not in checks:
+        return None
+    helper, value = checks[proto]
+    if f.ty.many:
+        each = f'|value| {helper}("{name}", {value.format("*value")})'
+        return f"self.{name}.as_ref().and_then(|values| values.iter().find_map({each}))"
+    each = f'|value| {helper}("{name}", {value.format("value")})'
+    if f.patch_nullable:
+        return f"self.{name}.flatten().and_then({each})"
+    return f"self.{name}.and_then({each})"
+
+
 def emit_core(model):
     uses = {"std::fmt::Debug"} - {"std::fmt::Debug"}
     body = Writer()
@@ -986,16 +1015,10 @@ def emit_core(model):
             body(f"        let kept = Self {{ {fields}{rest} }};")
             body("        (kept != Self::default()).then_some(kept)")
             body("    }")
-        located = [f for f in e.patched if f.ty.leaf.proto == "Location" and not f.ty.many]
-        if located:
+        checks = [refusal_check(f) for f in e.patched if refusal_check(f)]
+        if checks:
             body()
             body("    fn refusal(&self) -> Option<String> {")
-            checks = []
-            for f in located:
-                if f.patch_nullable:
-                    checks.append(f"self.{f.name}.as_ref().and_then(Option::as_ref).and_then(location_refusal)")
-                else:
-                    checks.append(f"self.{f.name}.as_ref().and_then(location_refusal)")
             expression = checks[0] + "".join(f".or_else(|| {check})" for check in checks[1:])
             body(f"        {expression}")
             body("    }")
@@ -1079,7 +1102,7 @@ def emit_core(model):
     body("        }")
     body("    }")
     body()
-    located_events = [e for e in patched if any(f.ty.leaf.proto == "Location" and not f.ty.many for f in e.patched)]
+    located_events = [e for e in patched if any(refusal_check(f) for f in e.patched)]
     body("    pub(crate) fn refusal(&self) -> Option<String> {")
     body("        match self {")
     for e in located_events:
@@ -1106,8 +1129,9 @@ def emit_core(model):
     head = Writer()
     for use in sorted(uses):
         head(f"use {use};")
-    if located_events:
-        head("use crate::plugins::patch::location_refusal;")
+    helpers = sorted({name for e in located_events for f in e.patched for name in REFUSALS if name in (refusal_check(f) or "")})
+    if helpers:
+        head(f"use crate::plugins::patch::{{{', '.join(helpers)}}};")
     head()
     return head.text() + body.text()
 
