@@ -159,16 +159,15 @@ impl<L: ClientLink> Server<L> {
             }
             return;
         }
-        let waiting = self.cooking(pos);
         let mut changed = false;
         for slot in 0..SLOTS {
+            if self.cooking(pos, slot) {
+                continue;
+            }
             changed |= campfire.items[slot].is_some();
             let Some((source, result)) = campfire.advance(slot) else {
                 continue;
             };
-            if waiting {
-                break;
-            }
             self.store_campfire(pos, &campfire);
             self.ask_cook(CookStep {
                 pos,
@@ -176,9 +175,6 @@ impl<L: ClientLink> Server<L> {
                 source,
                 result,
             });
-            if self.cooking(pos) {
-                return;
-            }
             let Some(current) = self.campfire_at(pos) else {
                 return;
             };
@@ -312,9 +308,10 @@ impl<L: ClientLink> Server<L> {
         self.ack_block(id, step.sequence);
     }
 
-    fn cooking(&self, pos: BlockPos) -> bool {
-        self.decisions.in_flight(Lane::Block(pos), |then| {
-            matches!(then, Continuation::Cook(_))
-        })
+    fn cooking(&self, pos: BlockPos, slot: usize) -> bool {
+        self.decisions.in_flight(
+            Lane::Block(pos),
+            |then| matches!(then, Continuation::Cook(step) if step.slot == slot),
+        )
     }
 }

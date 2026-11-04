@@ -566,7 +566,7 @@ impl Continuation {
             (Self::PickupArrow(one), Self::PickupArrow(other)) => {
                 one.player == other.player && one.arrow == other.arrow
             }
-            (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos,
+            (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
             _ => false,
         }

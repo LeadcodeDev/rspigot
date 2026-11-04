@@ -468,3 +468,49 @@ fn a_lower_yield_makes_the_destroyed_blocks_drop_less() {
     assert!(dirt_blast(None) > 0);
     assert_eq!(dirt_blast(Some(1.0e-6)), 0);
 }
+
+#[test]
+fn a_slot_whose_cook_waits_does_not_stop_the_other_slots() {
+    let patient = rspigot_core::config::PluginSettings {
+        decision_ticks: 20,
+        ..rspigot_core::config::PluginSettings::default()
+    };
+    let mut s = scene_on(
+        server(patient),
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::CampfireStart),
+            deciding(2, EventKind::BlockCook),
+        ],
+    );
+    let alice = s.players[0].clone();
+    set(&mut s, ABOVE, "minecraft:campfire");
+    console(&mut s, "give Alice beef 3");
+    stream_chunk_of(&mut s, ABOVE);
+    for (sequence, total) in [(4, 2), (5, 5)] {
+        use_on(&mut s, &alice, ABOVE, sequence);
+        let asked = last_asked(&s.plugin, EventKind::CampfireStart);
+        judge(
+            &mut s.server,
+            1,
+            asked.id,
+            1,
+            false,
+            Some(EventPatch::CampfireStart(CampfireStartPatch {
+                total_cook_time: Some(total),
+            })),
+        );
+    }
+    s.tick(3);
+    assert_eq!(asked_for(&s.plugin, EventKind::BlockCook).len(), 1);
+    s.tick(4);
+    let cooks = asked_for(&s.plugin, EventKind::BlockCook);
+    assert_eq!(cooks.len(), 2);
+    for cook in &cooks {
+        judge(&mut s.server, 1, cook.id, 2, false, None);
+    }
+    assert_eq!(
+        ground_keys(&s),
+        ["minecraft:cooked_beef", "minecraft:cooked_beef"]
+    );
+}
