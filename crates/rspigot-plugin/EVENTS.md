@@ -216,7 +216,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PrepareItemCraftEvent` | `PrepareItemCraft` | no | `set_result` | - | not fired yet: its fire point comes with its domain |
 | `PrepareItemEnchantEvent` | `PrepareItemEnchant` | yes | - | - | not fired yet: needs enchanting (#47) |
 | `PrepareSmithingEvent` | `PrepareSmithing` | no | `set_result` | - | not fired yet: its fire point comes with its domain |
-| `ProjectileHitEvent` | `ProjectileHit` | yes | - | - | fired: arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit is only announced, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers |
+| `ProjectileHitEvent` | `ProjectileHit` | yes | - | - | fired: arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit asks its deciders without waiting and drops their verdicts, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers |
 | `ProjectileLaunchEvent` | `ProjectileLaunch` | yes | - | - | fired: arrows shot by players and skeletons; a cancel discards the arrow |
 | `RaidFinishEvent` | `RaidFinish` | no | - | - | not fired yet: needs raids |
 | `RaidSpawnWaveEvent` | `RaidSpawnWave` | no | - | - | not fired yet: needs raids |
