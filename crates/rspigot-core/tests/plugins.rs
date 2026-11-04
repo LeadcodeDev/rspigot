@@ -879,14 +879,10 @@ fn a_player_leaving_drops_their_pending_moves() {
     assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
     assert_eq!(
         moves(&watch),
-        [heard_move(
-            events[0],
-            &[1],
-            Phase::Settled,
-            false,
-            SPAWN,
-            east(1)
-        )]
+        [
+            heard_move(events[0], &[1], Phase::Settled, false, SPAWN, east(1)),
+            heard_move(events[1], &[1], Phase::Settled, true, east(1), east(2)),
+        ]
     );
 }
 

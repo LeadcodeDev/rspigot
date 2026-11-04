@@ -9,8 +9,9 @@ use rspigot_core::console::console_text;
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput, PreLoginVerdict};
 use rspigot_core::plugins::events::{
     AsyncPlayerPreLogin, AsyncPlayerPreLoginPatch, AsyncPlayerPreLoginResult, MainHand,
-    PlayerChangedMainHand, PlayerJoin, PlayerJoinPatch, PlayerKick, PlayerKickPatch, PlayerLeave,
-    PlayerLeavePatch, PlayerLocaleChange, PlayerLogin, PlayerLoginPatch, PlayerLoginResult,
+    PlayerChangedMainHand, PlayerDeathPatch, PlayerJoin, PlayerJoinPatch, PlayerKick,
+    PlayerKickPatch, PlayerLeave, PlayerLeavePatch, PlayerLocaleChange, PlayerLogin,
+    PlayerLoginPatch, PlayerLoginResult,
 };
 use rspigot_core::plugins::{EventKind, EventPatch, EventPayload, Phase, PlayerOrder};
 use rspigot_core::ports::ClientLink;
@@ -599,4 +600,132 @@ fn a_player_leaving_with_a_plugin_menu_open_closes_it_before_the_quit() {
             (Phase::Settled, EventKind::PlayerLeave),
         ]
     );
+}
+
+fn console(s: &mut Scene, line: &str) {
+    s.server.handle(Inbound::Console(line.to_owned()));
+    s.server.deliver();
+}
+
+fn kill(s: &mut Scene, player: &Player) {
+    s.act(to(player, PlayerOrder::SetHealth(0.0)));
+}
+
+fn leave(s: &mut Scene, player: &Player) {
+    s.server.handle(Inbound::Leave { player: player.id });
+    s.server.deliver();
+}
+
+fn settled_kinds(mailbox: &Mailbox) -> Vec<EventKind> {
+    fired_kinds(mailbox)
+        .into_iter()
+        .filter(|(phase, _)| *phase == Phase::Settled)
+        .map(|(_, kind)| kind)
+        .collect()
+}
+
+fn diamonds(count: u8) -> Vec<(String, u8)> {
+    vec![("minecraft:diamond".to_owned(), count)]
+}
+
+#[test]
+fn a_death_pending_when_its_player_leaves_settles_before_the_quit_and_the_save() {
+    let (mut s, saves) = saving_scene(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PlayerDeath),
+            observe(2, EventKind::PlayerLeave),
+            observe(3, EventKind::PlayerDeath),
+        ],
+    );
+    let _silent = connect_with(
+        &mut s.server,
+        2,
+        "silent",
+        vec![deciding(1, EventKind::PlayerDeath)],
+    );
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    let death = last_asked(&s.plugin, EventKind::PlayerDeath);
+    rule_on(
+        &mut s.server,
+        1,
+        death.id,
+        false,
+        Some(EventPatch::PlayerDeath(PlayerDeathPatch {
+            keep_inventory: Some(true),
+            drops: Some(Vec::new()),
+            ..PlayerDeathPatch::default()
+        })),
+    );
+    assert!(settled_for(&s.plugin, EventKind::PlayerDeath).is_empty());
+    leave(&mut s, &alice);
+    assert_eq!(
+        settled_kinds(&s.plugin),
+        [EventKind::PlayerDeath, EventKind::PlayerLeave]
+    );
+    assert_eq!(s.server.items_on_ground(), 0);
+    assert_eq!(saves.items(alice.id), diamonds(5));
+}
+
+#[test]
+fn a_drop_pending_when_its_player_leaves_is_thrown_before_the_save() {
+    let (mut s, saves) = saving_scene(&["Alice"], vec![deciding(1, EventKind::PlayerDropItem)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 3");
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Dig {
+            action: rspigot_core::events::DigAction::DropItem,
+            pos: rspigot_domain::BlockPos::new(0, 0, 0),
+            face: rspigot_core::events::Direction::Up,
+            sequence: 0,
+        },
+    );
+    let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
+    leave(&mut s, &alice);
+    assert_eq!(s.server.items_on_ground(), 1);
+    assert_eq!(saves.items(alice.id), diamonds(2));
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(s.server.items_on_ground(), 1);
+}
+
+#[test]
+fn a_shutdown_settles_every_pending_event_before_the_players_are_saved() {
+    let (mut s, saves) = saving_scene(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PlayerDeath),
+            observe(2, EventKind::PlayerDeath),
+        ],
+    );
+    let _silent = connect_with(
+        &mut s.server,
+        2,
+        "silent",
+        vec![deciding(1, EventKind::PlayerDeath)],
+    );
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    let death = last_asked(&s.plugin, EventKind::PlayerDeath);
+    rule_on(
+        &mut s.server,
+        1,
+        death.id,
+        false,
+        Some(EventPatch::PlayerDeath(PlayerDeathPatch {
+            keep_inventory: Some(true),
+            drops: Some(Vec::new()),
+            ..PlayerDeathPatch::default()
+        })),
+    );
+    let Scene { server, plugin, .. } = s;
+    let (sender, receiver) = crossbeam_channel::unbounded();
+    sender.send(Inbound::Shutdown).expect("open");
+    server.run(&receiver);
+    assert_eq!(settled_for(&plugin, EventKind::PlayerDeath).len(), 1);
+    assert_eq!(saves.items(alice.id), diamonds(5));
 }

@@ -128,7 +128,7 @@ fn changed_recipients_limit_who_reads_the_chat() {
 }
 
 #[test]
-fn a_chat_from_a_player_who_left_is_dropped() {
+fn a_chat_sent_just_before_leaving_is_broadcast_before_the_quit() {
     let mut s = scene_with(
         &["Alice", "Bob"],
         vec![deciding(1, EventKind::AsyncPlayerChat)],
@@ -136,11 +136,12 @@ fn a_chat_from_a_player_who_left_is_dropped() {
     let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
     say(&mut s, &alice, "bye");
     let asked = last_asked(&s.plugin, EventKind::AsyncPlayerChat);
+    assert!(chat_lines(&bob).is_empty());
     s.server.handle(Inbound::Leave { player: alice.id });
     s.server.deliver();
+    assert_eq!(chat_lines(&bob), ["chat:bye", "Alice left the game"]);
+    rule_on(&mut s.server, 1, asked.id, true, None);
     assert!(chat_lines(&bob).is_empty());
-    rule_on(&mut s.server, 1, asked.id, false, None);
-    assert_eq!(chat_lines(&bob), ["Alice left the game"]);
 }
 
 #[test]
@@ -218,7 +219,7 @@ fn a_changed_command_runs_instead_of_the_typed_one() {
 }
 
 #[test]
-fn a_command_from_a_player_who_left_does_not_run() {
+fn a_command_sent_just_before_leaving_still_runs() {
     let mut s = scene_with(
         &["Alice", "Bob"],
         vec![deciding(1, EventKind::PlayerCommandPreprocess)],
@@ -231,9 +232,10 @@ fn a_command_from_a_player_who_left_does_not_run() {
         PlayerInput::Command("kill Bob".to_owned()),
     );
     let asked = last_asked(&s.plugin, EventKind::PlayerCommandPreprocess);
-    s.server.handle(Inbound::Leave { player: alice.id });
-    rule_on(&mut s.server, 1, asked.id, false, None);
     assert_eq!(s.server.player_is_dead(s.players[1].id), Some(false));
+    s.server.handle(Inbound::Leave { player: alice.id });
+    assert_eq!(s.server.player_is_dead(s.players[1].id), Some(true));
+    rule_on(&mut s.server, 1, asked.id, true, None);
 }
 
 #[test]

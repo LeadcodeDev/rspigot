@@ -8,7 +8,8 @@ use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::decisions::{
-    Asked, Continuation, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
+    Asked, Continuation, Flushed, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo,
+    Undone,
 };
 use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTeleportCause};
 use crate::plugins::objects::settled_results;
@@ -376,6 +377,27 @@ impl<L: ClientLink> Server<L> {
                 Some(ready) => self.settle(ready),
                 None => break,
             }
+        }
+    }
+
+    pub(crate) fn settle_lane(&mut self, lane: Lane, logins: bool) {
+        let dropped = self.decisions.drop_pending(lane);
+        self.notify_undone(dropped, Phase::Settled);
+        while let Some(next) = self.decisions.flush(lane, logins) {
+            match next {
+                Flushed::Ready(ready) => self.settle(*ready),
+                Flushed::Due(due) => {
+                    self.decisions.enter(lane);
+                    self.fire_head(lane, Some(due.event), due.then);
+                    self.decisions.leave();
+                }
+            }
+        }
+    }
+
+    pub(crate) fn settle_every_lane(&mut self) {
+        while let Some(lane) = self.decisions.first_lane() {
+            self.settle_lane(lane, true);
         }
     }
 

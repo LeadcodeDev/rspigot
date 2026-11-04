@@ -261,6 +261,11 @@ pub(crate) struct Due {
     pub(crate) then: Continuation,
 }
 
+pub(crate) enum Flushed {
+    Ready(Box<Ready>),
+    Due(Due),
+}
+
 pub(crate) struct Record {
     lane: Lane,
     undo: Option<Undo>,
@@ -508,6 +513,27 @@ impl Decisions {
             Queued::Due(_, then) => Some(Due { event, lane, then }),
             Queued::Asked(..) => None,
         }
+    }
+
+    pub(crate) fn first_lane(&self) -> Option<Lane> {
+        self.lanes.keys().min().copied()
+    }
+
+    pub(crate) fn flush(&mut self, lane: Lane, logins: bool) -> Option<Flushed> {
+        let front = self.lanes.get(&lane)?.front()?;
+        if !logins && matches!(front.then(), Continuation::Login(_)) {
+            return None;
+        }
+        let queued = self.pop(lane)?;
+        for (head, cursor) in &mut self.heads {
+            if *head == lane {
+                *cursor = cursor.saturating_sub(1);
+            }
+        }
+        Some(match queued {
+            Queued::Asked(event, pending) => Flushed::Ready(Box::new((*pending).settle(event))),
+            Queued::Due(event, then) => Flushed::Due(Due { event, lane, then }),
+        })
     }
 
     fn pop(&mut self, lane: Lane) -> Option<Queued> {

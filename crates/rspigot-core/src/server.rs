@@ -27,7 +27,8 @@ use crate::player::Player;
 use crate::player_io::PlayerIo;
 use crate::plugins::events::PlayerLoginResult;
 use crate::plugins::{
-    Arrival, Decisions, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin, Visibility,
+    Arrival, Decisions, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
+    Visibility,
 };
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
@@ -688,6 +689,10 @@ impl<L: ClientLink> Server<L> {
         if !self.players.contains_key(&id) {
             return;
         }
+        self.settle_lane(Lane::Player(id), false);
+        if !self.players.contains_key(&id) {
+            return;
+        }
         self.close_open_menu(id, false);
         let Some(snapshot) = self.snapshot_of(id) else {
             return;
@@ -890,6 +895,7 @@ impl<L: ClientLink> Server<L> {
 
     fn shutdown(mut self) -> LevelData {
         tracing::info!("Stopping server");
+        self.settle_every_lane();
         let ids: Vec<PlayerId> = self.players.keys().copied().collect();
         for id in ids {
             if let Some(player) = self.players.get(&id) {

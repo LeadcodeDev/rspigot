@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -7,16 +8,18 @@ use std::time::Duration;
 
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::player_data::PlayerSave;
 use rspigot_core::plugins::{
     Access, Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
     PlayerOrder, PluginIntro, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{
-    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PluginOutbox, StoreError,
+    ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox, StoreError,
 };
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
 use rspigot_domain::chunk::ChunkColumn;
+use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
@@ -352,7 +355,64 @@ pub fn scene(names: &[&str]) -> Scene {
 }
 
 pub fn scene_with(names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
-    let mut server = server(PluginSettings::default());
+    scene_on(server(PluginSettings::default()), names, handlers)
+}
+
+#[derive(Default)]
+pub struct Saves(Mutex<HashMap<PlayerId, Compound>>);
+
+impl Saves {
+    pub fn items(&self, player: PlayerId) -> Vec<(String, u8)> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let saved = loop {
+            let found = self
+                .0
+                .lock()
+                .ok()
+                .and_then(|files| files.get(&player).cloned());
+            match found {
+                Some(saved) => break saved,
+                None if std::time::Instant::now() > deadline => panic!("the player was not saved"),
+                None => std::thread::sleep(Duration::from_millis(5)),
+            }
+        };
+        let save = PlayerSave::from_nbt(&saved).expect("the save decodes");
+        save.inventory
+            .slots()
+            .iter()
+            .flatten()
+            .map(|stack: &ItemStack| {
+                let name = stack.item.kind().map_or("unknown", |kind| kind.name());
+                (name.to_owned(), stack.count.get())
+            })
+            .collect()
+    }
+}
+
+impl PlayerStore for Saves {
+    fn load_player(&self, player: PlayerId) -> Result<Option<Compound>, StoreError> {
+        Ok(self
+            .0
+            .lock()
+            .ok()
+            .and_then(|files| files.get(&player).cloned()))
+    }
+
+    fn save_player(&self, player: PlayerId, data: &Compound) -> Result<(), StoreError> {
+        if let Ok(mut files) = self.0.lock() {
+            files.insert(player, data.clone());
+        }
+        Ok(())
+    }
+}
+
+pub fn saving_scene(names: &[&str], handlers: Vec<HandlerSpec>) -> (Scene, Arc<Saves>) {
+    let saves = Arc::new(Saves::default());
+    let server = server(PluginSettings::default()).with_player_store(Arc::clone(&saves));
+    (scene_on(server, names, handlers), saves)
+}
+
+fn scene_on(mut server: Server<Link>, names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
     let plugin = connect_with(&mut server, 1, "tester", handlers);
     let players: Vec<Player> = names.iter().map(|name| join(&mut server, name)).collect();
     server.deliver();
