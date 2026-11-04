@@ -779,7 +779,6 @@ pub(crate) struct PotionStep {
 #[derive(Debug)]
 pub(crate) struct LootStep {
     pub(crate) victim: EntityId,
-    pub(crate) position: Vec3,
     pub(crate) drops: Vec<ItemStack>,
     pub(crate) slots: Vec<(rspigot_items::EquipmentSlot, ItemStack)>,
     pub(crate) experience: i32,

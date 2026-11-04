@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use rspigot_core::config::PluginSettings;
-use rspigot_core::events::{ClientEvent, EquipmentSlot, Inbound, PlayerInput};
+use rspigot_core::events::{ClientEvent, EntityStatus, EquipmentSlot, Inbound, PlayerInput};
 use rspigot_core::plugins::events::EntityDeathPatch;
 use rspigot_core::plugins::{
     Answer, EntityOrder, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, Order,
@@ -121,7 +121,7 @@ fn a_mob_death_waits_with_its_loot_and_drops_what_settled() {
         "minecraft:zombie",
         "{NoAI:1b,equipment:{head:{id:\"minecraft:iron_helmet\",count:1}},drop_chances:{head:2.0f}}",
     );
-    assert!(dead(&mut s, zombie));
+    assert!(!dead(&mut s, zombie));
     assert!(ground(&s).is_empty());
     let equipment = s
         .server
@@ -150,6 +150,7 @@ fn a_mob_death_waits_with_its_loot_and_drops_what_settled() {
             drops: Some(vec![ItemSpec::of("minecraft:diamond", 2)]),
         })),
     );
+    assert!(dead(&mut s, zombie));
     let diamond = rspigot_items::ItemKind::Diamond.id().0;
     assert_eq!(ground(&s), [format!("{diamond}x2")]);
     assert!(s.server.experience_orbs().is_empty());
@@ -168,15 +169,37 @@ fn a_mob_death_waits_with_its_loot_and_drops_what_settled() {
     )));
 }
 
+fn died(s: &mut Scene, id: EntityId) -> bool {
+    s.server.deliver();
+    s.players[0].link.take().iter().any(|event| {
+        matches!(
+            event,
+            ClientEvent::EntityStatus {
+                entity,
+                status: EntityStatus::Death,
+            } if *entity == id
+        )
+    })
+}
+
 #[test]
-fn a_mob_whose_death_waits_is_dead_at_once() {
+fn a_mob_whose_death_waits_lies_dying_until_it_settles() {
     let mut s = waiting_scene(vec![deciding(1, EventKind::EntityDeath)]);
     let cow = hit_then_kill(&mut s, "minecraft:cow", "{NoAI:1b}");
-    assert!(dead(&mut s, cow));
-    assert!(matches!(s.ask(Question::Entity(cow)), Answer::Entity(_)));
+    assert!(!dead(&mut s, cow));
+    assert!(!died(&mut s, cow));
     s.tick(25);
-    assert!(matches!(s.ask(Question::Entity(cow)), Answer::NotFound));
+    assert!(matches!(s.ask(Question::Entity(cow)), Answer::Entity(_)));
+    assert!(!died(&mut s, cow));
+    assert!(ground(&s).is_empty());
     let asked = last_asked(&s.plugin, EventKind::EntityDeath);
     rule_on(&mut s.server, 1, asked.id, false, None);
-    assert!(!ground(&s).is_empty(), "the loot drops where the cow died");
+    assert!(dead(&mut s, cow));
+    assert!(died(&mut s, cow));
+    assert!(
+        !ground(&s).is_empty(),
+        "the loot drops once the death settled"
+    );
+    s.tick(25);
+    assert!(matches!(s.ask(Question::Entity(cow)), Answer::NotFound));
 }

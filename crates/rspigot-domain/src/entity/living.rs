@@ -343,6 +343,7 @@ pub struct LivingState {
     pub hurt_time: i32,
     pub death_time: i32,
     pub dead: bool,
+    pub dying: bool,
     pub body_yaw: f32,
     pub attributes: LivingAttributes,
     pub effects: ActiveEffects,
@@ -435,6 +436,7 @@ impl LivingState {
             hurt_time: 0,
             death_time: 0,
             dead: false,
+            dying: false,
             body_yaw: 0.0,
             attributes: LivingAttributes::new(kind),
             effects: ActiveEffects::default(),
@@ -859,7 +861,7 @@ pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick 
     if living.damage.cooldown > 0 {
         living.damage.cooldown -= 1;
     }
-    if is_dead_or_dying(base, living) {
+    if is_dead_or_dying(base, living) && !living.dying {
         living.death_time += 1;
         if living.death_time >= DEATH_DURATION && !base.is_removed() {
             outcome.removed = true;
@@ -1212,6 +1214,21 @@ mod tests {
         let mut base = EntityBase::new(EntityId(1), Uuid::from_u128(1), EntityKind::Zombie);
         let living = LivingState::new(&mut base, 0.0);
         (base, living)
+    }
+
+    #[test]
+    fn a_dying_mob_starts_its_death_countdown_only_once_its_death_applies() {
+        let (mut base, mut living) = zombie();
+        set_health(&mut base, &mut living, 0.0);
+        living.dying = true;
+        for _ in 0..DEATH_DURATION {
+            assert!(!base_tick(&mut base, &mut living).removed);
+        }
+        assert_eq!(living.death_time, 0);
+        living.dying = false;
+        living.dead = true;
+        let removed = (0..DEATH_DURATION).any(|_| base_tick(&mut base, &mut living).removed);
+        assert!(removed);
     }
 
     #[test]

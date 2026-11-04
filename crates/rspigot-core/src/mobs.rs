@@ -1215,7 +1215,7 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        if base.is_removed() || state.dead {
+        if base.is_removed() || state.dead || state.dying {
             return;
         }
         if let (Some(name), Some(victim)) = (base.custom_name(), victim) {
@@ -1232,18 +1232,8 @@ impl<L: ClientLink> Server<L> {
                 crate::console::console_text(&message)
             );
         }
-        state.dead = true;
+        state.dying = true;
         self.drop_all_death_loot(id, source);
-        if let Some(entity) = self.entities.store.get_mut(id) {
-            entity.base.set_pose(rspigot_domain::entity::Pose::Dying);
-        }
-        self.push(
-            Audience::Trackers(id),
-            ClientEvent::EntityStatus {
-                entity: id,
-                status: EntityStatus::Death,
-            },
-        );
     }
 
     fn damage_facts(&self, source: &DamageSource) -> LootDamage {
@@ -1281,7 +1271,6 @@ impl<L: ClientLink> Server<L> {
             facts.mainhand = p.inventory.held().cloned();
             facts
         });
-        let position = entity.base.position;
         let drop_loot = reward::should_drop_loot(entity, mob_drops);
         let table = living
             .mob
@@ -1312,7 +1301,6 @@ impl<L: ClientLink> Server<L> {
         let experience = self.experience_reward(id, killed_by_player, mob_drops);
         let step = LootStep {
             victim: id,
-            position,
             drops,
             slots,
             experience,
@@ -1339,11 +1327,24 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn finish_mob_death(&mut self, step: LootStep, patch: EntityDeathPatch) {
         let LootStep {
             victim,
-            position,
             drops,
             slots,
             experience,
         } = step;
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(victim)
+        else {
+            return;
+        };
+        if base.is_removed() || !state.dying {
+            return;
+        }
+        state.dying = false;
+        state.dead = true;
+        let position = base.position;
         self.clear_dropped_equipment(victim, &slots);
         let drops = match patch.drops {
             Some(specs) => specs
@@ -1361,6 +1362,16 @@ impl<L: ClientLink> Server<L> {
             self.spawn_item_entity(position, velocity, ITEM_PICKUP_DELAY, stack);
         }
         self.award_experience(position, patch.dropped_exp.unwrap_or(experience));
+        if let Some(entity) = self.entities.store.get_mut(victim) {
+            entity.base.set_pose(rspigot_domain::entity::Pose::Dying);
+        }
+        self.push(
+            Audience::Trackers(victim),
+            ClientEvent::EntityStatus {
+                entity: victim,
+                status: EntityStatus::Death,
+            },
+        );
     }
 
     fn planned_equipment_drops(
@@ -1380,9 +1391,10 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let mut cleared = Vec::new();
-        for (slot, _) in slots {
+        for (slot, stack) in slots {
             let index = living::slot_index(*slot);
-            if living.equipment[index].take().is_some() {
+            if living.equipment[index].as_ref() == Some(stack) {
+                living.equipment[index] = None;
                 cleared.push((crate::entities::wire_slot(*slot), None));
             }
         }
