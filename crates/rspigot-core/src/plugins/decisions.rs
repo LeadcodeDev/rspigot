@@ -158,10 +158,15 @@ impl Pending {
                 warnings.push(format!("patch of event {event} was refused: {reason}"));
                 patch = None;
             }
-            self.answers[slot] = Some(Answer {
-                cancel: verdict.cancel,
-                patch,
-            });
+            let mut cancel = verdict.cancel;
+            if cancel && let Some(denial) = EventPatch::denial(kind) {
+                patch = Some(match patch {
+                    Some(own) => own.then(denial),
+                    None => denial,
+                });
+                cancel = false;
+            }
+            self.answers[slot] = Some(Answer { cancel, patch });
         }
         if !cancelled {
             for (ask, answer) in self.asked.iter().zip(&self.answers) {
@@ -194,10 +199,16 @@ impl Pending {
 
     fn settle(self, event: u64) -> Ready {
         let record = self.record();
+        let (cancelled, patch) = fold(self.answers);
+        let settlement = if cancelled || denied(&self.payload, patch.as_ref()) {
+            Settlement::Cancelled(patch.and_then(EventPatch::when_cancelled))
+        } else {
+            Settlement::Applied(patch)
+        };
         Ready {
             event,
             payload: self.payload,
-            settlement: fold(self.answers),
+            settlement,
             then: self.then,
             held: self.held,
             record,
@@ -235,7 +246,7 @@ fn admit(
     admitted
 }
 
-fn fold(answers: Vec<Option<Answer>>) -> Settlement {
+fn fold(answers: Vec<Option<Answer>>) -> (bool, Option<EventPatch>) {
     let mut cancelled = false;
     let mut patch: Option<EventPatch> = None;
     for answer in answers.into_iter().flatten() {
@@ -245,10 +256,17 @@ fn fold(answers: Vec<Option<Answer>>) -> Settlement {
             (earlier, later) => later.or(earlier),
         };
     }
-    if cancelled {
-        Settlement::Cancelled(patch.and_then(EventPatch::when_cancelled))
-    } else {
-        Settlement::Applied(patch)
+    (cancelled, patch)
+}
+
+fn denied(payload: &EventPayload, patch: Option<&EventPatch>) -> bool {
+    match patch {
+        Some(patch) if payload.kind().cancels_by_result() => {
+            let mut settled = payload.clone();
+            patch.clone().settle(&mut settled);
+            settled.cancelled()
+        }
+        _ => payload.cancelled(),
     }
 }
 
@@ -461,11 +479,16 @@ mod tests {
 
     use super::*;
     use crate::plugins::events::{
-        EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch,
-        PlayerJoin, PlayerMove, PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch,
-        PlayerRespawnReason, PlayerTeleport, PlayerTeleportCause, PlayerTeleportPatch,
+        Action, ClickKind, EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause,
+        EntityDamagePatch, EventResult, Face, InventoryAction, InventoryClick, InventoryClickPatch,
+        InventoryTypeSlotType, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
+        PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport,
+        PlayerTeleportCause, PlayerTeleportPatch,
     };
-    use crate::plugins::{DamageSourceView, EntityView, Location, PlayerSnapshot};
+    use crate::plugins::{
+        DamageSourceView, EntityView, InventoryOwner, InventoryRef, InventoryView, Location,
+        PlayerSnapshot,
+    };
 
     fn snapshot(player: PlayerId, position: Vec3) -> PlayerSnapshot {
         PlayerSnapshot {
@@ -878,6 +901,158 @@ mod tests {
                 to: Some(to),
             })
         });
+    }
+
+    fn interacting(player: PlayerId) -> EventPayload {
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        EventPayload::PlayerInteract(PlayerInteract {
+            action: Action::RightClickBlock,
+            block: true,
+            block_face: Face::Up,
+            block_in_hand: false,
+            clicked_block: None,
+            clicked_position: None,
+            hand: None,
+            has_item: false,
+            item: None,
+            material: "minecraft:air".to_owned(),
+            player: snapshot(player, at),
+            use_interacted_block: EventResult::Default,
+            use_item_in_hand: EventResult::Default,
+        })
+    }
+
+    fn clicking(player: PlayerId) -> EventPayload {
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let menu = InventoryRef {
+            owner: InventoryOwner::Custom(7),
+            size: 27,
+            kind: "CHEST".to_owned(),
+        };
+        EventPayload::InventoryClick(InventoryClick {
+            action: InventoryAction::Unknown,
+            click: ClickKind::Left,
+            clicked_inventory: Some(menu.clone()),
+            current_item: None,
+            cursor: None,
+            hotbar_button: -1,
+            inventory: menu.clone(),
+            left_click: true,
+            raw_slot: 4,
+            result: EventResult::Default,
+            right_click: false,
+            shift_click: false,
+            slot: 4,
+            slot_type: InventoryTypeSlotType::Container,
+            view: InventoryView {
+                top: menu.clone(),
+                bottom: menu,
+                title: "Menu".to_owned(),
+                player: snapshot(player, at),
+            },
+            viewers: Vec::new(),
+            who_clicked: snapshot(player, at),
+        })
+    }
+
+    fn ruling(cancel: bool, patch: Option<EventPatch>) -> Vec<Verdict> {
+        vec![Verdict {
+            handler: 1,
+            cancel,
+            patch,
+        }]
+    }
+
+    fn deciding(payload: EventPayload, rulings: Vec<Vec<Verdict>>) -> (Decisions, Vec<String>) {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let kind = payload.kind();
+        let asked = (1..=rulings.len() as u64)
+            .map(|connection| Asked {
+                connection,
+                handler: 1,
+                kind,
+            })
+            .collect();
+        let mut decisions = Decisions::default();
+        decisions.queue(
+            1,
+            Pending::new(alice, payload, asked, 5, 20, step(alice, at, at)),
+        );
+        let mut warnings = Vec::new();
+        for (connection, verdicts) in (1..).zip(rulings) {
+            let (taken, heard) = decisions.decide(connection, 1, verdicts, 0);
+            assert!(matches!(taken, Taken::Counted));
+            warnings.extend(heard);
+        }
+        (decisions, warnings)
+    }
+
+    fn settled(payload: EventPayload, rulings: Vec<Vec<Verdict>>) -> (Settlement, Vec<String>) {
+        let (mut decisions, warnings) = deciding(payload, rulings);
+        let ready = decisions.next_settled(0).expect("every handler answered");
+        (ready.settlement, warnings)
+    }
+
+    #[test]
+    fn a_result_event_is_cancelled_by_its_main_result_only() {
+        let alice = PlayerId::offline("Alice");
+        let item_denied = EventPatch::PlayerInteract(PlayerInteractPatch {
+            use_item_in_hand: Some(EventResult::Deny),
+            ..PlayerInteractPatch::default()
+        });
+        assert_eq!(
+            settled(
+                interacting(alice),
+                vec![ruling(false, Some(item_denied.clone()))]
+            ),
+            (Settlement::Applied(Some(item_denied)), Vec::new())
+        );
+        let denied = EventPatch::PlayerInteract(PlayerInteractPatch {
+            use_interacted_block: Some(EventResult::Deny),
+            use_item_in_hand: Some(EventResult::Deny),
+        });
+        assert_eq!(
+            settled(interacting(alice), vec![ruling(true, None)]),
+            (Settlement::Cancelled(Some(denied)), Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_later_handler_lifts_the_cancel_of_a_result_event() {
+        let alice = PlayerId::offline("Alice");
+        let result = |result| {
+            EventPatch::InventoryClick(InventoryClickPatch {
+                result: Some(result),
+                ..InventoryClickPatch::default()
+            })
+        };
+        let (mut decisions, warnings) = deciding(
+            clicking(alice),
+            vec![
+                ruling(true, None),
+                ruling(false, Some(result(EventResult::Allow))),
+            ],
+        );
+        assert!(warnings.is_empty());
+        let ready = decisions.next_settled(0).expect("every handler answered");
+        assert_eq!(
+            ready.settlement,
+            Settlement::Applied(Some(result(EventResult::Allow)))
+        );
+        assert_eq!(
+            settled(
+                clicking(alice),
+                vec![
+                    ruling(false, Some(result(EventResult::Allow))),
+                    ruling(true, None)
+                ]
+            ),
+            (
+                Settlement::Cancelled(Some(result(EventResult::Deny))),
+                Vec::new()
+            )
+        );
     }
 
     #[test]

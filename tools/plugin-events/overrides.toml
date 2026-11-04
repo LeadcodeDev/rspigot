@@ -12,6 +12,10 @@ PlayerQuit = "PlayerLeave"
 [enums]
 "org.bukkit.event.player.PlayerResourcePackStatusEvent$Status" = "ResourcePackStatus"
 
+[results]
+"org.bukkit.event.player.PlayerInteractEvent" = { cancelled = "useInteractedBlock", deny = ["useInteractedBlock", "useItemInHand"] }
+"org.bukkit.event.inventory.InventoryInteractEvent" = { cancelled = "getResult", deny = ["getResult"] }
+
 [not_applicable]
 Inventory = "base class of the inventory events, never fired on its own"
 InventoryBlockStart = "base class of CampfireStart and BrewingStart, never fired on its own"
@@ -201,7 +205,6 @@ unread = { setPlayer = "Spigot reads it back only for commands sent through Play
 
 [events.PlayerInteract]
 getters = ["useInteractedBlock", "useItemInHand"]
-cancel_sets = { useInteractedBlock = "DENY", useItemInHand = "DENY" }
 
 [events.PlayerBedEnter]
 getters = ["useBed"]

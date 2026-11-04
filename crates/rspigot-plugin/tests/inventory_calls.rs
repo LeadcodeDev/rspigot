@@ -377,6 +377,31 @@ async fn inventory_events_reach_their_handlers() {
 }
 
 #[tokio::test]
+async fn a_click_is_cancelled_by_its_result_only() {
+    let mut called = calling(|_| Box::pin(async {})).await;
+    called.finished().await;
+
+    for (result, flagged, cancelled) in [
+        (v1::EventResult::Deny, false, true),
+        (v1::EventResult::Default, true, false),
+        (v1::EventResult::Allow, false, false),
+    ] {
+        let mut payload = click(Some(custom(7)), 4, v1::ClickKind::Left, -1, None);
+        if let event::Payload::InventoryClick(click) = &mut payload {
+            click.result = result as i32;
+        }
+        called
+            .session
+            .say(event(6, &[2], v1::Phase::Settled, flagged, payload));
+        assert_eq!(
+            clicked(&mut called.marks).await.cancelled,
+            cancelled,
+            "{result:?}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn on_enable_runs_before_events_on_every_connection_and_on_disable_when_it_ends() {
     let mut host = Host::start().await;
     let (mut marks, ended) = start_caller(
@@ -473,6 +498,10 @@ async fn every_deciding_handler_of_a_click_runs_after_a_cancel() {
         false,
         click(Some(custom(7)), 4, v1::ClickKind::Left, -1, diamond),
     ));
+    let denied = v1::InventoryClickPatch {
+        result: Some(v1::EventResult::Deny as i32),
+        ..v1::InventoryClickPatch::default()
+    };
     let cleared = v1::InventoryClickPatch {
         current_item: Some(v1::NullableItem { value: None }),
         ..v1::InventoryClickPatch::default()
@@ -484,8 +513,10 @@ async fn every_deciding_handler_of_a_click_runs_after_a_cancel() {
             verdicts: vec![
                 v1::Verdict {
                     handler: 1,
-                    cancel: true,
-                    patch: None,
+                    cancel: false,
+                    patch: Some(v1::Patch {
+                        change: Some(patch::Change::InventoryClick(denied)),
+                    }),
                 },
                 v1::Verdict {
                     handler: 2,

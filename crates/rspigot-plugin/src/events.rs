@@ -4458,7 +4458,6 @@ impl From<ChunkUnload> for Verdict {
 #[derive(Debug)]
 pub struct CraftItem {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     action: InventoryAction,
     click: ClickKind,
@@ -4485,7 +4484,6 @@ impl CraftItem {
     fn from_wire(message: v1::CraftItem, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             action: InventoryAction::from_wire(message.action)?,
             click: ClickKind::from_wire(message.click)?,
@@ -4614,12 +4612,12 @@ impl CraftItem {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -4630,7 +4628,7 @@ impl CraftItem {
 impl From<CraftItem> for Verdict {
     fn from(event: CraftItem) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::CraftItemPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::CraftItem(event.patch)),
@@ -9592,7 +9590,6 @@ impl From<HorseJump> for Verdict {
 #[derive(Debug)]
 pub struct InventoryClick {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     action: InventoryAction,
     click: ClickKind,
@@ -9618,7 +9615,6 @@ impl InventoryClick {
     fn from_wire(message: v1::InventoryClick, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             action: InventoryAction::from_wire(message.action)?,
             click: ClickKind::from_wire(message.click)?,
@@ -9742,12 +9738,12 @@ impl InventoryClick {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -9758,7 +9754,7 @@ impl InventoryClick {
 impl From<InventoryClick> for Verdict {
     fn from(event: InventoryClick) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::InventoryClickPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::InventoryClick(event.patch)),
@@ -9822,7 +9818,6 @@ impl InventoryClose {
 #[derive(Debug)]
 pub struct InventoryCreative {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     action: InventoryAction,
     click: ClickKind,
@@ -9848,7 +9843,6 @@ impl InventoryCreative {
     fn from_wire(message: v1::InventoryCreative, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             action: InventoryAction::from_wire(message.action)?,
             click: ClickKind::from_wire(message.click)?,
@@ -9972,12 +9966,12 @@ impl InventoryCreative {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -9988,7 +9982,7 @@ impl InventoryCreative {
 impl From<InventoryCreative> for Verdict {
     fn from(event: InventoryCreative) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::InventoryCreativePatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::InventoryCreative(event.patch)),
@@ -10001,7 +9995,6 @@ impl From<InventoryCreative> for Verdict {
 #[derive(Debug)]
 pub struct InventoryDrag {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     cursor: Option<ItemStack>,
     inventory: InventoryRef,
@@ -10021,7 +10014,6 @@ impl InventoryDrag {
     fn from_wire(message: v1::InventoryDrag, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             cursor: message.cursor.map(ItemStack::from_wire).transpose()?,
             inventory: InventoryRef::from_wire(required(message.inventory, "inventory")?, link)?,
@@ -10109,12 +10101,12 @@ impl InventoryDrag {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -10125,7 +10117,7 @@ impl InventoryDrag {
 impl From<InventoryDrag> for Verdict {
     fn from(event: InventoryDrag) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::InventoryDragPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::InventoryDrag(event.patch)),
@@ -12819,7 +12811,6 @@ impl PlayerInput {
 #[derive(Debug)]
 pub struct PlayerInteract {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     action: Action,
     block: bool,
@@ -12841,7 +12832,6 @@ impl PlayerInteract {
     fn from_wire(message: v1::PlayerInteract, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             action: Action::from_wire(message.action)?,
             block: message.block,
@@ -12932,9 +12922,7 @@ impl PlayerInteract {
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled
-            || self.use_interacted_block == EventResult::Deny
-            || self.use_item_in_hand == EventResult::Deny
+        self.use_interacted_block == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -12945,7 +12933,7 @@ impl PlayerInteract {
 impl From<PlayerInteract> for Verdict {
     fn from(event: PlayerInteract) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::PlayerInteractPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::PlayerInteract(event.patch)),
@@ -16663,7 +16651,6 @@ impl From<SignChange> for Verdict {
 #[derive(Debug)]
 pub struct SmithItem {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     action: InventoryAction,
     click: ClickKind,
@@ -16689,7 +16676,6 @@ impl SmithItem {
     fn from_wire(message: v1::SmithItem, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             action: InventoryAction::from_wire(message.action)?,
             click: ClickKind::from_wire(message.click)?,
@@ -16813,12 +16799,12 @@ impl SmithItem {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -16829,7 +16815,7 @@ impl SmithItem {
 impl From<SmithItem> for Verdict {
     fn from(event: SmithItem) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::SmithItemPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::SmithItem(event.patch)),
@@ -17414,7 +17400,6 @@ impl From<TimeSkip> for Verdict {
 #[derive(Debug)]
 pub struct TradeSelect {
     id: u64,
-    cancelled: bool,
     rolled_back: bool,
     index: i32,
     inventory: InventoryRef,
@@ -17430,7 +17415,6 @@ impl TradeSelect {
     fn from_wire(message: v1::TradeSelect, meta: Meta, link: &Link) -> Result<Self, Error> {
         Ok(Self {
             id: meta.id,
-            cancelled: meta.cancelled,
             rolled_back: meta.rolled_back,
             index: message.index,
             inventory: InventoryRef::from_wire(required(message.inventory, "inventory")?, link)?,
@@ -17487,12 +17471,12 @@ impl TradeSelect {
         self.result = value;
     }
 
-    pub const fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn cancel(&mut self) {
+        self.set_result(EventResult::Deny);
     }
 
-    pub const fn is_cancelled(&self) -> bool {
-        self.cancelled
+    pub fn is_cancelled(&self) -> bool {
+        self.result == EventResult::Deny
     }
 
     pub const fn is_rolled_back(&self) -> bool {
@@ -17503,7 +17487,7 @@ impl TradeSelect {
 impl From<TradeSelect> for Verdict {
     fn from(event: TradeSelect) -> Self {
         Self {
-            cancel: event.cancelled,
+            cancel: false,
             patch: (event.patch != v1::TradeSelectPatch::default()).then(|| {
                 Box::new(v1::Patch {
                     change: Some(patch::Change::TradeSelect(event.patch)),

@@ -34,7 +34,8 @@ impl<L: ClientLink> Server<L> {
         let listeners =
             self.plugins
                 .listeners(payload.kind(), Access::Observe, &self.config.plugins);
-        for (connection, handlers) in recipients(listeners, cancelled, phase) {
+        let (cancelled, heard) = audience(listeners, payload, cancelled, phase);
+        for (connection, handlers) in heard {
             self.plugins.send(
                 connection,
                 ToPlugin::Event {
@@ -55,9 +56,8 @@ impl<L: ClientLink> Server<L> {
             .into_iter()
             .filter(|(listener, _)| *listener == connection)
             .collect();
-        if let Some((connection, handlers)) =
-            recipients(owned, false, Phase::Settled).into_iter().next()
-        {
+        let (cancelled, heard) = audience(owned, &payload, false, Phase::Settled);
+        if let Some((connection, handlers)) = heard.into_iter().next() {
             let id = self.next_event_id();
             self.plugins.send(
                 connection,
@@ -65,7 +65,7 @@ impl<L: ClientLink> Server<L> {
                     id,
                     handlers,
                     phase: Phase::Settled,
-                    cancelled: false,
+                    cancelled,
                     payload,
                 },
             );
@@ -546,6 +546,16 @@ fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
     })
 }
 
+fn audience(
+    listeners: Vec<(u64, HandlerSpec)>,
+    payload: &EventPayload,
+    cancelled: bool,
+    phase: Phase,
+) -> (bool, Vec<(u64, Vec<u32>)>) {
+    let cancelled = cancelled || payload.cancelled();
+    (cancelled, recipients(listeners, cancelled, phase))
+}
+
 fn recipients(
     listeners: Vec<(u64, HandlerSpec)>,
     cancelled: bool,
@@ -567,7 +577,10 @@ fn recipients(
 
 #[cfg(test)]
 mod tests {
+    use rspigot_domain::player::GameMode;
+
     use super::*;
+    use crate::plugins::events::{Action, EventResult, Face, PlayerInteract};
     use crate::plugins::{EventKind, Priority};
 
     fn listener(connection: u64, id: u32, ignore_cancelled: bool) -> (u64, HandlerSpec) {
@@ -624,5 +637,53 @@ mod tests {
             [(3, vec![2])]
         );
         assert!(recipients(Vec::new(), false, Phase::Settled).is_empty());
+    }
+
+    fn interaction(result: EventResult) -> EventPayload {
+        EventPayload::PlayerInteract(PlayerInteract {
+            action: Action::RightClickBlock,
+            block: true,
+            block_face: Face::Up,
+            block_in_hand: false,
+            clicked_block: None,
+            clicked_position: None,
+            hand: None,
+            has_item: false,
+            item: None,
+            material: "minecraft:air".to_owned(),
+            player: PlayerSnapshot {
+                id: PlayerId::offline("Alice"),
+                name: "Alice".to_owned(),
+                entity_id: 1,
+                world: "minecraft:overworld".to_owned(),
+                position: Vec3::new(0.0, 64.0, 0.0),
+                rotation: Rotation::default(),
+                game_mode: GameMode::Survival,
+            },
+            use_interacted_block: result,
+            use_item_in_hand: EventResult::Default,
+        })
+    }
+
+    #[test]
+    fn a_denied_result_skips_the_handlers_that_ignore_cancelled() {
+        assert_eq!(
+            audience(
+                mixed(),
+                &interaction(EventResult::Deny),
+                false,
+                Phase::Settled
+            ),
+            (true, vec![(2, vec![4]), (1, vec![2])])
+        );
+        assert_eq!(
+            audience(
+                mixed(),
+                &interaction(EventResult::Allow),
+                false,
+                Phase::Settled
+            ),
+            (false, vec![(2, vec![4, 5]), (1, vec![1, 2])])
+        );
     }
 }

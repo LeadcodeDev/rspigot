@@ -18,7 +18,8 @@ mod tests {
 
     use super::*;
     use crate::plugins::events::{
-        EntityDamageByEntityPatch, EntityDamagePatch, InventoryClickPatch, PlayerMovePatch,
+        EntityDamageByEntityPatch, EntityDamagePatch, EventResult, InventoryClickPatch,
+        InventoryDragPatch, PlayerMovePatch,
     };
     use crate::plugins::{EventKind, ItemSpec};
 
@@ -82,26 +83,30 @@ mod tests {
     }
 
     #[test]
-    fn only_a_direct_write_survives_a_cancel() {
+    fn only_direct_writes_and_results_survive_a_cancel() {
         let stone = ItemSpec::of("minecraft:stone", 1);
         let both = EventPatch::InventoryClick(InventoryClickPatch {
             current_item: Some(None),
             cursor: Some(Some(stone.clone())),
-            result: Some(crate::plugins::events::EventResult::Allow),
+            result: Some(EventResult::Allow),
+        });
+        assert_eq!(both.clone().when_cancelled(), Some(both));
+        assert_eq!(moving(Some(at(1.0))).when_cancelled(), None);
+        let dragged = EventPatch::InventoryDrag(InventoryDragPatch {
+            cursor: Some(Some(stone)),
+            result: Some(EventResult::Deny),
         });
         assert_eq!(
-            both.when_cancelled(),
-            Some(EventPatch::InventoryClick(InventoryClickPatch {
-                current_item: Some(None),
-                cursor: Some(Some(stone)),
-                result: None,
+            dragged.when_cancelled(),
+            Some(EventPatch::InventoryDrag(InventoryDragPatch {
+                cursor: None,
+                result: Some(EventResult::Deny),
             }))
         );
-        assert_eq!(moving(Some(at(1.0))).when_cancelled(), None);
-        let result_only = EventPatch::InventoryClick(InventoryClickPatch {
-            result: Some(crate::plugins::events::EventResult::Deny),
-            ..InventoryClickPatch::default()
+        let cursor_only = EventPatch::InventoryDrag(InventoryDragPatch {
+            cursor: Some(None),
+            ..InventoryDragPatch::default()
         });
-        assert_eq!(result_only.when_cancelled(), None);
+        assert_eq!(cursor_only.when_cancelled(), None);
     }
 }
