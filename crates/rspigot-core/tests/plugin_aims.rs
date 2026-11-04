@@ -237,3 +237,60 @@ fn an_orb_choosing_a_player_fires_closest_player() {
         targets(&s)
     );
 }
+
+#[test]
+fn an_orb_whose_player_left_forgets_them_once() {
+    let mut server = server(PluginSettings {
+        decision_ticks: 1_000,
+        ..PluginSettings::default()
+    });
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![deciding(1, EventKind::EntityTargetLivingEntity)],
+    );
+    let alice = join(&mut server, "Alice");
+    let bob = join(&mut server, "Bob");
+    let mut s = Scene {
+        server,
+        plugin,
+        players: vec![alice.clone(), bob],
+    };
+    console(&mut s, "tp Bob 40.5 64 0.5");
+    s.server.give_experience(alice.id, 0);
+    let Answer::Spawned(orb) = s.ask(Question::Spawn {
+        kind: "minecraft:experience_orb".into(),
+        position: rspigot_domain::Vec3::new(2.5, 64.0, 0.5),
+    }) else {
+        panic!("an orb");
+    };
+    let mut answered = Vec::new();
+    let mut answer_all = |s: &mut Scene| {
+        let mut asked = 0;
+        for event in asked_for(&s.plugin, EventKind::EntityTargetLivingEntity) {
+            let EventPayload::EntityTargetLivingEntity(target) = &event.payload else {
+                continue;
+            };
+            if target.entity.id != orb.id || answered.contains(&event.id) {
+                continue;
+            }
+            answered.push(event.id);
+            asked += 1;
+            rule_on(&mut s.server, 1, event.id, false, None);
+        }
+        asked
+    };
+    tick_until_asked(&mut s, EventKind::EntityTargetLivingEntity);
+    assert_eq!(answer_all(&mut s), 1);
+    s.tick(2);
+    answer_all(&mut s);
+    s.server.handle(leave_of(&alice));
+    s.server.deliver();
+    let mut after = 0;
+    for _ in 0..10 {
+        s.tick(1);
+        after += answer_all(&mut s);
+    }
+    assert_eq!(after, 1);
+}

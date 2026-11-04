@@ -84,6 +84,9 @@ impl<L: ClientLink> Server<L> {
         requests: Vec<TargetRequest>,
         deferred: bool,
     ) {
+        if requests.is_empty() {
+            return;
+        }
         let Some(mob) = self.entity_view(id) else {
             return;
         };
@@ -113,6 +116,13 @@ impl<L: ClientLink> Server<L> {
             tempt: false,
         };
         self.target_event(mob, request, Seeker::Mob, deferred);
+    }
+
+    fn mob_known(&self, mob: EntityId) -> bool {
+        self.entities.store.get(mob).is_some()
+            || self.decisions.anywhere(
+                |then| matches!(then, Continuation::Spawn(step) if step.entity.base.id == mob),
+            )
     }
 
     fn point_mob(&mut self, mob: EntityId, target: Option<EntityId>) {
@@ -162,7 +172,10 @@ impl<L: ClientLink> Server<L> {
                 }
                 let current = match self.entities.mobs.entries.get(&mob) {
                     Some(entry) => entry.ai.target(),
-                    None => self.entities.mobs.initial_targets.get(&mob).copied(),
+                    None if self.mob_known(mob) => {
+                        self.entities.mobs.initial_targets.get(&mob).copied()
+                    }
+                    None => return,
                 };
                 if current == from {
                     self.point_mob(mob, target);

@@ -6,7 +6,7 @@ use rspigot_domain::{BlockPos, BlockStateId, EntityId};
 
 use crate::health::DamageSource;
 use crate::plugins::block::snapshot_of;
-use crate::plugins::decisions::Continuation;
+use crate::plugins::decisions::{Continuation, Lane};
 use crate::plugins::events::{
     EntityDamage, EntityDamageByBlock, EntityDamageByEntity, EntityDamageCause, EntityRemoveCause,
 };
@@ -109,34 +109,65 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         cause: Option<PlayerId>,
         victim: Struck,
-        source: DamageSource,
+        source: &DamageSource,
         amount: f32,
         then: AfterHurt,
     ) -> bool {
         let asked = match victim {
-            Struck::Player(id) => self.ask_hurt_player(id, &source, amount),
-            Struck::Mob(id) => self.ask_hurt_mob(id, &source, amount),
+            Struck::Player(id) => self.ask_hurt_player(id, source, amount),
+            Struck::Mob(id) => self.ask_hurt_mob(id, source, amount),
             Struck::Item(id) => self.ask_hurt_item(id, amount),
         };
         let (Some(amount), Some(subject)) = (asked, self.struck_entity(victim)) else {
             self.after_hurt(then, Outcome::Missed);
             return false;
         };
+        let kind = damage_kind(source);
+        if !self.listened(kind) {
+            return self.land_hurt(victim, source, amount, then, false);
+        }
         self.impacts.last = None;
         let lane = self.lane_for(cause, subject);
-        let kind = damage_kind(&source);
-        let described = source.clone();
         let step = HurtStep {
             kind,
+            victim,
+            source: source.clone(),
+            amount,
+            then,
+        };
+        self.fire(lane, Continuation::Hurt(Box::new(step)), move |server| {
+            server.hurt_payload(victim, source, amount)
+        });
+        self.impacts.last.take().unwrap_or(true)
+    }
+
+    pub(crate) fn strike_behind(
+        &mut self,
+        lane: Lane,
+        victim: Struck,
+        source: DamageSource,
+        amount: f32,
+        then: AfterHurt,
+    ) {
+        let step = HurtStep {
+            kind: damage_kind(&source),
             victim,
             source,
             amount,
             then,
         };
-        self.fire(lane, Continuation::Hurt(Box::new(step)), move |server| {
-            server.hurt_payload(victim, &described, amount)
-        });
-        self.impacts.last.take().unwrap_or(true)
+        self.fire_deferred(lane, Continuation::Strike(Box::new(step)));
+    }
+
+    pub(crate) fn strike_at_head(&mut self, step: HurtStep) {
+        let HurtStep {
+            victim,
+            source,
+            amount,
+            then,
+            ..
+        } = step;
+        self.strike(None, victim, &source, amount, then);
     }
 
     fn hurt_payload(
@@ -197,28 +228,40 @@ impl<L: ClientLink> Server<L> {
             then,
             ..
         } = step;
+        let amount = damage.map_or(amount, |damage| floored(damage as f32));
+        let hurt = self.land_hurt(victim, &source, amount, then, cancelled);
+        self.impacts.last = Some(hurt);
+    }
+
+    fn land_hurt(
+        &mut self,
+        victim: Struck,
+        source: &DamageSource,
+        amount: f32,
+        then: AfterHurt,
+        cancelled: bool,
+    ) -> bool {
         let outcome = if cancelled {
             Outcome::Cancelled
         } else if self.abandoned(&then) {
-            self.impacts.last = Some(false);
-            return;
+            return false;
         } else {
-            let amount = damage.map_or(amount, |damage| floored(damage as f32));
             let hurt = match victim {
-                Struck::Player(id) => self.apply_hurt_player(id, &source, amount),
-                Struck::Mob(id) => self.apply_hurt_mob(id, &source, amount),
+                Struck::Player(id) => self.apply_hurt_player(id, source, amount),
+                Struck::Mob(id) => self.apply_hurt_mob(id, source, amount),
                 Struck::Item(id) => self.apply_hurt_item(id, amount),
             };
             if hurt { Outcome::Hurt } else { Outcome::Missed }
         };
         self.after_hurt(then, outcome);
-        self.impacts.last = Some(outcome.hurt());
+        outcome.hurt()
     }
 
     fn abandoned(&self, then: &AfterHurt) -> bool {
         let attacker = match then {
             AfterHurt::Attack(follow) => follow.attacker,
             AfterHurt::Sweep(follow) => follow.attacker,
+            AfterHurt::MobAttack(follow) => return !self.living_entity_alive(follow.attacker),
             _ => return false,
         };
         self.players

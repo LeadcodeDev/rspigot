@@ -215,6 +215,7 @@ impl<L: ClientLink> Server<L> {
         entity.base.removal = Some(reason);
         self.entities.tracked.remove(&id);
         self.entities.mobs.entries.remove(&id);
+        self.entities.mobs.initial_targets.remove(&id);
         for player in self.players.values_mut() {
             if player.tracked.remove(&id) {
                 player.link.send(ClientEvent::RemoveEntities(vec![id]));
@@ -513,11 +514,6 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn save_chunk_entities(&mut self, pos: ChunkPos, unload: bool) {
-        if unload {
-            for id in self.entities.store.in_chunk(pos).to_vec() {
-                self.settle_lane(Lane::Entity(id), false);
-            }
-        }
         let world_uuid = self.world.level.uuid;
         let ids = self.entities.store.in_chunk(pos).to_vec();
         let (kept, saved): (Vec<EntityId>, Vec<Compound>) = ids

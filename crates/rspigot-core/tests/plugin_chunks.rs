@@ -7,13 +7,14 @@ use std::time::Duration;
 use common::*;
 use rspigot_core::chunks::ChunkManagerConfig;
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
-use rspigot_core::events::Inbound;
+use rspigot_core::events::{Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
-    ChunkLoad, ChunkPopulate, ChunkUnload, ChunkUnloadPatch, EntitiesLoad, EntitiesUnload,
+    ChunkLoad, ChunkPopulate, ChunkUnload, ChunkUnloadPatch, CreatureSpawnReason, EntitiesLoad,
+    EntitiesUnload, EntityDamageByEntityPatch,
 };
 use rspigot_core::plugins::{
-    Answer, ChunkRef, EffectSpec, EntityOrder, EventKind, EventPatch, EventPayload, HandlerSpec,
-    ItemSpec, Order, Phase, Question,
+    Answer, BlockOrder, ChunkRef, EffectSpec, EntityOrder, EventKind, EventPatch, EventPayload,
+    HandlerSpec, ItemSpec, Order, Phase, Question,
 };
 use rspigot_core::ports::{ChunkStore, EntityStore, StoreError};
 use rspigot_core::server::Server;
@@ -467,4 +468,159 @@ fn an_unloading_chunk_settles_the_waiting_events_of_its_entities_before_saving_t
         saved.get_list("active_effects").map(|list| list.len()),
         Some(1)
     );
+}
+
+fn stored(world: &World, pos: ChunkPos) -> Vec<Compound> {
+    world
+        .disk
+        .entities
+        .lock()
+        .map(|entities| entities.get(&pos).cloned().unwrap_or_default())
+        .unwrap_or_default()
+}
+
+#[test]
+fn an_unloading_chunk_settles_a_death_of_its_mob_held_in_a_player_lane() {
+    let mut world = world_deciding_for(
+        vec![
+            deciding(1, EventKind::EntityDamageByEntity),
+            deciding(2, EventKind::EntityDeath),
+        ],
+        0,
+        1_000,
+    );
+    world.go_far();
+    let cow = match world.s.ask(Question::Spawn {
+        kind: "minecraft:cow".into(),
+        position: Vec3::new(201.5, 64.0, 200.5),
+    }) {
+        Answer::Spawned(view) => view,
+        other => panic!("expected a cow, got {other:?}"),
+    };
+    let alice = world.s.players[0].clone();
+    send_input(&mut world.s.server, &alice, PlayerInput::Attack(cow.id));
+    let hit = last_asked(&world.s.plugin, EventKind::EntityDamageByEntity);
+    rule_on(
+        &mut world.s.server,
+        1,
+        hit.id,
+        false,
+        Some(EventPatch::EntityDamageByEntity(
+            EntityDamageByEntityPatch {
+                damage: Some(100.0),
+            },
+        )),
+    );
+    assert_eq!(asked_for(&world.s.plugin, EventKind::EntityDeath).len(), 1);
+    world.go_home();
+    world.wait_unload();
+    assert!(world.disk.saved_soon(FAR));
+    let saved = stored(&world, FAR);
+    assert!(
+        saved
+            .iter()
+            .any(|nbt| nbt.get_str("id") == Some("minecraft:item")),
+        "the loot of the cow is saved with its chunk: {saved:?}"
+    );
+    assert!(
+        saved
+            .iter()
+            .filter(|nbt| nbt.get_str("id") == Some("minecraft:cow"))
+            .all(|nbt| nbt.get_f64("Health").is_some_and(|health| health <= 0.0)),
+        "the cow is not saved alive: {saved:?}"
+    );
+}
+
+fn console(world: &mut World, line: &str) {
+    world.s.server.handle(Inbound::Console(line.to_owned()));
+    world.s.server.deliver();
+}
+
+fn kinds_saved(world: &World, pos: ChunkPos) -> Vec<String> {
+    stored(world, pos)
+        .iter()
+        .filter_map(|nbt| nbt.get_str("id").map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn an_unloading_chunk_places_a_waiting_conversion_before_saving_it() {
+    let mut world = world_deciding_for(vec![deciding(1, EventKind::CreatureSpawn)], 0, 1_000);
+    world.go_far();
+    for y in 64..=66 {
+        world.s.act(Order::Block {
+            pos: BlockPos::new(204, y, 204),
+            order: BlockOrder::Set("minecraft:water".into()),
+        });
+    }
+    console(&mut world, "time set 18000");
+    console(&mut world, "gamemode creative Alice");
+    console(
+        &mut world,
+        "summon minecraft:zombie 204.5 64 204.5 {NoAI:0b,DrownedConversionTime:2}",
+    );
+    let summoned = last_asked(&world.s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut world.s.server, 1, summoned.id, false, None);
+    let drowning = |world: &World| {
+        asked_for(&world.s.plugin, EventKind::CreatureSpawn)
+            .iter()
+            .any(|event| {
+                matches!(&event.payload, EventPayload::CreatureSpawn(spawn)
+                    if spawn.spawn_reason == CreatureSpawnReason::Drowned)
+            })
+    };
+    for _ in 0..60 {
+        world.s.tick(1);
+        if drowning(&world) {
+            break;
+        }
+    }
+    assert!(drowning(&world), "the zombie never converted");
+    world.go_home();
+    world.wait_unload();
+    assert!(world.disk.saved_soon(FAR));
+    let saved = kinds_saved(&world, FAR);
+    assert!(
+        saved.iter().any(|kind| kind == "minecraft:drowned"),
+        "{saved:?}"
+    );
+    assert!(
+        !saved.iter().any(|kind| kind == "minecraft:zombie"),
+        "{saved:?}"
+    );
+}
+
+#[test]
+fn an_unloading_chunk_lands_a_waiting_falling_block_before_saving_it() {
+    let mut world = world_deciding_for(vec![deciding(1, EventKind::EntityChangeBlock)], 0, 1_000);
+    world.go_far();
+    console(
+        &mut world,
+        "summon minecraft:falling_block 204.5 67 204.5 {BlockState:{Name:\"minecraft:sand\"}}",
+    );
+    for _ in 0..60 {
+        world.s.tick(1);
+        if !asked_for(&world.s.plugin, EventKind::EntityChangeBlock).is_empty() {
+            break;
+        }
+    }
+    assert_eq!(
+        asked_for(&world.s.plugin, EventKind::EntityChangeBlock).len(),
+        1
+    );
+    world.go_home();
+    world.wait_unload();
+    assert!(world.disk.saved_soon(FAR));
+    let landed = world
+        .disk
+        .chunks
+        .lock()
+        .ok()
+        .and_then(|chunks| {
+            chunks
+                .get(&FAR)
+                .and_then(|chunk| chunk.block(BlockPos::new(204, 64, 204)))
+        })
+        .and_then(|state| state.kind());
+    assert_eq!(landed, Some(rspigot_blocks::BlockKind::Sand));
 }

@@ -146,7 +146,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn arrow_waits(&self, arrow: EntityId) -> bool {
         self.decisions.anywhere(|then| match then {
             Continuation::ProjectileHit { arrow: waiting, .. } => *waiting == arrow,
-            Continuation::Hurt(step) => {
+            Continuation::Hurt(step) | Continuation::Strike(step) => {
                 matches!(step.then, crate::plugins::AfterHurt::Arrow(follow) if follow.arrow == arrow)
             }
             _ => false,

@@ -13,7 +13,7 @@ use crate::items::PICKUP_DELAY;
 use crate::plugins::events::{CreatureSpawnReason, EntityPotionEffectCause, EntityRemoveCause};
 use crate::plugins::items::stack_of;
 use crate::plugins::resolve::{self, finite_not_negative};
-use crate::plugins::steps::Birth;
+use crate::plugins::steps::{Birth, Spawned};
 use crate::plugins::{EntityDetails, EntityOrder, EntityView, ItemSpec};
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -120,18 +120,24 @@ impl<L: ClientLink> Server<L> {
 
     pub(super) fn spawn_for_plugin(
         &mut self,
+        connection: u64,
+        request: u64,
         kind: &str,
         position: Vec3,
-    ) -> Result<EntityView, String> {
+    ) -> Result<(), String> {
         let kind = entity_kind(kind)?;
         let position = self.loaded_position(position)?;
         let (entity, random) = self.summon_entity(kind, position, None).map_err(refusal)?;
-        let view = view_of(&entity);
         self.spawn_entity(
             entity,
-            Birth::of(CreatureSpawnReason::Custom).with_random(random),
+            Birth::of(CreatureSpawnReason::Custom)
+                .with_random(random)
+                .then(Spawned::Answered {
+                    connection,
+                    request,
+                }),
         );
-        Ok(view)
+        Ok(())
     }
 
     fn loaded_position(&self, position: Vec3) -> Result<Vec3, String> {
@@ -145,9 +151,11 @@ impl<L: ClientLink> Server<L> {
 
     pub(super) fn drop_for_plugin(
         &mut self,
+        connection: u64,
+        request: u64,
         position: Vec3,
         item: &ItemSpec,
-    ) -> Result<EntityView, String> {
+    ) -> Result<(), String> {
         let stack = stack_of(item)?.ok_or_else(|| "air cannot be dropped".to_owned())?;
         let position = self.loaded_position(position)?;
         let velocity = Vec3::new(
@@ -155,7 +163,15 @@ impl<L: ClientLink> Server<L> {
             0.2,
             self.rng.random::<f64>() * 0.2 - 0.1,
         );
-        Ok(self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack))
+        let item = self.item_entity(position, velocity, PICKUP_DELAY, stack);
+        self.spawn_entity(
+            item,
+            Birth::of(CreatureSpawnReason::Default).then(Spawned::Answered {
+                connection,
+                request,
+            }),
+        );
+        Ok(())
     }
 }
 
@@ -173,6 +189,6 @@ fn entity_kind(key: &str) -> Result<Kind, String> {
     Kind::from_name(key).ok_or_else(|| format!("unknown entity type {key}"))
 }
 
-fn refusal(key: &str) -> String {
+pub(super) fn refusal(key: &str) -> String {
     console_text(&Component::translatable(key, Vec::new()))
 }

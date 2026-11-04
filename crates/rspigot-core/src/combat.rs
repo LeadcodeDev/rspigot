@@ -308,7 +308,7 @@ impl<L: ClientLink> Server<L> {
         self.strike(
             Some(id),
             Self::struck_target(victim.target),
-            source,
+            &source,
             strike.damage,
             AfterHurt::Attack(Box::new(follow)),
         );
@@ -453,7 +453,7 @@ impl<L: ClientLink> Server<L> {
             self.strike(
                 Some(id),
                 Self::struck_target(target),
-                source.clone(),
+                &source,
                 damage,
                 AfterHurt::Sweep(follow),
             );

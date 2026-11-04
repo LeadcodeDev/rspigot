@@ -30,7 +30,7 @@ pub use animal::{
 };
 pub use blocks::{
     BreakDoorGoal, MoveThroughVillageGoal, RemoveTurtleEggGoal, ZOMBIE_ATTACK_DOOR_EVENT,
-    ZOMBIE_BREAK_DOOR_EVENT,
+    ZOMBIE_BREAK_DOOR_EVENT, egg_poof,
 };
 pub use brain::{AiContext, Brain, CONTROL_FLAG_INTERVAL, MobAi, mob_tick};
 pub use combat::{

@@ -6,14 +6,16 @@ use rspigot_entities::EntityKind as Kind;
 use uuid::Uuid;
 
 use crate::commands::CommandContext;
+use crate::context::SUMMON_DUPLICATE_UUID;
 use crate::entities::entity_translation_key;
 use crate::plugins::decisions::{Continuation, Lane};
+use crate::plugins::entity::refusal;
 use crate::plugins::events::{
     CreatureSpawn, CreatureSpawnReason, EntityDropItem, EntityRemove, EntityRemoveCause,
     EntitySpawn, ItemSpawn, ProjectileLaunch,
 };
 use crate::plugins::steps::{Birth, SpawnStep, Spawned};
-use crate::plugins::{EntityView, EventKind, EventPayload};
+use crate::plugins::{Answer, EntityView, EventKind, EventPayload, ToPlugin};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -170,7 +172,9 @@ impl<L: ClientLink> Server<L> {
         } = step;
         let id = entity.base.id;
         let mut placed = None;
-        if cancelled {
+        let orphaned =
+            matches!(birth.then, Spawned::Converted { old, .. } if !self.living_entity_alive(old));
+        if cancelled || orphaned {
             self.entities.mobs.initial_targets.remove(&id);
         } else if loaded && !self.world.chunks.is_loaded(entity.base.chunk()) {
             self.entities.mobs.initial_targets.remove(&id);
@@ -185,6 +189,9 @@ impl<L: ClientLink> Server<L> {
             }
             placed = self.place_entity(entity).ok().map(|id| (id, name));
             self.entities.mobs.spawn_randoms.remove(&id);
+            if placed.is_none() {
+                self.entities.mobs.initial_targets.remove(&id);
+            }
         }
         self.after_spawn(birth.then, placed);
     }
@@ -201,16 +208,27 @@ impl<L: ClientLink> Server<L> {
                 None => CommandContext::reply(
                     self,
                     sender,
-                    Component::translatable(crate::context::SUMMON_DUPLICATE_UUID, Vec::new())
+                    Component::translatable(SUMMON_DUPLICATE_UUID, Vec::new())
                         .color(rspigot_domain::text::NamedColor::Red),
                 ),
             },
-            Spawned::Hatched { player, hand } => {
+            Spawned::Hatched { player, slot, item } => {
                 if placed.is_some() {
-                    self.use_spawn_egg(player, hand);
+                    self.use_spawn_egg(player, slot, &item);
                 }
             }
             Spawned::Converted { old, event } => self.finish_conversion(old, event),
+            Spawned::Answered {
+                connection,
+                request,
+            } => {
+                let answer = placed.and_then(|(id, _)| self.entity_view(id)).map_or_else(
+                    || Answer::Refused(refusal(SUMMON_DUPLICATE_UUID)),
+                    Answer::Spawned,
+                );
+                self.plugins
+                    .send(connection, ToPlugin::Answer { request, answer });
+            }
         }
     }
 

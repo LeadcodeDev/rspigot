@@ -223,25 +223,35 @@ impl RemoveTurtleEggGoal {
         }
         if self.ticks_since_reached_goal > BREAK_AFTER {
             context.act(MobAction::RemoveTurtleEgg(egg));
-            for _ in 0..POOF_COUNT {
-                let random = &mut context.brain.random;
-                let spread = Vec3::new(
-                    random.next_gaussian() * POOF_SPREAD,
-                    random.next_gaussian() * POOF_SPREAD,
-                    random.next_gaussian() * POOF_SPREAD,
-                );
-                context.act(MobAction::Particle(Particle {
-                    kind: "minecraft:poof",
-                    data: ParticleData::None,
-                    position: center,
-                    count: 1,
-                    spread,
-                    speed: PARTICLE_SPEED,
-                }));
-            }
+            return;
         }
         self.ticks_since_reached_goal += 1;
     }
+}
+
+pub fn egg_poof(random: &mut impl RandomSource, egg: BlockPos) -> Vec<Particle> {
+    let center = Vec3::new(
+        f64::from(egg.x) + 0.5,
+        f64::from(egg.y),
+        f64::from(egg.z) + 0.5,
+    );
+    (0..POOF_COUNT)
+        .map(|_| {
+            let spread = Vec3::new(
+                random.next_gaussian() * POOF_SPREAD,
+                random.next_gaussian() * POOF_SPREAD,
+                random.next_gaussian() * POOF_SPREAD,
+            );
+            Particle {
+                kind: "minecraft:poof",
+                data: ParticleData::None,
+                position: center,
+                count: 1,
+                spread,
+                speed: PARTICLE_SPEED,
+            }
+        })
+        .collect()
 }
 
 fn is_wooden_door(state: Option<StateId>) -> bool {

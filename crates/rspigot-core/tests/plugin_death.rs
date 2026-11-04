@@ -203,3 +203,51 @@ fn a_mob_whose_death_waits_lies_dying_until_it_settles() {
     s.tick(25);
     assert!(matches!(s.ask(Question::Entity(cow)), Answer::NotFound));
 }
+
+#[test]
+fn a_damaged_equipment_drop_with_the_default_chance_empties_its_slot() {
+    let mut s = scene_with(&["Alice"], Vec::new());
+    let alice = s.players[0].clone();
+    stream_chunk_of(&mut s, rspigot_domain::BlockPos::new(1, 64, 0));
+    let helmet = rspigot_items::ItemKind::IronHelmet.id();
+    for _ in 0..400 {
+        let before: Vec<EntityId> = s
+            .server
+            .entities_of(Kind::Zombie)
+            .iter()
+            .map(|zombie| zombie.id)
+            .collect();
+        console(
+            &mut s,
+            "summon minecraft:zombie 1.5 64 0.5 {NoAI:1b,equipment:{head:{id:\"minecraft:iron_helmet\",count:1}}}",
+        );
+        let zombie = s
+            .server
+            .entities_of(Kind::Zombie)
+            .iter()
+            .map(|zombie| zombie.id)
+            .find(|id| !before.contains(id))
+            .expect("a new zombie");
+        s.tick(1);
+        send_input(&mut s.server, &alice, PlayerInput::Attack(zombie));
+        s.act(Order::Entity {
+            entity: zombie,
+            order: EntityOrder::Kill,
+        });
+        let dropped = s
+            .server
+            .ground_items()
+            .iter()
+            .any(|(_, stack)| stack.item == helmet);
+        if dropped {
+            let equipment = s
+                .server
+                .mob_damage(zombie)
+                .expect("the dead zombie")
+                .equipment;
+            assert!(equipment.is_empty(), "{equipment:?}");
+            return;
+        }
+    }
+    panic!("no helmet dropped in 400 kills");
+}

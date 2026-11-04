@@ -3,7 +3,7 @@ use rspigot_domain::entity::living;
 
 use crate::plugins::decisions::Continuation;
 use crate::plugins::events::{EntityCombust, EntityCombustByBlock, EntityCombustByEntity};
-use crate::plugins::steps::{CombustStep, Holder};
+use crate::plugins::steps::{CombustStep, Holder, Igniter};
 use crate::plugins::{EntityView, EventKind, EventPatch, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -33,15 +33,18 @@ impl<L: ClientLink> Server<L> {
         let Some(entity) = entity else {
             return;
         };
-        let kind = match combuster {
-            Combuster::Nothing => EventKind::EntityCombust,
-            Combuster::Block(_) => EventKind::EntityCombustByBlock,
-            Combuster::Entity(_) => EventKind::EntityCombustByEntity,
+        let (kind, igniter) = match &combuster {
+            Combuster::Nothing => (EventKind::EntityCombust, Igniter::Nothing),
+            Combuster::Block(block) => (EventKind::EntityCombustByBlock, Igniter::Block(*block)),
+            Combuster::Entity(source) => {
+                (EventKind::EntityCombustByEntity, Igniter::Entity(source.id))
+            }
         };
         let lane = self.lane_for(None, entity);
         let step = CombustStep {
             kind,
             target,
+            igniter,
             seconds,
         };
         self.fire(lane, Continuation::Combust(step), move |server| {

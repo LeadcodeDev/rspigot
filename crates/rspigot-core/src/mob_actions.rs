@@ -144,6 +144,12 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         self.set_block(pos, BlockStateId::AIR);
+        let mut random = self.mob_random(id);
+        let poof = rspigot_ai::egg_poof(&mut random, pos);
+        self.store_mob_random(id, random);
+        for particle in poof {
+            self.push(Audience::Trackers(id), ClientEvent::Particle(particle));
+        }
         let pitch = 0.9 + self.rng.random::<f32>() * 0.2;
         let at = Vec3::new(
             f64::from(pos.x) + 0.5,

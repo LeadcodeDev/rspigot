@@ -41,6 +41,10 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn at_head(&mut self, then: Continuation) -> Option<Continuation> {
         match then {
+            Continuation::Strike(step) => {
+                self.strike_at_head(*step);
+                None
+            }
             Continuation::SetWeather(sky) => self.weather_at_head(sky),
             Continuation::Finish(step) => {
                 self.finish_digging(step);

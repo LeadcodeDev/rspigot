@@ -1,6 +1,7 @@
 use crossbeam_channel::Sender;
 use futures_channel::oneshot;
 use rspigot_domain::effect::EffectInstance;
+use rspigot_domain::entity::reward::EquipmentDrop;
 use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
@@ -526,11 +527,16 @@ pub(crate) enum Spawned {
     },
     Hatched {
         player: PlayerId,
-        hand: Hand,
+        slot: usize,
+        item: ItemStack,
     },
     Converted {
         old: EntityId,
         event: i32,
+    },
+    Answered {
+        connection: u64,
+        request: u64,
     },
 }
 
@@ -768,10 +774,18 @@ pub(crate) struct KnockStep {
     pub(crate) push: Push,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Igniter {
+    Nothing,
+    Block(Option<BlockPos>),
+    Entity(EntityId),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CombustStep {
     pub(crate) kind: EventKind,
     pub(crate) target: Holder,
+    pub(crate) igniter: Igniter,
     pub(crate) seconds: f32,
 }
 
@@ -787,7 +801,7 @@ pub(crate) struct PotionStep {
 pub(crate) struct LootStep {
     pub(crate) victim: EntityId,
     pub(crate) drops: Vec<ItemStack>,
-    pub(crate) slots: Vec<(rspigot_items::EquipmentSlot, ItemStack)>,
+    pub(crate) slots: Vec<EquipmentDrop>,
     pub(crate) experience: i32,
 }
 
@@ -867,6 +881,7 @@ pub(crate) enum Continuation {
     Spawn(Box<SpawnStep>),
     EntityDrop(Box<Entity>),
     Hurt(Box<HurtStep>),
+    Strike(Box<HurtStep>),
     MobDeath(Box<LootStep>),
     Regain(RegainStep),
     Exhaust(ExhaustStep),
@@ -961,7 +976,7 @@ impl Continuation {
             Self::Thunder(_) => EventKind::ThunderChange,
             Self::Spawn(step) => step.kind,
             Self::EntityDrop(_) => EventKind::EntityDropItem,
-            Self::Hurt(step) => step.kind,
+            Self::Hurt(step) | Self::Strike(step) => step.kind,
             Self::MobDeath(_) => EventKind::EntityDeath,
             Self::Regain(_) => EventKind::EntityRegainHealth,
             Self::Exhaust(_) => EventKind::EntityExhaustion,
@@ -1018,6 +1033,40 @@ impl Continuation {
         matches!(self, Self::PlayerMove(_))
     }
 
+    pub(crate) fn acts_on(&self, id: EntityId) -> bool {
+        match self {
+            Self::Spawn(step) => {
+                matches!(step.birth.then, Spawned::Converted { old, .. } if old == id)
+            }
+            Self::Hurt(step) | Self::Strike(step) => {
+                matches!(step.victim, Struck::Mob(victim) | Struck::Item(victim) if victim == id)
+            }
+            Self::MobDeath(step) => step.victim == id,
+            Self::Potion(PotionStep { holder, .. })
+            | Self::Combust(CombustStep { target: holder, .. })
+            | Self::Knock(KnockStep { target: holder, .. }) => *holder == Holder::Mob(id),
+            Self::ItemDespawn(item) | Self::Regrow(item) => *item == id,
+            Self::PickupItem(step) => step.item == id || step.collector == id,
+            Self::ChangeBlock(step) => match &step.change {
+                Grief::Fall { .. } => false,
+                Grief::Land(landing) => landing.falling == id,
+                Grief::Graze { sheep, .. } => *sheep == id,
+            },
+            Self::EggBreak { mob, .. } => *mob == id,
+            Self::EntityExplode(step) => step.discard == Some(id),
+            Self::Prime(step) => step.creeper == id,
+            Self::Relocate(step) => step.entity == id,
+            Self::ProjectileHit { arrow, target } => *arrow == id || *target == id,
+            Self::Aim(step) => step.mob == id,
+            Self::Breed(step) => step.parent == id || step.partner == id,
+            Self::Love(step) => step.target == id,
+            Self::Dye(step) => step.target == id,
+            Self::Shear(step) => step.target == id,
+            Self::InteractEntity(step) => step.target == id,
+            _ => false,
+        }
+    }
+
     pub(crate) fn same_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Velocity(one), Self::Velocity(other)) => one.player == other.player,
@@ -1026,7 +1075,9 @@ impl Continuation {
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
-            (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
+            (Self::Combust(one), Self::Combust(other)) => {
+                one.target == other.target && one.kind == other.kind && one.igniter == other.igniter
+            }
             (Self::ItemDespawn(one), Self::ItemDespawn(other)) => one == other,
             (Self::ChangeBlock(one), Self::ChangeBlock(other)) => {
                 match (&one.change, &other.change) {

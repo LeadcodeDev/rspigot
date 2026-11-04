@@ -155,7 +155,7 @@ impl<L: ClientLink> Server<L> {
         };
         let victim = self.struck(id);
         let source = self.lava_source(pos);
-        self.strike(None, victim, source, fire::LAVA_DAMAGE, then);
+        self.strike(None, victim, &source, fire::LAVA_DAMAGE, then);
     }
 
     pub(crate) fn burn_sound(&mut self, follow: BurnFollow) {
@@ -298,7 +298,7 @@ impl<L: ClientLink> Server<L> {
                 self.strike(
                     None,
                     Struck::Player(id),
-                    source,
+                    &source,
                     fire::LAVA_DAMAGE,
                     AfterHurt::Burn(follow),
                 );

@@ -380,13 +380,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt(&mut self, id: PlayerId, source: &DamageSource, amount: f32) -> bool {
-        self.strike(
-            None,
-            Struck::Player(id),
-            source.clone(),
-            amount,
-            AfterHurt::Nothing,
-        )
+        self.strike(None, Struck::Player(id), source, amount, AfterHurt::Nothing)
     }
 
     pub(crate) fn ask_hurt_player(
@@ -404,7 +398,11 @@ impl<L: ClientLink> Server<L> {
         {
             return None;
         }
-        let amount = if source.scales_with_difficulty() {
+        let scaled = source.scales_with_difficulty();
+        if scaled && self.world.difficulty == Difficulty::Peaceful {
+            return None;
+        }
+        let amount = if scaled {
             damage::scaled_for_difficulty(amount, self.world.difficulty)
         } else {
             amount
@@ -598,7 +596,6 @@ impl<L: ClientLink> Server<L> {
             .filter_map(|slot| Some((slot, player.inventory.get(slot).cloned()?)))
             .collect();
         let text = crate::console::console_text(&message);
-        let damage_source = self.damage_view(source);
         let forgotten = self.decisions.forget(id);
         self.notify_undone(forgotten, Phase::Settled);
         let payload = {
@@ -615,7 +612,7 @@ impl<L: ClientLink> Server<L> {
                         .collect()
                 };
                 Some(EventPayload::PlayerDeath(PlayerDeath {
-                    damage_source,
+                    damage_source: server.damage_view(source),
                     death_message: Some(text),
                     dropped_exp: experience,
                     drops,

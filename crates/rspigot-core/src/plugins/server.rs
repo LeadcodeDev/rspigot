@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::{EntityId, Rotation, Vec3};
 
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
@@ -107,9 +107,10 @@ impl<L: ClientLink> Server<L> {
                 self.apply_order(connection, Some(event), order);
             }
             FromPlugin::Question { request, question } => {
-                let answer = self.answer_question(connection, question);
-                self.plugins
-                    .send(connection, ToPlugin::Answer { request, answer });
+                if let Some(answer) = self.answer_question(connection, request, question) {
+                    self.plugins
+                        .send(connection, ToPlugin::Answer { request, answer });
+                }
             }
         }
     }
@@ -141,8 +142,13 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn answer_question(&mut self, connection: u64, question: Question) -> Answer {
-        match question {
+    fn answer_question(
+        &mut self,
+        connection: u64,
+        request: u64,
+        question: Question,
+    ) -> Option<Answer> {
+        Some(match question {
             Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
             Question::Players => Answer::Players(self.online_snapshots()),
             Question::PlayerNamed(name) => Answer::Players(
@@ -177,16 +183,22 @@ impl<L: ClientLink> Server<L> {
             Question::Entity(id) => self
                 .entity_details(id)
                 .map_or(Answer::NotFound, Answer::Entity),
-            Question::Spawn { kind, position } => self
-                .spawn_for_plugin(&kind, position)
-                .map_or_else(Answer::Refused, Answer::Spawned),
-            Question::DropItem { position, item } => self
-                .drop_for_plugin(position, &item)
-                .map_or_else(Answer::Refused, Answer::Spawned),
+            Question::Spawn { kind, position } => {
+                return self
+                    .spawn_for_plugin(connection, request, &kind, position)
+                    .err()
+                    .map(Answer::Refused);
+            }
+            Question::DropItem { position, item } => {
+                return self
+                    .drop_for_plugin(connection, request, position, &item)
+                    .err()
+                    .map(Answer::Refused);
+            }
             Question::CustomInventory(inventory) => self
                 .custom_inventory_state(connection, inventory)
                 .map_or(Answer::NotFound, Answer::CustomInventory),
-        }
+        })
     }
 
     pub(crate) fn decide_move(
@@ -464,13 +476,30 @@ impl<L: ClientLink> Server<L> {
         let dropped = self.decisions.drop_pending(lane);
         self.notify_undone(dropped, Phase::Settled);
         while let Some(next) = self.decisions.flush(lane, logins) {
-            match next {
-                Flushed::Ready(ready) => self.settle(*ready),
-                Flushed::Due(due) => {
-                    self.decisions.enter(lane);
-                    self.fire_head(lane, Some(due.event), due.then);
-                    self.decisions.leave();
-                }
+            self.settle_flushed(lane, next);
+        }
+    }
+
+    pub(crate) fn settle_acting_on(&mut self, entities: &[EntityId]) {
+        while let Some(lane) = self.decisions.lane_where(|lane, then| {
+            entities
+                .iter()
+                .any(|id| lane == Lane::Entity(*id) || then.acts_on(*id))
+        }) {
+            let Some(next) = self.decisions.flush(lane, false) else {
+                break;
+            };
+            self.settle_flushed(lane, next);
+        }
+    }
+
+    fn settle_flushed(&mut self, lane: Lane, next: Flushed) {
+        match next {
+            Flushed::Ready(ready) => self.settle(*ready),
+            Flushed::Due(due) => {
+                self.decisions.enter(lane);
+                self.fire_head(lane, Some(due.event), due.then);
+                self.decisions.leave();
             }
         }
     }
@@ -674,7 +703,8 @@ impl<L: ClientLink> Server<L> {
             Continuation::ClickBlock(_)
             | Continuation::DropSelected(_)
             | Continuation::Wear(_)
-            | Continuation::SetWeather(_) => Vec::new(),
+            | Continuation::SetWeather(_)
+            | Continuation::Strike(_) => Vec::new(),
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
@@ -1197,6 +1227,34 @@ mod tests {
         fn spawn_point(&self, _: &Dimension) -> Vec3 {
             Vec3::new(0.5, 64.0, 0.5)
         }
+    }
+
+    #[test]
+    fn a_spawn_that_cannot_be_placed_forgets_its_initial_target() {
+        let mut server = quiet_server();
+        let zombie = rspigot_entities::EntityKind::Zombie;
+        let first = crate::mob_actions::new_mob(server.new_entity_base(zombie));
+        let uuid = first.base.uuid;
+        assert!(server.place_entity(first).is_ok());
+        let mut base = server.new_entity_base(zombie);
+        base.uuid = uuid;
+        let twin = crate::mob_actions::new_mob(base);
+        let id = twin.base.id;
+        server
+            .entities
+            .mobs
+            .initial_targets
+            .insert(id, rspigot_domain::EntityId(99));
+        let step = crate::plugins::steps::SpawnStep {
+            kind: EventKind::CreatureSpawn,
+            entity: twin,
+            loaded: false,
+            birth: crate::plugins::steps::Birth::of(
+                crate::plugins::events::CreatureSpawnReason::Custom,
+            ),
+        };
+        server.finish_spawn(step, false);
+        assert!(!server.entities.mobs.initial_targets.contains_key(&id));
     }
 
     fn quiet_server() -> Server<Quiet> {

@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use rspigot_core::config::PluginSettings;
-use rspigot_core::events::Inbound;
+use rspigot_core::events::{ClientEvent, Inbound};
 use rspigot_core::plugins::events::EntityRemoveCause;
 use rspigot_core::plugins::{
     Answer, BlockOrder, EventKind, EventPayload, GameRule, HandlerSpec, Order, Question, WorldOrder,
@@ -237,4 +237,53 @@ fn a_zombie_asks_to_interact_before_it_breaks_a_turtle_egg() {
     assert_eq!(block(&mut s, egg), "minecraft:turtle_egg");
     rule_on(&mut s.server, 1, asked.id, true, None);
     assert_eq!(block(&mut s, egg), "minecraft:turtle_egg");
+}
+
+fn poofs(player: &Player) -> usize {
+    player
+        .link
+        .take()
+        .iter()
+        .filter(|event| {
+            matches!(event, ClientEvent::Particle(particle) if particle.kind == "minecraft:poof")
+        })
+        .count()
+}
+
+#[test]
+fn a_cancelled_turtle_egg_break_sends_no_poof_and_an_allowed_one_does() {
+    let mut s = waiting_scene(vec![deciding(1, EventKind::EntityInteract)]);
+    let alice = s.players[0].clone();
+    s.act(Order::World(WorldOrder::SetTime(18_000)));
+    let egg = BlockPos::new(5, 64, 5);
+    stream_chunk_of(&mut s, egg);
+    set(&mut s, egg, "minecraft:turtle_egg");
+    console(&mut s, "gamemode spectator Alice");
+    console(&mut s, "summon minecraft:zombie 2.5 64 2.5");
+    for _ in 0..3_000 {
+        s.tick(1);
+        if !asked_for(&s.plugin, EventKind::EntityInteract).is_empty() {
+            break;
+        }
+    }
+    s.server.deliver();
+    assert_eq!(poofs(&alice), 0);
+    let asked = last_asked(&s.plugin, EventKind::EntityInteract);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    s.server.deliver();
+    assert_eq!(poofs(&alice), 0);
+    for _ in 0..20 {
+        s.tick(1);
+        if last_asked(&s.plugin, EventKind::EntityInteract).id != asked.id {
+            break;
+        }
+    }
+    let again = last_asked(&s.plugin, EventKind::EntityInteract);
+    assert_ne!(again.id, asked.id);
+    s.server.deliver();
+    assert_eq!(poofs(&alice), 0);
+    rule_on(&mut s.server, 1, again.id, false, None);
+    s.server.deliver();
+    assert_eq!(poofs(&alice), 20);
+    assert_eq!(block(&mut s, egg), "minecraft:air");
 }
