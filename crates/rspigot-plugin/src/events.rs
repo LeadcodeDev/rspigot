@@ -19639,6 +19639,16 @@ pub enum Call {
 }
 
 impl Received {
+    pub(crate) const fn writes_when_cancelled(&self) -> bool {
+        matches!(
+            self.payload,
+            event::Payload::CraftItem(_)
+                | event::Payload::InventoryClick(_)
+                | event::Payload::InventoryCreative(_)
+                | event::Payload::SmithItem(_)
+        )
+    }
+
     pub(crate) fn call(
         &self,
         handler: u32,
