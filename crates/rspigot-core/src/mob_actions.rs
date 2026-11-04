@@ -5,15 +5,19 @@ use rspigot_domain::entity::ageable::{self, PARENT_AGE_AFTER_BREEDING, SHEEP_REG
 use rspigot_domain::entity::living::{self, LivingState};
 use rspigot_domain::entity::species;
 use rspigot_domain::entity::{Entity, EntityBase, EntityState};
+use rspigot_domain::item::ItemStack;
 use rspigot_domain::random::{LegacyRandom, RandomSource};
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, EntityStatus};
-use crate::plugins::events::{CreatureSpawnReason, EntityInteract, SheepRegrowWool};
-use crate::plugins::steps::Grief;
-use crate::plugins::{Continuation, EventPayload};
+use crate::plugins::events::{
+    CreatureSpawnReason, EntityBreed, EntityBreedPatch, EntityEnterLoveModePatch, EntityInteract,
+    SheepRegrowWool,
+};
+use crate::plugins::steps::{BreedStep, Grief, LoveStep};
+use crate::plugins::{Continuation, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -310,6 +314,87 @@ impl<L: ClientLink> Server<L> {
         child.base.snap_to(position, 0.0, 0.0);
         let experience = random.next_int(BREED_EXPERIENCE) + 1;
         self.store_mob_random(parent, random);
+        let (Some(mother), Some(father)) = (self.entity_view(parent), self.entity_view(partner))
+        else {
+            return;
+        };
+        let baby = crate::plugins::view_of_entity(&child);
+        let (bred_with, breeder) = self.breeding_facts(parent, partner);
+        let lane = self.lane_for(None, parent);
+        let step = BreedStep {
+            parent,
+            partner,
+            child,
+            experience,
+            position,
+        };
+        self.fire_heard(lane, Continuation::Breed(Box::new(step)), move |server| {
+            let breeder = match breeder {
+                Some(entity) => Some(server.subject_view(entity)?),
+                None => None,
+            };
+            Some(EventPayload::EntityBreed(EntityBreed {
+                bred_with: bred_with.as_ref().map(spec_of),
+                breeder,
+                entity_type: baby.kind.clone(),
+                entity: baby,
+                experience,
+                father,
+                mother,
+            }))
+        });
+    }
+
+    fn breeding_facts(
+        &self,
+        parent: EntityId,
+        partner: EntityId,
+    ) -> (Option<ItemStack>, Option<EntityId>) {
+        let love = |id: EntityId| {
+            self.entities
+                .store
+                .get(id)
+                .and_then(|e| e.living())
+                .and_then(|l| l.mob.as_ref())
+                .and_then(|m| m.ageable.as_ref())
+                .and_then(|a| a.love.clone())
+        };
+        let online = |cause: Option<uuid::Uuid>| {
+            cause.and_then(|uuid| {
+                self.players
+                    .values()
+                    .find(|player| player.id.0 == uuid)
+                    .map(|player| player.entity_id)
+            })
+        };
+        let mother = love(parent);
+        let breeder = online(mother.as_ref().and_then(|love| love.cause))
+            .or_else(|| online(love(partner).and_then(|love| love.cause)));
+        (mother.and_then(|love| love.breed_item), breeder)
+    }
+
+    pub(crate) fn finish_breed(&mut self, step: BreedStep, patch: EntityBreedPatch) {
+        let BreedStep {
+            parent,
+            partner,
+            child,
+            experience,
+            position,
+        } = step;
+        let in_love = |server: &Self, id: EntityId| {
+            server.entities.store.get(id).is_some_and(|e| {
+                e.living().is_some_and(|l| {
+                    !living::is_dead_or_dying(&e.base, l)
+                        && l.mob
+                            .as_ref()
+                            .and_then(|m| m.ageable.as_ref())
+                            .is_some_and(ageable::AgeableState::in_love)
+                })
+            })
+        };
+        if !in_love(self, parent) || !in_love(self, partner) {
+            return;
+        }
         for id in [parent, partner] {
             if let Some(Entity {
                 base,
@@ -329,20 +414,38 @@ impl<L: ClientLink> Server<L> {
                 status: EntityStatus::Event(LOVE_EVENT),
             },
         );
+        let experience = patch.experience.unwrap_or(experience).max(0);
         if self.config.rules.mob_drops && experience > 0 {
             self.spawn_orb(position, experience);
         }
         self.add_entity(child, CreatureSpawnReason::Breeding);
     }
 
-    pub(crate) fn set_in_love(&mut self, id: EntityId, cause: Option<uuid::Uuid>) {
-        let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+    pub(crate) fn finish_love(&mut self, step: LoveStep, patch: EntityEnterLoveModePatch) {
+        let LoveStep {
+            target: id,
+            cause,
+            item,
+        } = step;
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
             return;
         };
+        if living::is_dead_or_dying(base, state) {
+            return;
+        }
         let Some(ageable) = state.mob.as_mut().and_then(|mob| mob.ageable.as_mut()) else {
             return;
         };
-        ageable.set_in_love(cause);
+        if ageable.age != 0 || !ageable.can_fall_in_love() {
+            return;
+        }
+        let ticks = patch.ticks_in_love.unwrap_or(ageable::LOVE_TICKS);
+        ageable.fall_in_love(ticks, cause, item);
         self.push(
             Audience::Trackers(id),
             ClientEvent::EntityStatus {

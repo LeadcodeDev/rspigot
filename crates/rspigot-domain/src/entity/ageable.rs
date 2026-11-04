@@ -4,6 +4,7 @@ use uuid::Uuid;
 use super::base::EntityBase;
 use super::data::SyncedValue;
 use crate::Vec3;
+use crate::item::ItemStack;
 use crate::particle::Particle;
 use crate::random::RandomSource;
 
@@ -29,6 +30,7 @@ const RESET_MOB_GROWTH: &str = "minecraft:reset_mob_growth";
 pub struct Love {
     pub ticks: i32,
     pub cause: Option<Uuid>,
+    pub breed_item: Option<ItemStack>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -65,6 +67,16 @@ impl AgeableState {
             if cause.is_some() {
                 love.cause = cause;
             }
+        }
+    }
+
+    pub fn fall_in_love(&mut self, ticks: i32, cause: Option<Uuid>, item: Option<ItemStack>) {
+        if let Some(love) = &mut self.love {
+            love.ticks = ticks;
+            if cause.is_some() {
+                love.cause = cause;
+            }
+            love.breed_item = item;
         }
     }
 
@@ -355,6 +367,12 @@ mod tests {
         state.age = 10;
         custom_server_ai_step(&mut state);
         assert!(!state.in_love());
+        state.fall_in_love(-5, None, None);
+        assert!(state.can_fall_in_love());
+        assert_eq!(
+            state.love.as_ref().and_then(|love| love.cause),
+            Some(Uuid::from_u128(9))
+        );
     }
 
     #[test]

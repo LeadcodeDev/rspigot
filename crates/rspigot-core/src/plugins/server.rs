@@ -836,6 +836,22 @@ impl<L: ClientLink> Server<L> {
                 self.finish_aim(step, cancelled, settled_target(patch));
                 Vec::new()
             }
+            Continuation::Breed(step) => {
+                if !cancelled {
+                    self.finish_breed(*step, patch_of!(patch, EntityBreed));
+                }
+                Vec::new()
+            }
+            Continuation::Love(step) => {
+                if !cancelled {
+                    self.finish_love(*step, patch_of!(patch, EntityEnterLoveMode));
+                }
+                Vec::new()
+            }
+            Continuation::Dye(step) => {
+                self.finish_dye(*step, cancelled, patch_of!(patch, SheepDyeWool));
+                Vec::new()
+            }
         }
     }
 

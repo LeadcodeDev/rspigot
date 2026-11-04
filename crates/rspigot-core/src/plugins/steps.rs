@@ -415,6 +415,32 @@ pub(crate) struct ExplodeStep {
     pub(crate) discard: Option<EntityId>,
 }
 
+#[derive(Debug)]
+pub(crate) struct BreedStep {
+    pub(crate) parent: EntityId,
+    pub(crate) partner: EntityId,
+    pub(crate) child: Entity,
+    pub(crate) experience: i32,
+    pub(crate) position: Vec3,
+}
+
+#[derive(Debug)]
+pub(crate) struct LoveStep {
+    pub(crate) target: EntityId,
+    pub(crate) cause: Option<uuid::Uuid>,
+    pub(crate) item: Option<ItemStack>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DyeStep {
+    pub(crate) player: PlayerId,
+    pub(crate) target: EntityId,
+    pub(crate) hand: Hand,
+    pub(crate) color: u8,
+    pub(crate) stack: ItemStack,
+    pub(crate) parked: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Seeker {
     Mob,
@@ -837,6 +863,9 @@ pub(crate) enum Continuation {
     Shoot(Box<ShotStep>),
     ProjectileHit { arrow: EntityId, target: EntityId },
     Aim(AimStep),
+    Breed(Box<BreedStep>),
+    Love(Box<LoveStep>),
+    Dye(Box<DyeStep>),
 }
 
 impl Continuation {
@@ -913,6 +942,9 @@ impl Continuation {
             Self::Shoot(_) => EventKind::EntityShootBow,
             Self::ProjectileHit { .. } => EventKind::ProjectileHit,
             Self::Aim(_) => EventKind::EntityTargetLivingEntity,
+            Self::Breed(_) => EventKind::EntityBreed,
+            Self::Love(_) => EventKind::EntityEnterLoveMode,
+            Self::Dye(_) => EventKind::SheepDyeWool,
         }
     }
 
@@ -952,6 +984,7 @@ impl Continuation {
             }
             (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
             (Self::Prime(one), Self::Prime(other)) => one.creeper == other.creeper,
+            (Self::Breed(one), Self::Breed(other)) => one.parent == other.parent,
             (Self::Aim(one), Self::Aim(other)) => {
                 one.deferred && one.mob == other.mob && one.seeker == other.seeker
             }
@@ -984,6 +1017,7 @@ impl Continuation {
             Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
             Self::EggBreak { .. } | Self::Prime(_) | Self::ProjectileHit { .. } => true,
             Self::Aim(step) => step.deferred,
+            Self::Breed(_) => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
