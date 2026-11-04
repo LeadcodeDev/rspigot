@@ -237,7 +237,11 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn continue_result(&mut self, id: PlayerId, window: Window, next: ResultLoop) {
-        if self.window_of(id) != Some(window)
+        let emptied = self
+            .crafting_inputs(id, window)
+            .is_none_or(|inputs| inputs.iter().all(Option::is_none));
+        if emptied
+            || self.window_of(id) != Some(window)
             || !same_item(&self.result_of(id, window), &Some(next.moved.clone()))
         {
             return;

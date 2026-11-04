@@ -797,3 +797,84 @@ fn a_leaving_player_closes_the_open_window_before_leaving() {
     assert_eq!(closed.len(), 1);
     assert!(!closed[0].by_player);
 }
+
+#[test]
+fn a_result_set_on_a_grid_without_a_recipe_uses_the_grid_and_stops_when_it_empties() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PrepareItemCraft),
+            observe(2, EventKind::CraftItem),
+            observe(3, EventKind::PrepareItemCraft),
+        ],
+    );
+    let alice = s.players[0].clone();
+    let diamond = || {
+        Some(EventPatch::PrepareItemCraft(PrepareItemCraftPatch {
+            result: Some(Some(spec("minecraft:diamond", 1))),
+        }))
+    };
+    give(&mut s, &alice, 9, "minecraft:dirt", 1);
+    let mut own = View::inventory();
+    refresh(&alice, &mut own);
+    carry(&mut s, &alice, &mut own, 9, ("minecraft:dirt", 1));
+    let put = place(&mut own, 1, ("minecraft:dirt", 1));
+    send_click(&mut s, &alice, &mut own, put);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::PrepareItemCraft).id,
+        false,
+        diamond(),
+    );
+    refresh(&alice, &mut own);
+    assert_eq!(own.at(0), Some(("minecraft:diamond", 1)));
+    let take = pickup(&mut own, 0, ("minecraft:diamond", 1));
+    send_click(&mut s, &alice, &mut own, take);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::PrepareItemCraft).id,
+        false,
+        None,
+    );
+    refresh(&alice, &mut own);
+    assert_eq!(own.held(), Some(("minecraft:diamond", 1)));
+    assert_eq!(own.at(1), None);
+    assert_eq!(count_of(&mut s, &alice, "minecraft:dirt"), 0);
+    let mut own = View::inventory();
+    let close = rspigot_core::events::Inbound::Input {
+        player: alice.id,
+        input: PlayerInput::ContainerClose(0),
+    };
+    s.server.handle(close);
+    s.server.deliver();
+    refresh(&alice, &mut own);
+
+    give(&mut s, &alice, 9, "minecraft:dirt", 2);
+    refresh(&alice, &mut own);
+    carry(&mut s, &alice, &mut own, 9, ("minecraft:dirt", 2));
+    let put = place(&mut own, 1, ("minecraft:dirt", 2));
+    send_click(&mut s, &alice, &mut own, put);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::PrepareItemCraft).id,
+        false,
+        diamond(),
+    );
+    send_click(&mut s, &alice, &mut own, press(0, 0, ClickInput::QuickMove));
+    for _ in 0..4 {
+        let asked = asked_for(&s.plugin, EventKind::PrepareItemCraft);
+        let last = asked.last().expect("a prepare");
+        if settled_for(&s.plugin, EventKind::PrepareItemCraft)
+            .iter()
+            .any(|settled| settled.id == last.id)
+        {
+            break;
+        }
+        rule_on(&mut s.server, 1, last.id, false, diamond());
+    }
+    assert_eq!(count_of(&mut s, &alice, "minecraft:dirt"), 0);
+    assert_eq!(count_of(&mut s, &alice, "minecraft:diamond"), 3);
+}

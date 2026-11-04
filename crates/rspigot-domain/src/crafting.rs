@@ -943,7 +943,7 @@ pub fn result(width: usize, height: usize, slots: &[Slot]) -> Slot {
     assemble(owner, craft, &input)
 }
 
-fn remainders(craft: &Craft, slots: &[Slot]) -> Vec<Slot> {
+fn remainders(craft: Option<&Craft>, slots: &[Slot]) -> Vec<Slot> {
     let mut remainders = vec![None; slots.len()];
     for (index, slot) in slots.iter().enumerate() {
         let Some(stack) = slot else {
@@ -954,11 +954,13 @@ fn remainders(craft: &Craft, slots: &[Slot]) -> Vec<Slot> {
             continue;
         }
         match craft {
-            Craft::BookCloning { .. } if stack.components.contains_key(WRITTEN_BOOK_CONTENT) => {
+            Some(Craft::BookCloning { .. })
+                if stack.components.contains_key(WRITTEN_BOOK_CONTENT) =>
+            {
                 remainders[index] = with_count(stack, 1);
                 break;
             }
-            Craft::BannerDuplicate { .. } if layers(stack) > 0 => {
+            Some(Craft::BannerDuplicate { .. }) if layers(stack) > 0 => {
                 remainders[index] = with_count(stack, 1);
             }
             _ => {}
@@ -970,10 +972,7 @@ fn remainders(craft: &Craft, slots: &[Slot]) -> Vec<Slot> {
 pub fn take_result(width: usize, height: usize, slots: &mut [Slot]) -> Vec<ItemStack> {
     let matched = Input::of(width, height, slots).and_then(|input| find(&input));
     let mut leftovers = Vec::new();
-    let Some((_, craft)) = matched else {
-        return leftovers;
-    };
-    let remainders = remainders(craft, slots);
+    let remainders = remainders(matched.map(|(_, craft)| craft), slots);
     for (slot, remainder) in slots.iter_mut().zip(remainders) {
         let Some(stack) = slot.take() else {
             continue;
@@ -999,6 +998,23 @@ mod tests {
     use rspigot_items::ItemId;
 
     use super::*;
+
+    #[test]
+    fn taking_a_result_from_a_grid_without_a_recipe_uses_one_of_each_stack() {
+        let mut slots = grid(
+            2,
+            2,
+            &[
+                (0, ItemKind::Dirt, 2),
+                (1, ItemKind::Stone, 1),
+                (3, ItemKind::LavaBucket, 1),
+            ],
+        );
+        assert!(take_result(2, 2, &mut slots).is_empty());
+        assert_eq!(slots[0], stack(ItemKind::Dirt, 1));
+        assert_eq!(slots[1], None);
+        assert_eq!(slots[3], stack(ItemKind::Bucket, 1));
+    }
 
     #[test]
     fn the_recipe_of_a_grid_carries_its_datapack_id() {
@@ -2199,12 +2215,5 @@ mod tests {
             vec![ItemStack::new(ItemKind::GlassBottle.id(), NonZeroU8::MIN)]
         );
         assert_eq!(slots[0], stack(ItemKind::HoneyBottle, 3));
-    }
-
-    #[test]
-    fn taking_nothing_when_nothing_matches() {
-        let mut slots = grid(3, 3, &[(0, ItemKind::Dirt, 3)]);
-        assert!(take_result(3, 3, &mut slots).is_empty());
-        assert_eq!(slots[0], stack(ItemKind::Dirt, 3));
     }
 }
