@@ -313,7 +313,7 @@ Accessors that have no field, with the reason.
 | `RaidStop` | `getRaid` | raids do not exist yet, so there is no raid handle |
 | `RaidTrigger` | `getRaid` | raids do not exist yet, so there is no raid handle |
 | `SignChange` | `getLine(int)` | lines() holds every line |
-| `SignChange` | `setLine(int, String)` | set_lines replaces every line |
+| `SignChange` | `setLine(int, String)` | set_lines replaces lines in place: each changed line travels as a replacement at its index, and the last handler to change a line wins it |
 
 ## Not generated
 

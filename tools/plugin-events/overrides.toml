@@ -387,7 +387,7 @@ sets = ["getCommands"]
 
 [events.SignChange]
 collections = ["getLines"]
-omit = { "getLine(int)" = "lines() holds every line", "setLine(int, String)" = "set_lines replaces every line" }
+omit = { "getLine(int)" = "lines() holds every line", "setLine(int, String)" = "set_lines replaces lines in place: each changed line travels as a replacement at its index, and the last handler to change a line wins it" }
 
 [events.InventoryClick]
 revive = ["setCursor"]
