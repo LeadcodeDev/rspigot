@@ -187,7 +187,8 @@ fn server() -> Server<Link> {
         Arc::new(MemoryStore::default()),
         Arc::new(Flat),
         StatusBoard::new(20),
-    );
+    )
+    .with_rng_seed(0);
     server.wait_for_spawn(Duration::from_secs(10));
     server
 }
