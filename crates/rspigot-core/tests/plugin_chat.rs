@@ -5,7 +5,10 @@ use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
     AsyncPlayerChat, AsyncPlayerChatPatch, PlayerCommandPreprocess, PlayerCommandPreprocessPatch,
 };
-use rspigot_core::plugins::{EventKind, EventPatch, EventPayload, PlayerOrder};
+use rspigot_core::plugins::{
+    EventKind, EventPatch, EventPayload, HandlerSpec, ListDiff, PlayerOrder, PlayerSnapshot,
+    Priority,
+};
 
 fn chat_lines(player: &Player) -> Vec<String> {
     player
@@ -121,6 +124,102 @@ fn changed_recipients_limit_who_reads_the_chat() {
     assert_eq!(chat_lines(&bob), ["<Alice> psst"]);
     assert!(chat_lines(&carol).is_empty());
     assert!(chat_lines(&alice).is_empty());
+}
+
+fn chatting(priority: Priority) -> HandlerSpec {
+    HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::AsyncPlayerChat)
+    }
+}
+
+fn two_plugins_chat(names: &[&str]) -> (Scene, u64, Vec<PlayerSnapshot>) {
+    let mut s = scene_with(names, vec![chatting(Priority::Low)]);
+    connect_with(&mut s.server, 2, "second", vec![chatting(Priority::High)]);
+    let alice = s.players[0].clone();
+    say(&mut s, &alice, "psst");
+    let asked = last_asked(&s.plugin, EventKind::AsyncPlayerChat);
+    let EventPayload::AsyncPlayerChat(AsyncPlayerChat { recipients, .. }) = asked.payload else {
+        panic!("expected a chat");
+    };
+    (s, asked.id, recipients)
+}
+
+fn recipients_patch(recipients: ListDiff<PlayerSnapshot>) -> Option<EventPatch> {
+    Some(EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
+        recipients,
+        ..AsyncPlayerChatPatch::default()
+    }))
+}
+
+#[test]
+fn two_plugins_that_each_remove_a_recipient_both_keep_the_chat_from_them() {
+    for later_answers_first in [false, true] {
+        let (mut s, event, offered) = two_plugins_chat(&["Alice", "Bob", "Carol", "Dave"]);
+        let [alice, bob, carol, dave] = [0, 1, 2, 3].map(|index| s.players[index].clone());
+        let mut answers = vec![
+            (1, removing(&offered, |player| player.id == bob.id)),
+            (2, removing(&offered, |player| player.id == carol.id)),
+        ];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, diff) in answers {
+            rule_on(
+                &mut s.server,
+                connection,
+                event,
+                false,
+                recipients_patch(diff),
+            );
+        }
+        assert_eq!(chat_lines(&alice), ["<Alice> psst"]);
+        assert_eq!(chat_lines(&dave), ["<Alice> psst"]);
+        assert!(chat_lines(&bob).is_empty(), "{later_answers_first}");
+        assert!(chat_lines(&carol).is_empty(), "{later_answers_first}");
+    }
+}
+
+#[test]
+fn a_recipient_removed_by_one_plugin_and_added_back_by_a_later_one_reads_the_chat_once() {
+    for later_answers_first in [false, true] {
+        let (mut s, event, offered) = two_plugins_chat(&["Alice", "Bob", "Carol"]);
+        let [alice, bob, carol] = [0, 1, 2].map(|index| s.players[index].clone());
+        let bob_again: Vec<PlayerSnapshot> = offered
+            .iter()
+            .filter(|player| player.id == bob.id)
+            .cloned()
+            .collect();
+        let mut answers = vec![
+            (1, removing(&offered, |player| player.id == bob.id)),
+            (
+                2,
+                ListDiff {
+                    removed: Vec::new(),
+                    added: bob_again,
+                },
+            ),
+        ];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, diff) in answers {
+            rule_on(
+                &mut s.server,
+                connection,
+                event,
+                false,
+                recipients_patch(diff),
+            );
+        }
+        for player in [&alice, &bob, &carol] {
+            assert_eq!(
+                chat_lines(player),
+                ["<Alice> psst"],
+                "{later_answers_first}"
+            );
+        }
+    }
 }
 
 #[test]

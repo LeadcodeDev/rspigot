@@ -38,8 +38,10 @@ fn convert(event: u64, verdict: v1::Verdict, warnings: &mut Vec<String>) -> Verd
 
 #[cfg(test)]
 mod tests {
-    use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMovePatch, PotionSplashPatch};
-    use rspigot_core::plugins::{EntityView, EventPatch, Location};
+    use rspigot_core::plugins::events::{
+        EntityTargetPatch, PlayerCommandSendPatch, PlayerMovePatch, PotionSplashPatch,
+    };
+    use rspigot_core::plugins::{EntityView, EventPatch, ListDiff, Location};
     use rspigot_domain::{EntityId, Rotation, Vec3};
     use rspigot_plugin_protocol::v1::{from_plugin, patch};
     use uuid::Uuid;
@@ -209,6 +211,81 @@ mod tests {
         assert_eq!(
             warnings,
             ["patch of handler 1 for event 7 was dropped: the message carries nothing"]
+        );
+    }
+
+    #[test]
+    fn a_list_patch_converts_its_removals_and_each_addition() {
+        let commands = |commands| {
+            vec![v1::Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(v1::Patch {
+                    change: Some(patch::Change::PlayerCommandSend(
+                        v1::PlayerCommandSendPatch { commands },
+                    )),
+                }),
+            }]
+        };
+        let mut warnings = Vec::new();
+        let FromPlugin::Decision { verdicts, .. } = decide(
+            commands(Some(v1::StringListDiff {
+                removed: vec![3, 0],
+                added: vec!["warp".to_owned()],
+            })),
+            &mut warnings,
+        ) else {
+            panic!("expected a decision");
+        };
+        assert_eq!(
+            verdicts[0].patch,
+            Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
+                commands: ListDiff {
+                    removed: vec![3, 0],
+                    added: vec!["warp".to_owned()],
+                },
+            }))
+        );
+        let FromPlugin::Decision { verdicts, .. } = decide(commands(None), &mut warnings) else {
+            panic!("expected a decision");
+        };
+        assert_eq!(
+            verdicts[0].patch,
+            Some(EventPatch::PlayerCommandSend(
+                PlayerCommandSendPatch::default()
+            ))
+        );
+        let mut stranger = zombie();
+        stranger.uuid = "nobody".to_owned();
+        let dropped = v1::DroppedItem {
+            entity: Some(stranger),
+            item: Some(v1::Item {
+                key: "minecraft:dirt".to_owned(),
+                count: 1,
+                ..v1::Item::default()
+            }),
+        };
+        let FromPlugin::Decision { verdicts, .. } = decide(
+            vec![v1::Verdict {
+                handler: 2,
+                cancel: false,
+                patch: Some(v1::Patch {
+                    change: Some(patch::Change::BlockDropItem(v1::BlockDropItemPatch {
+                        items: Some(v1::DroppedItemListDiff {
+                            removed: vec![0],
+                            added: vec![dropped],
+                        }),
+                    })),
+                }),
+            }],
+            &mut warnings,
+        ) else {
+            panic!("expected a decision");
+        };
+        assert_eq!(verdicts[0].patch, None);
+        assert_eq!(
+            warnings,
+            ["patch of handler 2 for event 7 was dropped: `nobody` is not an entity UUID"]
         );
     }
 

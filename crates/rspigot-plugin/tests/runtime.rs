@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use fake_host::*;
 use rspigot_plugin::{
-    Error, GameMode, Location, Player, PlayerJoin, PlayerMove, PlayerState, Plugin, Position,
-    PotionSplash, Rotation, listeners, run_with,
+    AsyncPlayerChat, Error, GameMode, Location, Player, PlayerJoin, PlayerMove, PlayerState,
+    Plugin, Position, PotionSplash, Rotation, listeners, run_with,
 };
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
@@ -124,6 +124,27 @@ impl Splasher {
         event.set_intensity(&splashed[1], 1.0);
         event.set_intensity(&splashed[0], 0.25);
         let _ = self.read.send(intensities(event));
+    }
+}
+
+#[derive(Plugin)]
+#[plugin(name = "muter", version = "1.0.0")]
+struct Muter {
+    read: mpsc::UnboundedSender<Vec<String>>,
+}
+
+#[listeners]
+impl Muter {
+    async fn on_async_player_chat(&self, event: &mut AsyncPlayerChat) {
+        event.set_recipients(Vec::new());
+        let steve = event.player().clone();
+        event.set_recipients(vec![steve.clone(), steve]);
+        let names = event
+            .recipients()
+            .iter()
+            .map(|player| player.name.clone())
+            .collect();
+        let _ = self.read.send(names);
     }
 }
 
@@ -733,4 +754,48 @@ async fn a_splash_intensity_is_patched_once_per_entity_with_the_last_value() {
     );
     assert_eq!(within(heard.recv()).await, Some(vec![0.75, 0.0]));
     assert_eq!(within(heard.recv()).await, Some(vec![0.25, 1.0]));
+}
+
+#[tokio::test]
+async fn a_list_setter_sends_the_diff_from_the_snapshot_it_received() {
+    let mut host = Host::start().await;
+    let (read, mut heard) = mpsc::unbounded_channel();
+    let _plugin = tokio::spawn(run_with(Muter { read }, host.url.clone(), None));
+    let mut session = host.knock().await.accept();
+
+    session.say(event(
+        5,
+        &[1],
+        v1::Phase::Decide,
+        false,
+        event::Payload::AsyncPlayerChat(v1::AsyncPlayerChat {
+            format: "<%1$s> %2$s".to_owned(),
+            message: "psst".to_owned(),
+            player: Some(steve()),
+            recipients: vec![steve(), alex()],
+        }),
+    ));
+    assert_eq!(
+        session.hear().await,
+        decision(
+            5,
+            vec![v1::Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(v1::Patch {
+                    change: Some(patch::Change::AsyncPlayerChat(v1::AsyncPlayerChatPatch {
+                        recipients: Some(v1::PlayerSnapshotListDiff {
+                            removed: vec![1],
+                            added: vec![steve()],
+                        }),
+                        ..v1::AsyncPlayerChatPatch::default()
+                    })),
+                }),
+            }]
+        )
+    );
+    assert_eq!(
+        within(heard.recv()).await,
+        Some(vec!["Steve".to_owned(), "Steve".to_owned()])
+    );
 }

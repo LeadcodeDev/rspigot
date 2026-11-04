@@ -13,7 +13,9 @@ use rspigot_core::plugins::events::{
     PlayerJoinPatch, PlayerKick, PlayerKickPatch, PlayerLeave, PlayerLeavePatch,
     PlayerLocaleChange, PlayerLogin, PlayerLoginPatch, PlayerLoginResult,
 };
-use rspigot_core::plugins::{EventKind, EventPatch, EventPayload, Phase, PlayerOrder};
+use rspigot_core::plugins::{
+    EventKind, EventPatch, EventPayload, HandlerSpec, Phase, PlayerOrder, Priority,
+};
 use rspigot_core::ports::ClientLink;
 use rspigot_domain::player::{ClientSettings, MainHand as ClientHand, PlayerId};
 use rspigot_domain::text::{Component, Content};
@@ -900,4 +902,44 @@ fn a_kick_settled_after_its_client_went_away_does_not_disconnect_twice() {
         Some(Component::text("gone"))
     );
     assert_eq!(settled_for(&s.plugin, EventKind::PlayerLeave).len(), 1);
+}
+
+#[test]
+fn two_plugins_that_each_remove_a_command_both_prune_it() {
+    let sending = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::PlayerCommandSend)
+    };
+    for later_answers_first in [false, true] {
+        let mut s = scene_with(&[], vec![sending(Priority::Low)]);
+        connect_with(&mut s.server, 2, "second", vec![sending(Priority::High)]);
+        let alice = join(&mut s.server, "Alice");
+        let asked = last_asked(&s.plugin, EventKind::PlayerCommandSend);
+        let EventPayload::PlayerCommandSend(PlayerCommandSend { commands, .. }) = &asked.payload
+        else {
+            panic!("expected a command send");
+        };
+        let [first, second] = ["help", "me"].map(|gone| {
+            assert!(commands.iter().any(|name| name == gone));
+            Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
+                commands: removing(commands, |name| name == gone),
+            }))
+        });
+        let mut answers = vec![(1, first), (2, second)];
+        if later_answers_first {
+            answers.reverse();
+        }
+        alice.link.take();
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, patch);
+        }
+        let sent = command_roots(&alice);
+        assert_eq!(sent.len(), 1);
+        let expected: Vec<String> = commands
+            .iter()
+            .filter(|name| *name != "help" && *name != "me")
+            .cloned()
+            .collect();
+        assert_eq!(sent[0], expected, "{later_answers_first}");
+    }
 }

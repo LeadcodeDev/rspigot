@@ -7,7 +7,8 @@ use rspigot_core::plugins::events::{
     CampfireStartPatch, ExplosionResult,
 };
 use rspigot_core::plugins::{
-    Answer, BlockOrder, EventKind, EventPatch, EventPayload, ItemSpec, Order, Question, WorldOrder,
+    Answer, BlockOrder, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, Order,
+    Priority, Question, WorldOrder,
 };
 use rspigot_domain::{BlockPos, Vec3};
 use rspigot_items::ItemKind;
@@ -420,6 +421,54 @@ fn the_settled_block_list_is_what_the_explosion_destroys() {
     assert_eq!(kind_at(&mut s, kept), "minecraft:air");
     for pos in spared {
         assert_ne!(kind_at(&mut s, pos), "minecraft:air");
+    }
+}
+
+#[test]
+fn two_plugins_that_each_spare_a_block_of_a_blast_both_keep_it_standing() {
+    let exploding = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::BlockExplode)
+    };
+    for later_answers_first in [false, true] {
+        let mut s = scene_with(&["Alice"], vec![exploding(Priority::Low)]);
+        connect_with(&mut s.server, 2, "second", vec![exploding(Priority::High)]);
+        stream_chunk_of(&mut s, ABOVE);
+        for x in 0..5 {
+            set(&mut s, BlockPos::new(x, 63, 0), "minecraft:dirt");
+        }
+        explode(&mut s, BLAST, true);
+        let asked = last_asked(&s.plugin, EventKind::BlockExplode);
+        let blast = explode_of(&asked);
+        let dirt: Vec<BlockPos> = blast
+            .block_list
+            .iter()
+            .copied()
+            .filter(|pos| pos.y == 63 && (0..5).contains(&pos.x) && pos.z == 0)
+            .collect();
+        assert!(dirt.len() > 2);
+        let spared = [dirt[0], dirt[1]];
+        let [first, second] = spared.map(|kept| {
+            Some(EventPatch::BlockExplode(BlockExplodePatch {
+                block_list: removing(&blast.block_list, |pos| *pos == kept),
+                ..BlockExplodePatch::default()
+            }))
+        });
+        let mut answers = vec![(1, first), (2, second)];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, patch);
+        }
+        for pos in spared {
+            assert_eq!(
+                kind_at(&mut s, pos),
+                "minecraft:dirt",
+                "{later_answers_first}"
+            );
+        }
+        assert_eq!(kind_at(&mut s, dirt[2]), "minecraft:air");
     }
 }
 

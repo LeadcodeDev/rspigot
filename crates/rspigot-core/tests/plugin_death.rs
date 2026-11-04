@@ -6,7 +6,7 @@ use rspigot_core::events::{ClientEvent, EntityStatus, EquipmentSlot, Inbound, Pl
 use rspigot_core::plugins::events::EntityDeathPatch;
 use rspigot_core::plugins::{
     Answer, EntityOrder, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, Order,
-    Question,
+    Priority, Question,
 };
 use rspigot_domain::EntityId;
 use rspigot_entities::EntityKind as Kind;
@@ -250,4 +250,57 @@ fn a_damaged_equipment_drop_with_the_default_chance_empties_its_slot() {
         }
     }
     panic!("no helmet dropped in 400 kills");
+}
+
+#[test]
+fn two_plugins_that_each_remove_a_drop_both_keep_it_off_the_ground() {
+    let deciding_death = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, EventKind::EntityDeath)
+    };
+    for later_answers_first in [false, true] {
+        let mut s = waiting_scene(vec![deciding_death(Priority::Low)]);
+        connect_with(
+            &mut s.server,
+            2,
+            "second",
+            vec![deciding_death(Priority::High)],
+        );
+        let zombie = hit_then_kill(
+            &mut s,
+            "minecraft:zombie",
+            "{NoAI:1b,equipment:{head:{id:\"minecraft:iron_helmet\",count:1},chest:{id:\"minecraft:iron_chestplate\",count:1}},drop_chances:{head:2.0f,chest:2.0f}}",
+        );
+        let asked = last_asked(&s.plugin, EventKind::EntityDeath);
+        let EventPayload::EntityDeath(event) = &asked.payload else {
+            panic!("an entity death");
+        };
+        let [first, second] = ["minecraft:iron_helmet", "minecraft:iron_chestplate"].map(|gone| {
+            assert!(event.drops.iter().any(|drop| drop.key == gone));
+            Some(EventPatch::EntityDeath(EntityDeathPatch {
+                drops: removing(&event.drops, |drop| drop.key == gone),
+                ..EntityDeathPatch::default()
+            }))
+        });
+        let mut answers = vec![(1, first), (2, second)];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, patch);
+        }
+        assert!(dead(&mut s, zombie));
+        let thrown: Vec<String> = s
+            .server
+            .ground_items()
+            .iter()
+            .filter_map(|(_, stack)| Some(stack.item.kind()?.name().to_owned()))
+            .collect();
+        assert!(
+            !thrown
+                .iter()
+                .any(|name| name.starts_with("minecraft:iron_")),
+            "{later_answers_first} {thrown:?}"
+        );
+    }
 }
