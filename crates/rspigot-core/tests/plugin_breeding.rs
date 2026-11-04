@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use rspigot_core::config::PluginSettings;
-use rspigot_core::events::{Hand, Inbound, PlayerInput};
+use rspigot_core::events::{DigAction, Direction, Hand, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
     DyeColor, EntityBreedPatch, EntityEnterLoveModePatch, SheepDyeWoolPatch,
 };
@@ -211,4 +211,57 @@ fn a_dyed_sheep_takes_the_settled_color_and_a_cancel_keeps_the_dye() {
     );
     assert_eq!(wool(&s, sheep), 11);
     assert_eq!(held_count(&mut s, "minecraft:red_dye"), 1);
+}
+
+#[test]
+fn the_breeding_item_is_the_selected_one_after_the_food_was_spent() {
+    let mut s = waiting_scene(vec![deciding(1, EventKind::EntityBreed)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice minecraft:wheat 2");
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Dig {
+            action: DigAction::SwapHands,
+            pos: BlockPos::new(0, 0, 0),
+            face: Direction::Down,
+            sequence: 0,
+        },
+    );
+    console(&mut s, "give Alice minecraft:stick 1");
+    summon(&mut s, "summon minecraft:cow 1.5 64 1.5", Kind::Cow);
+    console(&mut s, "summon minecraft:cow 2.5 64 1.5");
+    let cows: Vec<EntityId> = s
+        .server
+        .entities_of(Kind::Cow)
+        .into_iter()
+        .map(|cow| cow.id)
+        .collect();
+    for cow in cows {
+        send_input(
+            &mut s.server,
+            &alice,
+            PlayerInput::Interact {
+                target: cow,
+                hand: Hand::Off,
+                sneaking: false,
+                location: Vec3::new(0.0, 0.5, 0.0),
+            },
+        );
+    }
+    assert_eq!(held_count(&mut s, "minecraft:wheat"), 0);
+    for _ in 0..400 {
+        s.tick(1);
+        if !asked_for(&s.plugin, EventKind::EntityBreed).is_empty() {
+            break;
+        }
+    }
+    let asked = last_asked(&s.plugin, EventKind::EntityBreed);
+    let EventPayload::EntityBreed(breed) = &asked.payload else {
+        panic!("a breed");
+    };
+    assert_eq!(
+        breed.bred_with.as_ref().map(|item| item.key.as_str()),
+        Some("minecraft:stick")
+    );
 }

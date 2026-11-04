@@ -754,7 +754,7 @@ impl<L: ClientLink> Server<L> {
         if is_food {
             if age == 0 && can_love {
                 self.consume_held(id, hand, 1);
-                let item = self.held(id, hand);
+                let item = self.held(id, Hand::Main);
                 self.ask_love(id, target, uuid, item);
                 self.eating_sound(target);
                 return Interaction::ServerOnly;
