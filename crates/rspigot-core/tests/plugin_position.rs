@@ -8,7 +8,8 @@ use rspigot_core::plugins::events::{
     PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
 };
 use rspigot_core::plugins::{
-    EventKind, EventPatch, EventPayload, ItemSpec, ListDiff, Location, PlayerOrder,
+    Answer, EventKind, EventPatch, EventPayload, ItemSpec, ListDiff, Location, PlayerOrder,
+    Question,
 };
 use rspigot_domain::{EntityId, Rotation, Vec3};
 
@@ -603,6 +604,66 @@ fn the_items_of_a_dying_player_stay_in_the_inventory_until_the_death_settles() {
     rule_on(&mut s.server, 1, event, false, None);
     assert!(held_items(&mut s, &alice).is_empty());
     assert_eq!(s.server.items_on_ground(), 1);
+}
+
+fn ground_heights(s: &mut Scene) -> Vec<(String, f64)> {
+    let mut heights: Vec<(String, f64)> = s
+        .server
+        .ground_items()
+        .into_iter()
+        .filter_map(|(id, stack)| {
+            let Answer::Entity(details) = s.ask(Question::Entity(id)) else {
+                return None;
+            };
+            Some((
+                stack.item.kind()?.name().to_owned(),
+                details.entity.position.y,
+            ))
+        })
+        .collect();
+    heights.sort_by(|a, b| a.0.cmp(&b.0));
+    heights
+}
+
+#[test]
+fn a_replaced_drop_is_still_thrown_from_the_inventory() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+    let alice = s.players[0].clone();
+    give(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    let (event, death) = death_of(&s);
+    assert_eq!(death.drops, [ItemSpec::of("minecraft:diamond", 5)]);
+    rule_on(
+        &mut s.server,
+        1,
+        event,
+        false,
+        Some(EventPatch::PlayerDeath(PlayerDeathPatch {
+            drops: ListDiff {
+                removed: Vec::new(),
+                replaced: vec![(0, ItemSpec::of("minecraft:diamond", 9))],
+                added: vec![ItemSpec::of("minecraft:stick", 2)],
+            },
+            ..PlayerDeathPatch::default()
+        })),
+    );
+    let heights = ground_heights(&mut s);
+    let [(diamond, thrown), (stick, spawned)] = heights.as_slice() else {
+        panic!("two drops, got {heights:?}");
+    };
+    assert_eq!(
+        (diamond.as_str(), stick.as_str()),
+        ("minecraft:diamond", "minecraft:stick")
+    );
+    assert_eq!(
+        s.server
+            .ground_items()
+            .iter()
+            .map(|(_, stack)| stack.count.get())
+            .max(),
+        Some(9)
+    );
+    assert!(thrown - spawned > 1.0, "{heights:?}");
 }
 
 #[test]
