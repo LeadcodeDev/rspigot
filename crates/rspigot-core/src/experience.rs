@@ -213,11 +213,15 @@ impl<L: ClientLink> Server<L> {
         let player_of =
             |entity: Option<EntityId>| entity.and_then(|entity| self.player_of_entity(entity));
         let (from, target) = (player_of(from), player_of(target));
+        let players = &self.players;
         if let Some(Entity {
             state: EntityState::Orb(state),
             ..
         }) = self.entities.store.get_mut(orb)
-            && state.following == from
+            && state
+                .following
+                .filter(|player| players.contains_key(player))
+                == from
         {
             state.following = target;
         }
