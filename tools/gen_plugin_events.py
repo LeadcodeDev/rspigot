@@ -353,6 +353,7 @@ class Event:
     state: str
     state_note: str
     cancel_sets: dict = field(default_factory=dict)
+    main_result: str = None
     receivers: list = field(default_factory=list)
 
     @property
@@ -379,6 +380,14 @@ class Event:
     def writes_when_cancelled(self):
         return any(f.direct for f in self.patched)
 
+    @property
+    def cancels_by_result(self):
+        return self.main_result is not None
+
+    @property
+    def kept_when_cancelled(self):
+        return [f for f in self.patched if f.direct or f.name in self.cancel_sets]
+
 
 class Model:
     def __init__(self, catalog, overrides, contract, library):
@@ -391,6 +400,8 @@ class Model:
         self.unmapped = overrides.get("unmapped", {})
         self.events = []
         self.excluded = {}
+        self.results = overrides.get("results", {})
+        self.used_results = set()
         self.build()
 
     def enum_leaf(self, java):
@@ -485,12 +496,15 @@ class Model:
             else:
                 state, note = "blocked", blocked[bukkit]
             self.events.append(self.event(record, names.get(bukkit, bukkit), state, note, per_event.get(bukkit, {})))
+        unused = set(self.results) - self.used_results
+        if unused:
+            fail(f"the result overrides {sorted(unused)} match no event")
         self.check_names()
         self.families()
 
     def event(self, record, sdk_name, state, note, extra):
         allowed = {"getters", "rename", "collections", "omit", "unread", "revive", "applies_when_cancelled",
-                   "cancel_sets", "pairs", "extra"}
+                   "pairs", "extra"}
         for option in extra:
             if option not in allowed:
                 fail(f"{record['name']}: unknown override `{option}`")
@@ -615,15 +629,24 @@ class Model:
                 target.patch_nullable = item.get("nullable", False)
             fields[name] = target
         cancel_sets = {}
-        for java_name, constant in extra.get("cancel_sets", {}).items():
-            target = by_getter.get(java_name)
-            if target is None or not target.setter or target.ty.leaf.enum is None:
-                fail(f"{record['name']}: cancel_sets names {java_name}, which is not a patchable enum field")
-            if constant not in target.ty.leaf.enum.constants:
-                fail(f"{record['name']}: {constant} is not a constant of {target.ty.leaf.enum.name}")
-            cancel_sets[target.name] = constant
-        if cancel_sets and not record["cancellable"]:
-            fail(f"{record['name']}: cancel_sets on an event that cannot be cancelled")
+        main_result = None
+        owner = next((java for java in [record["java"]] + record["parents"] if java in self.results), None)
+        if owner is not None:
+            self.used_results.add(owner)
+            result = self.results[owner]
+            for java_name in result["deny"]:
+                target = by_getter.get(java_name)
+                if target is None or not target.setter or target.ty.leaf.enum is None:
+                    fail(f"{record['name']}: the result {java_name} is not a patchable enum field")
+                if "DENY" not in target.ty.leaf.enum.constants:
+                    fail(f"{record['name']}: DENY is not a constant of {target.ty.leaf.enum.name}")
+                cancel_sets[target.name] = "DENY"
+            main = by_getter.get(result["cancelled"])
+            if main is None or main.name not in cancel_sets:
+                fail(f"{record['name']}: the result {result['cancelled']} that tells a cancel is not one it denies")
+            main_result = main.name
+            if not record["cancellable"]:
+                fail(f"{record['name']}: a result cancels an event that cannot be cancelled")
         for kind, values in (("omit", omit), ("unread", unread), ("revive", revive), ("getters", extra_getters),
                              ("rename", rename), ("applies_when_cancelled", direct), ("pairs", pairs)):
             for value in values:
@@ -640,7 +663,7 @@ class Model:
             java=record["java"], bukkit=record["name"], name=sdk_name, number=record["number"],
             cancellable=record["cancellable"], registration=record["registration"] or record["java"],
             parents=record["parents"], fields=ordered, left_out=sorted(left_out), state=state, state_note=note,
-            cancel_sets=cancel_sets,
+            cancel_sets=cancel_sets, main_result=main_result,
         )
 
     def check_ident(self, event, name):
@@ -880,6 +903,7 @@ def emit_core(model):
         ("cancellable", lambda e: e.cancellable),
         ("decidable", lambda e: e.decidable),
         ("writes_when_cancelled", lambda e: e.writes_when_cancelled),
+        ("cancels_by_result", lambda e: e.cancels_by_result),
     ):
         chosen = [e for e in events if test(e)]
         body(f"    pub const fn {method}(self) -> bool {{")
@@ -953,12 +977,12 @@ def emit_core(model):
             body(f"            event.{f.name} = {value};")
             body("        }")
         body("    }")
-        direct = [f for f in e.patched if f.direct]
-        if direct:
+        kept = e.kept_when_cancelled
+        if kept:
             body()
             body("    fn when_cancelled(self) -> Option<Self> {")
-            rest = ", ..Self::default()" if len(direct) < len(e.patched) else ""
-            fields = ", ".join(f"{f.name}: self.{f.name}" for f in direct)
+            rest = ", ..Self::default()" if len(kept) < len(e.patched) else ""
+            fields = ", ".join(f"{f.name}: self.{f.name}" for f in kept)
             body(f"        let kept = Self {{ {fields}{rest} }};")
             body("        (kept != Self::default()).then_some(kept)")
             body("    }")
@@ -989,6 +1013,16 @@ def emit_core(model):
     body("        match self {")
     for e in events:
         body(f"            Self::{e.name}(_) => EventKind::{e.name},")
+    body("        }")
+    body("    }")
+    body()
+    by_result = [e for e in events if e.cancels_by_result]
+    body("    pub const fn cancelled(&self) -> bool {")
+    body("        match self {")
+    for e in by_result:
+        main = next(f for f in e.patched if f.name == e.main_result)
+        body(f"            Self::{e.name}(event) => matches!(event.{main.name}, {main.ty.leaf.core}::{pascal(e.cancel_sets[main.name])}),")
+    body("            _ => false,")
     body("        }")
     body("    }")
     body("}")
@@ -1026,8 +1060,18 @@ def emit_core(model):
     body("        }")
     body("    }")
     body()
+    body("    pub(crate) fn denial(kind: EventKind) -> Option<Self> {")
+    body("        match kind {")
+    for e in by_result:
+        values = ", ".join(f"{name}: Some({next(f for f in e.patched if f.name == name).ty.leaf.core}::{pascal(constant)})" for name, constant in sorted(e.cancel_sets.items()))
+        rest = ", ..Default::default()" if len(e.cancel_sets) < len(e.patched) else ""
+        body(f"            EventKind::{e.name} => Some(Self::{e.name}({e.name}Patch {{ {values}{rest} }})),")
+    body("            _ => None,")
+    body("        }")
+    body("    }")
+    body()
     body("    pub(crate) fn when_cancelled(self) -> Option<Self> {")
-    direct_events = [e for e in patched if e.writes_when_cancelled]
+    direct_events = [e for e in patched if e.kept_when_cancelled]
     body("        match self {")
     for e in direct_events:
         body(f"            Self::{e.name}(patch) => patch.when_cancelled().map(Self::{e.name}),")
@@ -1328,7 +1372,8 @@ def emit_sdk(model):
         body(f"pub struct {e.name} {{")
         body("    id: u64,")
         if e.cancellable:
-            body("    cancelled: bool,")
+            if not e.cancels_by_result:
+                body("    cancelled: bool,")
             body("    rolled_back: bool,")
         for f in e.readable:
             body(f"    {f.name}: {sdk_type(f)},")
@@ -1344,7 +1389,8 @@ def emit_sdk(model):
         body("        Ok(Self {")
         body("            id: meta.id,")
         if e.cancellable:
-            body("            cancelled: meta.cancelled,")
+            if not e.cancels_by_result:
+                body("            cancelled: meta.cancelled,")
             body("            rolled_back: meta.rolled_back,")
         for name, value in values:
             body(f"            {name}: {value},")
@@ -1372,16 +1418,16 @@ def emit_sdk(model):
             body("    }")
         if e.cancellable:
             body()
-            if e.cancel_sets:
+            if e.cancels_by_result:
                 body("    pub fn cancel(&mut self) {")
                 for name, constant in sorted(e.cancel_sets.items()):
                     target = next(f for f in e.patched if f.name == name)
                     body(f"        self.{target.setter_method}({target.ty.leaf.sdk}::{pascal(constant)});")
                 body("    }")
                 body()
-                checks = " || ".join(f"self.{name} == {next(f for f in e.patched if f.name == name).ty.leaf.sdk}::{pascal(constant)}" for name, constant in sorted(e.cancel_sets.items()))
+                main = next(f for f in e.patched if f.name == e.main_result)
                 body("    pub fn is_cancelled(&self) -> bool {")
-                body(f"        self.cancelled || {checks}")
+                body(f"        self.{main.name} == {main.ty.leaf.sdk}::{pascal(e.cancel_sets[main.name])}")
                 body("    }")
             else:
                 body("    pub const fn cancel(&mut self) {")
@@ -1400,7 +1446,7 @@ def emit_sdk(model):
         if e.decidable:
             body(f"impl From<{e.name}> for Verdict {{")
             body(f"    fn from(event: {e.name}) -> Self {{")
-            cancel = "event.cancelled" if e.cancellable else "false"
+            cancel = "event.cancelled" if e.cancellable and not e.cancels_by_result else "false"
             if e.patched:
                 body("        Self {")
                 body(f"            cancel: {cancel},")
@@ -1571,6 +1617,9 @@ def emit_doc(model):
     w(f"{len(events)} events, {sum(e.decidable for e in events)} decidable, {sum(e.cancellable for e in events)} cancellable, {sum(bool(e.patched) for e in events)} with setters. {fired} are fired by the server today; the others have their types and wait for their fire point.")
     w()
     w("An observing handler takes `&Event`. A deciding handler takes `&mut Event` and exists only for a decidable event (cancellable or with setters). `cancel()` exists only on a cancellable event. A handler also receives the events of the classes that share its Bukkit handler list and extend its event (column \"Also receives\"), as its own type.")
+    w()
+    by_result = sorted((e for e in events if e.cancels_by_result), key=lambda e: e.name)
+    w(f"{', '.join(f'`{e.name}`' for e in by_result)} are cancelled through their result, as in Bukkit: `cancel()` sets {', '.join(sorted({f'`{name}`' for e in by_result for name in e.cancel_sets}))} to `Deny`, `is_cancelled()` reads the main result only, and a later handler that sets the result back lifts the cancel.")
     w()
     w("| Bukkit event | SDK type | Cancellable | Setters | Also receives | State |")
     w("|---|---|---|---|---|---|")

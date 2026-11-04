@@ -1758,6 +1758,19 @@ impl EventKind {
         )
     }
 
+    pub const fn cancels_by_result(self) -> bool {
+        matches!(
+            self,
+            Self::CraftItem
+                | Self::InventoryClick
+                | Self::InventoryCreative
+                | Self::InventoryDrag
+                | Self::PlayerInteract
+                | Self::SmithItem
+                | Self::TradeSelect
+        )
+    }
+
     pub const fn name(self) -> &'static str {
         match self {
             Self::AreaEffectCloudApply => "AreaEffectCloudApply",
@@ -4997,7 +5010,7 @@ impl CraftItemPatch {
         let kept = Self {
             current_item: self.current_item,
             cursor: self.cursor,
-            ..Self::default()
+            result: self.result,
         };
         (kept != Self::default()).then_some(kept)
     }
@@ -5825,7 +5838,7 @@ impl InventoryClickPatch {
         let kept = Self {
             current_item: self.current_item,
             cursor: self.cursor,
-            ..Self::default()
+            result: self.result,
         };
         (kept != Self::default()).then_some(kept)
     }
@@ -5863,7 +5876,7 @@ impl InventoryCreativePatch {
         let kept = Self {
             current_item: self.current_item,
             cursor: self.cursor,
-            ..Self::default()
+            result: self.result,
         };
         (kept != Self::default()).then_some(kept)
     }
@@ -5890,6 +5903,14 @@ impl InventoryDragPatch {
         if let Some(value) = self.result {
             event.result = value;
         }
+    }
+
+    fn when_cancelled(self) -> Option<Self> {
+        let kept = Self {
+            result: self.result,
+            ..Self::default()
+        };
+        (kept != Self::default()).then_some(kept)
     }
 }
 
@@ -6249,6 +6270,14 @@ impl PlayerInteractPatch {
         if let Some(value) = self.use_item_in_hand {
             event.use_item_in_hand = value;
         }
+    }
+
+    fn when_cancelled(self) -> Option<Self> {
+        let kept = Self {
+            use_interacted_block: self.use_interacted_block,
+            use_item_in_hand: self.use_item_in_hand,
+        };
+        (kept != Self::default()).then_some(kept)
     }
 }
 
@@ -6845,7 +6874,7 @@ impl SmithItemPatch {
         let kept = Self {
             current_item: self.current_item,
             cursor: self.cursor,
-            ..Self::default()
+            result: self.result,
         };
         (kept != Self::default()).then_some(kept)
     }
@@ -6905,6 +6934,13 @@ impl TradeSelectPatch {
         if let Some(value) = self.result {
             event.result = value;
         }
+    }
+
+    fn when_cancelled(self) -> Option<Self> {
+        let kept = Self {
+            result: self.result,
+        };
+        (kept != Self::default()).then_some(kept)
     }
 }
 
@@ -7556,6 +7592,19 @@ impl EventPayload {
             Self::WorldLoad(_) => EventKind::WorldLoad,
             Self::WorldSave(_) => EventKind::WorldSave,
             Self::WorldUnload(_) => EventKind::WorldUnload,
+        }
+    }
+
+    pub const fn cancelled(&self) -> bool {
+        match self {
+            Self::CraftItem(event) => matches!(event.result, EventResult::Deny),
+            Self::InventoryClick(event) => matches!(event.result, EventResult::Deny),
+            Self::InventoryCreative(event) => matches!(event.result, EventResult::Deny),
+            Self::InventoryDrag(event) => matches!(event.result, EventResult::Deny),
+            Self::PlayerInteract(event) => matches!(event.use_interacted_block, EventResult::Deny),
+            Self::SmithItem(event) => matches!(event.result, EventResult::Deny),
+            Self::TradeSelect(event) => matches!(event.result, EventResult::Deny),
+            _ => false,
         }
     }
 }
@@ -8398,12 +8447,48 @@ impl EventPatch {
         }
     }
 
+    pub(crate) fn denial(kind: EventKind) -> Option<Self> {
+        match kind {
+            EventKind::CraftItem => Some(Self::CraftItem(CraftItemPatch {
+                result: Some(EventResult::Deny),
+                ..Default::default()
+            })),
+            EventKind::InventoryClick => Some(Self::InventoryClick(InventoryClickPatch {
+                result: Some(EventResult::Deny),
+                ..Default::default()
+            })),
+            EventKind::InventoryCreative => Some(Self::InventoryCreative(InventoryCreativePatch {
+                result: Some(EventResult::Deny),
+                ..Default::default()
+            })),
+            EventKind::InventoryDrag => Some(Self::InventoryDrag(InventoryDragPatch {
+                result: Some(EventResult::Deny),
+                ..Default::default()
+            })),
+            EventKind::PlayerInteract => Some(Self::PlayerInteract(PlayerInteractPatch {
+                use_interacted_block: Some(EventResult::Deny),
+                use_item_in_hand: Some(EventResult::Deny),
+            })),
+            EventKind::SmithItem => Some(Self::SmithItem(SmithItemPatch {
+                result: Some(EventResult::Deny),
+                ..Default::default()
+            })),
+            EventKind::TradeSelect => Some(Self::TradeSelect(TradeSelectPatch {
+                result: Some(EventResult::Deny),
+            })),
+            _ => None,
+        }
+    }
+
     pub(crate) fn when_cancelled(self) -> Option<Self> {
         match self {
             Self::CraftItem(patch) => patch.when_cancelled().map(Self::CraftItem),
             Self::InventoryClick(patch) => patch.when_cancelled().map(Self::InventoryClick),
             Self::InventoryCreative(patch) => patch.when_cancelled().map(Self::InventoryCreative),
+            Self::InventoryDrag(patch) => patch.when_cancelled().map(Self::InventoryDrag),
+            Self::PlayerInteract(patch) => patch.when_cancelled().map(Self::PlayerInteract),
             Self::SmithItem(patch) => patch.when_cancelled().map(Self::SmithItem),
+            Self::TradeSelect(patch) => patch.when_cancelled().map(Self::TradeSelect),
             _ => None,
         }
     }

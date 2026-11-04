@@ -240,6 +240,7 @@ pub struct Clicked {
     pub item: Option<ItemStack>,
     pub title: String,
     pub viewers: usize,
+    pub cancelled: bool,
 }
 
 #[derive(Debug)]
@@ -280,6 +281,7 @@ impl Caller {
             item: event.current_item().cloned(),
             title: event.view().title.clone(),
             viewers: event.viewers().len(),
+            cancelled: event.is_cancelled(),
         }));
     }
 
