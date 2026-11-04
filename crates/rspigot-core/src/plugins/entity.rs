@@ -62,6 +62,43 @@ impl<L: ClientLink> Server<L> {
                     entity.base.needs_sync = true;
                 }
             }
+            EntityOrder::SetCustomName(name) => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity
+                        .base
+                        .set_custom_name(Some(Component::from_legacy(&name)));
+                    keep_loaded(entity);
+                }
+            }
+            EntityOrder::ClearCustomName => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.set_custom_name(None);
+                }
+            }
+            EntityOrder::SetNameVisible(visible) => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.set_custom_name_visible(visible);
+                }
+            }
+            EntityOrder::SetNoAi(no_ai) => {
+                let Some(entity) = self.entities.store.get_mut(id) else {
+                    return Ok(());
+                };
+                if entity.living().is_none_or(|living| !living.is_mob()) {
+                    return Err("only a mob has an AI".to_owned());
+                }
+                living::set_no_ai(&mut entity.base, no_ai);
+            }
+            EntityOrder::SetInvulnerable(invulnerable) => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.invulnerable = invulnerable;
+                }
+            }
+            EntityOrder::SetSilent(silent) => {
+                if let Some(entity) = self.entities.store.get_mut(id) {
+                    entity.base.set_silent(silent);
+                }
+            }
         }
         Ok(())
     }
@@ -150,6 +187,12 @@ impl<L: ClientLink> Server<L> {
         );
         self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack)
             .ok_or_else(|| refusal(SUMMON_DUPLICATE_UUID))
+    }
+}
+
+fn keep_loaded(entity: &mut Entity) {
+    if let Some(mob) = entity.living_mut().and_then(|living| living.mob.as_mut()) {
+        mob.persistence_required = true;
     }
 }
 

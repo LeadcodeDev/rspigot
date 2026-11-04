@@ -22,7 +22,7 @@ use rustc_hash::FxHashSet;
 use uuid::Uuid;
 
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
-use crate::events::Direction;
+use crate::events::{Direction, Hand};
 
 pub(crate) use decisions::{Decisions, Held};
 pub use items::ItemSpec;
@@ -43,6 +43,7 @@ pub enum EventKind {
     PlayerMove,
     InventoryClick,
     InventoryClose,
+    EntityInteract,
 }
 
 impl EventKind {
@@ -274,6 +275,12 @@ pub enum EventPayload {
         inventory: u64,
         by_player: bool,
     },
+    EntityInteract {
+        player: PlayerSnapshot,
+        entity: EntityView,
+        hand: Hand,
+        sneaking: bool,
+    },
 }
 
 impl EventPayload {
@@ -284,6 +291,7 @@ impl EventPayload {
             Self::PlayerMove { .. } => EventKind::PlayerMove,
             Self::InventoryClick { .. } => EventKind::InventoryClick,
             Self::InventoryClose { .. } => EventKind::InventoryClose,
+            Self::EntityInteract { .. } => EventKind::EntityInteract,
         }
     }
 }

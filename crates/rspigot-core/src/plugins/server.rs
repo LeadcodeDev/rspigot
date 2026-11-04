@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::{EntityId, Rotation, Vec3};
 
 use crate::commands::CommandContext;
-use crate::events::ClientEvent;
+use crate::events::{ClientEvent, Hand};
 use crate::player::Player;
 use crate::plugins::decisions::{Held, PendingMove, SettledMove, Undone, Verdict};
 use crate::plugins::player::SPEED_SCALE;
@@ -351,6 +351,30 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn tell_plugins_of_join(&mut self, id: PlayerId) {
         self.settle_for_plugins(id, |player| EventPayload::PlayerJoin { player });
+    }
+
+    pub(crate) fn tell_plugins_of_interact(
+        &mut self,
+        id: PlayerId,
+        target: EntityId,
+        hand: Hand,
+        sneaking: bool,
+    ) {
+        if !self
+            .plugins
+            .listens(EventKind::EntityInteract, Access::Observe)
+        {
+            return;
+        }
+        let Some(entity) = self.entity_view(target) else {
+            return;
+        };
+        self.settle_for_plugins(id, |player| EventPayload::EntityInteract {
+            player,
+            entity,
+            hand,
+            sneaking,
+        });
     }
 
     pub(crate) fn tell_plugins_of_leave(&mut self, id: PlayerId) {
