@@ -40,6 +40,7 @@ pub(crate) struct WindowClick {
     pub(crate) current: Slot,
     pub(crate) cursor: Slot,
     pub(crate) recipe: Option<&'static str>,
+    pub(crate) smithed: Slot,
 }
 
 #[derive(Debug)]
@@ -423,11 +424,12 @@ impl<L: ClientLink> Server<L> {
         let recipe = (slot == 0)
             .then(|| self.window_recipe(id, window, &contents))
             .flatten();
-        let smithed = slot == i16::try_from(smithing::RESULT).unwrap_or(i16::MAX)
-            && self.smithed(id, window, &contents).is_some();
+        let smithed = (slot == i16::try_from(smithing::RESULT).unwrap_or(i16::MAX))
+            .then(|| self.smithed(id, window, &contents))
+            .flatten();
         let kind = if recipe.is_some() {
             EventKind::CraftItem
-        } else if smithed {
+        } else if smithed.is_some() {
             EventKind::SmithItem
         } else {
             EventKind::InventoryClick
@@ -453,6 +455,7 @@ impl<L: ClientLink> Server<L> {
             classified,
             result,
             recipe: recipe.map(|recipe| recipe.id),
+            smithed,
         };
         if locked {
             let payload = self
@@ -574,7 +577,18 @@ impl<L: ClientLink> Server<L> {
         let cursor = self.window_cursor(id, window);
         let unchanged =
             stacks_match(&current, &step.current) && stacks_match(&cursor, &step.cursor);
-        if !mode_kept || (writes.writes() && !unchanged) {
+        let same_result = match kind {
+            EventKind::CraftItem => {
+                self.window_recipe(id, window, &contents)
+                    .map(|recipe| recipe.id)
+                    == step.recipe
+            }
+            EventKind::SmithItem => {
+                stacks_match(&self.smithed(id, window, &contents), &step.smithed)
+            }
+            _ => true,
+        };
+        if !mode_kept || !same_result || (writes.writes() && !unchanged) {
             act = false;
             full = true;
         } else {

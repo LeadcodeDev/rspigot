@@ -1177,3 +1177,67 @@ fn a_menu_button_waits_behind_a_parked_click_on_the_result() {
         Some((seen.key, seen.count))
     );
 }
+
+#[test]
+fn a_craft_whose_recipe_changed_while_it_waited_is_refused_and_resent() {
+    let mut s = scene_with(&["Alice"], deciding_clicks());
+    let alice = s.players[0].clone();
+    give(&mut s, &alice, 9, "minecraft:oak_log", 2);
+    alice.link.take();
+    let mut own = View::inventory();
+    let take = pickup(&mut own, 9, ("minecraft:oak_log", 2));
+    send_click(&mut s, &alice, &mut own, take);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let put = predict(
+        &mut own,
+        press(1, 0, ClickInput::Pickup),
+        &[(1, stack("minecraft:oak_log", 2))],
+        None,
+    );
+    send_click(&mut s, &alice, &mut own, put);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let craft = predict(
+        &mut own,
+        press(0, 0, ClickInput::Pickup),
+        &[(0, None)],
+        stack("minecraft:oak_planks", 4),
+    );
+    send_click(&mut s, &alice, &mut own, craft);
+    let parked = last_asked(&s.plugin, EventKind::CraftItem);
+    s.server.handle(rspigot_core::events::Inbound::Console(
+        "clear Alice".to_owned(),
+    ));
+    s.server.deliver();
+    give(&mut s, &alice, 9, "minecraft:birch_log", 1);
+    alice.link.take();
+    rule_on(&mut s.server, 1, parked.id, false, None);
+    let events = alice.link.take();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, ClientEvent::InventoryContent { .. }))
+    );
+    own.apply(&events);
+    assert_eq!(own.held(), None);
+    assert_eq!(
+        inventory(&mut s, &alice)
+            .slots
+            .iter()
+            .flatten()
+            .filter(|item| item.key.ends_with("_planks"))
+            .count(),
+        0
+    );
+}
