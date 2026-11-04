@@ -289,6 +289,20 @@ fn console_lines_run_in_the_order_they_were_typed() {
 }
 
 #[test]
+fn a_console_line_parked_behind_stop_does_not_run() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::ServerCommand)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "stop");
+    console(&mut s, "say late");
+    let asked = asked_for(&s.plugin, EventKind::ServerCommand);
+    assert_eq!(asked.len(), 2);
+    rule_on(&mut s.server, 1, asked[1].id, false, None);
+    rule_on(&mut s.server, 1, asked[0].id, false, None);
+    assert!(!s.server.is_running());
+    assert!(system_texts(&alice).is_empty());
+}
+
+#[test]
 fn neither_a_dispatched_command_nor_a_player_command_fires_server_command() {
     let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::ServerCommand)]);
     let alice = s.players[0].clone();

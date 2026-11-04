@@ -23,6 +23,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(super) fn finish_server_command(&mut self, line: String, patch: ServerCommandPatch) {
+        if !self.running {
+            return;
+        }
         let line = patch.command.unwrap_or(line);
         commands::execute(self, CommandSender::Console, &line);
     }

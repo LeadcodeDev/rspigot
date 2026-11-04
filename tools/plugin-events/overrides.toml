@@ -139,7 +139,7 @@ ServerListPing = "a network hook outside the tick: when no plugin listens the pi
 ServerLoad = "STARTUP once, when the server starts running, for the plugins connected by then; RELOAD is never fired since there is no reload"
 PluginEnable = "when a plugin connects, for the other plugins and never for the plugin itself; a plugin reconnecting under its name fires PluginDisable for its old connection first"
 PluginDisable = "when a plugin disconnects, for the plugins left, and at shutdown for every plugin in reverse connection order, heard by all the others before the connections close; never for the plugin itself"
-ServerCommand = "console lines only, run in the order they were typed; not for dispatched commands, player commands or Ctrl+C; a cancel drops the line silently"
+ServerCommand = "console lines only, run in the order they were typed; not for dispatched commands, player commands or Ctrl+C; a cancel drops the line silently, and a line that settles after stop does not run"
 TabComplete = "players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; a cancel or an empty list sends no suggestions; there is no console completion"
 BroadcastMessage = "the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast ordered while a handler of a BroadcastMessage runs, deciding or observing, goes out without firing again, and every other one waits behind the broadcasts already asked"
 
