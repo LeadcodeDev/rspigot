@@ -157,7 +157,7 @@ fn a_hide_survives_a_reconnect_and_ends_when_a_player_leaves() {
     hide(&mut s, 3, &alice, bob.id);
     assert!(alice.link.take().is_empty());
 
-    s.server.handle(Inbound::Leave { player: bob.id });
+    s.server.handle(leave_of(&bob));
     s.server.deliver();
     let bob = join(&mut s.server, "Bob");
     s.tick(1);

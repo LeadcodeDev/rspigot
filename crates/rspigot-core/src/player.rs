@@ -20,6 +20,7 @@ pub struct Player<L> {
     pub profile: GameProfile,
     pub link: L,
     pub address: IpAddr,
+    pub session: u64,
     pub entity_id: EntityId,
     pub position: Vec3,
     pub rotation: Rotation,

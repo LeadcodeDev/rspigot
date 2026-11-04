@@ -111,7 +111,7 @@ fn observers_hear_a_player_join_and_leave() {
     assert_eq!(player.game_mode, GameConfig::default().default_game_mode);
     assert_eq!(join_message.as_deref(), Some("§eAlice joined the game"));
 
-    server.handle(Inbound::Leave { player: alice.id });
+    server.handle(leave_of(&alice));
 
     let left = heard(&observer);
     assert_eq!(left.len(), 2);
@@ -153,7 +153,7 @@ fn a_plugin_that_does_not_listen_hears_nothing() {
     assert!(heard(&quiet).is_empty());
     assert!(heard(&leaver).is_empty());
 
-    server.handle(Inbound::Leave { player: alice.id });
+    server.handle(leave_of(&alice));
     assert!(heard(&quiet).is_empty());
     assert_eq!(heard(&leaver).len(), 1);
 }
@@ -868,7 +868,7 @@ fn a_player_leaving_drops_their_pending_moves() {
     step(&mut server, &alice, east(1));
     wait_out_the_deadline(&mut server);
     step(&mut server, &alice, east(2));
-    server.handle(Inbound::Leave { player: alice.id });
+    server.handle(leave_of(&alice));
     ticks(&mut server, 2);
     assert_eq!(server.players_online(), 0);
     let events = asked(&guard);

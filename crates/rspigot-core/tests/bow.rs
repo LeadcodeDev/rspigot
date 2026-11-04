@@ -143,6 +143,7 @@ fn join_archer(server: &mut Server<Link>) -> Archer {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     let mut archer = Archer {

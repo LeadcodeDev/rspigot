@@ -1,6 +1,7 @@
 use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use crossbeam_channel::Sender;
@@ -28,9 +29,14 @@ pub struct Shared<V> {
     pub session_id: Uuid,
     pub chunks: ChunkPacketCache,
     throttle: Mutex<FxHashMap<IpAddr, Instant>>,
+    sessions: AtomicU64,
 }
 
 impl<V> Shared<V> {
+    pub fn next_session(&self) -> u64 {
+        self.sessions.fetch_add(1, Ordering::Relaxed)
+    }
+
     pub fn throttled(&self, ip: IpAddr) -> bool {
         let window = self.config.connection_throttle;
         if window.is_zero() || ip.is_loopback() {
@@ -68,6 +74,7 @@ pub async fn run<V: SessionVerifier>(
         key,
         session_id: Uuid::new_v4(),
         throttle: Mutex::new(FxHashMap::default()),
+        sessions: AtomicU64::new(1),
     });
     loop {
         tokio::select! {

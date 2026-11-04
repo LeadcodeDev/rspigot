@@ -225,7 +225,7 @@ fn a_disconnect_before_join_drops_the_pre_join_events() {
     let alice = arrive(&mut server, "Alice");
     let login = last_asked(&guard, EventKind::PlayerLogin);
     alice.link.disconnect(Component::text("gone"));
-    server.handle(Inbound::Leave { player: alice.id });
+    server.handle(leave_of(&alice));
     rule_on(&mut server, 1, login.id, false, None);
     assert_eq!(server.players_online(), 0);
     assert_eq!(
@@ -315,7 +315,7 @@ fn a_leave_decider_changes_the_quit_message_while_the_player_is_already_gone() {
     let mut s = scene_with(&["Alice", "Bob"], vec![deciding(1, EventKind::PlayerLeave)]);
     let bob = s.players[1].clone();
     let alice = s.players[0].clone();
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     s.server.deliver();
     assert_eq!(s.server.players_online(), 1);
     assert!(announced(&bob).is_empty());
@@ -341,14 +341,14 @@ fn a_leave_without_a_change_is_announced_as_before() {
     let mut s = scene_with(&["Alice", "Bob"], vec![deciding(1, EventKind::PlayerLeave)]);
     let bob = s.players[1].clone();
     let alice = s.players[0].clone();
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     let leave = last_asked(&s.plugin, EventKind::PlayerLeave);
     rule_on(&mut s.server, 1, leave.id, false, None);
     assert_eq!(announced(&bob), ["multiplayer.player.left"]);
     let mut s = scene_with(&["Alice", "Bob"], vec![deciding(1, EventKind::PlayerLeave)]);
     let bob = s.players[1].clone();
     let alice = s.players[0].clone();
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     let leave = last_asked(&s.plugin, EventKind::PlayerLeave);
     rule_on(
         &mut s.server,
@@ -592,7 +592,7 @@ fn a_player_leaving_with_a_plugin_menu_open_closes_it_before_the_quit() {
         },
     ));
     s.act(to(&alice, PlayerOrder::OpenInventory(7)));
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     assert_eq!(
         fired_kinds(&s.plugin),
         [
@@ -612,7 +612,7 @@ fn kill(s: &mut Scene, player: &Player) {
 }
 
 fn leave(s: &mut Scene, player: &Player) {
-    s.server.handle(Inbound::Leave { player: player.id });
+    s.server.handle(leave_of(player));
     s.server.deliver();
 }
 
@@ -728,4 +728,21 @@ fn a_shutdown_settles_every_pending_event_before_the_players_are_saved() {
     server.run(&receiver);
     assert_eq!(settled_for(&plugin, EventKind::PlayerDeath).len(), 1);
     assert_eq!(saves.items(alice.id), diamonds(5));
+}
+
+#[test]
+fn the_end_of_a_refused_second_session_leaves_the_first_one_online() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerKick)]);
+    let first = s.players[0].clone();
+    let second = arrive(&mut s.server, "Alice");
+    let kick = last_asked(&s.plugin, EventKind::PlayerKick);
+    rule_on(&mut s.server, 1, kick.id, true, None);
+    assert!(second.link.disconnected_with().is_some());
+    assert!(first.link.is_connected());
+    s.server.handle(leave_of(&second));
+    s.server.tick();
+    assert_eq!(s.server.players_online(), 1);
+    assert!(first.link.is_connected());
+    s.server.handle(leave_of(&first));
+    assert_eq!(s.server.players_online(), 0);
 }

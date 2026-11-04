@@ -304,9 +304,18 @@ impl<L: ClientLink> Server<L> {
                 settings,
                 link,
                 address,
-            } => self.join(profile, settings, link, address),
+                session,
+            } => self.join(profile, settings, link, address, session),
             Inbound::Input { player, input } => self.handle_input(player, input),
-            Inbound::Leave { player } => self.remove_player(player, true),
+            Inbound::Leave { player, session } => {
+                if self
+                    .players
+                    .get(&player)
+                    .is_some_and(|current| current.session == session)
+                {
+                    self.remove_player(player, true);
+                }
+            }
             Inbound::Console(line) => {
                 crate::commands::execute(self, crate::commands::CommandSender::Console, &line);
             }
@@ -453,7 +462,14 @@ impl<L: ClientLink> Server<L> {
         self.arrivals.remove(&key)
     }
 
-    fn join(&mut self, profile: GameProfile, settings: ClientSettings, link: L, address: IpAddr) {
+    fn join(
+        &mut self,
+        profile: GameProfile,
+        settings: ClientSettings,
+        link: L,
+        address: IpAddr,
+        session: u64,
+    ) {
         if self.players.contains_key(&profile.id) {
             self.disconnect_player(
                 profile.id,
@@ -467,6 +483,7 @@ impl<L: ClientLink> Server<L> {
             settings,
             link,
             address,
+            session,
             refusal,
         });
     }
@@ -511,6 +528,7 @@ impl<L: ClientLink> Server<L> {
             settings,
             link,
             address,
+            session,
             ..
         } = arrival;
         let operator = self.admin.is_operator(&profile);
@@ -527,6 +545,7 @@ impl<L: ClientLink> Server<L> {
             profile,
             link,
             address,
+            session,
             entity_id,
             position,
             rotation: Rotation::new(self.world.level.spawn_angle, 0.0),

@@ -184,6 +184,7 @@ fn join(server: &mut Server<Link>, name: &str) -> Client {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     let mut client = Client {
@@ -738,6 +739,7 @@ fn immediate_respawn_rule_hides_the_death_screen() {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: std::net::Ipv4Addr::LOCALHOST.into(),
+        session: 0,
     });
     server.deliver();
     let shown = link.take().iter().find_map(|e| match e {

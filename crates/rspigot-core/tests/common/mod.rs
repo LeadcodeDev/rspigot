@@ -27,6 +27,7 @@ use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Vec3
 use rspigot_nbt::Compound;
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Default)]
 pub struct Link {
@@ -141,6 +142,14 @@ impl PluginOutbox for Mailbox {
 pub struct Player {
     pub id: PlayerId,
     pub link: Link,
+    pub session: u64,
+}
+
+pub fn leave_of(player: &Player) -> Inbound<Link> {
+    Inbound::Leave {
+        player: player.id,
+        session: player.session,
+    }
 }
 
 pub fn server(plugins: PluginSettings) -> Server<Link> {
@@ -177,6 +186,7 @@ pub fn join_with(server: &mut Server<Link>, name: &str, settings: ClientSettings
 pub fn arrive(server: &mut Server<Link>, name: &str) -> Player {
     let link = Link::default();
     let id = PlayerId::offline(name);
+    let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     server.handle(Inbound::Join {
         profile: GameProfile {
             id,
@@ -186,9 +196,10 @@ pub fn arrive(server: &mut Server<Link>, name: &str) -> Player {
         settings: ClientSettings::default(),
         link: link.clone(),
         address: IpAddr::from([127, 0, 0, 1]),
+        session,
     });
     server.deliver();
-    Player { id, link }
+    Player { id, link, session }
 }
 
 pub fn settle_arrival(server: &mut Server<Link>, player: &Player) {
@@ -214,6 +225,7 @@ fn join_as(
 ) -> Player {
     let link = Link::default();
     let id = PlayerId::offline(name);
+    let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     server.handle(Inbound::Join {
         profile: GameProfile {
             id,
@@ -223,6 +235,7 @@ fn join_as(
         settings,
         link: link.clone(),
         address,
+        session,
     });
     server.deliver();
     for event in link.take() {
@@ -237,7 +250,7 @@ fn join_as(
         player: id,
         input: PlayerInput::Loaded,
     });
-    Player { id, link }
+    Player { id, link, session }
 }
 
 pub fn observe(id: u32, event: EventKind) -> HandlerSpec {

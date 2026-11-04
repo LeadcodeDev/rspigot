@@ -31,6 +31,7 @@ pub(crate) struct Arrival<L> {
     pub(crate) settings: ClientSettings,
     pub(crate) link: L,
     pub(crate) address: IpAddr,
+    pub(crate) session: u64,
     pub(crate) refusal: Option<Refusal>,
 }
 

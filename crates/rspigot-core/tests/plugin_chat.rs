@@ -137,7 +137,7 @@ fn a_chat_sent_just_before_leaving_is_broadcast_before_the_quit() {
     say(&mut s, &alice, "bye");
     let asked = last_asked(&s.plugin, EventKind::AsyncPlayerChat);
     assert!(chat_lines(&bob).is_empty());
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     s.server.deliver();
     assert_eq!(chat_lines(&bob), ["chat:bye", "Alice left the game"]);
     rule_on(&mut s.server, 1, asked.id, true, None);
@@ -233,7 +233,7 @@ fn a_command_sent_just_before_leaving_still_runs() {
     );
     let asked = last_asked(&s.plugin, EventKind::PlayerCommandPreprocess);
     assert_eq!(s.server.player_is_dead(s.players[1].id), Some(false));
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     assert_eq!(s.server.player_is_dead(s.players[1].id), Some(true));
     rule_on(&mut s.server, 1, asked.id, true, None);
 }

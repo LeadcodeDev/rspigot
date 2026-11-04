@@ -576,7 +576,7 @@ fn a_drop_settled_after_the_player_left_does_not_duplicate_the_item() {
     console(&mut s, "give Alice diamond 3");
     drop_one(&mut s, &alice);
     let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
-    s.server.handle(Inbound::Leave { player: alice.id });
+    s.server.handle(leave_of(&alice));
     assert_eq!(s.server.items_on_ground(), 1);
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert_eq!(s.server.items_on_ground(), 1);

@@ -196,6 +196,7 @@ pub enum Inbound<L> {
         settings: ClientSettings,
         link: L,
         address: IpAddr,
+        session: u64,
     },
     Input {
         player: PlayerId,
@@ -203,6 +204,7 @@ pub enum Inbound<L> {
     },
     Leave {
         player: PlayerId,
+        session: u64,
     },
     Console(String),
     PluginConnected {
