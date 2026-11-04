@@ -83,10 +83,13 @@ fn handler(handler: v1::Handler) -> Result<HandlerSpec, Malformed> {
     })
 }
 
-pub(crate) fn from_plugin(message: v1::FromPlugin) -> Result<FromPlugin, Malformed> {
+pub(crate) fn from_plugin(
+    message: v1::FromPlugin,
+    warnings: &mut Vec<String>,
+) -> Result<FromPlugin, Malformed> {
     Ok(match message.body.ok_or(Malformed::Empty)? {
         from_plugin::Body::Hello(_) => return Err(Malformed::SecondHello),
-        from_plugin::Body::Decision(decided) => decision::decision(decided)?,
+        from_plugin::Body::Decision(decided) => decision::decision(decided, warnings),
         from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
         from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
         from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
@@ -212,7 +215,7 @@ mod tests {
             order: Some(player_order::Order::SendMessage("hi".into())),
         }));
         assert_eq!(
-            from_plugin(said).unwrap(),
+            from_plugin(said, &mut Vec::new()).unwrap(),
             FromPlugin::Order(Order::Player {
                 player: steve,
                 order: PlayerOrder::SendMessage("hi".into())
@@ -223,7 +226,7 @@ mod tests {
             question: Some(question::Question::Player(STEVE.into())),
         }));
         assert_eq!(
-            from_plugin(asked).unwrap(),
+            from_plugin(asked, &mut Vec::new()).unwrap(),
             FromPlugin::Question {
                 request: 7,
                 question: Question::Player(steve)
@@ -234,7 +237,7 @@ mod tests {
             question: Some(question::Question::Players(v1::Empty {})),
         }));
         assert_eq!(
-            from_plugin(all).unwrap(),
+            from_plugin(all, &mut Vec::new()).unwrap(),
             FromPlugin::Question {
                 request: 8,
                 question: Question::Players

@@ -143,9 +143,12 @@ mod tests {
     use crate::convert::{Malformed, from_plugin, question, to_plugin};
 
     fn convert(order: Option<world_order::Order>) -> Result<WorldOrder, Malformed> {
-        let converted = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::World(v1::WorldOrder { order })),
-        })?;
+        let converted = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::World(v1::WorldOrder { order })),
+            },
+            &mut Vec::new(),
+        )?;
         let FromPlugin::Order(Order::World(order)) = converted else {
             panic!("expected a world order");
         };
@@ -298,12 +301,15 @@ mod tests {
             Some("00000000-0000-0000-0000-000000000007")
         );
 
-        let asked = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Question(v1::Question {
-                request: 4,
-                question: Some(question::Question::World(v1::Empty {})),
-            })),
-        });
+        let asked = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Question(v1::Question {
+                    request: 4,
+                    question: Some(question::Question::World(v1::Empty {})),
+                })),
+            },
+            &mut Vec::new(),
+        );
         assert_eq!(
             asked.unwrap(),
             FromPlugin::Question {

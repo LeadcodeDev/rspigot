@@ -122,9 +122,12 @@ mod tests {
     use crate::convert::{from_plugin, question, to_plugin};
 
     fn convert(order: Option<server_order::Order>) -> Result<FromPlugin, Malformed> {
-        from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Server(v1::ServerOrder { order })),
-        })
+        from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Server(v1::ServerOrder { order })),
+            },
+            &mut Vec::new(),
+        )
     }
 
     fn server(order: ServerOrder) -> FromPlugin {
@@ -132,12 +135,15 @@ mod tests {
     }
 
     fn ask(asked: question::Question) -> Question {
-        let converted = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Question(v1::Question {
-                request: 3,
-                question: Some(asked),
-            })),
-        });
+        let converted = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Question(v1::Question {
+                    request: 3,
+                    question: Some(asked),
+                })),
+            },
+            &mut Vec::new(),
+        );
         let Ok(FromPlugin::Question {
             request: 3,
             question,

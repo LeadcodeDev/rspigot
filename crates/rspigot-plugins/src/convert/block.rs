@@ -59,9 +59,12 @@ mod tests {
         pos: Option<v1::BlockPos>,
         order: Option<block_order::Order>,
     ) -> Result<FromPlugin, Malformed> {
-        from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Block(v1::BlockOrder { pos, order })),
-        })
+        from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Block(v1::BlockOrder { pos, order })),
+            },
+            &mut Vec::new(),
+        )
     }
 
     fn at(order: BlockOrder) -> FromPlugin {
@@ -112,12 +115,15 @@ mod tests {
         ));
         assert!(matches!(convert(Some(AT), None), Err(Malformed::Empty)));
 
-        let asked = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Question(v1::Question {
-                request: 5,
-                question: Some(question::Question::Block(AT)),
-            })),
-        });
+        let asked = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Question(v1::Question {
+                    request: 5,
+                    question: Some(question::Question::Block(AT)),
+                })),
+            },
+            &mut Vec::new(),
+        );
         assert_eq!(
             asked.unwrap(),
             FromPlugin::Question {

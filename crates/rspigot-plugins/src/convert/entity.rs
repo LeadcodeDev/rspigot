@@ -94,17 +94,23 @@ mod tests {
     }
 
     fn entity(order: Option<entity_order::Order>) -> Result<FromPlugin, Malformed> {
-        from_plugin(body(from_plugin::Body::Entity(v1::EntityOrder {
-            entity: ZOMBIE.0,
-            order,
-        })))
+        from_plugin(
+            body(from_plugin::Body::Entity(v1::EntityOrder {
+                entity: ZOMBIE.0,
+                order,
+            })),
+            &mut Vec::new(),
+        )
     }
 
     fn ask(asked: question::Question) -> Result<FromPlugin, Malformed> {
-        from_plugin(body(from_plugin::Body::Question(v1::Question {
-            request: 9,
-            question: Some(asked),
-        })))
+        from_plugin(
+            body(from_plugin::Body::Question(v1::Question {
+                request: 9,
+                question: Some(asked),
+            })),
+            &mut Vec::new(),
+        )
     }
 
     fn asked(question: Question) -> FromPlugin {
