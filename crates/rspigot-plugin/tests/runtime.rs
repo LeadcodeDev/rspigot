@@ -282,7 +282,7 @@ async fn a_plugin_introduces_its_handlers() {
     let _plugin = launch(&host, Some("s3cret"));
 
     let hello = host.knock().await.hello;
-    assert_eq!(hello.protocol_version, 3);
+    assert_eq!(hello.protocol_version, 4);
     assert_eq!(
         hello,
         v1::Hello {

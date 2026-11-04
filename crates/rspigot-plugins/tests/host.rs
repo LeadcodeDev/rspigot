@@ -499,7 +499,7 @@ async fn a_bad_introduction_is_refused_with_a_status() {
         Code::Unauthenticated
     );
 
-    for version in [PROTOCOL_VERSION - 1, PROTOCOL_VERSION + 1] {
+    for version in [3, PROTOCOL_VERSION + 1] {
         let mut other = with_token(hello("welcome"));
         other.protocol_version = version;
         assert_eq!(

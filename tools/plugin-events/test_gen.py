@@ -168,8 +168,9 @@ class Generator(unittest.TestCase):
         proto = (self.root / OUTPUTS[0]).read_text()
         self.assertIn("message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; }", proto)
         self.assertIn("message ItemListDiff { repeated uint32 removed = 1; repeated Item added = 2; }", proto)
-        self.assertRegex(proto, r"message AsyncPlayerChatPatch {[^}]* PlayerSnapshotListDiff recipients = 4; }")
-        self.assertRegex(proto, r"message EntityDeathPatch {[^}]* ItemListDiff drops = 3; }")
+        self.assertRegex(proto, r"message AsyncPlayerChatPatch {[^}]* PlayerSnapshotListDiff recipients = 1004; reserved 4; }")
+        self.assertRegex(proto, r"message EntityDeathPatch {[^}]* ItemListDiff drops = 1003; reserved 3; }")
+        self.assertRegex(proto, r"message ServerListPingPatch {[^}]* StringListDiff hidden_players = 1100; reserved 100; }")
         self.assertNotRegex(proto, r"(?m)^message \w+List {")
         core = (self.root / OUTPUTS[1]).read_text()
         self.assertIn("pub recipients: ListDiff<PlayerSnapshot>,", core)
@@ -177,6 +178,18 @@ class Generator(unittest.TestCase):
         self.assertIn("lines: self.lines.then_slots(later.lines),", core)
         sdk = (self.root / OUTPUTS[3]).read_text()
         self.assertIn("recipients_snapshot: Option<Vec<Player>>,", sdk)
+
+    def test_a_field_number_past_the_diff_offset_fails_the_generation(self):
+        catalog = self.catalog()
+        event = next(event for event in catalog["events"] if event["name"] == "PlayerJoin")
+        event["getters"].append(
+            {"name": "getMystery", "declared_in": event["java"], "type": "int", "nullable": None, "key": "mystery"}
+        )
+        event["fields"]["mystery"] = 1000
+        self.write_catalog(catalog)
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("PlayerJoin.mystery", failed.stderr)
 
     def test_a_list_patch_without_its_getter_fails_the_generation(self):
         overrides = self.root / INPUTS[1]

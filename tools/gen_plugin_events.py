@@ -27,6 +27,7 @@ OUTPUTS = {
 }
 RUST = {"core", "host", "sdk", "macro", "test"}
 PAYLOAD_OFFSET = 9
+DIFF_OFFSET = 1000
 KEYWORDS = {
     "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if",
     "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
@@ -705,6 +706,8 @@ class Model:
         if indexed_setters:
             fail(f"{record['name']}: the indexed setters {sorted(indexed_setters)} match nothing")
         for f in fields.values():
+            if f.number >= DIFF_OFFSET:
+                fail(f"{record['name']}.{f.name}: the field number {f.number} reaches the list diff numbers, which start at {DIFF_OFFSET}")
             if listed(f) and f.setter and not f.getter:
                 fail(f"{record['name']}.{f.name}: a list patch is a diff against the list its getter reads, and that getter is left out")
             if listed(f) and f.setter and snapshot_field(f) in fields:
@@ -814,6 +817,10 @@ def snapshot_field(f):
 
 def list_diff(f):
     return f"{f.ty.leaf.base}ListDiff"
+
+
+def patch_number(f):
+    return f.number + DIFF_OFFSET if listed(f) else f.number
 
 
 def wire_copy(event):
@@ -932,7 +939,10 @@ def emit_proto(model):
         body = " ".join(f"{proto_payload(f)} {f.name} = {f.number};" for f in event.readable)
         w(f"message {event.name} {{{' ' + body + ' ' if body else ''}}}")
         if event.patched:
-            body = " ".join(f"{proto_patch(f)} {f.name} = {f.number};" for f in event.patched)
+            body = " ".join(f"{proto_patch(f)} {f.name} = {patch_number(f)};" for f in event.patched)
+            replaced = [str(f.number) for f in event.patched if listed(f)]
+            if replaced:
+                body += f" reserved {', '.join(replaced)};"
             w(f"message {event.name}Patch {{ {body} }}")
     w()
     payloads = ", ".join(str(number + PAYLOAD_OFFSET) for number in model.reserved)

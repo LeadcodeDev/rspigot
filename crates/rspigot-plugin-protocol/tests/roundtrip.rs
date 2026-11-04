@@ -1,9 +1,9 @@
 use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
-    Access, BlockPos, BlockPosListDiff, BlockSnapshot, BlockState, BookMeta, BoundingBox, ChunkRef,
-    ClickKind, CommandSender, CommandSenderListDiff, DamageSource, Decision, DroppedItem,
-    DroppedItemListDiff, Effect, Empty, Enchant, EnchantOffer, EntityDamageByEntity,
+    Access, AsyncPlayerChatPatch, BlockPos, BlockPosListDiff, BlockSnapshot, BlockState, BookMeta,
+    BoundingBox, ChunkRef, ClickKind, CommandSender, CommandSenderListDiff, DamageSource, Decision,
+    DroppedItem, DroppedItemListDiff, Effect, Empty, Enchant, EnchantOffer, EntityDamageByEntity,
     EntityDamageCause, EntitySnapshot, EntityTargetPatch, Event, EventKind, EventResult,
     ExplosionResult, FromPlugin, GameMode, Handler, Hello, HolderRef, Input, InventoryAction,
     InventoryClick, InventoryRef, InventoryTypeSlotType, InventoryView, Item, ItemListDiff,
@@ -223,8 +223,8 @@ fn every_kind_of_field_survives_encoding() {
 }
 
 #[test]
-fn the_protocol_is_version_three() {
-    assert_eq!(PROTOCOL_VERSION, 3);
+fn the_protocol_is_version_four() {
+    assert_eq!(PROTOCOL_VERSION, 4);
 }
 
 #[test]
@@ -294,6 +294,22 @@ fn a_patch_shares_its_field_number_with_the_event_payload() {
     assert_eq!(patched.encode_to_vec()[0] >> 3, 12);
     assert_eq!(EventKind::PlayerJoin as i32, 1);
     assert_eq!(EventKind::InventoryClose as i32, 5);
+}
+
+#[test]
+fn a_list_diff_never_reads_the_number_of_the_list_it_replaced() {
+    let diff = AsyncPlayerChatPatch {
+        recipients: Some(PlayerSnapshotListDiff {
+            removed: vec![1],
+            added: vec![steve()],
+        }),
+        ..AsyncPlayerChatPatch::default()
+    };
+    assert_eq!(diff.encode_to_vec()[..2], [0xe2, 0x3e]);
+    let mut old_list = Vec::new();
+    prost::encoding::message::encode(4, &steve(), &mut old_list);
+    let read = AsyncPlayerChatPatch::decode(old_list.as_slice()).unwrap();
+    assert_eq!(read, AsyncPlayerChatPatch::default());
 }
 
 #[test]

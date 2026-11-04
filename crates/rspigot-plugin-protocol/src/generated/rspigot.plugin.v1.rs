@@ -731,7 +731,7 @@ pub struct AsyncPlayerChatPatch {
     pub format: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "2")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "1004")]
     pub recipients: ::core::option::Option<PlayerSnapshotListDiff>,
 }
 #[allow(clippy::all)]
@@ -969,7 +969,7 @@ pub struct BlockDispenseLoot {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockDispenseLootPatch {
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag = "1002")]
     pub dispensed_loot: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
@@ -987,7 +987,7 @@ pub struct BlockDropItem {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockDropItemPatch {
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "1003")]
     pub items: ::core::option::Option<DroppedItemListDiff>,
 }
 #[allow(clippy::all)]
@@ -1021,7 +1021,7 @@ pub struct BlockExplode {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockExplodePatch {
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag = "1002")]
     pub block_list: ::core::option::Option<BlockPosListDiff>,
     #[prost(float, optional, tag = "5")]
     pub explosion_yield: ::core::option::Option<f32>,
@@ -1285,7 +1285,7 @@ pub struct BroadcastMessage {
 pub struct BroadcastMessagePatch {
     #[prost(string, optional, tag = "1")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag = "1002")]
     pub recipients: ::core::option::Option<CommandSenderListDiff>,
 }
 #[allow(clippy::all)]
@@ -1751,7 +1751,7 @@ pub struct EntityDeath {
 pub struct EntityDeathPatch {
     #[prost(int32, optional, tag = "2")]
     pub dropped_exp: ::core::option::Option<i32>,
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "1003")]
     pub drops: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
@@ -1839,7 +1839,7 @@ pub struct EntityExplode {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntityExplodePatch {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag = "1001")]
     pub block_list: ::core::option::Option<BlockPosListDiff>,
     #[prost(float, optional, tag = "6")]
     pub explosion_yield: ::core::option::Option<f32>,
@@ -2691,7 +2691,7 @@ pub struct LootGenerate {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LootGeneratePatch {
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "1003")]
     pub loot: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
@@ -2940,7 +2940,7 @@ pub struct PlayerCommandSend {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PlayerCommandSendPatch {
-    #[prost(message, optional, tag = "1")]
+    #[prost(message, optional, tag = "1001")]
     pub commands: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
@@ -2986,7 +2986,7 @@ pub struct PlayerDeathPatch {
     pub death_message: ::core::option::Option<NullableString>,
     #[prost(int32, optional, tag = "3")]
     pub dropped_exp: ::core::option::Option<i32>,
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "1004")]
     pub drops: ::core::option::Option<ItemListDiff>,
     #[prost(bool, optional, tag = "7")]
     pub keep_inventory: ::core::option::Option<bool>,
@@ -3132,7 +3132,7 @@ pub struct PlayerHarvestBlock {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlayerHarvestBlockPatch {
-    #[prost(message, optional, tag = "3")]
+    #[prost(message, optional, tag = "1003")]
     pub items_harvested: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
@@ -3922,7 +3922,7 @@ pub struct ServerListPingPatch {
     pub motd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bytes = "vec", optional, tag = "8")]
     pub server_icon: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
-    #[prost(message, optional, tag = "100")]
+    #[prost(message, optional, tag = "1100")]
     pub hidden_players: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
@@ -3972,7 +3972,7 @@ pub struct SignChange {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SignChangePatch {
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "1004")]
     pub lines: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
@@ -4102,7 +4102,7 @@ pub struct TabComplete {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TabCompletePatch {
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag = "1002")]
     pub completions: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
