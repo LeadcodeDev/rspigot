@@ -876,7 +876,7 @@ fn a_player_leaving_drops_their_pending_moves() {
     for event in &events {
         answer(&mut server, 1, *event, true);
     }
-    assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
+    assert_eq!(warnings(&guard), [too_late(events[0])]);
     assert_eq!(
         moves(&watch),
         [
@@ -945,7 +945,7 @@ fn a_server_teleport_forgets_the_moves_in_flight() {
         answer(&mut server, 1, *event, true);
     }
     assert_eq!(server.player_location(alice.id), Some(far));
-    assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
+    assert_eq!(warnings(&guard), [too_late(events[0])]);
 }
 
 #[test]
@@ -1048,7 +1048,7 @@ fn a_player_dying_drops_their_moves() {
     }
     assert!(teleported_to(&alice).is_empty());
     assert_eq!(server.player_location(alice.id), Some(east(1)));
-    assert_eq!(warnings(&guard), [too_late(events[0]), too_late(events[1])]);
+    assert_eq!(warnings(&guard), [too_late(events[0])]);
 }
 
 #[test]
@@ -1855,4 +1855,36 @@ fn a_verdict_for_a_handler_that_was_not_asked_is_ignored_with_a_warning() {
             format!("handler 1 answered event {event} more than once"),
         ]
     );
+}
+
+#[test]
+fn a_teleport_drops_the_pending_moves_and_tells_their_observers() {
+    let mut server = server(PluginSettings::default());
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let watch = connect_with(
+        &mut server,
+        2,
+        "watch",
+        vec![observe(1, EventKind::PlayerMove)],
+    );
+    step(&mut server, &alice, east(1));
+    server.handle(Inbound::Console("tp Alice 10.5 64 0.5".to_owned()));
+    server.deliver();
+    let events = asked(&guard);
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        moves(&watch),
+        [heard_move(
+            events[0],
+            &[1],
+            Phase::Settled,
+            true,
+            SPAWN,
+            east(1)
+        )]
+    );
+    answer(&mut server, 1, events[0], true);
+    assert!(warnings(&guard).is_empty());
+    assert_eq!(server.player_location(alice.id), Some(east(10)));
 }

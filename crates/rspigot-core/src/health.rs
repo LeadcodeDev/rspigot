@@ -26,7 +26,8 @@ use crate::plugins::events::{
     PlayerRespawnReason,
 };
 use crate::plugins::{
-    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, RespawnStep, spec_of, stack_of,
+    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, spec_of,
+    stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -532,7 +533,8 @@ impl<L: ClientLink> Server<L> {
             .collect();
         let text = crate::console::console_text(&message);
         let damage_source = self.damage_view(source);
-        self.decisions.forget(id);
+        let forgotten = self.decisions.forget(id);
+        self.notify_undone(forgotten, Phase::Settled);
         let payload = {
             let text = text.clone();
             move |server: &Self| {

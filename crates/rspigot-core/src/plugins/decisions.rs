@@ -574,16 +574,12 @@ impl Decisions {
         dropped
     }
 
-    pub(crate) fn forget(&mut self, lane: impl Into<Lane>) {
+    pub(crate) fn forget(&mut self, lane: impl Into<Lane>) -> Undone {
         let lane = lane.into();
-        if let Some(queue) = self.lanes.get_mut(&lane) {
-            queue.retain(|queued| !queued.moving());
-            if queue.is_empty() {
-                self.lanes.remove(&lane);
-            }
-        }
-        self.settled
-            .retain(|_, record| record.lane != lane || record.undo.is_none());
+        self.settled.retain(|_, record| {
+            record.lane != lane || record.undo.is_none() || record.applied.is_none()
+        });
+        self.drop_pending(lane)
     }
 }
 
@@ -873,7 +869,7 @@ mod tests {
         assert_eq!(dropped, [2, 4]);
         assert_eq!(decisions.reference(alice), None);
         decisions.queue(5, pending(alice, 3.0, &[7]));
-        decisions.forget(alice);
+        assert_eq!(ids(&decisions.forget(alice)), [5]);
         assert_eq!(decisions.reference(alice), None);
         for event in [1, 3] {
             assert!(matches!(

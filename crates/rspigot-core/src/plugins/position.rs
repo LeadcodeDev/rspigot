@@ -8,7 +8,7 @@ use crate::plugins::events::{
     PlayerTeleport, PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
 };
 use crate::plugins::steps::{TeleportStep, VelocityStep};
-use crate::plugins::{DamageSourceView, EntityView, EventPayload, Location};
+use crate::plugins::{DamageSourceView, EntityView, EventPayload, Location, Phase};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -88,15 +88,15 @@ impl<L: ClientLink> Server<L> {
         let dropped = if step.fallback.is_some() {
             self.decisions.drop_pending(step.player)
         } else {
-            self.decisions.forget(step.player);
-            Vec::new()
+            self.decisions.forget(step.player)
         };
         self.teleport_player(step.player, position);
         dropped
     }
 
     pub(crate) fn teleport_now(&mut self, id: PlayerId, position: Vec3) {
-        self.decisions.forget(id);
+        let forgotten = self.decisions.forget(id);
+        self.notify_undone(forgotten, Phase::Settled);
         self.teleport_player(id, position);
     }
 

@@ -722,7 +722,8 @@ impl<L: ClientLink> Server<L> {
         let Some(snapshot) = self.snapshot_of(id) else {
             return;
         };
-        self.decisions.forget(id);
+        let forgotten = self.decisions.forget(id);
+        self.notify_undone(forgotten, crate::plugins::Phase::Settled);
         self.visibility.forget(id);
         let Some(mut player) = self.players.remove(&id) else {
             return;

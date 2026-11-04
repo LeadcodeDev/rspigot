@@ -643,7 +643,7 @@ impl<L: ClientLink> Server<L> {
         Vec::new()
     }
 
-    fn notify_undone(&mut self, undone: Undone, phase: Phase) {
+    pub(crate) fn notify_undone(&mut self, undone: Undone, phase: Phase) {
         for (event, payload) in undone {
             self.notify_plugins(event, &payload, true, phase);
         }
