@@ -135,14 +135,16 @@ EntityBreed = "cows, pigs, sheep and chickens breeding through their goal, one a
 EntityEnterLoveMode = "feeding an adult cow, pig, sheep or chicken; the food is spent before the event as in Spigot, the settled ticks are written as they are"
 SheepDyeWool = "a dye used on a sheep of another colour; the sheep, its colour and the dye change once settled, a cancel resends the hands"
 EntityPoseChange = "observer only, once per tick from the pose of each living entity and player that changed since the last tick: DYING of mobs, STANDING and SNEAKING of players (sneaking only when not flying, now also in the pose sent to clients); there is no sleeping, swimming, gliding or mob-specific pose yet"
+ServerListPing = "a network hook outside the tick: when no plugin listens the ping answers at once from the configuration, an observed ping answers at once, and a deciding handler makes the answer wait for the settlement within decision-ticks; hidden_players leave the sample and the count, server_icon must be a 64x64 PNG; a legacy ping has an empty hostname and no players and ignores the icon and the hidden players; the MOTD goes out as plain text, its section codes are not converted"
+ServerLoad = "STARTUP once, when the server starts running, for the plugins connected by then; RELOAD is never fired since there is no reload"
+PluginEnable = "when a plugin connects, for the other plugins and never for the plugin itself; a plugin reconnecting under its name fires PluginDisable for its old connection first"
+PluginDisable = "when a plugin disconnects, for the plugins left, and at shutdown for every plugin in reverse connection order, heard by all the others before the connections close; never for the plugin itself"
+ServerCommand = "console lines only, run in the order they were typed; not for dispatched commands, player commands or Ctrl+C; a cancel drops the line silently"
+TabComplete = "players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; a cancel or an empty list sends no suggestions; there is no console completion"
+BroadcastMessage = "the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast a deciding handler orders before its verdict is sent without firing again"
 
 [states]
-ready = [
-    "BroadcastMessage",
-    "PluginDisable", "PluginEnable",
-    "ServerCommand", "ServerListPing", "ServerLoad",
-    "TabComplete",
-]
+ready = []
 
 [states.blocked]
 AreaEffectCloudApply = "the mobs or objects involved"
