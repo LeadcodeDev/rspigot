@@ -9,12 +9,12 @@ use futures_channel::oneshot;
 use rspigot_core::config::PluginSettings;
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
-    BroadcastMessage, BroadcastMessagePatch, PlayerCommandSendPatch, PluginDisable, PluginEnable,
-    ServerCommand, ServerCommandPatch, ServerListPing, ServerListPingPatch, ServerLoad,
-    ServerLoadType, TabComplete, TabCompletePatch,
+    BroadcastMessage, BroadcastMessagePatch, PlayerCommandSend, PlayerCommandSendPatch,
+    PluginDisable, PluginEnable, ServerCommand, ServerCommandPatch, ServerListPing,
+    ServerListPingPatch, ServerLoad, ServerLoadType, TabComplete, TabCompletePatch,
 };
 use rspigot_core::plugins::{
-    EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, PlayerSnapshot,
+    EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, ListDiff, Order, PlayerSnapshot,
     PluginInfo, PluginIntro, SenderView, ServerOrder, ToPlugin,
 };
 use rspigot_core::server::Server;
@@ -411,6 +411,9 @@ fn set_completions_replaces_the_suggestions_of_the_last_word() {
     let alice = s.players[0].clone();
     suggest(&mut s, &alice, 9, "/tp Al");
     let asked = last_asked(&s.plugin, EventKind::TabComplete);
+    let EventPayload::TabComplete(TabComplete { completions, .. }) = &asked.payload else {
+        panic!("expected a tab completion");
+    };
     let chosen = vec!["Zed".to_owned(), "Amy".to_owned()];
     rule_on(
         &mut s.server,
@@ -418,7 +421,7 @@ fn set_completions_replaces_the_suggestions_of_the_last_word() {
         asked.id,
         false,
         Some(EventPatch::TabComplete(TabCompletePatch {
-            completions: Some(chosen.clone()),
+            completions: replacing(completions, chosen.clone()),
         })),
     );
     assert_eq!(suggestions(&alice), [(9, 4, 2, chosen)]);
@@ -473,6 +476,9 @@ fn a_changed_broadcast_reaches_the_settled_recipients_with_the_settled_message()
     let alice_now = snapshot(&mut s, &alice);
     broadcast(&mut s, "Hello");
     let asked = last_asked(&s.plugin, EventKind::BroadcastMessage);
+    let EventPayload::BroadcastMessage(BroadcastMessage { recipients, .. }) = &asked.payload else {
+        panic!("expected a broadcast");
+    };
     rule_on(
         &mut s.server,
         1,
@@ -480,7 +486,9 @@ fn a_changed_broadcast_reaches_the_settled_recipients_with_the_settled_message()
         false,
         Some(EventPatch::BroadcastMessage(BroadcastMessagePatch {
             message: Some("§cBye".to_owned()),
-            recipients: Some(vec![SenderView::Player(alice_now)]),
+            recipients: removing(recipients, |sender| {
+                *sender != SenderView::Player(alice_now.clone())
+            }),
         })),
     );
     assert_eq!(system_texts(&alice), ["Bye"]);
@@ -665,7 +673,10 @@ fn a_status_ping_waits_for_the_deciding_handlers_and_applies_every_field_of_thei
             max_players: Some(5),
             motd: Some("§bPatched".to_owned()),
             server_icon: Some(icon()),
-            hidden_players: Some(vec![alice.id.0]),
+            hidden_players: ListDiff {
+                removed: Vec::new(),
+                added: vec![alice.id.0],
+            },
         })),
     );
     assert_eq!(
@@ -755,7 +766,10 @@ fn a_legacy_ping_shows_no_player_and_ignores_the_icon_and_the_hidden_players() {
         Some(EventPatch::ServerListPing(ServerListPingPatch {
             motd: Some("Old".to_owned()),
             server_icon: Some(icon()),
-            hidden_players: Some(vec![alice.id.0]),
+            hidden_players: ListDiff {
+                removed: Vec::new(),
+                added: vec![alice.id.0],
+            },
             ..ServerListPingPatch::default()
         })),
     );
@@ -853,6 +867,9 @@ fn a_command_send_patch_prunes_a_copy_for_that_player_only() {
     let mut s = scene_with(&[], vec![deciding(1, EventKind::PlayerCommandSend)]);
     let alice = join(&mut s.server, "Alice");
     let asked = last_asked(&s.plugin, EventKind::PlayerCommandSend);
+    let EventPayload::PlayerCommandSend(PlayerCommandSend { commands, .. }) = &asked.payload else {
+        panic!("expected a command send");
+    };
     alice.link.take();
     rule_on(
         &mut s.server,
@@ -860,7 +877,7 @@ fn a_command_send_patch_prunes_a_copy_for_that_player_only() {
         asked.id,
         false,
         Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
-            commands: Some(vec!["help".to_owned()]),
+            commands: removing(commands, |name| name != "help"),
         })),
     );
     assert_eq!(command_roots(&alice), [vec!["help".to_owned()]]);

@@ -586,9 +586,9 @@ impl<L: ClientLink> Server<L> {
                 }
                 Vec::new()
             }
-            Continuation::Chat(_) | Continuation::Command(_) if cancelled => Vec::new(),
-            Continuation::Chat(step) => {
-                self.finish_chat(step, patch_of!(patch, AsyncPlayerChat));
+            Continuation::Chat(..) | Continuation::Command(_) if cancelled => Vec::new(),
+            Continuation::Chat(step, offered) => {
+                self.finish_chat(step, offered, patch_of!(patch, AsyncPlayerChat));
                 Vec::new()
             }
             Continuation::Command(step) => {
@@ -705,8 +705,8 @@ impl<L: ClientLink> Server<L> {
             | Continuation::Wear(_)
             | Continuation::SetWeather(_)
             | Continuation::Strike(_) => Vec::new(),
-            Continuation::CommandSend(id) => {
-                self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
+            Continuation::CommandSend(id, tree) => {
+                self.finish_command_send(id, &tree, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
             }
             Continuation::Damage(step) => {
@@ -933,7 +933,7 @@ impl<L: ClientLink> Server<L> {
                 self.finish_ping(*step, patch_of!(patch, ServerListPing));
                 Vec::new()
             }
-            Continuation::ServerCommand(_) | Continuation::Broadcast(_) if cancelled => Vec::new(),
+            Continuation::ServerCommand(_) | Continuation::Broadcast(..) if cancelled => Vec::new(),
             Continuation::ServerCommand(line) => {
                 self.finish_server_command(line, patch_of!(patch, ServerCommand));
                 Vec::new()
@@ -942,8 +942,8 @@ impl<L: ClientLink> Server<L> {
                 self.finish_tab_complete(*step, cancelled, patch_of!(patch, TabComplete));
                 Vec::new()
             }
-            Continuation::Broadcast(message) => {
-                self.finish_broadcast(&message, patch_of!(patch, BroadcastMessage));
+            Continuation::Broadcast(message, offered) => {
+                self.finish_broadcast(&message, offered, patch_of!(patch, BroadcastMessage));
                 Vec::new()
             }
         }

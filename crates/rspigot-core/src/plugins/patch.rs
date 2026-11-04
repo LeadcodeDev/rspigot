@@ -194,7 +194,8 @@ mod tests {
         EventResult, InventoryClickPatch, InventoryDragPatch, PlayerMovePatch, PlayerVelocityPatch,
         PotionSplashPatch, ServerListPingPatch,
     };
-    use crate::plugins::{EventKind, ItemSpec};
+    use crate::plugins::events::{MapInitialize, ServerListPing};
+    use crate::plugins::{EventKind, EventPayload, ItemSpec};
 
     fn at(x: f64) -> Location {
         Location {
@@ -203,6 +204,8 @@ mod tests {
             rotation: Rotation::default(),
         }
     }
+
+    const ELSEWHERE: EventPayload = EventPayload::MapInitialize(MapInitialize);
 
     fn moving(to: Option<Location>) -> EventPatch {
         EventPatch::PlayerMove(PlayerMovePatch { to })
@@ -323,27 +326,40 @@ mod tests {
         png
     }
 
+    fn pinged() -> EventPayload {
+        EventPayload::ServerListPing(ServerListPing {
+            address: std::net::IpAddr::from([127, 0, 0, 1]),
+            hostname: "localhost".to_owned(),
+            players: Vec::new(),
+            max_players: 20,
+            motd: "A Minecraft Server".to_owned(),
+            num_players: 0,
+            hidden_players: Vec::new(),
+        })
+    }
+
     #[test]
     fn a_server_icon_must_be_a_64_pixel_square_png() {
+        let pinged = pinged();
         let icon = |png| {
             EventPatch::ServerListPing(ServerListPingPatch {
                 server_icon: Some(png),
                 ..ServerListPingPatch::default()
             })
         };
-        assert_eq!(icon(png(64, 64)).refusal(), None);
+        assert_eq!(icon(png(64, 64)).refusal(&pinged), None);
         assert_eq!(
-            EventPatch::ServerListPing(ServerListPingPatch::default()).refusal(),
+            EventPatch::ServerListPing(ServerListPingPatch::default()).refusal(&pinged),
             None
         );
         assert_eq!(
-            icon(png(64, 32)).refusal(),
+            icon(png(64, 32)).refusal(&pinged),
             Some("server_icon is a 64x32 image, not 64x64".to_owned())
         );
         let mut heavy = png(64, 64);
         heavy.resize(24_600, 0);
         assert_eq!(
-            icon(heavy).refusal(),
+            icon(heavy).refusal(&pinged),
             Some(
                 "server_icon takes 32822 characters once encoded, more than a status answer holds (32767)"
                     .to_owned()
@@ -351,11 +367,11 @@ mod tests {
         );
         let mut largest = png(64, 64);
         largest.resize(24_558, 0);
-        assert_eq!(icon(largest).refusal(), None);
+        assert_eq!(icon(largest).refusal(&pinged), None);
         let truncated = png(64, 64)[..20].to_vec();
         for broken in [Vec::new(), b"GIF89a".to_vec(), truncated] {
             assert_eq!(
-                icon(broken).refusal(),
+                icon(broken).refusal(&pinged),
                 Some("server_icon is not a PNG image".to_owned())
             );
         }
@@ -369,21 +385,21 @@ mod tests {
                 ..ServerListPingPatch::default()
             })
         };
-        assert_eq!(motd("é".repeat(32_767)).refusal(), None);
+        assert_eq!(motd("é".repeat(32_767)).refusal(&pinged()), None);
         assert_eq!(
-            motd("a".repeat(32_768)).refusal(),
+            motd("a".repeat(32_768)).refusal(&pinged()),
             Some("motd is 32768 characters long, more than 32767".to_owned())
         );
         assert_eq!(
-            motd("🙂".repeat(16_384)).refusal(),
+            motd("🙂".repeat(16_384)).refusal(&pinged()),
             Some("motd is 32768 characters long, more than 32767".to_owned())
         );
     }
 
     #[test]
     fn a_destination_outside_the_world_is_refused() {
-        assert_eq!(moving(Some(at(1.0))).refusal(), None);
-        assert_eq!(moving(None).refusal(), None);
+        assert_eq!(moving(Some(at(1.0))).refusal(&ELSEWHERE), None);
+        assert_eq!(moving(None).refusal(&ELSEWHERE), None);
         for nowhere in [
             Vec3::new(f64::NAN, 64.0, 0.0),
             Vec3::new(0.0, f64::INFINITY, 0.0),
@@ -391,7 +407,7 @@ mod tests {
         ] {
             let mut location = at(0.0);
             location.position = nowhere;
-            assert!(moving(Some(location)).refusal().is_some());
+            assert!(moving(Some(location)).refusal(&ELSEWHERE).is_some());
         }
     }
 
@@ -402,9 +418,9 @@ mod tests {
                 damage: Some(damage),
             })
         };
-        assert_eq!(damage(2.5).refusal(), None);
+        assert_eq!(damage(2.5).refusal(&ELSEWHERE), None);
         assert_eq!(
-            damage(f64::NAN).refusal(),
+            damage(f64::NAN).refusal(&ELSEWHERE),
             Some("damage NaN is not finite".to_owned())
         );
         let tired = |exhaustion| {
@@ -412,9 +428,9 @@ mod tests {
                 exhaustion: Some(exhaustion),
             })
         };
-        assert_eq!(tired(0.5).refusal(), None);
+        assert_eq!(tired(0.5).refusal(&ELSEWHERE), None);
         assert_eq!(
-            tired(f32::INFINITY).refusal(),
+            tired(f32::INFINITY).refusal(&ELSEWHERE),
             Some("exhaustion inf is not finite".to_owned())
         );
         let pushed = |velocity| {
@@ -422,18 +438,18 @@ mod tests {
                 velocity: Some(velocity),
             })
         };
-        assert_eq!(pushed(Vec3::new(0.0, 1.0, 0.0)).refusal(), None);
+        assert_eq!(pushed(Vec3::new(0.0, 1.0, 0.0)).refusal(&ELSEWHERE), None);
         assert_eq!(
-            pushed(Vec3::new(0.0, f64::NAN, 0.0)).refusal(),
+            pushed(Vec3::new(0.0, f64::NAN, 0.0)).refusal(&ELSEWHERE),
             Some("velocity 0 NaN 0 is not finite".to_owned())
         );
         let mut turned = at(1.0);
         turned.rotation = Rotation::new(f32::NAN, 0.0);
         let teleported = |to| EventPatch::EntityTeleport(EntityTeleportPatch { to: Some(to) });
-        assert_eq!(teleported(None).refusal(), None);
-        assert_eq!(teleported(Some(at(1.0))).refusal(), None);
+        assert_eq!(teleported(None).refusal(&ELSEWHERE), None);
+        assert_eq!(teleported(Some(at(1.0))).refusal(&ELSEWHERE), None);
         assert_eq!(
-            teleported(Some(turned)).refusal(),
+            teleported(Some(turned)).refusal(&ELSEWHERE),
             Some("rotation NaN 0 is not finite".to_owned())
         );
     }
@@ -462,9 +478,9 @@ mod tests {
             intensities(&[(1, 0.5), (2, 0.2)]).then(intensities(&[(1, 0.9), (3, 1.0)])),
             intensities(&[(1, 0.9), (2, 0.2), (3, 1.0)])
         );
-        assert_eq!(intensities(&[(1, 0.5)]).refusal(), None);
+        assert_eq!(intensities(&[(1, 0.5)]).refusal(&ELSEWHERE), None);
         assert_eq!(
-            intensities(&[(1, 0.5), (2, f64::NAN)]).refusal(),
+            intensities(&[(1, 0.5), (2, f64::NAN)]).refusal(&ELSEWHERE),
             Some("intensities NaN is not finite".to_owned())
         );
     }

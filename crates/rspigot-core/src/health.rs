@@ -8,9 +8,7 @@ use rspigot_domain::damage::{self, DamageTag, DamageType, java_clamp};
 use rspigot_domain::effect::EffectId;
 use rspigot_domain::experience::PlayerExperience;
 use rspigot_domain::food::{FoodData, FoodEffect};
-use rspigot_domain::item::{
-    HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE, same_item_same_components,
-};
+use rspigot_domain::item::{HOTBAR_START, Inventory, ItemStack, PLAYER_INVENTORY_SIZE};
 use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
@@ -26,8 +24,8 @@ use crate::plugins::events::{
     PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
 };
 use crate::plugins::{
-    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, Holder, ItemSpec, Phase,
-    RespawnStep, Struck, spec_of, stack_of,
+    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, Holder, Phase, RespawnStep,
+    Struck, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -681,13 +679,13 @@ impl<L: ClientLink> Server<L> {
         }
         let keep_inventory = patch.keep_inventory.unwrap_or(step.keep);
         let dropped: &[(usize, ItemStack)] = if step.keep { &[] } else { &step.inventory };
-        let drops = match patch.drops {
-            None => dropped
+        let drops = patch.drops.apply_with(
+            dropped
                 .iter()
                 .map(|(_, stack)| (stack.clone(), true))
                 .collect(),
-            Some(specs) => marked_drops(dropped, &specs),
-        };
+            |spec| stack_of(&spec).ok().flatten().map(|stack| (stack, false)),
+        );
         for (stack, from_inventory) in drops {
             if from_inventory {
                 self.drop_randomly(origin, stack);
@@ -1191,21 +1189,4 @@ impl<L: ClientLink> Server<L> {
     pub fn player_is_dead(&self, id: PlayerId) -> Option<bool> {
         self.players.get(&id).map(|p| p.vitals.is_dead())
     }
-}
-
-fn marked_drops(taken: &[(usize, ItemStack)], specs: &[ItemSpec]) -> Vec<(ItemStack, bool)> {
-    let mut unmatched: Vec<&ItemStack> = taken.iter().map(|(_, stack)| stack).collect();
-    specs
-        .iter()
-        .filter_map(|spec| stack_of(spec).ok().flatten())
-        .map(|stack| {
-            let found = unmatched
-                .iter()
-                .position(|original| same_item_same_components(original, &stack));
-            if let Some(index) = found {
-                unmatched.swap_remove(index);
-            }
-            (stack, found.is_some())
-        })
-        .collect()
 }

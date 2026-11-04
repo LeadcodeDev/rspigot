@@ -481,17 +481,17 @@ impl<L: ClientLink> Server<L> {
         patch: BlockDropItemPatch,
     ) {
         if !cancelled {
-            let kept: Option<FxHashMap<EntityId, ItemSpec>> = patch.items.map(|items| {
-                items
-                    .into_iter()
-                    .map(|dropped| (dropped.entity.id, dropped.item))
-                    .collect()
-            });
-            for (launch, stack) in step.drops {
-                let settled = match kept.as_ref().map(|kept| kept.get(&launch.base.id)) {
-                    None => Some(stack),
-                    Some(None) => None,
-                    Some(Some(spec)) => stack_of(spec).unwrap_or(Some(stack)),
+            let replaced: FxHashMap<EntityId, &ItemSpec> = patch
+                .items
+                .added
+                .iter()
+                .map(|dropped| (dropped.entity.id, &dropped.item))
+                .collect();
+            for (index, (launch, stack)) in step.drops.into_iter().enumerate() {
+                let settled = match replaced.get(&launch.base.id) {
+                    Some(spec) => stack_of(spec).unwrap_or(Some(stack)),
+                    None if patch.items.keeps(index) => Some(stack),
+                    None => None,
                 };
                 if let Some(stack) = settled
                     && self.world.chunks.is_loaded(launch.base.position.chunk())

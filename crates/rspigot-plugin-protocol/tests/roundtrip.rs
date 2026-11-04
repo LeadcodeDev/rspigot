@@ -1,18 +1,19 @@
 use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
-    Access, BlockPos, BlockPosList, BlockSnapshot, BlockState, BookMeta, BoundingBox, ChunkRef,
-    ClickKind, CommandSender, CommandSenderList, DamageSource, Decision, DroppedItem,
-    DroppedItemList, Effect, Empty, Enchant, EnchantOffer, EntityDamageByEntity, EntityDamageCause,
-    EntitySnapshot, EntityTargetPatch, Event, EventKind, EventResult, ExplosionResult, FromPlugin,
-    GameMode, Handler, Hello, HolderRef, Input, InventoryAction, InventoryClick, InventoryRef,
-    InventoryTypeSlotType, InventoryView, Item, ItemList, LecternData, Location, LootContext,
-    MerchantRef, NullableBlockPos, NullableEntitySnapshot, NullableInventoryRef, NullableItem,
-    NullableLocation, NullableString, OwnerRef, Patch, Phase, PlayerDeath, PlayerDeathPatch,
-    PlayerMove, PlayerMovePatch, PlayerSnapshot, PlayerSnapshotList, PluginInfo, Priority,
-    Property, Rotation, ServerListPingPatch, SignData, SpawnerData, StringList, ToPlugin, Trade,
-    TrialSpawnerData, Vec3, Verdict, command_sender, event, from_plugin, holder_ref, inventory_ref,
-    merchant_ref, owner_ref, patch, to_plugin,
+    Access, BlockPos, BlockPosListDiff, BlockSnapshot, BlockState, BookMeta, BoundingBox, ChunkRef,
+    ClickKind, CommandSender, CommandSenderListDiff, DamageSource, Decision, DroppedItem,
+    DroppedItemListDiff, Effect, Empty, Enchant, EnchantOffer, EntityDamageByEntity,
+    EntityDamageCause, EntitySnapshot, EntityTargetPatch, Event, EventKind, EventResult,
+    ExplosionResult, FromPlugin, GameMode, Handler, Hello, HolderRef, Input, InventoryAction,
+    InventoryClick, InventoryRef, InventoryTypeSlotType, InventoryView, Item, ItemListDiff,
+    LecternData, Location, LootContext, MerchantRef, NullableBlockPos, NullableEntitySnapshot,
+    NullableInventoryRef, NullableItem, NullableLocation, NullableString, OwnerRef, Patch, Phase,
+    PlayerDeath, PlayerDeathPatch, PlayerMove, PlayerMovePatch, PlayerSnapshot,
+    PlayerSnapshotListDiff, PluginInfo, Priority, Property, Rotation, ServerListPingPatch,
+    SignData, SpawnerData, StringListDiff, ToPlugin, Trade, TrialSpawnerData, Vec3, Verdict,
+    command_sender, event, from_plugin, holder_ref, inventory_ref, merchant_ref, owner_ref, patch,
+    to_plugin,
 };
 
 fn steve() -> PlayerSnapshot {
@@ -252,7 +253,10 @@ fn a_decision_carries_one_verdict_per_handler_with_its_patch() {
                     patch: Some(Patch {
                         change: Some(patch::Change::PlayerDeath(PlayerDeathPatch {
                             death_message: Some(NullableString { value: None }),
-                            drops: Some(ItemList { values: Vec::new() }),
+                            drops: Some(ItemListDiff {
+                                removed: vec![0, 2],
+                                added: vec![diamond(3)],
+                            }),
                             keep_inventory: Some(true),
                             ..PlayerDeathPatch::default()
                         })),
@@ -484,16 +488,19 @@ fn every_wrapper_of_a_patch_survives_encoding() {
     round_trips(&NullableString {
         value: Some(String::new()),
     });
-    round_trips(&BlockPosList {
-        values: vec![block, block],
+    round_trips(&BlockPosListDiff {
+        removed: vec![0, 7],
+        added: vec![block, block],
     });
-    round_trips(&CommandSenderList {
-        values: vec![CommandSender {
+    round_trips(&CommandSenderListDiff {
+        removed: vec![1],
+        added: vec![CommandSender {
             sender: Some(command_sender::Sender::Console(Empty {})),
         }],
     });
-    round_trips(&DroppedItemList {
-        values: vec![DroppedItem {
+    round_trips(&DroppedItemListDiff {
+        removed: vec![0],
+        added: vec![DroppedItem {
             entity: Some(zombie()),
             item: Some(Item {
                 key: "minecraft:dirt".to_owned(),
@@ -502,19 +509,30 @@ fn every_wrapper_of_a_patch_survives_encoding() {
             }),
         }],
     });
-    round_trips(&PlayerSnapshotList {
-        values: vec![steve()],
+    round_trips(&ItemListDiff {
+        removed: vec![u32::MAX],
+        added: vec![diamond(1), diamond(64)],
     });
-    round_trips(&StringList {
-        values: vec!["a".to_owned(), String::new()],
+    round_trips(&PlayerSnapshotListDiff {
+        removed: vec![2, 0],
+        added: vec![steve()],
+    });
+    round_trips(&StringListDiff {
+        removed: Vec::new(),
+        added: vec!["a".to_owned(), String::new()],
+    });
+    round_trips(&StringListDiff {
+        removed: vec![3],
+        added: Vec::new(),
     });
     let pinged = Patch {
         change: Some(patch::Change::ServerListPing(ServerListPingPatch {
             max_players: Some(0),
             motd: Some(String::new()),
             server_icon: Some(vec![0x89, 0x50, 0x4e, 0x47]),
-            hidden_players: Some(StringList {
-                values: vec![steve().uuid],
+            hidden_players: Some(StringListDiff {
+                removed: vec![1],
+                added: vec![steve().uuid],
             }),
         })),
     };

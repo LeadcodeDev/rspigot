@@ -438,28 +438,34 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn send_commands(&mut self, id: PlayerId) {
-        self.fire(id, Continuation::CommandSend(id), move |server| {
-            let operator = server.players.get(&id)?.operator;
-            let player = server.snapshot_of(id)?;
-            Some(EventPayload::PlayerCommandSend(PlayerCommandSend {
-                commands: root_names(&server.command_tree(operator)),
-                player,
-            }))
-        });
-    }
-
-    pub(super) fn finish_command_send(&mut self, id: PlayerId, patch: PlayerCommandSendPatch) {
         let Some(operator) = self.players.get(&id).map(|player| player.operator) else {
             return;
         };
         let tree = self.command_tree(operator);
-        let tree = match patch.commands {
-            Some(kept) => Arc::new(pruned(&tree, &kept)),
-            None => tree,
+        let described = Arc::clone(&tree);
+        self.fire(id, Continuation::CommandSend(id, tree), move |server| {
+            Some(EventPayload::PlayerCommandSend(PlayerCommandSend {
+                commands: root_names(&described),
+                player: server.snapshot_of(id)?,
+            }))
+        });
+    }
+
+    pub(super) fn finish_command_send(
+        &mut self,
+        id: PlayerId,
+        tree: &Arc<CommandTree>,
+        patch: PlayerCommandSendPatch,
+    ) {
+        let Some(player) = self.players.get(&id) else {
+            return;
         };
-        if let Some(player) = self.players.get(&id) {
-            player.link.send(ClientEvent::Commands(tree));
-        }
+        let tree = if patch.commands.is_empty() {
+            Arc::clone(tree)
+        } else {
+            Arc::new(pruned(tree, &patch.commands.apply(root_names(tree))))
+        };
+        player.link.send(ClientEvent::Commands(tree));
     }
 }
 

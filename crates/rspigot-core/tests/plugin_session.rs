@@ -648,6 +648,9 @@ fn a_death_pending_when_its_player_leaves_settles_before_the_quit_and_the_save()
     console(&mut s, "give Alice diamond 5");
     kill(&mut s, &alice);
     let death = last_asked(&s.plugin, EventKind::PlayerDeath);
+    let EventPayload::PlayerDeath(dying) = &death.payload else {
+        panic!("a player death");
+    };
     rule_on(
         &mut s.server,
         1,
@@ -655,7 +658,7 @@ fn a_death_pending_when_its_player_leaves_settles_before_the_quit_and_the_save()
         false,
         Some(EventPatch::PlayerDeath(PlayerDeathPatch {
             keep_inventory: Some(true),
-            drops: Some(Vec::new()),
+            drops: replacing(&dying.drops, Vec::new()),
             ..PlayerDeathPatch::default()
         })),
     );
@@ -711,6 +714,9 @@ fn a_shutdown_settles_every_pending_event_before_the_players_are_saved() {
     console(&mut s, "give Alice diamond 5");
     kill(&mut s, &alice);
     let death = last_asked(&s.plugin, EventKind::PlayerDeath);
+    let EventPayload::PlayerDeath(dying) = &death.payload else {
+        panic!("a player death");
+    };
     rule_on(
         &mut s.server,
         1,
@@ -718,7 +724,7 @@ fn a_shutdown_settles_every_pending_event_before_the_players_are_saved() {
         false,
         Some(EventPatch::PlayerDeath(PlayerDeathPatch {
             keep_inventory: Some(true),
-            drops: Some(Vec::new()),
+            drops: replacing(&dying.drops, Vec::new()),
             ..PlayerDeathPatch::default()
         })),
     );
@@ -849,7 +855,7 @@ fn a_command_send_decider_prunes_the_roots_and_fires_again_at_operator_changes_a
         asked.id,
         false,
         Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
-            commands: Some(vec!["help".to_owned()]),
+            commands: removing(commands, |name| name != "help"),
         })),
     );
     assert_eq!(command_roots(&alice), [vec!["help".to_owned()]]);

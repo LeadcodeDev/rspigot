@@ -81,7 +81,7 @@ impl<L: ClientLink> Server<L> {
         let (hidden, icon) = if step.legacy {
             (Vec::new(), None)
         } else {
-            (patch.hidden_players.unwrap_or_default(), patch.server_icon)
+            (patch.hidden_players.apply(Vec::new()), patch.server_icon)
         };
         let mut shown = self
             .players

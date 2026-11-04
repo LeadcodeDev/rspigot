@@ -444,7 +444,7 @@ fn a_drop_patch_keeps_only_the_listed_items_and_a_cancel_keeps_the_experience() 
         1,
         false,
         Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(Vec::new()),
+            items: replacing(&offered.items, Vec::new()),
         })),
     );
     assert_eq!(s.server.items_on_ground(), 0);
@@ -467,9 +467,7 @@ fn a_drop_patch_keeps_only_the_listed_items_and_a_cancel_keeps_the_experience() 
         asked.id,
         1,
         false,
-        Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(drop_of(&asked).items),
-        })),
+        Some(EventPatch::BlockDropItem(BlockDropItemPatch::default())),
     );
     assert_eq!(s.server.items_on_ground(), 1);
     let third = BlockPos::new(4, 63, 0);
@@ -499,8 +497,9 @@ fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
     let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockDropItem)]);
     mine(&mut s, &alice, DIRT);
     let asked = last_asked(&s.plugin, EventKind::BlockDropItem);
-    let mut kept = drop_of(&asked).items;
-    assert_eq!(kept.len(), 1);
+    let offered = drop_of(&asked).items;
+    assert_eq!(offered.len(), 1);
+    let mut kept = offered.clone();
     kept[0].item = ItemSpec::of("minecraft:diamond", 3);
     rule_on(
         &mut s.server,
@@ -508,7 +507,7 @@ fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
         asked.id,
         false,
         Some(EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: Some(kept),
+            items: replacing(&offered, kept),
         })),
     );
     let thrown: Vec<String> = s

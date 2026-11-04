@@ -65,7 +65,7 @@ impl<L: ClientLink> Server<L> {
         if cancelled {
             return;
         }
-        let matches = patch.completions.unwrap_or(step.matches);
+        let matches = patch.completions.apply(step.matches);
         if matches.is_empty() {
             return;
         }

@@ -1343,13 +1343,9 @@ impl<L: ClientLink> Server<L> {
         state.dead = true;
         let position = base.position;
         self.clear_dropped_equipment(victim, &slots);
-        let drops = match patch.drops {
-            Some(specs) => specs
-                .iter()
-                .filter_map(|spec| stack_of(spec).ok().flatten())
-                .collect(),
-            None => drops,
-        };
+        let drops = patch
+            .drops
+            .apply_with(drops, |spec| stack_of(&spec).ok().flatten());
         for stack in drops {
             let velocity = Vec3::new(
                 self.rng.random::<f64>() * ITEM_SPREAD - ITEM_SPREAD / 2.0,

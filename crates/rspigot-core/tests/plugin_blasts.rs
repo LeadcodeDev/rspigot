@@ -199,6 +199,9 @@ fn a_patched_block_list_is_what_the_explosion_breaks() {
     creeper(&mut s);
     s.tick(5);
     let asked = last_asked(&s.plugin, EventKind::EntityExplode);
+    let EventPayload::EntityExplode(blast) = &asked.payload else {
+        panic!("an entity explosion");
+    };
     let far = BlockPos::new(3, 60, 3);
     rule_on(
         &mut s.server,
@@ -206,7 +209,7 @@ fn a_patched_block_list_is_what_the_explosion_breaks() {
         asked.id,
         false,
         Some(EventPatch::EntityExplode(EntityExplodePatch {
-            block_list: Some(vec![far]),
+            block_list: replacing(&blast.block_list, vec![far]),
             explosion_yield: Some(0.0),
         })),
     );

@@ -2,6 +2,7 @@ mod block;
 mod color;
 mod contract;
 mod custom_inventory;
+mod diff;
 mod effect;
 mod entity;
 mod error;

@@ -147,7 +147,7 @@ fn a_mob_death_waits_with_its_loot_and_drops_what_settled() {
         false,
         Some(EventPatch::EntityDeath(EntityDeathPatch {
             dropped_exp: Some(0),
-            drops: Some(vec![ItemSpec::of("minecraft:diamond", 2)]),
+            drops: replacing(&event.drops, vec![ItemSpec::of("minecraft:diamond", 2)]),
         })),
     );
     assert!(dead(&mut s, zombie));

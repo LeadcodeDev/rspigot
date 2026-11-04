@@ -135,7 +135,10 @@ impl Pending {
                 }
                 None => None,
             };
-            if let Some(reason) = patch.as_ref().and_then(EventPatch::refusal) {
+            if let Some(reason) = patch
+                .as_ref()
+                .and_then(|patch| patch.refusal(&self.payload))
+            {
                 warnings.push(format!("patch of event {event} was refused: {reason}"));
                 patch = None;
             }

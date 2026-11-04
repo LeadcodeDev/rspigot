@@ -84,7 +84,7 @@ fn a_changed_message_and_format_are_sent_as_system_text() {
         Some(EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
             format: Some("§7[%s] %s!".to_owned()),
             message: Some("hi there".to_owned()),
-            recipients: None,
+            ..AsyncPlayerChatPatch::default()
         })),
     );
     assert_eq!(chat_lines(&bob), ["[Alice] hi there!"]);
@@ -107,18 +107,14 @@ fn changed_recipients_limit_who_reads_the_chat() {
     let EventPayload::AsyncPlayerChat(AsyncPlayerChat { recipients, .. }) = &asked.payload else {
         panic!("expected a chat");
     };
-    let only_bob = recipients
-        .iter()
-        .filter(|player| player.id == bob.id)
-        .cloned()
-        .collect();
+    let only_bob = removing(recipients, |player| player.id != bob.id);
     rule_on(
         &mut s.server,
         1,
         asked.id,
         false,
         Some(EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
-            recipients: Some(only_bob),
+            recipients: only_bob,
             ..AsyncPlayerChatPatch::default()
         })),
     );

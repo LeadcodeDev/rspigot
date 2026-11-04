@@ -1,16 +1,17 @@
 use rspigot_domain::player::PlayerId;
 use rspigot_domain::text::Component;
+use rustc_hash::FxHashSet;
 
 use crate::commands::{self, CommandSender};
 use crate::console::console_text;
 use crate::events::ClientEvent;
-use crate::plugins::EventPayload;
 use crate::plugins::decisions::Continuation;
 use crate::plugins::events::{
     AsyncPlayerChat, AsyncPlayerChatPatch, PlayerCommandPreprocess, PlayerCommandPreprocessPatch,
 };
 use crate::plugins::resolve;
 use crate::plugins::steps::ChatStep;
+use crate::plugins::{EventKind, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -63,25 +64,39 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let text = message.to_owned();
+        let online = if self.listened(EventKind::AsyncPlayerChat) {
+            self.online_snapshots()
+        } else {
+            Vec::new()
+        };
+        let offered = online.iter().map(|player| player.id).collect();
         self.fire(
             id,
-            Continuation::Chat(ChatStep {
-                player: id,
-                message: message.to_owned(),
-            }),
+            Continuation::Chat(
+                ChatStep {
+                    player: id,
+                    message: message.to_owned(),
+                },
+                offered,
+            ),
             move |server| {
                 let player = server.snapshot_of(id)?;
                 Some(EventPayload::AsyncPlayerChat(AsyncPlayerChat {
                     format: CHAT_FORMAT.to_owned(),
                     message: text,
                     player,
-                    recipients: server.online_snapshots(),
+                    recipients: online,
                 }))
             },
         );
     }
 
-    pub(super) fn finish_chat(&mut self, step: ChatStep, patch: AsyncPlayerChatPatch) {
+    pub(super) fn finish_chat(
+        &mut self,
+        step: ChatStep,
+        offered: Vec<PlayerId>,
+        patch: AsyncPlayerChatPatch,
+    ) {
         let Some(name) = self
             .players
             .get(&step.player)
@@ -113,13 +128,16 @@ impl<L: ClientLink> Server<L> {
         };
         let line = resolve::text(&text);
         tracing::info!("{}", console_text(&line));
-        let recipients: Vec<PlayerId> = match patch.recipients {
-            Some(recipients) => recipients
+        let recipients: Vec<PlayerId> = if patch.recipients.is_empty() {
+            self.players.keys().copied().collect()
+        } else {
+            let mut seen = FxHashSet::default();
+            patch
+                .recipients
+                .apply_with(offered, |player| Some(player.id))
                 .into_iter()
-                .map(|player| player.id)
-                .filter(|id| self.players.contains_key(id))
-                .collect(),
-            None => self.players.keys().copied().collect(),
+                .filter(|id| self.players.contains_key(id) && seen.insert(*id))
+                .collect()
         };
         for recipient in recipients {
             self.push(Audience::One(recipient), ClientEvent::system(line.clone()));

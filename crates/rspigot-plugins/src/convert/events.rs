@@ -1,3 +1,4 @@
+use rspigot_core::plugins::ListDiff;
 use rspigot_core::plugins::events::{
     Action, ArrowBodyCountChangePatch, AsyncPlayerChatPatch, AsyncPlayerPreLoginPatch,
     AsyncPlayerPreLoginResult, AsyncStructureGenerateCause, BlockBreakPatch, BlockCanBuildPatch,
@@ -2157,15 +2158,17 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
                 format: patch.format,
                 message: patch.message,
-                recipients: patch
-                    .recipients
-                    .map(|list| {
-                        list.values
+                recipients: match patch.recipients {
+                    Some(diff) => ListDiff {
+                        removed: diff.removed,
+                        added: diff
+                            .added
                             .into_iter()
                             .map(player::snapshot)
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .transpose()?,
+                            .collect::<Result<Vec<_>, _>>()?,
+                    },
+                    None => ListDiff::default(),
+                },
             })
         }
         patch::Change::AsyncPlayerPreLogin(patch) => {
@@ -2202,29 +2205,39 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         }
         patch::Change::BlockDispenseLoot(patch) => {
             EventPatch::BlockDispenseLoot(BlockDispenseLootPatch {
-                dispensed_loot: patch
-                    .dispensed_loot
-                    .map(|list| list.values.into_iter().map(shared::item).collect()),
+                dispensed_loot: match patch.dispensed_loot {
+                    Some(diff) => ListDiff {
+                        removed: diff.removed,
+                        added: diff.added.into_iter().map(shared::item).collect(),
+                    },
+                    None => ListDiff::default(),
+                },
             })
         }
         patch::Change::BlockDropItem(patch) => EventPatch::BlockDropItem(BlockDropItemPatch {
-            items: patch
-                .items
-                .map(|list| {
-                    list.values
+            items: match patch.items {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff
+                        .added
                         .into_iter()
                         .map(contract::dropped_item)
-                        .collect::<Result<Vec<_>, _>>()
-                })
-                .transpose()?,
+                        .collect::<Result<Vec<_>, _>>()?,
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::BlockExp(patch) => EventPatch::BlockExp(BlockExpPatch {
             exp_to_drop: patch.exp_to_drop,
         }),
         patch::Change::BlockExplode(patch) => EventPatch::BlockExplode(BlockExplodePatch {
-            block_list: patch
-                .block_list
-                .map(|list| list.values.into_iter().map(shared::block_pos).collect()),
+            block_list: match patch.block_list {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added.into_iter().map(shared::block_pos).collect(),
+                },
+                None => ListDiff::default(),
+            },
             explosion_yield: patch.explosion_yield,
         }),
         patch::Change::BlockMultiPlace(patch) => {
@@ -2248,15 +2261,17 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::BroadcastMessage(patch) => {
             EventPatch::BroadcastMessage(BroadcastMessagePatch {
                 message: patch.message,
-                recipients: patch
-                    .recipients
-                    .map(|list| {
-                        list.values
+                recipients: match patch.recipients {
+                    Some(diff) => ListDiff {
+                        removed: diff.removed,
+                        added: diff
+                            .added
                             .into_iter()
                             .map(contract::command_sender)
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .transpose()?,
+                            .collect::<Result<Vec<_>, _>>()?,
+                    },
+                    None => ListDiff::default(),
+                },
             })
         }
         patch::Change::CampfireStart(patch) => EventPatch::CampfireStart(CampfireStartPatch {
@@ -2325,9 +2340,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         }
         patch::Change::EntityDeath(patch) => EventPatch::EntityDeath(EntityDeathPatch {
             dropped_exp: patch.dropped_exp,
-            drops: patch
-                .drops
-                .map(|list| list.values.into_iter().map(shared::item).collect()),
+            drops: match patch.drops {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added.into_iter().map(shared::item).collect(),
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::EntityEnterLoveMode(patch) => {
             EventPatch::EntityEnterLoveMode(EntityEnterLoveModePatch {
@@ -2340,9 +2359,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             })
         }
         patch::Change::EntityExplode(patch) => EventPatch::EntityExplode(EntityExplodePatch {
-            block_list: patch
-                .block_list
-                .map(|list| list.values.into_iter().map(shared::block_pos).collect()),
+            block_list: match patch.block_list {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added.into_iter().map(shared::block_pos).collect(),
+                },
+                None => ListDiff::default(),
+            },
             explosion_yield: patch.explosion_yield,
         }),
         patch::Change::EntityKnockback(patch) => {
@@ -2483,9 +2506,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             })
         }
         patch::Change::LootGenerate(patch) => EventPatch::LootGenerate(LootGeneratePatch {
-            loot: patch
-                .loot
-                .map(|list| list.values.into_iter().map(shared::item).collect()),
+            loot: match patch.loot {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added.into_iter().map(shared::item).collect(),
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::PigZombieAnger(patch) => EventPatch::PigZombieAnger(PigZombieAngerPatch {
             new_anger: patch.new_anger,
@@ -2517,15 +2544,25 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         }
         patch::Change::PlayerCommandSend(patch) => {
             EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
-                commands: patch.commands.map(|list| list.values),
+                commands: match patch.commands {
+                    Some(diff) => ListDiff {
+                        removed: diff.removed,
+                        added: diff.added,
+                    },
+                    None => ListDiff::default(),
+                },
             })
         }
         patch::Change::PlayerDeath(patch) => EventPatch::PlayerDeath(PlayerDeathPatch {
             death_message: patch.death_message.map(|wrapped| wrapped.value),
             dropped_exp: patch.dropped_exp,
-            drops: patch
-                .drops
-                .map(|list| list.values.into_iter().map(shared::item).collect()),
+            drops: match patch.drops {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added.into_iter().map(shared::item).collect(),
+                },
+                None => ListDiff::default(),
+            },
             keep_inventory: patch.keep_inventory,
             keep_level: patch.keep_level,
             new_exp: patch.new_exp,
@@ -2559,9 +2596,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         }),
         patch::Change::PlayerHarvestBlock(patch) => {
             EventPatch::PlayerHarvestBlock(PlayerHarvestBlockPatch {
-                items_harvested: patch
-                    .items_harvested
-                    .map(|list| list.values.into_iter().map(shared::item).collect()),
+                items_harvested: match patch.items_harvested {
+                    Some(diff) => ListDiff {
+                        removed: diff.removed,
+                        added: diff.added.into_iter().map(shared::item).collect(),
+                    },
+                    None => ListDiff::default(),
+                },
             })
         }
         patch::Change::PlayerInteract(patch) => EventPatch::PlayerInteract(PlayerInteractPatch {
@@ -2688,21 +2729,29 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             max_players: patch.max_players,
             motd: patch.motd,
             server_icon: patch.server_icon,
-            hidden_players: patch
-                .hidden_players
-                .map(|list| {
-                    list.values
+            hidden_players: match patch.hidden_players {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff
+                        .added
                         .into_iter()
                         .map(shared::uuid)
-                        .collect::<Result<Vec<_>, _>>()
-                })
-                .transpose()?,
+                        .collect::<Result<Vec<_>, _>>()?,
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::SheepDyeWool(patch) => EventPatch::SheepDyeWool(SheepDyeWoolPatch {
             color: patch.color.map(dye_color_from_wire).transpose()?,
         }),
         patch::Change::SignChange(patch) => EventPatch::SignChange(SignChangePatch {
-            lines: patch.lines.map(|list| list.values),
+            lines: match patch.lines {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added,
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::SmithItem(patch) => EventPatch::SmithItem(SmithItemPatch {
             current_item: patch
@@ -2712,7 +2761,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             result: patch.result.map(event_result_from_wire).transpose()?,
         }),
         patch::Change::TabComplete(patch) => EventPatch::TabComplete(TabCompletePatch {
-            completions: patch.completions.map(|list| list.values),
+            completions: match patch.completions {
+                Some(diff) => ListDiff {
+                    removed: diff.removed,
+                    added: diff.added,
+                },
+                None => ListDiff::default(),
+            },
         }),
         patch::Change::TimeSkip(patch) => EventPatch::TimeSkip(TimeSkipPatch {
             skip_amount: patch.skip_amount,

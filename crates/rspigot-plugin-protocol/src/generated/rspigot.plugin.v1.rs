@@ -486,21 +486,27 @@ impl Phase {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockPosList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<BlockPos>,
+pub struct BlockPosListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<BlockPos>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CommandSenderList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<CommandSender>,
+pub struct CommandSenderListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<CommandSender>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DroppedItemList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<DroppedItem>,
+pub struct DroppedItemListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<DroppedItem>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -512,9 +518,11 @@ pub struct EntitySnapshotDoubleEntry {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ItemList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<Item>,
+pub struct ItemListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<Item>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -554,15 +562,19 @@ pub struct NullableString {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PlayerSnapshotList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+pub struct PlayerSnapshotListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<PlayerSnapshot>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StringList {
-    #[prost(string, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+pub struct StringListDiff {
+    #[prost(uint32, repeated, tag = "1")]
+    pub removed: ::prost::alloc::vec::Vec<u32>,
+    #[prost(string, repeated, tag = "2")]
+    pub added: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -720,7 +732,7 @@ pub struct AsyncPlayerChatPatch {
     #[prost(string, optional, tag = "2")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag = "4")]
-    pub recipients: ::core::option::Option<PlayerSnapshotList>,
+    pub recipients: ::core::option::Option<PlayerSnapshotListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -958,7 +970,7 @@ pub struct BlockDispenseLoot {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockDispenseLootPatch {
     #[prost(message, optional, tag = "2")]
-    pub dispensed_loot: ::core::option::Option<ItemList>,
+    pub dispensed_loot: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -976,7 +988,7 @@ pub struct BlockDropItem {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockDropItemPatch {
     #[prost(message, optional, tag = "3")]
-    pub items: ::core::option::Option<DroppedItemList>,
+    pub items: ::core::option::Option<DroppedItemListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1010,7 +1022,7 @@ pub struct BlockExplode {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockExplodePatch {
     #[prost(message, optional, tag = "2")]
-    pub block_list: ::core::option::Option<BlockPosList>,
+    pub block_list: ::core::option::Option<BlockPosListDiff>,
     #[prost(float, optional, tag = "5")]
     pub explosion_yield: ::core::option::Option<f32>,
 }
@@ -1274,7 +1286,7 @@ pub struct BroadcastMessagePatch {
     #[prost(string, optional, tag = "1")]
     pub message: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag = "2")]
-    pub recipients: ::core::option::Option<CommandSenderList>,
+    pub recipients: ::core::option::Option<CommandSenderListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1740,7 +1752,7 @@ pub struct EntityDeathPatch {
     #[prost(int32, optional, tag = "2")]
     pub dropped_exp: ::core::option::Option<i32>,
     #[prost(message, optional, tag = "3")]
-    pub drops: ::core::option::Option<ItemList>,
+    pub drops: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1828,7 +1840,7 @@ pub struct EntityExplode {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntityExplodePatch {
     #[prost(message, optional, tag = "1")]
-    pub block_list: ::core::option::Option<BlockPosList>,
+    pub block_list: ::core::option::Option<BlockPosListDiff>,
     #[prost(float, optional, tag = "6")]
     pub explosion_yield: ::core::option::Option<f32>,
 }
@@ -2680,7 +2692,7 @@ pub struct LootGenerate {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LootGeneratePatch {
     #[prost(message, optional, tag = "3")]
-    pub loot: ::core::option::Option<ItemList>,
+    pub loot: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2929,7 +2941,7 @@ pub struct PlayerCommandSend {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PlayerCommandSendPatch {
     #[prost(message, optional, tag = "1")]
-    pub commands: ::core::option::Option<StringList>,
+    pub commands: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2975,7 +2987,7 @@ pub struct PlayerDeathPatch {
     #[prost(int32, optional, tag = "3")]
     pub dropped_exp: ::core::option::Option<i32>,
     #[prost(message, optional, tag = "4")]
-    pub drops: ::core::option::Option<ItemList>,
+    pub drops: ::core::option::Option<ItemListDiff>,
     #[prost(bool, optional, tag = "7")]
     pub keep_inventory: ::core::option::Option<bool>,
     #[prost(bool, optional, tag = "8")]
@@ -3121,7 +3133,7 @@ pub struct PlayerHarvestBlock {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlayerHarvestBlockPatch {
     #[prost(message, optional, tag = "3")]
-    pub items_harvested: ::core::option::Option<ItemList>,
+    pub items_harvested: ::core::option::Option<ItemListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3911,7 +3923,7 @@ pub struct ServerListPingPatch {
     #[prost(bytes = "vec", optional, tag = "8")]
     pub server_icon: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
     #[prost(message, optional, tag = "100")]
-    pub hidden_players: ::core::option::Option<StringList>,
+    pub hidden_players: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3961,7 +3973,7 @@ pub struct SignChange {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SignChangePatch {
     #[prost(message, optional, tag = "4")]
-    pub lines: ::core::option::Option<StringList>,
+    pub lines: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4091,7 +4103,7 @@ pub struct TabComplete {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TabCompletePatch {
     #[prost(message, optional, tag = "2")]
-    pub completions: ::core::option::Option<StringList>,
+    pub completions: ::core::option::Option<StringListDiff>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

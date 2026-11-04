@@ -412,7 +412,7 @@ fn the_settled_block_list_is_what_the_explosion_destroys() {
         asked.id,
         false,
         Some(EventPatch::BlockExplode(BlockExplodePatch {
-            block_list: Some(vec![kept]),
+            block_list: removing(&blast.block_list, |pos| *pos != kept),
             explosion_yield: None,
         })),
     );
@@ -455,8 +455,8 @@ fn dirt_blast(yield_patch: Option<f32>) -> usize {
         false,
         yield_patch.map(|explosion_yield| {
             EventPatch::BlockExplode(BlockExplodePatch {
-                block_list: None,
                 explosion_yield: Some(explosion_yield),
+                ..BlockExplodePatch::default()
             })
         }),
     );
