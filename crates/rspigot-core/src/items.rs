@@ -2,13 +2,15 @@ use rand::Rng;
 use rspigot_domain::entity::{Entity, EntityState, FLAG_ON_FIRE, ItemState, RemovalReason, item};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{BlockPos, EntityId, Vec3};
+use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::events::ClientEvent;
-use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
-use crate::plugins::steps::Announced;
-use crate::plugins::{EntityView, view_of_entity};
+use crate::plugins::events::{
+    CreatureSpawnReason, EntityPickupItem, EntityRemoveCause, ItemDespawn,
+};
+use crate::plugins::steps::{Announced, PickupStep};
+use crate::plugins::{Continuation, EntityView, EventPayload, view_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -177,12 +179,48 @@ impl<L: ClientLink> Server<L> {
             } else {
                 let mut next_float = || rng.random::<f32>();
                 item::tick_item(base, state, chunks, &mut next_float);
-                discard =
-                    (i64::from(state.age) >= despawn_after).then_some(EntityRemoveCause::Despawn);
+                if i64::from(state.age) >= despawn_after {
+                    self.ask_item_despawn(id);
+                    return;
+                }
             }
         }
         if let Some(cause) = discard {
             self.remove_entity(id, RemovalReason::Discarded, Some(cause));
+        }
+    }
+
+    fn ask_item_despawn(&mut self, id: EntityId) {
+        let lane = self.lane_for(None, id);
+        self.fire_heard(lane, Continuation::ItemDespawn(id), move |server| {
+            let entity = server.entities.store.get(id)?;
+            let location = server.location_of(
+                entity.base.position,
+                Rotation::new(entity.base.yaw, entity.base.pitch),
+            );
+            let entity = server.entity_view(id)?;
+            Some(EventPayload::ItemDespawn(ItemDespawn {
+                entity_type: entity.kind.clone(),
+                entity,
+                location,
+            }))
+        });
+    }
+
+    pub(crate) fn finish_item_despawn(&mut self, id: EntityId, cancelled: bool) {
+        let despawn_after = i64::from(self.config.item_despawn_ticks);
+        let Some(EntityState::Item(state)) = self.entities.store.get_mut(id).map(|e| &mut e.state)
+        else {
+            return;
+        };
+        if cancelled {
+            state.age = 0;
+        } else if i64::from(state.age) >= despawn_after {
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Despawn),
+            );
         }
     }
 
@@ -220,9 +258,58 @@ impl<L: ClientLink> Server<L> {
         let Some(stack) = self.item_stack_of(id) else {
             return;
         };
+        let Some(player) = self.players.get(&player_id) else {
+            return;
+        };
+        let mut trial = player.inventory.clone();
+        let outcome = trial.insert(
+            stack.item,
+            u32::from(stack.count.get()),
+            stack.item.max_stack_size(),
+        );
+        let taken = u32::from(stack.count.get()) - outcome.remaining;
+        if taken == 0 {
+            return;
+        }
+        let remaining = outcome.remaining as i32;
+        let step = PickupStep {
+            player: player_id,
+            collector,
+            item: id,
+            stack,
+        };
+        let lane = self.lane_for(Some(player_id), collector);
+        self.fire_heard(
+            lane,
+            Continuation::PickupItem(Box::new(step)),
+            move |server| {
+                let entity = server.subject_view(collector)?;
+                Some(EventPayload::EntityPickupItem(EntityPickupItem {
+                    entity_type: entity.kind.clone(),
+                    entity,
+                    item: server.entity_view(id)?,
+                    remaining,
+                }))
+            },
+        );
+    }
+
+    pub(crate) fn finish_pickup(&mut self, step: PickupStep, cancelled: bool) {
+        let PickupStep {
+            player: player_id,
+            collector,
+            item: id,
+            stack,
+        } = step;
+        if cancelled || self.item_stack_of(id).as_ref() != Some(&stack) {
+            return;
+        }
         let Some(player) = self.players.get_mut(&player_id) else {
             return;
         };
+        if player.vitals.is_dead() || player.game_mode == GameMode::Spectator {
+            return;
+        }
         let outcome = player.inventory.insert(
             stack.item,
             u32::from(stack.count.get()),

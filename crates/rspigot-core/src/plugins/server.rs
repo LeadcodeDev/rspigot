@@ -789,6 +789,14 @@ impl<L: ClientLink> Server<L> {
                 self.finish_knock(step, cancelled, settled_knockback(patch));
                 Vec::new()
             }
+            Continuation::ItemDespawn(id) => {
+                self.finish_item_despawn(id, cancelled);
+                Vec::new()
+            }
+            Continuation::PickupItem(step) => {
+                self.finish_pickup(*step, cancelled);
+                Vec::new()
+            }
         }
     }
 

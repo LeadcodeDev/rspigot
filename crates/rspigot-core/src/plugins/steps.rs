@@ -628,6 +628,14 @@ pub(crate) enum Potion {
     Expire(EffectInstance),
 }
 
+#[derive(Debug)]
+pub(crate) struct PickupStep {
+    pub(crate) player: PlayerId,
+    pub(crate) collector: EntityId,
+    pub(crate) item: EntityId,
+    pub(crate) stack: ItemStack,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Push {
     Knock {
@@ -735,6 +743,8 @@ pub(crate) enum Continuation {
     Potion(PotionStep),
     Combust(CombustStep),
     Knock(KnockStep),
+    ItemDespawn(EntityId),
+    PickupItem(Box<PickupStep>),
 }
 
 impl Continuation {
@@ -800,6 +810,8 @@ impl Continuation {
             Self::Potion(_) => EventKind::EntityPotionEffect,
             Self::Combust(step) => step.kind,
             Self::Knock(step) => step.kind,
+            Self::ItemDespawn(_) => EventKind::ItemDespawn,
+            Self::PickupItem(_) => EventKind::EntityPickupItem,
         }
     }
 
@@ -830,6 +842,10 @@ impl Continuation {
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
             (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
+            (Self::ItemDespawn(one), Self::ItemDespawn(other)) => one == other,
+            (Self::PickupItem(one), Self::PickupItem(other)) => {
+                one.player == other.player && one.item == other.item
+            }
             (Self::Potion(one), Self::Potion(other)) => {
                 matches!((one.potion, other.potion), (Potion::Expire(a), Potion::Expire(b)) if a.effect == b.effect)
                     && one.holder == other.holder
@@ -845,7 +861,7 @@ impl Continuation {
         match self {
             Self::Hurt(step) => step.repeats(),
             Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
-            Self::Combust(_) => true,
+            Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
