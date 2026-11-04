@@ -369,3 +369,133 @@ fn a_waiting_natural_spawn_holds_its_slot_and_a_cancelled_one_frees_it() {
         "the spawned creatures fill the slot"
     );
 }
+
+#[test]
+fn a_cancelled_conversion_still_removes_the_old_mob_with_transformation() {
+    let mut server = server(PluginSettings {
+        decision_ticks: 1_000,
+        ..PluginSettings::default()
+    });
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![
+            deciding(1, EventKind::CreatureSpawn),
+            observe(2, EventKind::EntityRemove),
+        ],
+    );
+    let alice = join(&mut server, "Alice");
+    let mut s = Scene {
+        server,
+        plugin,
+        players: vec![alice],
+    };
+    let water = rspigot_domain::BlockPos::new(4, 64, 4);
+    stream_chunk_of(&mut s, water);
+    for y in 64..=66 {
+        s.act(Order::Block {
+            pos: rspigot_domain::BlockPos::new(4, y, 4),
+            order: rspigot_core::plugins::BlockOrder::Set("minecraft:water".into()),
+        });
+    }
+    console(&mut s, "time set 18000");
+    console(&mut s, "gamemode creative Alice");
+    console(
+        &mut s,
+        "summon minecraft:zombie 4.5 64 4.5 {NoAI:0b,DrownedConversionTime:2}",
+    );
+    let summoned = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, summoned.id, false, None);
+    let zombie = s.server.entities_of(rspigot_entities::EntityKind::Zombie)[0].id;
+    for _ in 0..40 {
+        s.tick(1);
+        if reasons(&s).contains(&(Phase::Decide, CreatureSpawnReason::Drowned)) {
+            break;
+        }
+    }
+    let asked = asked_for(&s.plugin, EventKind::CreatureSpawn)
+        .into_iter()
+        .find(|event| {
+            matches!(&event.payload, EventPayload::CreatureSpawn(spawn)
+                if spawn.spawn_reason == CreatureSpawnReason::Drowned)
+        })
+        .expect("the conversion asks");
+    let EventPayload::CreatureSpawn(spawn) = &asked.payload else {
+        panic!("a creature spawn");
+    };
+    assert_eq!(spawn.entity_type, "minecraft:drowned");
+    assert!(
+        exists(&mut s, zombie),
+        "the zombie waits for its conversion"
+    );
+    s.tick(5);
+    assert_eq!(
+        reasons(&s)
+            .iter()
+            .filter(|reason| **reason == (Phase::Decide, CreatureSpawnReason::Drowned))
+            .count(),
+        1
+    );
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert!(!exists(&mut s, zombie));
+    assert!(
+        s.server
+            .entities_of(rspigot_entities::EntityKind::Drowned)
+            .is_empty()
+    );
+    assert_eq!(removals(&s), [(zombie, EntityRemoveCause::Transformation)]);
+}
+
+fn eggs(s: &mut Scene) -> i32 {
+    let Answer::Inventory(state) = s.ask(Question::Inventory(s.players[0].id)) else {
+        panic!("Alice's inventory");
+    };
+    state
+        .slots
+        .iter()
+        .flatten()
+        .filter(|item| item.key == "minecraft:cow_spawn_egg")
+        .map(|item| item.count)
+        .sum()
+}
+
+#[test]
+fn a_spawn_egg_is_spent_only_when_its_baby_enters_the_world() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::CreatureSpawn)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice minecraft:cow_spawn_egg 2");
+    let cow = spawn(&mut s, "minecraft:cow", Vec3::new(1.5, 64.0, 1.5));
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    let use_egg = |s: &mut Scene| {
+        send_input(
+            &mut s.server,
+            &alice,
+            PlayerInput::Interact {
+                target: cow.id,
+                hand: rspigot_core::events::Hand::Main,
+                sneaking: false,
+                location: Vec3::new(0.0, 0.5, 0.0),
+            },
+        );
+        last_asked(&s.plugin, EventKind::CreatureSpawn)
+    };
+    let egg = use_egg(&mut s);
+    assert_eq!(
+        reasons(&s).last(),
+        Some(&(Phase::Decide, CreatureSpawnReason::SpawnerEgg))
+    );
+    assert_eq!(eggs(&mut s), 2);
+    rule_on(&mut s.server, 1, egg.id, true, None);
+    assert_eq!(eggs(&mut s), 2);
+    let egg = use_egg(&mut s);
+    rule_on(&mut s.server, 1, egg.id, false, None);
+    assert_eq!(eggs(&mut s), 1);
+    assert_eq!(
+        s.server
+            .entities_of(rspigot_entities::EntityKind::Cow)
+            .len(),
+        2
+    );
+}

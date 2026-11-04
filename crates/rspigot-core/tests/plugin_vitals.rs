@@ -268,3 +268,19 @@ fn the_saturation_effect_asks_the_raised_food_level() {
     );
     assert_eq!(state(&mut s).food, 15);
 }
+
+#[test]
+fn every_exhaustion_is_asked_in_turn_while_the_first_waits() {
+    let mut s = waiting_scene(vec![deciding(1, EventKind::EntityExhaustion)]);
+    order(
+        &mut s,
+        PlayerOrder::AddEffect(effect("minecraft:hunger", 40, 0)),
+    );
+    s.tick(3);
+    let asked = asked_for(&s.plugin, EventKind::EntityExhaustion);
+    assert_eq!(asked.len(), 3);
+    for event in &asked {
+        rule_on(&mut s.server, 1, event.id, false, None);
+    }
+    assert!((state(&mut s).exhaustion - 0.015).abs() < 1e-6);
+}

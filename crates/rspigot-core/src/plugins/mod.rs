@@ -440,6 +440,56 @@ mod tests {
     }
 
     #[test]
+    fn the_entity_families_follow_the_bukkit_handler_lists() {
+        assert_eq!(
+            EventKind::CreatureSpawn.receivers(),
+            [EventKind::CreatureSpawn, EventKind::EntitySpawn]
+        );
+        assert!(
+            EventKind::ItemSpawn
+                .receivers()
+                .contains(&EventKind::EntitySpawn)
+        );
+        assert!(
+            EventKind::ProjectileLaunch
+                .receivers()
+                .contains(&EventKind::EntitySpawn)
+        );
+        assert!(
+            EventKind::EntityDamageByBlock
+                .receivers()
+                .contains(&EventKind::EntityDamage)
+        );
+        assert!(
+            EventKind::EntityCombustByEntity
+                .receivers()
+                .contains(&EventKind::EntityCombust)
+        );
+        assert!(
+            EventKind::EntityCombustByBlock
+                .receivers()
+                .contains(&EventKind::EntityCombust)
+        );
+        assert!(
+            EventKind::EntityKnockbackByEntity
+                .receivers()
+                .contains(&EventKind::EntityKnockback)
+        );
+        assert!(
+            EventKind::EntityTargetLivingEntity
+                .receivers()
+                .contains(&EventKind::EntityTarget)
+        );
+        for blocked in [
+            EventKind::PotionSplash,
+            EventKind::LingeringPotionSplash,
+            EventKind::ExpBottle,
+        ] {
+            assert!(!blocked.receivers().contains(&EventKind::ProjectileHit));
+        }
+    }
+
+    #[test]
     fn an_event_kind_has_a_key_for_plugins_yml() {
         assert_eq!(EventKind::PlayerLeave.key(), "player_leave");
         assert_eq!(
