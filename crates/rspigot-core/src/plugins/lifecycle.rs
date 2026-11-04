@@ -2,7 +2,6 @@ use crate::plugins::events::{PluginDisable, PluginEnable, ServerLoad, ServerLoad
 use crate::plugins::{EventPayload, PluginInfo};
 use crate::ports::ClientLink;
 use crate::server::Server;
-use crate::status::PingHook;
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn server_loaded(&mut self) {
@@ -29,6 +28,5 @@ impl<L: ClientLink> Server<L> {
         for (connection, plugin) in self.plugins.connected().into_iter().rev() {
             self.plugin_disabled(connection, plugin);
         }
-        self.status.update(|status| status.ping = PingHook::Off);
     }
 }

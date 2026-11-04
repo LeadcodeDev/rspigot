@@ -34,7 +34,7 @@ use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
 use crate::spawning::Spawning;
-use crate::status::{PlayerSample, StatusBoard};
+use crate::status::{PingHook, PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
 const KICK_DATE: &str = "%Y-%m-%d at %H:%M:%S UTC";
@@ -318,7 +318,7 @@ impl<L: ClientLink> Server<L> {
                 default(next_tick.saturating_duration_since(now)) => {}
             }
         }
-        self.shutdown()
+        self.shutdown(inbound)
     }
 
     fn handle_waiting(&mut self, inbound: &Receiver<Inbound<L>>) {
@@ -978,8 +978,10 @@ impl<L: ClientLink> Server<L> {
         self.world.chunks.stats()
     }
 
-    fn shutdown(mut self) -> LevelData {
+    fn shutdown(mut self, inbound: &Receiver<Inbound<L>>) -> LevelData {
         tracing::info!("Stopping server");
+        self.status.update(|status| status.ping = PingHook::Off);
+        queued(inbound).for_each(drop);
         self.settle_every_lane();
         let ids: Vec<PlayerId> = self.players.keys().copied().collect();
         for id in ids {

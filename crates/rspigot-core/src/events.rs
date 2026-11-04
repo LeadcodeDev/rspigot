@@ -2,6 +2,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use crossbeam_channel::Sender;
+use futures_channel::oneshot;
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
@@ -210,7 +211,7 @@ pub enum Inbound<L> {
     Console(String),
     StatusPing {
         ping: StatusPing,
-        reply: Option<Sender<StatusReply>>,
+        reply: Option<oneshot::Sender<StatusReply>>,
     },
     PluginConnected {
         connection: u64,

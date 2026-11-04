@@ -1,4 +1,4 @@
-use crossbeam_channel::Sender;
+use futures_channel::oneshot;
 
 use crate::plugins::decisions::{Continuation, Lane};
 use crate::plugins::events::{ServerListPing, ServerListPingPatch};
@@ -36,7 +36,11 @@ impl<L: ClientLink> Server<L> {
         i32::try_from(self.config.max_players).unwrap_or(i32::MAX)
     }
 
-    pub(crate) fn status_ping(&mut self, ping: StatusPing, reply: Option<Sender<StatusReply>>) {
+    pub(crate) fn status_ping(
+        &mut self,
+        ping: StatusPing,
+        reply: Option<oneshot::Sender<StatusReply>>,
+    ) {
         let StatusPing {
             address,
             hostname,

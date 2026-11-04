@@ -246,7 +246,7 @@ async fn answer_ping<V>(
 }
 
 async fn settled_ping<V>(shared: &Shared<V>, ping: StatusPing) -> Option<StatusReply> {
-    let (reply, answer) = crossbeam_channel::bounded(1);
+    let (reply, answer) = futures_channel::oneshot::channel();
     shared
         .game
         .send(Inbound::StatusPing {
@@ -254,7 +254,7 @@ async fn settled_ping<V>(shared: &Shared<V>, ping: StatusPing) -> Option<StatusR
             reply: Some(reply),
         })
         .ok()?;
-    tokio::task::spawn_blocking(move || answer.recv_timeout(STATUS_PATIENCE))
+    tokio::time::timeout(STATUS_PATIENCE, answer)
         .await
         .ok()?
         .ok()

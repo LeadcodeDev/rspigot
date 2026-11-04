@@ -4,7 +4,8 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use common::*;
-use crossbeam_channel::{Receiver, TryRecvError, bounded, unbounded};
+use crossbeam_channel::unbounded;
+use futures_channel::oneshot;
 use rspigot_core::config::PluginSettings;
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
@@ -571,14 +572,18 @@ fn ping_from(legacy: bool) -> StatusPing {
     }
 }
 
-fn ping(s: &mut Scene, legacy: bool) -> Receiver<StatusReply> {
-    let (reply, answer) = bounded(1);
+fn ping(s: &mut Scene, legacy: bool) -> oneshot::Receiver<StatusReply> {
+    let (reply, answer) = oneshot::channel();
     s.server.handle(Inbound::StatusPing {
         ping: ping_from(legacy),
         reply: Some(reply),
     });
     s.server.deliver();
     answer
+}
+
+fn answered(answer: &mut oneshot::Receiver<StatusReply>) -> Option<StatusReply> {
+    answer.try_recv().ok().flatten()
 }
 
 fn icon() -> Vec<u8> {
@@ -622,7 +627,7 @@ fn a_status_ping_waits_for_the_deciding_handlers_and_applies_every_field_of_thei
     );
     let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
     let players = vec![snapshot(&mut s, &alice), snapshot(&mut s, &bob)];
-    let answer = ping(&mut s, false);
+    let mut answer = ping(&mut s, false);
     let asked = last_asked(&s.plugin, EventKind::ServerListPing);
     assert_eq!(
         asked.payload,
@@ -636,7 +641,7 @@ fn a_status_ping_waits_for_the_deciding_handlers_and_applies_every_field_of_thei
             hidden_players: Vec::new(),
         })
     );
-    assert_eq!(answer.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(answered(&mut answer), None);
     rule_on(
         &mut s.server,
         1,
@@ -650,8 +655,8 @@ fn a_status_ping_waits_for_the_deciding_handlers_and_applies_every_field_of_thei
         })),
     );
     assert_eq!(
-        answer.try_recv(),
-        Ok(StatusReply {
+        answered(&mut answer),
+        Some(StatusReply {
             motd: "§bPatched".to_owned(),
             max_players: 5,
             online: 1,
@@ -667,27 +672,27 @@ fn a_ping_without_a_patch_answers_with_the_configuration() {
         &["Alice", "Bob"],
         vec![deciding(1, EventKind::ServerListPing)],
     );
-    let answer = ping(&mut s, false);
+    let mut answer = ping(&mut s, false);
     let asked = last_asked(&s.plugin, EventKind::ServerListPing);
     rule_on(&mut s.server, 1, asked.id, false, None);
-    let reply = answer.try_recv().expect("the ping is answered");
+    let reply = answered(&mut answer).expect("the ping is answered");
     assert_eq!(sorted(reply), defaults(2, &["Alice", "Bob"]));
 }
 
 #[test]
 fn a_ping_whose_decider_stays_silent_is_answered_at_the_deadline() {
     let mut s = scene_with(&[], vec![deciding(1, EventKind::ServerListPing)]);
-    let answer = ping(&mut s, false);
+    let mut answer = ping(&mut s, false);
     s.tick(1);
-    assert_eq!(answer.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(answered(&mut answer), None);
     s.tick(1);
-    assert_eq!(answer.try_recv(), Ok(defaults(0, &[])));
+    assert_eq!(answered(&mut answer), Some(defaults(0, &[])));
 }
 
 #[test]
 fn a_server_icon_that_is_not_a_64_pixel_png_is_refused_with_a_warning() {
     let mut s = scene_with(&[], vec![deciding(1, EventKind::ServerListPing)]);
-    let answer = ping(&mut s, false);
+    let mut answer = ping(&mut s, false);
     let asked = last_asked(&s.plugin, EventKind::ServerListPing);
     let mut wide = icon();
     wide[16..20].copy_from_slice(&128u32.to_be_bytes());
@@ -709,14 +714,14 @@ fn a_server_icon_that_is_not_a_64_pixel_png_is_refused_with_a_warning() {
             asked.id
         )]
     );
-    assert_eq!(answer.try_recv(), Ok(defaults(0, &[])));
+    assert_eq!(answered(&mut answer), Some(defaults(0, &[])));
 }
 
 #[test]
 fn a_legacy_ping_shows_no_player_and_ignores_the_icon_and_the_hidden_players() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::ServerListPing)]);
     let alice = s.players[0].clone();
-    let answer = ping(&mut s, true);
+    let mut answer = ping(&mut s, true);
     let asked = last_asked(&s.plugin, EventKind::ServerListPing);
     let EventPayload::ServerListPing(ServerListPing {
         hostname,
@@ -741,8 +746,8 @@ fn a_legacy_ping_shows_no_player_and_ignores_the_icon_and_the_hidden_players() {
         })),
     );
     assert_eq!(
-        answer.try_recv(),
-        Ok(StatusReply {
+        answered(&mut answer),
+        Some(StatusReply {
             motd: "Old".to_owned(),
             ..defaults(1, &["Alice"])
         })
@@ -752,12 +757,30 @@ fn a_legacy_ping_shows_no_player_and_ignores_the_icon_and_the_hidden_players() {
 #[test]
 fn a_ping_waiting_at_shutdown_is_still_answered() {
     let mut s = scene_with(&[], vec![deciding(1, EventKind::ServerListPing)]);
-    let answer = ping(&mut s, false);
+    let mut answer = ping(&mut s, false);
     let (sender, inbox) = unbounded();
     sender.send(Inbound::Shutdown).expect("open");
     let Scene { server, .. } = s;
     server.run(&inbox);
-    assert_eq!(answer.try_recv(), Ok(defaults(0, &[])));
+    assert_eq!(answered(&mut answer), Some(defaults(0, &[])));
+}
+
+#[test]
+fn a_ping_still_in_the_inbox_at_shutdown_is_dropped_so_the_network_answers_alone() {
+    let s = scene_with(&[], vec![deciding(1, EventKind::ServerListPing)]);
+    let (reply, mut answer) = oneshot::channel();
+    let (sender, inbox) = unbounded();
+    sender.send(Inbound::Shutdown).expect("open");
+    sender
+        .send(Inbound::StatusPing {
+            ping: ping_from(false),
+            reply: Some(reply),
+        })
+        .expect("open");
+    let Scene { server, .. } = s;
+    server.run(&inbox);
+    assert_eq!(answer.try_recv(), Err(oneshot::Canceled));
+    assert!(inbox.is_empty());
 }
 
 #[test]

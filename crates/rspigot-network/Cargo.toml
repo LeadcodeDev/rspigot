@@ -15,6 +15,7 @@ rspigot-protocol = { workspace = true }
 base64 = "0.22"
 bytes = "1"
 crossbeam-channel = "0.5"
+futures-channel = "0.3"
 parking_lot = "0.12"
 quick_cache = "0.7"
 rand = "0.9"

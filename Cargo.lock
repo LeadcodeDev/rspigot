@@ -1489,6 +1489,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "crossbeam-channel",
+ "futures-channel",
  "parking_lot",
  "proptest",
  "rand 0.9.5",
@@ -1567,6 +1568,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "crossbeam-channel",
+ "futures-channel",
  "parking_lot",
  "quick_cache",
  "rand 0.9.5",

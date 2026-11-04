@@ -1,4 +1,5 @@
 use crossbeam_channel::Sender;
+use futures_channel::oneshot;
 use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
@@ -794,7 +795,7 @@ pub(crate) struct LootStep {
 pub(crate) struct PingStep {
     pub(crate) motd: String,
     pub(crate) legacy: bool,
-    pub(crate) reply: Option<Sender<StatusReply>>,
+    pub(crate) reply: Option<oneshot::Sender<StatusReply>>,
 }
 
 #[derive(Debug)]

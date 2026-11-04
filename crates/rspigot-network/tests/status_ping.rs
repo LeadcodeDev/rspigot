@@ -332,10 +332,7 @@ impl Mailbox {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_status_ping_over_the_network_waits_for_a_deciding_plugin_and_shows_its_patch() {
-    let status = StatusBoard::new(20);
-    let (game, inbox) = unbounded::<Inbound<NetLink>>();
+fn deciding_core(status: &StatusBoard) -> (Server<NetLink>, Mailbox) {
     let mut server: Server<NetLink> = Server::new(
         GameConfig {
             chunk_workers: 1,
@@ -364,6 +361,39 @@ async fn a_status_ping_over_the_network_waits_for_a_deciding_plugin_and_shows_it
         outbox: Box::new(plugin.clone()),
     });
     assert_eq!(status.snapshot().ping, PingHook::Ask);
+    (server, plugin)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ping_in_flight_during_shutdown_answers_from_the_board_without_delay() {
+    let status = StatusBoard::new(20);
+    let (game, inbox) = unbounded::<Inbound<NetLink>>();
+    let (server, _plugin) = deciding_core(&status);
+    game.send(Inbound::Shutdown).expect("the core listens");
+    let net = network(status, game).await;
+    let asking = tokio::spawn(status_json(net.address));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while inbox.len() < 2 {
+        assert!(Instant::now() < deadline, "the ping never reached the game");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let stopping = Instant::now();
+    let core = std::thread::spawn(move || {
+        server.run(&inbox);
+        inbox
+    });
+    let json = within(asking).await.expect("the client got an answer");
+    assert!(stopping.elapsed() < Duration::from_secs(2));
+    assert_eq!(json["description"]["text"], "A Minecraft Server");
+    let inbox = core.join().expect("the core stops");
+    assert!(inbox.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_status_ping_over_the_network_waits_for_a_deciding_plugin_and_shows_its_patch() {
+    let status = StatusBoard::new(20);
+    let (game, inbox) = unbounded::<Inbound<NetLink>>();
+    let (server, plugin) = deciding_core(&status);
     let core = std::thread::spawn(move || server.run(&inbox));
     let decider = std::thread::spawn({
         let game = game.clone();
