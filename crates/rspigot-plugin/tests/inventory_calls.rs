@@ -318,6 +318,7 @@ async fn on_enable_runs_before_events_on_every_connection_and_on_disable_when_it
             wire(1, v1::EventKind::PlayerJoin),
             wire(2, v1::EventKind::InventoryClick),
             wire(3, v1::EventKind::InventoryClose),
+            wire(4, v1::EventKind::EntityInteract),
         ]
     );
     let first = knock.accept();

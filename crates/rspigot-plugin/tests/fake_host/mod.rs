@@ -5,7 +5,8 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use rspigot_plugin::{
-    Error, InventoryClick, InventoryClose, Player, PlayerJoin, Plugin, Server, listeners, run_with,
+    EntityInteract, Error, InventoryClick, InventoryClose, Player, PlayerJoin, Plugin, Server,
+    listeners, run_with,
 };
 use rspigot_plugin_protocol::v1::plugin_host_server::{PluginHost, PluginHostServer};
 use rspigot_plugin_protocol::v1::{self, answer, event, from_plugin, question, to_plugin};
@@ -230,6 +231,7 @@ pub enum Mark {
     Finished,
     Clicked(InventoryClick),
     Closed(InventoryClose),
+    Interacted(EntityInteract),
     Disabled,
 }
 
@@ -254,6 +256,10 @@ impl Caller {
 
     async fn on_inventory_close(&self, event: &InventoryClose) {
         let _ = self.marks.send(Mark::Closed(event.clone()));
+    }
+
+    async fn on_entity_interact(&self, event: &EntityInteract) {
+        let _ = self.marks.send(Mark::Interacted(event.clone()));
     }
 
     async fn on_enable(&self, server: &Server) {
