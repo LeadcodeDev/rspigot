@@ -8,8 +8,8 @@ use rspigot_core::plugins::events::{
     PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
 };
 use rspigot_core::plugins::{
-    Answer, EventKind, EventPatch, EventPayload, ItemSpec, ListDiff, Location, PlayerOrder,
-    Question,
+    Answer, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, ListDiff, Location,
+    PlayerOrder, Priority, Question,
 };
 use rspigot_domain::{EntityId, Rotation, Vec3};
 
@@ -664,6 +664,58 @@ fn a_replaced_drop_is_still_thrown_from_the_inventory() {
         Some(9)
     );
     assert!(thrown - spawned > 1.0, "{heights:?}");
+}
+
+#[test]
+fn an_entity_death_plugin_and_a_player_death_plugin_both_remove_a_drop() {
+    for later_answers_first in [false, true] {
+        let mut s = scene_with(
+            &["Alice"],
+            vec![HandlerSpec {
+                priority: Priority::Low,
+                ..deciding(1, EventKind::EntityDeath)
+            }],
+        );
+        connect_with(
+            &mut s.server,
+            2,
+            "second",
+            vec![HandlerSpec {
+                priority: Priority::High,
+                ..deciding(1, EventKind::PlayerDeath)
+            }],
+        );
+        let alice = s.players[0].clone();
+        give(&mut s, "give Alice diamond 5");
+        give(&mut s, "give Alice stick 2");
+        kill(&mut s, &alice);
+        let (event, death) = death_of(&s);
+        assert_eq!(death.drops.len(), 2);
+        let gone = |key: &'static str| removing(&death.drops, move |drop| drop.key == key);
+        let mut answers = vec![
+            (
+                1,
+                EventPatch::EntityDeath(EntityDeathPatch {
+                    drops: gone("minecraft:diamond"),
+                    ..EntityDeathPatch::default()
+                }),
+            ),
+            (
+                2,
+                EventPatch::PlayerDeath(PlayerDeathPatch {
+                    drops: gone("minecraft:stick"),
+                    ..PlayerDeathPatch::default()
+                }),
+            ),
+        ];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, event, false, Some(patch));
+        }
+        assert_eq!(s.server.items_on_ground(), 0, "{later_answers_first}");
+    }
 }
 
 #[test]
