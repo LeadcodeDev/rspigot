@@ -41,7 +41,11 @@ use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
 use crate::plugins::events::EntityRemoveCause;
-use crate::plugins::{AfterHurt, MobAttackFollow, Struck};
+use crate::plugins::events::{EntityDeath, EntityDeathPatch};
+use crate::plugins::steps::LootStep;
+use crate::plugins::{
+    AfterHurt, Continuation, EventPayload, MobAttackFollow, Struck, spec_of, stack_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -1302,6 +1306,7 @@ impl<L: ClientLink> Server<L> {
         let this = loot_facts(entity);
         let damage = self.damage_facts(source);
         let mut drops: Vec<ItemStack> = Vec::new();
+        let mut slots = Vec::new();
         if drop_loot {
             if let Some(table) = table {
                 let context = LootContext {
@@ -1315,8 +1320,52 @@ impl<L: ClientLink> Server<L> {
                 };
                 drops.extend(loot::table_drops(table, &context, &mut self.rng));
             }
-            drops.extend(self.drop_equipment(id, killed_by_player));
+            slots = self.planned_equipment_drops(id, killed_by_player);
+            drops.extend(slots.iter().map(|(_, stack)| stack.clone()));
         }
+        let experience = self.experience_reward(id, killed_by_player, mob_drops);
+        let step = LootStep {
+            victim: id,
+            position,
+            drops,
+            slots,
+            experience,
+        };
+        let lane = self.lane_for(None, id);
+        let described = step.drops.iter().map(spec_of).collect::<Vec<_>>();
+        let damage_source = self.damage_view(source);
+        self.fire_heard(
+            lane,
+            Continuation::MobDeath(Box::new(step)),
+            move |server| {
+                let entity = server.entity_view(id)?;
+                Some(EventPayload::EntityDeath(EntityDeath {
+                    damage_source,
+                    dropped_exp: experience,
+                    drops: described,
+                    entity_type: entity.kind.clone(),
+                    entity,
+                }))
+            },
+        );
+    }
+
+    pub(crate) fn finish_mob_death(&mut self, step: LootStep, patch: EntityDeathPatch) {
+        let LootStep {
+            victim,
+            position,
+            drops,
+            slots,
+            experience,
+        } = step;
+        self.clear_dropped_equipment(victim, &slots);
+        let drops = match patch.drops {
+            Some(specs) => specs
+                .iter()
+                .filter_map(|spec| stack_of(spec).ok().flatten())
+                .collect(),
+            None => drops,
+        };
         for stack in drops {
             let velocity = Vec3::new(
                 self.rng.random::<f64>() * ITEM_SPREAD - ITEM_SPREAD / 2.0,
@@ -1325,28 +1374,41 @@ impl<L: ClientLink> Server<L> {
             );
             self.spawn_item_entity(position, velocity, ITEM_PICKUP_DELAY, stack);
         }
-        let experience = self.experience_reward(id, killed_by_player, mob_drops);
-        self.award_experience(position, experience);
+        self.award_experience(position, patch.dropped_exp.unwrap_or(experience));
     }
 
-    fn drop_equipment(&mut self, id: EntityId, killed_by_player: bool) -> Vec<ItemStack> {
+    fn planned_equipment_drops(
+        &mut self,
+        id: EntityId,
+        killed_by_player: bool,
+    ) -> Vec<(EquipmentSlot, ItemStack)> {
         let rng = &mut self.rng;
-        let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+        let Some(living) = self.entities.store.get(id).and_then(|e| e.living()) else {
             return Vec::new();
         };
-        let drops = reward::equipment_drops(living, killed_by_player, &mut ServerRandom(rng));
-        if drops.is_empty() {
-            return Vec::new();
+        reward::planned_equipment_drops(living, killed_by_player, &mut ServerRandom(rng))
+    }
+
+    fn clear_dropped_equipment(&mut self, id: EntityId, slots: &[(EquipmentSlot, ItemStack)]) {
+        let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+            return;
+        };
+        let mut cleared = Vec::new();
+        for (slot, _) in slots {
+            let index = living::slot_index(*slot);
+            if living.equipment[index].take().is_some() {
+                cleared.push((crate::entities::wire_slot(*slot), None));
+            }
         }
-        let slots = drops
-            .iter()
-            .map(|(slot, _)| (crate::entities::wire_slot(*slot), None))
-            .collect();
-        self.push(
-            Audience::Trackers(id),
-            ClientEvent::EntityEquipment { entity: id, slots },
-        );
-        drops.into_iter().map(|(_, stack)| stack).collect()
+        if !cleared.is_empty() {
+            self.push(
+                Audience::Trackers(id),
+                ClientEvent::EntityEquipment {
+                    entity: id,
+                    slots: cleared,
+                },
+            );
+        }
     }
 
     fn experience_reward(&mut self, id: EntityId, killed_by_player: bool, mob_drops: bool) -> i32 {

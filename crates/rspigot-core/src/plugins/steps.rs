@@ -594,6 +594,15 @@ impl HurtStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct LootStep {
+    pub(crate) victim: EntityId,
+    pub(crate) position: Vec3,
+    pub(crate) drops: Vec<ItemStack>,
+    pub(crate) slots: Vec<(rspigot_items::EquipmentSlot, ItemStack)>,
+    pub(crate) experience: i32,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -653,6 +662,7 @@ pub(crate) enum Continuation {
     Spawn(Box<SpawnStep>),
     EntityDrop(Box<Entity>),
     Hurt(Box<HurtStep>),
+    MobDeath(Box<LootStep>),
 }
 
 impl Continuation {
@@ -711,6 +721,7 @@ impl Continuation {
             Self::Spawn(step) => step.kind,
             Self::EntityDrop(_) => EventKind::EntityDropItem,
             Self::Hurt(step) => step.kind,
+            Self::MobDeath(_) => EventKind::EntityDeath,
         }
     }
 

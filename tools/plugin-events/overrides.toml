@@ -98,13 +98,13 @@ EntityDropItem = "chicken eggs, sheared wool and saddles, the item of a stopped 
 EntityDamage = "every hurt of a player, a mob or an item entity, asked before the invulnerability window and with a damage of 0; set_damage reruns the armor, resistance and absorption chain; FREEZING, BLOCKING and MAGIC do not exist; a cancel leaves the hit without effect and the attacker hears NODAMAGE"
 EntityDamageByEntity = "player and mob melee, sweeps, arrows (the damager is the arrow), creeper explosions and falling blocks; ENTITY_SWEEP_ATTACK never comes out, as in Spigot 26.3"
 EntityDamageByBlock = "lava with its block, the void with no block and stalagmites with their tip; a plugin explosion without a source is BLOCK_EXPLOSION with no block; lava and void are asked once per victim while one waits"
+EntityDeath = "mob deaths, also when the loot is empty; the mob dies at once and its loot, equipment drops and experience wait on a snapshot until the event settles; the settled drops spawn as items, each firing ItemSpawn, then the orbs fire EntitySpawn; PlayerDeath also reaches its handlers"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
     "EntityBreed", "EntityChangeBlock",
     "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity",
-    "EntityDeath",
     "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
     "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
     "EntityPotionEffect", "EntityRegainHealth", "EntityShootBow",

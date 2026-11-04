@@ -759,6 +759,10 @@ impl<L: ClientLink> Server<L> {
                 self.finish_hurt(*step, cancelled, settled_damage(patch));
                 Vec::new()
             }
+            Continuation::MobDeath(step) => {
+                self.finish_mob_death(*step, patch_of!(patch, EntityDeath));
+                Vec::new()
+            }
         }
     }
 
