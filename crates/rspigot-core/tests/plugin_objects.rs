@@ -234,7 +234,7 @@ fn an_allowed_left_click_in_creative_breaks_the_block() {
 }
 
 #[test]
-fn a_punch_in_the_air_is_only_observed_then_the_swing_is_asked() {
+fn a_punch_in_the_air_asks_its_deciders_without_waiting_and_drops_their_verdicts() {
     let mut s = scene_with(
         &["Alice"],
         vec![
@@ -258,13 +258,48 @@ fn a_punch_in_the_air_is_only_observed_then_the_swing_is_asked() {
     assert_eq!(
         kinds,
         [
+            (Phase::Decide, EventKind::PlayerInteract),
             (Phase::Settled, EventKind::PlayerInteract),
             (Phase::Settled, EventKind::PlayerAnimation),
         ]
     );
-    let interact = interact_of(&fired(&s.plugin)[0]);
-    assert_eq!(interact.action, Action::LeftClickAir);
-    assert!(fired(&s.plugin)[0].cancelled);
+    let asked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    assert_eq!(interact_of(&asked).action, Action::LeftClickAir);
+    assert!(fired(&s.plugin)[1].cancelled);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        true,
+        results(EventResult::Allow, EventResult::Allow),
+    );
+    assert!(s.warnings().is_empty());
+    assert_eq!(fired(&s.plugin).len(), 3);
+}
+
+#[test]
+fn a_left_click_on_the_protected_spawn_asks_its_deciders_and_parks_nothing() {
+    let mut server = configured(|config| config.spawn_protection = 16);
+    let plugin = connect_with(
+        &mut server,
+        1,
+        "tester",
+        vec![deciding(1, EventKind::PlayerInteract)],
+    );
+    let alice = join(&mut server, "Alice");
+    let bob = join(&mut server, "Bob");
+    let mut s = Scene {
+        server,
+        plugin,
+        players: vec![alice.clone(), bob],
+    };
+    dig(&mut s, &alice, DigAction::Start, FLOOR);
+    let asked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    assert_eq!(interact_of(&asked).action, Action::LeftClickBlock);
+    dig(&mut s, &alice, DigAction::Finish, FLOOR);
+    assert!(!block_is_air(&mut s, FLOOR));
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert!(s.warnings().is_empty());
 }
 
 fn cow_near(s: &mut Scene) -> EntityId {

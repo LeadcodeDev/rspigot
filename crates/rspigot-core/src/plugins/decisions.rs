@@ -171,7 +171,7 @@ impl Pending {
         }
     }
 
-    fn settle(self, event: u64) -> Ready {
+    pub(crate) fn settle(self, event: u64) -> Ready {
         let record = self.record();
         let (cancelled, patch) = fold(self.answers);
         let settlement = if cancelled || denied(&self.payload, patch.as_ref()) {

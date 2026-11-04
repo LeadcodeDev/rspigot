@@ -410,9 +410,9 @@ impl<L: ClientLink> Server<L> {
         if player.vitals.is_dead() {
             return;
         }
-        if !self
-            .plugins
-            .listens(EventKind::PlayerInteract, Access::Observe)
+        let kind = EventKind::PlayerInteract;
+        if !self.plugins.listens(kind, Access::Observe)
+            && !self.plugins.listens(kind, Access::Decide)
         {
             self.swing_arm(id, hand);
             return;

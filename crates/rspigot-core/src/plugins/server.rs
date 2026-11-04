@@ -256,7 +256,8 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let deciding = self.deciding(&then);
-        if !deciding && !self.decisions.busy(lane) {
+        let busy = self.decisions.busy(lane);
+        if !decided && !busy {
             if let Some(payload) = describe(self) {
                 let event = order.unwrap_or_else(|| self.next_event_id());
                 self.notify_plugins(event, &payload, false, Phase::Settled);
@@ -269,20 +270,24 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let event = order.unwrap_or_else(|| self.next_event_id());
-        let deciders = if deciding {
+        let deciders = if decided {
             self.plugins
                 .listeners(kind, Access::Decide, &self.config.plugins)
         } else {
             Vec::new()
         };
-        let asked = deciders
-            .iter()
-            .map(|(connection, spec)| Asked {
-                connection: *connection,
-                handler: spec.id,
-                kind: spec.event,
-            })
-            .collect();
+        let asked = if deciding {
+            deciders
+                .iter()
+                .map(|(connection, spec)| Asked {
+                    connection: *connection,
+                    handler: spec.id,
+                    kind: spec.event,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         for (connection, handlers) in recipients(deciders, false, Phase::Decide) {
             self.plugins.send(
                 connection,
@@ -301,10 +306,12 @@ impl<L: ClientLink> Server<L> {
             .saturating_add(settings.decision_ticks)
             .saturating_add(1);
         let until = arrival.saturating_add(settings.late_cancel_ticks);
-        self.decisions.queue(
-            event,
-            Pending::new(lane, payload, asked, deadline, until, then),
-        );
+        let pending = Pending::new(lane, payload, asked, deadline, until, then);
+        if deciding || busy {
+            self.decisions.queue(event, pending);
+        } else {
+            self.settle(pending.settle(event));
+        }
     }
 
     fn run_now(&mut self, then: Continuation) {

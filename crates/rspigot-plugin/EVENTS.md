@@ -169,7 +169,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PlayerHarvestBlockEvent` | `PlayerHarvestBlock` | yes | `set_items_harvested` | - | not fired yet: needs berry harvesting |
 | `PlayerHideEntityEvent` | `PlayerHideEntity` | no | - | - | fired: players only, after the effect of the first plugin hiding them |
 | `PlayerInputEvent` | `PlayerInput` | no | - | - | fired: compared with the last input when the packet reaches the head of the lane |
-| `PlayerInteractEvent` | `PlayerInteract` | yes | `set_use_interacted_block`, `set_use_item_in_hand` | - | fired: LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result only notify; no PHYSICAL block exists yet |
+| `PlayerInteractEvent` | `PlayerInteract` | yes | `set_use_interacted_block`, `set_use_item_in_hand` | - | fired: LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result ask the deciding handlers and drop their verdicts; no PHYSICAL block exists yet |
 | `PlayerInteractAtEntityEvent` | `PlayerInteractAtEntity` | yes | - | - | fired: one fire per entity click, settled once for both handler types |
 | `PlayerInteractEntityEvent` | `PlayerInteractEntity` | yes | - | `PlayerInteractAtEntity` | fired: reached through PlayerInteractAtEntity, as Spigot never builds it alone |
 | `PlayerItemBreakEvent` | `PlayerItemBreak` | no | - | - | fired: after the PlayerItemDamage of the same wear |
