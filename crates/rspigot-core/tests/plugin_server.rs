@@ -15,7 +15,7 @@ use rspigot_core::plugins::events::{
 };
 use rspigot_core::plugins::{
     EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, ListDiff, Order, PlayerSnapshot,
-    PluginInfo, PluginIntro, SenderView, ServerOrder, ToPlugin,
+    PluginInfo, PluginIntro, Priority, SenderView, ServerOrder, ToPlugin,
 };
 use rspigot_core::server::Server;
 use rspigot_core::status::{PingHook, PlayerSample, StatusBoard, StatusPing, StatusReply};
@@ -914,4 +914,79 @@ fn command_roots(player: &Player) -> Vec<Vec<String>> {
             _ => None,
         })
         .collect()
+}
+
+fn two_deciders(names: &[&str], event: EventKind) -> Scene {
+    let ranked = |priority| HandlerSpec {
+        priority,
+        ..deciding(1, event)
+    };
+    let mut s = scene_with(names, vec![ranked(Priority::Low)]);
+    connect_with(&mut s.server, 2, "second", vec![ranked(Priority::High)]);
+    s
+}
+
+#[test]
+fn two_plugins_that_each_hide_a_player_from_the_ping_both_keep_them_hidden() {
+    for later_answers_first in [false, true] {
+        let mut s = two_deciders(&["Alice", "Bob", "Carol"], EventKind::ServerListPing);
+        let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
+        let mut answer = ping(&mut s, false);
+        let asked = last_asked(&s.plugin, EventKind::ServerListPing);
+        let hiding = |player: &Player| {
+            EventPatch::ServerListPing(ServerListPingPatch {
+                hidden_players: ListDiff {
+                    removed: Vec::new(),
+                    replaced: Vec::new(),
+                    added: vec![player.id.0],
+                },
+                ..ServerListPingPatch::default()
+            })
+        };
+        let mut answers = vec![(1, hiding(&alice)), (2, hiding(&bob))];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, Some(patch));
+        }
+        assert_eq!(
+            answered(&mut answer).map(sorted),
+            Some(defaults(1, &["Carol"])),
+            "{later_answers_first}"
+        );
+    }
+}
+
+#[test]
+fn two_plugins_that_each_remove_a_broadcast_recipient_both_keep_it_from_them() {
+    for later_answers_first in [false, true] {
+        let mut s = two_deciders(&["Alice", "Bob", "Carol"], EventKind::BroadcastMessage);
+        let [alice, bob, carol] = [0, 1, 2].map(|index| s.players[index].clone());
+        broadcast(&mut s, "Hello");
+        let asked = last_asked(&s.plugin, EventKind::BroadcastMessage);
+        let EventPayload::BroadcastMessage(BroadcastMessage { recipients, .. }) = &asked.payload
+        else {
+            panic!("expected a broadcast");
+        };
+        let without = |player: &Player| {
+            EventPatch::BroadcastMessage(BroadcastMessagePatch {
+                recipients: removing(
+                    recipients,
+                    |sender| matches!(sender, SenderView::Player(snapshot) if snapshot.id == player.id),
+                ),
+                ..BroadcastMessagePatch::default()
+            })
+        };
+        let mut answers = vec![(1, without(&bob)), (2, without(&carol))];
+        if later_answers_first {
+            answers.reverse();
+        }
+        for (connection, patch) in answers {
+            rule_on(&mut s.server, connection, asked.id, false, Some(patch));
+        }
+        assert_eq!(system_texts(&alice), ["Hello"]);
+        assert!(system_texts(&bob).is_empty(), "{later_answers_first}");
+        assert!(system_texts(&carol).is_empty(), "{later_answers_first}");
+    }
 }
