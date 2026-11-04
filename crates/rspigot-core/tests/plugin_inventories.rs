@@ -113,6 +113,7 @@ struct Close {
     handlers: Vec<u32>,
     inventory: u64,
     by_player: bool,
+    viewers: Vec<String>,
 }
 
 fn handlers() -> Vec<rspigot_core::plugins::HandlerSpec> {
@@ -316,11 +317,13 @@ fn closes(mailbox: &Mailbox, player: &Player) -> Vec<Close> {
                 player: who,
                 inventory,
                 by_player,
+                viewers,
                 ..
             }) if who.id == player.id => Some(Close {
                 handlers,
                 inventory: custom_id(&inventory),
                 by_player,
+                viewers: viewers.into_iter().map(|viewer| viewer.name).collect(),
             }),
             _ => None,
         })
@@ -577,13 +580,19 @@ fn an_open_storage_keeps_moved_items() {
 
 #[test]
 fn closing_reports_who_closed() {
-    let (mut s, alice, _bob) = menu_scene();
+    let (mut s, alice, bob) = menu_scene();
     let (screen, _) = open(&mut s, &alice, MENU);
+    let (bob_screen, _) = open(&mut s, &bob, MENU);
     close_window(&mut s, &alice, screen.window);
     let heard = last_close(&s, &alice);
     assert_eq!(heard.handlers, [2]);
     assert_eq!(heard.inventory, MENU);
     assert!(heard.by_player);
+    let mut viewers = heard.viewers;
+    viewers.sort();
+    assert_eq!(viewers, ["Alice", "Bob"]);
+    close_window(&mut s, &bob, bob_screen.window);
+    assert_eq!(last_close(&s, &bob).viewers, ["Bob"]);
     assert!(state_of(&mut s, MENU).viewers.is_empty());
 
     let (screen, _) = open(&mut s, &alice, MENU);
