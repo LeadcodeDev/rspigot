@@ -461,8 +461,7 @@ impl<L: ClientLink> Server<L> {
                 Vec::new()
             }
             Continuation::Teleport(step) => {
-                self.finish_teleport(step, cancelled, patch_of!(patch, PlayerTeleport));
-                Vec::new()
+                self.finish_teleport(step, cancelled, patch_of!(patch, PlayerTeleport))
             }
             Continuation::Velocity(_) if cancelled => Vec::new(),
             Continuation::Velocity(step) => {

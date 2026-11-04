@@ -568,3 +568,15 @@ fn taking_a_book_into_a_full_inventory_fires_the_take_then_the_drop() {
     );
     assert_eq!(s.server.items_on_ground(), 1);
 }
+
+#[test]
+fn a_drop_settled_after_the_player_left_does_not_duplicate_the_item() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDropItem)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice diamond 3");
+    drop_one(&mut s, &alice);
+    let asked = last_asked(&s.plugin, EventKind::PlayerDropItem);
+    s.server.handle(Inbound::Leave { player: alice.id });
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(s.server.items_on_ground(), 0);
+}

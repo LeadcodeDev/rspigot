@@ -3,7 +3,7 @@ use rspigot_domain::{Rotation, Vec3};
 
 use crate::events::ClientEvent;
 use crate::health::{DamageSource, SourceEntity};
-use crate::plugins::decisions::{Continuation, MoveStep};
+use crate::plugins::decisions::{Continuation, MoveStep, Undone};
 use crate::plugins::events::{
     PlayerTeleport, PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
 };
@@ -60,9 +60,9 @@ impl<L: ClientLink> Server<L> {
         step: TeleportStep,
         cancelled: bool,
         patch: PlayerTeleportPatch,
-    ) {
+    ) -> Undone {
         let Some(player) = self.players.get_mut(&step.player) else {
-            return;
+            return Vec::new();
         };
         if cancelled {
             if let Some(fallback) = step.fallback {
@@ -73,10 +73,10 @@ impl<L: ClientLink> Server<L> {
                     fallback.on_ground,
                 );
             }
-            return;
+            return Vec::new();
         }
         if step.cause == PlayerTeleportCause::Plugin && player.vitals.is_dead() {
-            return;
+            return Vec::new();
         }
         let (position, rotation) = match patch.to {
             Some(to) => (to.position, Some(to.rotation)),
@@ -85,10 +85,14 @@ impl<L: ClientLink> Server<L> {
         if let Some(rotation) = rotation {
             player.rotation = rotation;
         }
-        if step.fallback.is_none() {
+        let dropped = if step.fallback.is_some() {
+            self.decisions.drop_pending(step.player)
+        } else {
             self.decisions.forget(step.player);
-        }
+            Vec::new()
+        };
         self.teleport_player(step.player, position);
+        dropped
     }
 
     pub(crate) fn teleport_now(&mut self, id: PlayerId, position: Vec3) {

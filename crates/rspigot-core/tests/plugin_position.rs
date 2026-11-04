@@ -537,3 +537,42 @@ fn a_respawn_waits_behind_the_death_of_its_player() {
     assert_eq!(s.server.player_is_dead(alice.id), Some(false));
     assert_eq!(settled_for(&s.plugin, EventKind::PlayerRespawn).len(), 1);
 }
+
+#[test]
+fn moves_sent_while_a_changed_destination_waits_are_dropped_when_the_teleport_applies() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![decide(1), deciding(2, EventKind::PlayerTeleport)],
+    );
+    let alice = s.players[0].clone();
+    let step = |s: &mut Scene, x: f64| {
+        send_input(
+            &mut s.server,
+            &alice,
+            PlayerInput::Move {
+                position: Some(at(x, 0.5)),
+                rotation: None,
+                on_ground: true,
+            },
+        );
+    };
+    step(&mut s, 1.5);
+    let moved = last_asked(&s.plugin, EventKind::PlayerMove);
+    rule_on(
+        &mut s.server,
+        1,
+        moved.id,
+        false,
+        Some(EventPatch::PlayerMove(PlayerMovePatch {
+            to: Some(location(at(8.5, 0.5))),
+        })),
+    );
+    step(&mut s, 2.5);
+    let later = last_asked(&s.plugin, EventKind::PlayerMove);
+    assert_ne!(later.id, moved.id);
+    let teleport = last_asked(&s.plugin, EventKind::PlayerTeleport);
+    judge(&mut s.server, 1, teleport.id, 2, false, None);
+    rule_on(&mut s.server, 1, later.id, false, None);
+    s.tick(3);
+    assert_eq!(s.server.player_location(alice.id), Some(at(8.5, 0.5)));
+}

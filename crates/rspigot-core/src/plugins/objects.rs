@@ -463,7 +463,9 @@ impl<L: ClientLink> Server<L> {
     pub(super) fn finish_drop(&mut self, step: DropStep, cancelled: bool) {
         let id = step.player;
         let Some(player) = self.players.get_mut(&id) else {
-            self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            if !matches!(step.source, DropSource::Selected { .. }) {
+                self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            }
             return;
         };
         if cancelled {
