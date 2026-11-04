@@ -767,10 +767,18 @@ pub(crate) struct KnockStep {
     pub(crate) push: Push,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Igniter {
+    Nothing,
+    Block(Option<BlockPos>),
+    Entity(EntityId),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CombustStep {
     pub(crate) kind: EventKind,
     pub(crate) target: Holder,
+    pub(crate) igniter: Igniter,
     pub(crate) seconds: f32,
 }
 
@@ -1013,7 +1021,9 @@ impl Continuation {
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
-            (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
+            (Self::Combust(one), Self::Combust(other)) => {
+                one.target == other.target && one.kind == other.kind && one.igniter == other.igniter
+            }
             (Self::ItemDespawn(one), Self::ItemDespawn(other)) => one == other,
             (Self::ChangeBlock(one), Self::ChangeBlock(other)) => {
                 match (&one.change, &other.change) {

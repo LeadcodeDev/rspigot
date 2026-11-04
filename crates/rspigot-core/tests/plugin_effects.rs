@@ -452,3 +452,28 @@ fn a_flaming_arrow_combusts_its_target_by_entity() {
     assert!(!settled[1].cancelled);
     assert!(s.warnings().is_empty());
 }
+
+#[test]
+fn a_flaming_arrow_is_asked_while_a_sun_ignition_of_its_target_waits() {
+    let mut s = waiting_scene(vec![deciding(1, EventKind::EntityCombust)]);
+    s.act(Order::World(rspigot_core::plugins::WorldOrder::SetTime(
+        6000,
+    )));
+    stream_chunk_of(&mut s, BlockPos::new(4, 64, 8));
+    console(&mut s, "summon minecraft:zombie 4.5 64 8.5 {NoAI:1b}");
+    let id = s.server.entities_of(rspigot_entities::EntityKind::Zombie)[0].id;
+    for _ in 0..600 {
+        s.tick(1);
+        if !asked_for(&s.plugin, EventKind::EntityCombust).is_empty() {
+            break;
+        }
+    }
+    assert_eq!(asked_for(&s.plugin, EventKind::EntityCombust).len(), 1);
+    let Answer::Entity(details) = s.ask(Question::Entity(id)) else {
+        panic!("expected the zombie");
+    };
+    flaming_arrow_at(&mut s, &details.entity);
+    let burn = combust_by_entity(&mut s, 0);
+    assert_eq!(burn.entity.id, id);
+    assert_eq!(asked_for(&s.plugin, EventKind::EntityCombust).len(), 1);
+}
