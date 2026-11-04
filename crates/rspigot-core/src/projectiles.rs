@@ -477,7 +477,7 @@ impl<L: ClientLink> Server<L> {
         self.strike(
             None,
             victim,
-            source,
+            &source,
             damage as f32,
             AfterHurt::Arrow(follow),
         );

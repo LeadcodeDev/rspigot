@@ -380,13 +380,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt(&mut self, id: PlayerId, source: &DamageSource, amount: f32) -> bool {
-        self.strike(
-            None,
-            Struck::Player(id),
-            source.clone(),
-            amount,
-            AfterHurt::Nothing,
-        )
+        self.strike(None, Struck::Player(id), source, amount, AfterHurt::Nothing)
     }
 
     pub(crate) fn ask_hurt_player(

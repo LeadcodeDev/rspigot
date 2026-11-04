@@ -416,7 +416,7 @@ impl<L: ClientLink> Server<L> {
                 None if target.living => Struck::Mob(target.id),
                 None => Struck::Item(target.id),
             };
-            self.strike(None, victim, damage.clone(), amount, then);
+            self.strike(None, victim, damage, amount, then);
         }
         std::mem::replace(&mut self.impacts.knocked, outer).unwrap_or_default()
     }

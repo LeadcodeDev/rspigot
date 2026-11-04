@@ -44,7 +44,8 @@ use crate::plugins::events::EntityRemoveCause;
 use crate::plugins::events::{EntityDeath, EntityDeathPatch, EntityKnockbackCause};
 use crate::plugins::steps::LootStep;
 use crate::plugins::{
-    AfterHurt, Continuation, EventPayload, Holder, MobAttackFollow, Struck, spec_of, stack_of,
+    AfterHurt, Continuation, EventKind, EventPayload, Holder, MobAttackFollow, Struck, spec_of,
+    stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -1019,13 +1020,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt_mob(&mut self, id: EntityId, source: &DamageSource, amount: f32) -> bool {
-        self.strike(
-            None,
-            Struck::Mob(id),
-            source.clone(),
-            amount,
-            AfterHurt::Nothing,
-        )
+        self.strike(None, Struck::Mob(id), source, amount, AfterHurt::Nothing)
     }
 
     pub(crate) fn ask_hurt_mob(
@@ -1307,17 +1302,18 @@ impl<L: ClientLink> Server<L> {
             experience,
         };
         let lane = self.lane_for(None, id);
-        let described = step.drops.iter().map(spec_of).collect::<Vec<_>>();
-        let damage_source = self.damage_view(source);
+        let described = self
+            .listened(EventKind::EntityDeath)
+            .then(|| step.drops.iter().map(spec_of).collect::<Vec<_>>());
         self.fire(
             lane,
             Continuation::MobDeath(Box::new(step)),
             move |server| {
                 let entity = server.entity_view(id)?;
                 Some(EventPayload::EntityDeath(EntityDeath {
-                    damage_source,
+                    damage_source: server.damage_view(source),
                     dropped_exp: experience,
-                    drops: described,
+                    drops: described?,
                     entity_type: entity.kind.clone(),
                     entity,
                 }))
@@ -1531,7 +1527,7 @@ impl<L: ClientLink> Server<L> {
             knockback,
             yaw,
         };
-        self.strike(None, victim, source, damage, AfterHurt::MobAttack(follow))
+        self.strike(None, victim, &source, damage, AfterHurt::MobAttack(follow))
     }
 
     pub(crate) fn finish_mob_attack(&mut self, follow: MobAttackFollow, hurt: bool) {

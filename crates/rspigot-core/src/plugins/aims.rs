@@ -84,6 +84,9 @@ impl<L: ClientLink> Server<L> {
         requests: Vec<TargetRequest>,
         deferred: bool,
     ) {
+        if requests.is_empty() {
+            return;
+        }
         let Some(mob) = self.entity_view(id) else {
             return;
         };
