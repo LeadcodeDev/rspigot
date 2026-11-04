@@ -19,7 +19,7 @@ use crate::events::{ClientEvent, EntityStatus};
 use crate::health::DamageSource;
 use crate::loot::{self, LootContext};
 use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
-use crate::plugins::{Birth, Continuation, Spawned};
+use crate::plugins::{Birth, Combuster, Continuation, Holder, Spawned};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -398,7 +398,7 @@ impl<L: ClientLink> Server<L> {
             }
             None => {
                 self.store_mob_random(id, random);
-                self.ignite_entity(id, fire::SUN_SECONDS);
+                self.combust(Holder::Mob(id), fire::SUN_SECONDS, Combuster::Nothing);
             }
         }
     }

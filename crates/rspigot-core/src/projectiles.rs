@@ -16,7 +16,9 @@ use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
 use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause, PlayerPickupArrow};
 use crate::plugins::steps::ArrowStep;
-use crate::plugins::{AfterHurt, ArrowFollow, Continuation, EventPayload, spec_of};
+use crate::plugins::{
+    AfterHurt, ArrowFollow, Combuster, Continuation, EventPayload, Holder, spec_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -31,6 +33,7 @@ const PICKUP_INFLATE_Y: f64 = 0.5;
 const PLAYER_WIDTH: f64 = 0.6;
 const STOP_SQR: f64 = 1.0e-7;
 const DEFLECT_SCALE: f64 = 0.2;
+const ARROW_FIRE_SECONDS: f32 = 5.0;
 
 #[derive(Debug, Clone, Copy)]
 struct ArrowHit {
@@ -431,8 +434,11 @@ impl<L: ClientLink> Server<L> {
             living.damage.last_hurt_mob = Some(target);
         }
         let saved_fire = self.fire_ticks_of(target);
-        if on_fire {
-            self.ignite_any(target, 5.0);
+        if on_fire && let Some(arrow) = self.entity_view(id) {
+            let holder = self
+                .player_of_entity(target)
+                .map_or(Holder::Mob(target), Holder::Player);
+            self.combust(holder, ARROW_FIRE_SECONDS, Combuster::Entity(arrow));
         }
         let source = DamageSource {
             kind: DamageType::Arrow,
@@ -551,19 +557,6 @@ impl<L: ClientLink> Server<L> {
         if let Some(entity) = self.entities.store.get_mut(id) {
             entity.base.remaining_fire_ticks = ticks;
         }
-    }
-
-    pub(crate) fn ignite_any(&mut self, id: EntityId, seconds: f32) {
-        if let Some(player) = self
-            .players
-            .values()
-            .find(|p| p.entity_id == id)
-            .map(|p| p.id)
-        {
-            self.ignite_player(player, seconds);
-            return;
-        }
-        self.ignite_entity(id, seconds);
     }
 
     fn add_player_arrow(&mut self, player: PlayerId) {

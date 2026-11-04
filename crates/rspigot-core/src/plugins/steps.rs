@@ -1,4 +1,5 @@
 use crossbeam_channel::Sender;
+use rspigot_domain::effect::EffectInstance;
 use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
@@ -612,6 +613,35 @@ pub(crate) struct FoodStep {
     pub(crate) from: Option<i32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Holder {
+    Player(PlayerId),
+    Mob(EntityId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Potion {
+    Add(EffectInstance),
+    Remove(EffectInstance),
+    Clear(EffectInstance),
+    Expire(EffectInstance),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CombustStep {
+    pub(crate) kind: EventKind,
+    pub(crate) target: Holder,
+    pub(crate) seconds: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PotionStep {
+    pub(crate) holder: Holder,
+    pub(crate) potion: Potion,
+    pub(crate) overrides: bool,
+    pub(crate) respawned: bool,
+}
+
 #[derive(Debug)]
 pub(crate) struct LootStep {
     pub(crate) victim: EntityId,
@@ -685,6 +715,8 @@ pub(crate) enum Continuation {
     Regain(RegainStep),
     Exhaust(ExhaustStep),
     Food(FoodStep),
+    Potion(PotionStep),
+    Combust(CombustStep),
 }
 
 impl Continuation {
@@ -747,6 +779,8 @@ impl Continuation {
             Self::Regain(_) => EventKind::EntityRegainHealth,
             Self::Exhaust(_) => EventKind::EntityExhaustion,
             Self::Food(_) => EventKind::FoodLevelChange,
+            Self::Potion(_) => EventKind::EntityPotionEffect,
+            Self::Combust(step) => step.kind,
         }
     }
 
@@ -776,6 +810,11 @@ impl Continuation {
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
+            (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
+            (Self::Potion(one), Self::Potion(other)) => {
+                matches!((one.potion, other.potion), (Potion::Expire(a), Potion::Expire(b)) if a.effect == b.effect)
+                    && one.holder == other.holder
+            }
             (Self::Hurt(one), Self::Hurt(other)) => {
                 one.repeats() && one.victim == other.victim && one.source.kind == other.source.kind
             }
@@ -786,6 +825,8 @@ impl Continuation {
     pub(crate) fn may_skip(&self) -> bool {
         match self {
             Self::Hurt(step) => step.repeats(),
+            Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
+            Self::Combust(_) => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)

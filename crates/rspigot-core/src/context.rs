@@ -21,8 +21,9 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::ClientEvent;
 use crate::mobs::ServerRandom;
+use crate::plugins::events::EntityPotionEffectCause;
 use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause, TimeSkipReason};
-use crate::plugins::{Birth, Spawned, name_of_entity};
+use crate::plugins::{Birth, Holder, Potion, Spawned, name_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -388,11 +389,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool {
-        self.apply_effect(player, effect)
+        self.apply_effect(player, effect, Some(EntityPotionEffectCause::Command))
     }
 
     fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool {
-        self.remove_effects(player, effect)
+        self.remove_effects(player, effect, EntityPotionEffectCause::Command)
     }
 
     fn kill(&mut self, player: PlayerId) -> bool {
@@ -510,16 +511,18 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn give_effect_to(&mut self, target: Target, effect: EffectInstance) -> bool {
+        let cause = EntityPotionEffectCause::Command;
         match target {
-            Target::Player(id) => self.apply_effect(id, effect),
-            Target::Entity(id) => self.apply_entity_effect(id, effect),
+            Target::Player(id) => self.apply_effect(id, effect, Some(cause)),
+            Target::Entity(id) => self.apply_entity_effect(id, effect, cause),
         }
     }
 
     fn clear_effect_of(&mut self, target: Target, effect: Option<EffectId>) -> bool {
+        let cause = EntityPotionEffectCause::Command;
         match target {
-            Target::Player(id) => self.remove_effects(id, effect),
-            Target::Entity(id) => self.remove_entity_effects(id, effect),
+            Target::Player(id) => self.remove_effects(id, effect, cause),
+            Target::Entity(id) => self.remove_entity_effects(id, effect, cause),
         }
     }
 
@@ -810,7 +813,25 @@ impl<L: ClientLink> Server<L> {
         found.into_iter().map(|c| c.target).collect()
     }
 
-    fn apply_entity_effect(&mut self, id: EntityId, effect: EffectInstance) -> bool {
+    pub(crate) fn apply_entity_effect(
+        &mut self,
+        id: EntityId,
+        effect: EffectInstance,
+        cause: EntityPotionEffectCause,
+    ) -> bool {
+        if self
+            .entities
+            .store
+            .get(id)
+            .and_then(|e| e.living())
+            .is_none()
+        {
+            return false;
+        }
+        self.potion(Holder::Mob(id), Potion::Add(effect), cause)
+    }
+
+    pub(crate) fn apply_entity_effect_now(&mut self, id: EntityId, effect: EffectInstance) -> bool {
         let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
             return false;
         };
@@ -821,27 +842,40 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    fn remove_entity_effects(&mut self, id: EntityId, effect: Option<EffectId>) -> bool {
+    pub(crate) fn remove_entity_effects(
+        &mut self,
+        id: EntityId,
+        effect: Option<EffectId>,
+        cause: EntityPotionEffectCause,
+    ) -> bool {
+        let Some(state) = self.entities.store.get(id).and_then(|e| e.living()) else {
+            return false;
+        };
+        let targets: Vec<Potion> = match effect {
+            Some(effect) => state
+                .effects
+                .get(effect)
+                .copied()
+                .map(Potion::Remove)
+                .into_iter()
+                .collect(),
+            None => state.effects.iter().copied().map(Potion::Clear).collect(),
+        };
+        let found = !targets.is_empty();
+        for potion in targets {
+            self.potion(Holder::Mob(id), potion, cause);
+        }
+        found
+    }
+
+    pub(crate) fn remove_entity_effect_now(&mut self, id: EntityId, effect: EffectId) -> bool {
         let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
             return false;
         };
-        let removed: Vec<EffectId> = match effect {
-            Some(effect) => state
-                .effects
-                .remove(effect)
-                .map(|e| e.effect)
-                .into_iter()
-                .collect(),
-            None => state
-                .effects
-                .clear()
-                .into_iter()
-                .map(|e| e.effect)
-                .collect(),
-        };
-        for effect in &removed {
-            living::mark_effect_attributes(state, *effect);
+        let removed = state.effects.remove(effect).is_some();
+        if removed {
+            living::mark_effect_attributes(state, effect);
         }
-        !removed.is_empty()
+        removed
     }
 }

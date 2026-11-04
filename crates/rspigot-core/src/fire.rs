@@ -7,7 +7,7 @@ use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::health::DamageSource;
-use crate::plugins::{AfterHurt, BurnFollow, Struck};
+use crate::plugins::{AfterHurt, BurnFollow, Combuster, Holder, Struck};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -79,25 +79,34 @@ impl<L: ClientLink> Server<L> {
                 }
             }
             InsideEffect::FireIgnite => {
-                let ignite = self
-                    .entities
-                    .store
-                    .get_mut(id)
-                    .is_some_and(|e| fire::fire_ignite(&mut e.base, false, || 0));
-                if ignite {
-                    self.ignite_entity(id, fire::FIRE_SECONDS);
+                let ignite = self.entities.store.get_mut(id).and_then(|e| {
+                    fire::fire_ignite(&mut e.base, false, || 0).then(|| e.base.position.block())
+                });
+                if let Some(block) = ignite {
+                    self.combust(
+                        Holder::Mob(id),
+                        fire::FIRE_SECONDS,
+                        Combuster::Block(Some(block)),
+                    );
                 }
             }
             InsideEffect::InFire(damage) => {
                 self.hurt_entity(id, &DamageSource::new(DamageType::InFire), damage);
             }
-            InsideEffect::LavaIgnite(_) => {
-                let immune = self
-                    .entities
-                    .store
-                    .get(id)
-                    .is_none_or(|e| e.base.kind.fire_immune());
-                if !immune {
+            InsideEffect::LavaIgnite(lava) => {
+                let Some(entity) = self.entities.store.get(id) else {
+                    return;
+                };
+                if entity.base.kind.fire_immune() {
+                    return;
+                }
+                if entity.living().is_some() && entity.base.remaining_fire_ticks <= 0 {
+                    self.combust(
+                        Holder::Mob(id),
+                        fire::LAVA_SECONDS,
+                        Combuster::Block(Some(lava)),
+                    );
+                } else {
                     self.ignite_entity(id, fire::LAVA_SECONDS);
                 }
             }
@@ -248,13 +257,32 @@ impl<L: ClientLink> Server<L> {
                     player.vitals.fire_ticks += extra;
                 }
                 if player.vitals.fire_ticks >= 0 {
-                    self.ignite_player(id, fire::FIRE_SECONDS);
+                    let block = player.position.block();
+                    self.combust(
+                        Holder::Player(id),
+                        fire::FIRE_SECONDS,
+                        Combuster::Block(Some(block)),
+                    );
                 }
             }
             InsideEffect::InFire(damage) => {
                 self.hurt(id, &DamageSource::new(DamageType::InFire), damage);
             }
-            InsideEffect::LavaIgnite(_) => self.ignite_player(id, fire::LAVA_SECONDS),
+            InsideEffect::LavaIgnite(lava) => {
+                if self
+                    .players
+                    .get(&id)
+                    .is_some_and(|player| player.vitals.fire_ticks <= 0)
+                {
+                    self.combust(
+                        Holder::Player(id),
+                        fire::LAVA_SECONDS,
+                        Combuster::Block(Some(lava)),
+                    );
+                } else {
+                    self.ignite_player(id, fire::LAVA_SECONDS);
+                }
+            }
             InsideEffect::LavaHurt(pos) => {
                 let Some((position, entity)) =
                     self.players.get(&id).map(|p| (p.position, p.entity_id))

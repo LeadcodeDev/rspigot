@@ -836,7 +836,6 @@ pub struct LivingTick {
     pub burn: bool,
     pub died: bool,
     pub removed: bool,
-    pub expired_effects: bool,
     pub below_world: bool,
 }
 
@@ -877,11 +876,6 @@ pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick 
     {
         memory.last_hurt_by_mob = None;
     }
-    let expired = living.effects.tick();
-    for effect in &expired {
-        mark_effect_attributes(living, *effect);
-    }
-    outcome.expired_effects = !expired.is_empty();
     outcome
 }
 

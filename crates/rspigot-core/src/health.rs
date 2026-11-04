@@ -26,8 +26,8 @@ use crate::plugins::events::{
     PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
 };
 use crate::plugins::{
-    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, Struck,
-    spec_of, stack_of,
+    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep,
+    Struck, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -771,6 +771,16 @@ impl<L: ClientLink> Server<L> {
         }
         let death_location = player.vitals.death_location;
         let kept = player.vitals.experience;
+        let heard_effects = self.plugins.listens(
+            EventKind::EntityPotionEffect,
+            crate::plugins::Access::Observe,
+        ) || self.plugins.listens(
+            EventKind::EntityPotionEffect,
+            crate::plugins::Access::Decide,
+        );
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
         let mut experience = PlayerExperience::default();
         let mut points = 0;
         match player.vitals.death_experience.take() {
@@ -798,7 +808,12 @@ impl<L: ClientLink> Server<L> {
             experience,
             ..Vitals::default()
         };
-        let _ = player.effects.clear();
+        let cleared: Vec<_> = if heard_effects {
+            player.effects.iter().copied().collect()
+        } else {
+            let _ = player.effects.clear();
+            Vec::new()
+        };
         player.sneaking = false;
         player.sprinting = false;
         player.loaded = false;
@@ -866,6 +881,7 @@ impl<L: ClientLink> Server<L> {
         });
         player.menu = InventoryMenu::synced(&player.inventory);
         self.send_commands(id);
+        self.clear_at_respawn(id, cleared);
         if hardcore {
             self.change_game_mode(id, GameMode::Spectator, Vec::new());
         }

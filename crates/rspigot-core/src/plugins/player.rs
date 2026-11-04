@@ -11,7 +11,7 @@ use crate::commands::{self, CommandContext, CommandSender};
 use crate::events::{ClientEvent, SoundSource};
 use crate::health::{self, DamageSource};
 use crate::player::Player;
-use crate::plugins::events::{PlayerRespawnReason, PlayerTeleportCause};
+use crate::plugins::events::{EntityPotionEffectCause, PlayerRespawnReason, PlayerTeleportCause};
 use crate::plugins::resolve::{self, finite_not_negative, not_negative, within};
 use crate::plugins::{EventKind, PlayerOrder, TitleSpec};
 use crate::ports::ClientLink;
@@ -139,14 +139,14 @@ impl<L: ClientLink> Server<L> {
             }
             PlayerOrder::AddEffect(spec) => {
                 let effect = resolve::effect_of(&spec)?;
-                self.apply_effect(id, effect);
+                self.apply_effect(id, effect, Some(EntityPotionEffectCause::Plugin));
             }
             PlayerOrder::RemoveEffect(key) => {
                 let effect = resolve::effect_id(&key)?;
-                self.remove_effects(id, Some(effect));
+                self.remove_effects(id, Some(effect), EntityPotionEffectCause::Plugin);
             }
             PlayerOrder::ClearEffects => {
-                self.remove_effects(id, None);
+                self.remove_effects(id, None, EntityPotionEffectCause::Plugin);
             }
             PlayerOrder::SetFireTicks(ticks) => {
                 self.update(id, |player| player.vitals.fire_ticks = ticks);

@@ -102,15 +102,18 @@ EntityDeath = "mob deaths, also when the loot is empty; the mob dies at once and
 EntityRegainHealth = "players only: SATIATED from food, REGEN in peaceful, MAGIC from instant health and MAGIC_REGEN from regeneration; mobs never heal yet; a cancelled satiated heal still costs its exhaustion, as in Spigot"
 EntityExhaustion = "players who are not invulnerable: DAMAGED, UNKNOWN for an attack, HUNGER_EFFECT, REGEN and BLOCK_MINED; there is no movement or jump exhaustion yet; every exhaustion is asked in turn"
 FoodLevelChange = "hunger from exhaustion and the saturation effect; eating and cakes do not exist yet; a cancel keeps the food and resends the health packet"
+EntityCombust = "undead burning in daylight; its handlers also hear EntityCombustByBlock and EntityCombustByEntity; a combustion is asked once per entity while one waits"
+EntityCombustByBlock = "fire blocks once the fire counter reaches 0 and lava for a living entity that is not burning, with the lava block it touched; burning or non-living entities catch fire from lava without the event, as in Spigot"
+EntityCombustByEntity = "a burning arrow before its hit; the combuster is the arrow"
+EntityPotionEffect = "COMMAND, PLUGIN, EXPIRATION (also when an effect stops ticking) and DEATH at respawn, for players and mobs; restored effects fire nothing; a cancelled expiration keeps the spent effect and asks again each tick"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
     "EntityBreed", "EntityChangeBlock",
-    "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity",
     "EntityEnterLoveMode", "EntityExplode", "EntityInteract",
     "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
-    "EntityPotionEffect", "EntityShootBow",
+    "EntityShootBow",
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",

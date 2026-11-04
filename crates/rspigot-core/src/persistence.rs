@@ -41,7 +41,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn announce_restored(&mut self, id: PlayerId, save: &PlayerSave) {
         self.send_inventory(id);
         for effect in &save.effects {
-            self.apply_effect(id, *effect);
+            self.apply_effect(id, *effect, None);
         }
     }
 }

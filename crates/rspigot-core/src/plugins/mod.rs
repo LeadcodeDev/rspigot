@@ -1,5 +1,6 @@
 mod block;
 mod blocks;
+mod burning;
 mod chat;
 mod chunks;
 mod contract;
@@ -19,6 +20,7 @@ mod patch;
 mod placing;
 mod player;
 mod position;
+mod potions;
 mod registry;
 mod resolve;
 mod server;
@@ -41,6 +43,7 @@ use uuid::Uuid;
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
+pub(crate) use burning::Combuster;
 pub use contract::{
     BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
     HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
@@ -65,8 +68,8 @@ pub(crate) use registry::Registry;
 pub(crate) use session::{Arrival, Refusal};
 pub(crate) use spawns::{name_of_entity, view_of_entity};
 pub(crate) use steps::{
-    AfterHurt, ArrowFollow, AttackFollow, Birth, BlastFollow, BurnFollow, DeathStep,
-    MobAttackFollow, RespawnStep, Spawned, Struck, SweepFollow,
+    AfterHurt, ArrowFollow, AttackFollow, Birth, BlastFollow, BurnFollow, DeathStep, Holder,
+    MobAttackFollow, Potion, RespawnStep, Spawned, Struck, SweepFollow,
 };
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;

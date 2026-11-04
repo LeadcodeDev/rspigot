@@ -7,6 +7,7 @@ use rspigot_domain::{Rotation, Vec3};
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
+use crate::plugins::burning::settled_duration;
 use crate::plugins::damage::settled_damage;
 use crate::plugins::decisions::{
     Asked, Continuation, Flushed, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo,
@@ -775,6 +776,14 @@ impl<L: ClientLink> Server<L> {
                 self.finish_food(step, cancelled, patch_of!(patch, FoodLevelChange));
                 Vec::new()
             }
+            Continuation::Potion(step) => {
+                self.finish_potion(step, cancelled, patch_of!(patch, EntityPotionEffect));
+                Vec::new()
+            }
+            Continuation::Combust(step) => {
+                self.finish_combust(step, cancelled, settled_duration(patch));
+                Vec::new()
+            }
         }
     }
 
@@ -932,7 +941,7 @@ impl<L: ClientLink> Server<L> {
     }
 }
 
-fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
+pub(crate) fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
     Some(EffectSpec {
         key: effect.effect.name()?.to_owned(),
         duration: effect.duration.wire_ticks(),

@@ -19,8 +19,8 @@ use crate::events::{
     ClientEvent, EntityKind, EntityStatus, EquipmentSlot, MetadataEntry, MetadataValue,
 };
 use crate::player::Player;
-use crate::plugins::events::EntityRemoveCause;
-use crate::plugins::{Continuation, Lane};
+use crate::plugins::events::{EntityPotionEffectCause, EntityRemoveCause};
+use crate::plugins::{Continuation, Holder, Lane, Potion};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -377,6 +377,14 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let outcome = living::base_tick(base, state);
+        let spent = state.effects.countdown();
+        for effect in spent {
+            self.potion(
+                Holder::Mob(id),
+                Potion::Expire(effect),
+                EntityPotionEffectCause::Expiration,
+            );
+        }
         if outcome.burn {
             self.burn_damage(id);
         }

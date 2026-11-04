@@ -10,7 +10,7 @@ use crate::console::console_text;
 use crate::context::SUMMON_FAILED;
 use crate::health::DamageSource;
 use crate::items::PICKUP_DELAY;
-use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
+use crate::plugins::events::{CreatureSpawnReason, EntityPotionEffectCause, EntityRemoveCause};
 use crate::plugins::items::stack_of;
 use crate::plugins::resolve::{self, finite_not_negative};
 use crate::plugins::steps::Birth;
@@ -52,14 +52,14 @@ impl<L: ClientLink> Server<L> {
             }
             EntityOrder::AddEffect(spec) => {
                 let effect = resolve::effect_of(&spec)?;
-                CommandContext::give_effect_to(self, target, effect);
+                self.apply_entity_effect(id, effect, EntityPotionEffectCause::Plugin);
             }
             EntityOrder::RemoveEffect(key) => {
                 let effect = resolve::effect_id(&key)?;
-                CommandContext::clear_effect_of(self, target, Some(effect));
+                self.remove_entity_effects(id, Some(effect), EntityPotionEffectCause::Plugin);
             }
             EntityOrder::ClearEffects => {
-                CommandContext::clear_effect_of(self, target, None);
+                self.remove_entity_effects(id, None, EntityPotionEffectCause::Plugin);
             }
             EntityOrder::SetVelocity(velocity) => {
                 let velocity = resolve::velocity_of(velocity)?;
