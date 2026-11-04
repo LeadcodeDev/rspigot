@@ -2,9 +2,10 @@ mod common;
 
 use common::*;
 use rspigot_core::config::PluginSettings;
-use rspigot_core::events::{ClientEvent, Inbound};
+use rspigot_core::events::{ClientEvent, GameEvent, Inbound};
 use rspigot_core::plugins::events::{
-    SpawnChange, TimeSkip, TimeSkipPatch, TimeSkipReason, WorldLoad, WorldSave,
+    SpawnChange, ThunderChange, TimeSkip, TimeSkipPatch, TimeSkipReason, WeatherChange, WorldLoad,
+    WorldSave,
 };
 use rspigot_core::plugins::{
     Answer, EventKind, EventPatch, EventPayload, Location, Order, Question, WorldOrder, WorldState,
@@ -36,6 +37,23 @@ fn time_packets(player: &Player) -> Vec<i64> {
         .iter()
         .filter_map(|event| match event {
             ClientEvent::Time { day_time, .. } => Some(*day_time),
+            _ => None,
+        })
+        .collect()
+}
+
+fn weather_packets(player: &Player) -> Vec<GameEvent> {
+    player
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::GameEvent(
+                event @ (GameEvent::StartRaining
+                | GameEvent::StopRaining
+                | GameEvent::RainLevelChange(_)
+                | GameEvent::ThunderLevelChange(_)),
+            ) => Some(event),
             _ => None,
         })
         .collect()
@@ -182,4 +200,71 @@ fn moving_the_spawn_fires_spawn_change_with_the_previous_corner_once() {
             .iter()
             .any(|event| matches!(event, ClientEvent::SpawnPosition { .. }))
     );
+}
+
+fn weather_kinds(s: &Scene) -> Vec<(EventKind, bool)> {
+    fired(&s.plugin)
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            EventPayload::WeatherChange(WeatherChange {
+                to_weather_state, ..
+            }) => Some((EventKind::WeatherChange, to_weather_state)),
+            EventPayload::ThunderChange(ThunderChange {
+                to_thunder_state, ..
+            }) => Some((EventKind::ThunderChange, to_thunder_state)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn weather_commands_fire_rain_then_thunder_for_what_changes() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            observe(1, EventKind::WeatherChange),
+            observe(2, EventKind::ThunderChange),
+        ],
+    );
+    console(&mut s, "weather rain");
+    console(&mut s, "weather thunder");
+    console(&mut s, "weather thunder");
+    console(&mut s, "weather clear");
+    assert_eq!(
+        weather_kinds(&s),
+        [
+            (EventKind::WeatherChange, true),
+            (EventKind::ThunderChange, true),
+            (EventKind::WeatherChange, false),
+            (EventKind::ThunderChange, false),
+        ]
+    );
+}
+
+#[test]
+fn a_cancelled_rain_keeps_the_sky_and_the_thunder_is_still_asked() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::WeatherChange),
+            deciding(2, EventKind::ThunderChange),
+        ],
+    );
+    let alice = s.players[0].clone();
+    s.act(Order::World(WorldOrder::SetWeather(
+        rspigot_core::commands::Weather::Thunder,
+    )));
+    assert!(weather_packets(&alice).is_empty());
+    let rain = last_asked(&s.plugin, EventKind::WeatherChange);
+    judge(&mut s.server, 1, rain.id, 1, true, None);
+    assert!(weather_packets(&alice).is_empty());
+    let thunder = last_asked(&s.plugin, EventKind::ThunderChange);
+    judge(&mut s.server, 1, thunder.id, 2, false, None);
+    assert_eq!(
+        weather_packets(&alice),
+        [GameEvent::ThunderLevelChange(1.0)]
+    );
+    let state = world_state(&mut s);
+    assert!(!state.raining);
+    assert!(state.thundering);
 }

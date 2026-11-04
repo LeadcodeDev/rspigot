@@ -87,6 +87,8 @@ WorldInit = "when the server builds its world, before the spawn chunks and befor
 WorldLoad = "once the spawn chunks are ready, before the plugin port opens"
 WorldSave = "before /save-all, the plugin save orders and the autosave write, and at shutdown before the final save while plugins are still connected"
 SpawnChange = "from /setworldspawn and the plugin spawn order, after the change and only when the spawn moves"
+WeatherChange = "from /weather and the plugin weather order when the rain flag changes, before ThunderChange; a cancel keeps the sky and sends nothing, as there is no natural weather cycle or timer"
+ThunderChange = "from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own"
 
 [states]
 ready = [
@@ -102,8 +104,7 @@ ready = [
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
     "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
-    "SheepRegrowWool", "SmithItem", "TabComplete", "ThunderChange",
-    "WeatherChange",
+    "SheepRegrowWool", "SmithItem", "TabComplete",
 ]
 
 [states.blocked]

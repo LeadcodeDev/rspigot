@@ -1,11 +1,12 @@
 use rspigot_domain::{BlockPos, Rotation, Vec3};
 
-use crate::events::ClientEvent;
+use crate::events::{ClientEvent, GameEvent};
 use crate::plugins::decisions::{Continuation, Lane};
 use crate::plugins::events::{
-    SpawnChange, TimeSkip, TimeSkipPatch, TimeSkipReason, WorldInit, WorldLoad, WorldSave,
+    SpawnChange, ThunderChange, TimeSkip, TimeSkipPatch, TimeSkipReason, WeatherChange, WorldInit,
+    WorldLoad, WorldSave,
 };
-use crate::plugins::steps::TimeStep;
+use crate::plugins::steps::{TimeStep, WeatherStep};
 use crate::plugins::{Access, EventKind, EventPayload, Location, Phase};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -128,4 +129,69 @@ impl<L: ClientLink> Server<L> {
             },
         );
     }
+
+    pub(crate) fn change_weather(&mut self, raining: bool, thundering: bool) {
+        let level = &self.world.level;
+        let step = WeatherStep {
+            rain: (level.raining != raining).then_some(raining),
+            thunder: (level.thundering != thundering).then_some(thundering),
+        };
+        let Some(to) = step.rain else {
+            self.change_thunder(step.thunder);
+            return;
+        };
+        self.fire(Lane::World, Continuation::Weather(step), move |server| {
+            Some(EventPayload::WeatherChange(WeatherChange {
+                to_weather_state: to,
+                world: server.world_name(),
+            }))
+        });
+    }
+
+    pub(crate) fn finish_weather(&mut self, step: WeatherStep, cancelled: bool) {
+        if !cancelled
+            && let Some(to) = step.rain
+            && self.world.level.raining != to
+        {
+            self.world.level.raining = to;
+            let start = if to {
+                GameEvent::StartRaining
+            } else {
+                GameEvent::StopRaining
+            };
+            self.push(Audience::All, ClientEvent::GameEvent(start));
+            self.push(
+                Audience::All,
+                ClientEvent::GameEvent(GameEvent::RainLevelChange(level_of(to))),
+            );
+        }
+        self.change_thunder(step.thunder);
+    }
+
+    fn change_thunder(&mut self, to: Option<bool>) {
+        let Some(to) = to else {
+            return;
+        };
+        self.fire(Lane::World, Continuation::Thunder(to), move |server| {
+            Some(EventPayload::ThunderChange(ThunderChange {
+                to_thunder_state: to,
+                world: server.world_name(),
+            }))
+        });
+    }
+
+    pub(crate) fn finish_thunder(&mut self, to: bool, cancelled: bool) {
+        if cancelled || self.world.level.thundering == to {
+            return;
+        }
+        self.world.level.thundering = to;
+        self.push(
+            Audience::All,
+            ClientEvent::GameEvent(GameEvent::ThunderLevelChange(level_of(to))),
+        );
+    }
+}
+
+const fn level_of(on: bool) -> f32 {
+    if on { 1.0 } else { 0.0 }
 }

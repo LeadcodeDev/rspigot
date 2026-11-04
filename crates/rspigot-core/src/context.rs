@@ -19,7 +19,7 @@ use crate::admin::{AdminLists, Ban, BanEntry, IpBanEntry, ListEntry};
 use crate::chunks::{ChunkJob, Priority};
 use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
-use crate::events::{ClientEvent, GameEvent};
+use crate::events::ClientEvent;
 use crate::mobs::ServerRandom;
 use crate::plugins::events::{PlayerTeleportCause, TimeSkipReason};
 use crate::ports::ClientLink;
@@ -418,31 +418,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn set_weather(&mut self, weather: Weather) {
-        let was_raining = self.world.level.raining;
-        self.world.level.raining = weather != Weather::Clear;
-        self.world.level.thundering = weather == Weather::Thunder;
-        if was_raining != self.world.level.raining {
-            let event = if self.world.level.raining {
-                GameEvent::StartRaining
-            } else {
-                GameEvent::StopRaining
-            };
-            self.push(Audience::All, ClientEvent::GameEvent(event));
-        }
-        let rain = if self.world.level.raining { 1.0 } else { 0.0 };
-        let thunder = if self.world.level.thundering {
-            1.0
-        } else {
-            0.0
-        };
-        self.push(
-            Audience::All,
-            ClientEvent::GameEvent(GameEvent::RainLevelChange(rain)),
-        );
-        self.push(
-            Audience::All,
-            ClientEvent::GameEvent(GameEvent::ThunderLevelChange(thunder)),
-        );
+        self.change_weather(weather != Weather::Clear, weather == Weather::Thunder);
     }
 
     fn set_world_spawn(&mut self, pos: BlockPos) {

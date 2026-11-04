@@ -713,6 +713,14 @@ impl<L: ClientLink> Server<L> {
                 }
                 Vec::new()
             }
+            Continuation::Weather(step) => {
+                self.finish_weather(step, cancelled);
+                Vec::new()
+            }
+            Continuation::Thunder(to) => {
+                self.finish_thunder(to, cancelled);
+                Vec::new()
+            }
         }
     }
 

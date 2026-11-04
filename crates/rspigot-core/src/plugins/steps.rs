@@ -412,6 +412,12 @@ pub(crate) struct TimeStep {
     pub(crate) skipped: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WeatherStep {
+    pub(crate) rain: Option<bool>,
+    pub(crate) thunder: Option<bool>,
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -466,6 +472,8 @@ pub(crate) enum Continuation {
     Explode(Box<ExplodeStep>),
     ChunkUnload(ChunkPos),
     TimeSkip(TimeStep),
+    Weather(WeatherStep),
+    Thunder(bool),
 }
 
 impl Continuation {
@@ -519,6 +527,8 @@ impl Continuation {
             Self::Explode(_) => EventKind::BlockExplode,
             Self::ChunkUnload(_) => EventKind::ChunkUnload,
             Self::TimeSkip(_) => EventKind::TimeSkip,
+            Self::Weather(_) => EventKind::WeatherChange,
+            Self::Thunder(_) => EventKind::ThunderChange,
         }
     }
 
