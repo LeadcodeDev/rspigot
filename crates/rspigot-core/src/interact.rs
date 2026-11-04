@@ -5,7 +5,7 @@ use rspigot_domain::entity::living::{self, slot_index};
 use rspigot_domain::entity::reward::max_damage;
 use rspigot_domain::entity::species;
 use rspigot_domain::entity::{Aabb, Entity, EntityState, save};
-use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT};
+use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT, same_item_same_components};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::random::RandomSource;
 use rspigot_domain::text::Component;
@@ -444,17 +444,45 @@ impl<L: ClientLink> Server<L> {
                 mob.can_pick_up_loot = loot;
             }
         }
+        let Some(slot) = self
+            .players
+            .get(&id)
+            .map(|player| hand_slot(hand, player.inventory.selected_hotbar))
+        else {
+            return false;
+        };
         self.spawn_entity(
             child,
             Birth::of(CreatureSpawnReason::SpawnerEgg)
                 .by(id)
-                .then(Spawned::Hatched { player: id, hand }),
+                .then(Spawned::Hatched {
+                    player: id,
+                    slot,
+                    item: stack.clone(),
+                }),
         );
         true
     }
 
-    pub(crate) fn use_spawn_egg(&mut self, id: PlayerId, hand: Hand) {
-        self.consume_held(id, hand, 1);
+    pub(crate) fn use_spawn_egg(&mut self, id: PlayerId, slot: usize, egg: &ItemStack) {
+        if self.infinite_materials(id) {
+            return;
+        }
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        let Some(held) = player.inventory.get(slot) else {
+            return;
+        };
+        if !same_item_same_components(held, egg) {
+            return;
+        }
+        let remaining = held.count.get() - 1;
+        let left = NonZeroU8::new(remaining).map(|count| ItemStack {
+            count,
+            ..held.clone()
+        });
+        player.inventory.set(slot, left);
     }
 
     fn shear_saddle(&mut self, id: PlayerId, target: EntityId, hand: Hand) {

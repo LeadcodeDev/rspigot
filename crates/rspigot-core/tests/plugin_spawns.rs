@@ -529,7 +529,7 @@ fn a_conversion_whose_old_mob_died_meanwhile_brings_no_new_mob() {
     assert_eq!(removals(&s), [(zombie, EntityRemoveCause::Death)]);
 }
 
-fn eggs(s: &mut Scene) -> i32 {
+fn held_count(s: &mut Scene, key: &str) -> i32 {
     let Answer::Inventory(state) = s.ask(Question::Inventory(s.players[0].id)) else {
         panic!("Alice's inventory");
     };
@@ -537,9 +537,13 @@ fn eggs(s: &mut Scene) -> i32 {
         .slots
         .iter()
         .flatten()
-        .filter(|item| item.key == "minecraft:cow_spawn_egg")
+        .filter(|item| item.key == key)
         .map(|item| item.count)
         .sum()
+}
+
+fn eggs(s: &mut Scene) -> i32 {
+    held_count(s, "minecraft:cow_spawn_egg")
 }
 
 #[test]
@@ -583,6 +587,50 @@ fn a_spawn_egg_is_spent_only_when_its_baby_enters_the_world() {
     assert_eq!(eggs(&mut s), 2);
     let egg = use_egg(&mut s);
     rule_on(&mut s.server, 1, egg.id, false, None);
+    assert_eq!(eggs(&mut s), 1);
+    assert_eq!(
+        s.server
+            .entities_of(rspigot_entities::EntityKind::Cow)
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn a_spawn_egg_moved_out_of_its_slot_while_its_baby_waits_is_not_spent() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::CreatureSpawn)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice minecraft:cow_spawn_egg 1");
+    question(
+        &mut s,
+        9_006,
+        Question::Spawn {
+            kind: "minecraft:cow".into(),
+            position: Vec3::new(1.5, 64.0, 1.5),
+        },
+    );
+    let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    let Some(Answer::Spawned(cow)) = answer(&s, 9_006) else {
+        panic!("expected the spawned cow");
+    };
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Interact {
+            target: cow.id,
+            hand: rspigot_core::events::Hand::Main,
+            sneaking: false,
+            location: Vec3::new(0.0, 0.5, 0.0),
+        },
+    );
+    let egg = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    assert_ne!(egg.id, asked.id);
+    console(&mut s, "clear Alice minecraft:cow_spawn_egg");
+    console(&mut s, "give Alice minecraft:stick 1");
+    console(&mut s, "give Alice minecraft:cow_spawn_egg 1");
+    rule_on(&mut s.server, 1, egg.id, false, None);
+    assert_eq!(held_count(&mut s, "minecraft:stick"), 1);
     assert_eq!(eggs(&mut s), 1);
     assert_eq!(
         s.server

@@ -209,9 +209,9 @@ impl<L: ClientLink> Server<L> {
                         .color(rspigot_domain::text::NamedColor::Red),
                 ),
             },
-            Spawned::Hatched { player, hand } => {
+            Spawned::Hatched { player, slot, item } => {
                 if placed.is_some() {
-                    self.use_spawn_egg(player, hand);
+                    self.use_spawn_egg(player, slot, &item);
                 }
             }
             Spawned::Converted { old, event } => self.finish_conversion(old, event),

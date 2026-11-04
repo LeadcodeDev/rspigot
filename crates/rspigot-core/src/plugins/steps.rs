@@ -520,7 +520,8 @@ pub(crate) enum Spawned {
     },
     Hatched {
         player: PlayerId,
-        hand: Hand,
+        slot: usize,
+        item: ItemStack,
     },
     Converted {
         old: EntityId,
