@@ -462,7 +462,8 @@ mod tests {
     use super::*;
     use crate::plugins::events::{
         EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch,
-        PlayerJoin, PlayerMove, PlayerMovePatch,
+        PlayerJoin, PlayerMove, PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch,
+        PlayerRespawnReason, PlayerTeleport, PlayerTeleportCause, PlayerTeleportPatch,
     };
     use crate::plugins::{DamageSourceView, EntityView, Location, PlayerSnapshot};
 
@@ -795,6 +796,88 @@ mod tests {
         );
         let ready = decisions.next_settled(0).expect("the event settles");
         assert_eq!(ready.settlement, Settlement::Applied(None));
+    }
+
+    fn refused_and_dropped(payload: &EventPayload, patching: impl Fn(Location) -> EventPatch) {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let nowhere = location(Vec3::new(f64::NAN, 64.0, 0.0));
+        let elsewhere = location(Vec3::new(10.0, 64.0, 0.0));
+        let kind = payload.kind();
+        for (later, expected) in [
+            (
+                Some(elsewhere.clone()),
+                Settlement::Applied(Some(patching(elsewhere.clone()))),
+            ),
+            (None, Settlement::Applied(None)),
+        ] {
+            let asked = [1, 2]
+                .map(|connection| Asked {
+                    connection,
+                    handler: 1,
+                    kind,
+                })
+                .to_vec();
+            let mut decisions = Decisions::default();
+            decisions.queue(
+                1,
+                Pending::new(alice, payload.clone(), asked, 5, 20, step(alice, at, at)),
+            );
+            let mut heard = Vec::new();
+            for (connection, to) in [(1, Some(nowhere.clone())), (2, later)] {
+                let ruling = Verdict {
+                    handler: 1,
+                    cancel: false,
+                    patch: to.map(&patching),
+                };
+                let (taken, warnings) = decisions.decide(connection, 1, vec![ruling], 0);
+                assert!(matches!(taken, Taken::Counted));
+                heard.push(warnings);
+            }
+            assert_eq!(
+                heard,
+                [
+                    vec![
+                        "patch of event 1 was refused: position NaN 64 0 is outside the world"
+                            .to_owned()
+                    ],
+                    Vec::new(),
+                ],
+                "{kind:?}"
+            );
+            let ready = decisions.next_settled(0).expect("the event settles");
+            assert_eq!(ready.settlement, expected, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_value_in_any_generated_patch_is_dropped_and_never_cancels() {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let respawning = EventPayload::PlayerRespawn(PlayerRespawn {
+            anchor_spawn: false,
+            bed_spawn: false,
+            player: snapshot(alice, at),
+            respawn_location: location(at),
+            respawn_reason: PlayerRespawnReason::Death,
+        });
+        refused_and_dropped(&respawning, |to| {
+            EventPatch::PlayerRespawn(PlayerRespawnPatch {
+                respawn_location: Some(to),
+            })
+        });
+        let teleporting = EventPayload::PlayerTeleport(PlayerTeleport {
+            cause: PlayerTeleportCause::Command,
+            from: location(at),
+            player: snapshot(alice, at),
+            to: Some(location(at)),
+        });
+        refused_and_dropped(&teleporting, |to| {
+            EventPatch::PlayerTeleport(PlayerTeleportPatch {
+                from: None,
+                to: Some(to),
+            })
+        });
     }
 
     #[test]
