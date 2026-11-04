@@ -338,13 +338,14 @@ def simple(name):
 
 
 def number_events(names, deprecated, previous):
-    known = {event["java"]: event["number"] for event in previous.get("events", []) if event.get("number")}
+    recorded = previous.get("events", []) + previous.get("retired", [])
+    known = {event["java"]: event["number"] for event in recorded if event.get("number")}
     numbers = {}
     for name in FIRST:
         if name in names and name not in known:
             known[name] = FIRST.index(name) + 1
     for name, number in known.items():
-        if name in names and name not in deprecated:
+        if name in names:
             numbers[name] = number
     taken = set(known.values())
     following = max(taken, default=0) + 1
@@ -356,6 +357,20 @@ def number_events(names, deprecated, previous):
         numbers[name] = following
         taken.add(following)
     return numbers
+
+
+def retired_events(previous, names):
+    present = set(names)
+    gone = [event for event in previous.get("retired", []) if event["java"] not in present]
+    for event in previous.get("events", []):
+        if event["java"] not in present and event.get("number"):
+            gone.append({
+                "java": event["java"],
+                "name": simple(event["java"]).removesuffix("Event"),
+                "number": event["number"],
+                "fields": event.get("fields", {}),
+            })
+    return sorted(gone, key=lambda event: event["number"])
 
 
 def number_fields(found, previous):
@@ -391,7 +406,7 @@ def build(dump, jar, javap, previous):
     chain = {owner for name in names for owner in superclasses(classes, name)} - {EVENT}
     notes = annotations(javap, jar, chain)
     numbers = number_events(names, flagged, previous)
-    old_fields = {event["java"]: event.get("fields") for event in previous.get("events", [])}
+    old_fields = {event["java"]: event.get("fields") for event in previous.get("events", []) + previous.get("retired", [])}
     events = []
     used = set()
     for name in names:
@@ -407,9 +422,10 @@ def build(dump, jar, javap, previous):
             "parents": [owner for owner in chain_of[1:] if owner != EVENT],
             "registration": registration,
         }
-        if name not in flagged:
+        if name in numbers:
             record["number"] = numbers[name]
             record["fields"] = number_fields(found, old_fields.get(name))
+        if name not in flagged:
             for key in ("getters", "setters", "indexed", "other"):
                 for entry in found[key]:
                     for type_name in entry.get("params", []) + ([entry["type"]] if "type" in entry else []):
@@ -417,7 +433,12 @@ def build(dump, jar, javap, previous):
         record.update(found)
         events.append(record)
     types = {leaf: type_record(classes, leaf) for leaf in sorted(used)}
-    return {"source": JAR_NAME, "events": events, "types": types}
+    catalog = {"source": JAR_NAME, "events": events}
+    retired = retired_events(previous, names)
+    if retired:
+        catalog["retired"] = retired
+    catalog["types"] = types
+    return catalog
 
 
 def main():
