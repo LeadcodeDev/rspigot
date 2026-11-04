@@ -8,7 +8,7 @@ use rspigot_core::plugins::events::{
 };
 use rspigot_core::plugins::{
     Answer, BlockOrder, EffectSpec, EntityOrder, EntityView, EventKind, EventPatch, EventPayload,
-    HandlerSpec, Order, PlayerOrder, PlayerState, Question,
+    HandlerSpec, Order, Phase, PlayerOrder, PlayerState, Question,
 };
 use rspigot_domain::{BlockPos, Vec3};
 
@@ -369,4 +369,86 @@ fn a_shutdown_settles_the_waiting_events_of_an_entity_lane() {
     let settled = settled_for(&plugin, EventKind::EntityPotionEffect);
     assert_eq!(settled.len(), 1);
     assert!(!settled[0].cancelled);
+}
+
+fn flaming_arrow_at(s: &mut Scene, target: &EntityView) {
+    let position = match s.ask(Question::Entity(target.id)) {
+        Answer::Entity(details) => details.entity.position,
+        _ => panic!("expected {target:?}"),
+    };
+    console(
+        s,
+        &format!(
+            "summon minecraft:arrow {} {} {} {{Motion:[0.0,0.0,1.0],Fire:200s}}",
+            position.x,
+            position.y + 0.5,
+            position.z - 3.0
+        ),
+    );
+}
+
+fn combust_by_entity(
+    s: &mut Scene,
+    before: usize,
+) -> rspigot_core::plugins::events::EntityCombustByEntity {
+    for _ in 0..40 {
+        s.tick(1);
+        let asked: Vec<Fired> = fired(&s.plugin)
+            .into_iter()
+            .filter(|event| {
+                event.phase == Phase::Decide
+                    && matches!(event.payload, EventPayload::EntityCombustByEntity(_))
+            })
+            .collect();
+        if asked.len() > before {
+            let EventPayload::EntityCombustByEntity(burn) = &asked[before].payload else {
+                unreachable!();
+            };
+            return burn.clone();
+        }
+    }
+    panic!("no EntityCombustByEntity");
+}
+
+#[test]
+fn a_flaming_arrow_combusts_its_target_by_entity() {
+    let mut s = waiting_scene(vec![
+        deciding(1, EventKind::EntityCombust),
+        observe(2, EventKind::EntityCombustByEntity),
+    ]);
+    stream_chunk_of(&mut s, BlockPos::new(4, 64, 8));
+    console(&mut s, "summon minecraft:cow 4.5 64 8.5 {NoAI:1b}");
+    let id = s.server.entities_of(rspigot_entities::EntityKind::Cow)[0].id;
+    let Answer::Entity(details) = s.ask(Question::Entity(id)) else {
+        panic!("expected the cow");
+    };
+    let cow = details.entity;
+    flaming_arrow_at(&mut s, &cow);
+    let burn = combust_by_entity(&mut s, 0);
+    assert_eq!(burn.entity.id, cow.id);
+    assert_eq!(burn.entity_type, "minecraft:cow");
+    assert_eq!(burn.combuster.kind, "minecraft:arrow");
+    assert_eq!(burn.duration, 5.0);
+    let asked = last_asked(&s.plugin, EventKind::EntityCombustByEntity);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert!(fire_ticks(&mut s, &cow) <= 0);
+    s.tick(20);
+    flaming_arrow_at(&mut s, &cow);
+    combust_by_entity(&mut s, 1);
+    let asked = last_asked(&s.plugin, EventKind::EntityCombustByEntity);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::EntityCombust(EntityCombustPatch {
+            duration: Some(2.0),
+        })),
+    );
+    assert_eq!(fire_ticks(&mut s, &cow), 40);
+    let settled = settled_for(&s.plugin, EventKind::EntityCombustByEntity);
+    assert_eq!(settled.len(), 2);
+    assert!(settled[0].cancelled);
+    assert!(!settled[1].cancelled);
+    assert!(s.warnings().is_empty());
 }
