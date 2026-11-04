@@ -319,10 +319,10 @@ impl<L: ClientLink> Server<L> {
         } = ready;
         match settlement {
             Settlement::Cancelled(written) => {
-                if let Some(written) = written {
+                if let Some(written) = written.clone() {
                     written.settle(&mut payload);
                 }
-                let dropped = self.call_off(then);
+                let dropped = self.call_off(then, written);
                 self.decisions.remember(event, record);
                 self.notify_plugins(event, &payload, true, Phase::Settled);
                 self.notify_undone(dropped, Phase::Settled);
@@ -357,9 +357,9 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn call_off(&mut self, then: Continuation) -> Undone {
-        match then {
-            Continuation::PlayerMove(step) => {
+    fn call_off(&mut self, then: Continuation, written: Option<EventPatch>) -> Undone {
+        match (then, written) {
+            (Continuation::PlayerMove(step), _) => {
                 let dropped = self.decisions.drop_pending(step.player);
                 self.send_back(step.player, step.from);
                 dropped

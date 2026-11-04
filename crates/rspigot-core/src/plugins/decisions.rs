@@ -970,11 +970,15 @@ mod tests {
         }]
     }
 
-    fn deciding(payload: EventPayload, rulings: Vec<Vec<Verdict>>) -> (Decisions, Vec<String>) {
+    fn deciding(
+        payload: EventPayload,
+        connections: u64,
+        rulings: Vec<Vec<Verdict>>,
+    ) -> (Decisions, Vec<String>) {
         let alice = PlayerId::offline("Alice");
         let at = Vec3::new(0.0, 64.0, 0.0);
         let kind = payload.kind();
-        let asked = (1..=rulings.len() as u64)
+        let asked = (1..=connections)
             .map(|connection| Asked {
                 connection,
                 handler: 1,
@@ -996,7 +1000,8 @@ mod tests {
     }
 
     fn settled(payload: EventPayload, rulings: Vec<Vec<Verdict>>) -> (Settlement, Vec<String>) {
-        let (mut decisions, warnings) = deciding(payload, rulings);
+        let connections = rulings.len() as u64;
+        let (mut decisions, warnings) = deciding(payload, connections, rulings);
         let ready = decisions.next_settled(0).expect("every handler answered");
         (ready.settlement, warnings)
     }
@@ -1036,6 +1041,7 @@ mod tests {
         };
         let (mut decisions, warnings) = deciding(
             clicking(alice),
+            2,
             vec![
                 ruling(true, None),
                 ruling(false, Some(result(EventResult::Allow))),
@@ -1101,6 +1107,30 @@ mod tests {
                 Settlement::Applied(None),
                 vec!["patch of event 1 was refused: velocity NaN 0.5 0 is not finite".to_owned()]
             )
+        );
+    }
+
+    #[test]
+    fn a_cancelled_click_keeps_its_direct_writes_and_waits_for_every_handler() {
+        let alice = PlayerId::offline("Alice");
+        let cleared = EventPatch::InventoryClick(InventoryClickPatch {
+            current_item: Some(None),
+            ..InventoryClickPatch::default()
+        });
+        let (mut decisions, warnings) =
+            deciding(clicking(alice), 2, vec![ruling(true, Some(cleared))]);
+        assert!(warnings.is_empty());
+        assert!(decisions.next_settled(0).is_none());
+        let (taken, _) = decisions.decide(2, 1, ruling(false, None), 0);
+        assert!(matches!(taken, Taken::Counted));
+        let ready = decisions.next_settled(0).expect("every handler answered");
+        assert_eq!(
+            ready.settlement,
+            Settlement::Cancelled(Some(EventPatch::InventoryClick(InventoryClickPatch {
+                current_item: Some(None),
+                cursor: None,
+                result: Some(EventResult::Deny),
+            })))
         );
     }
 
