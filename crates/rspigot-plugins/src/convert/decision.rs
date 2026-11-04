@@ -38,7 +38,7 @@ fn convert(event: u64, verdict: v1::Verdict, warnings: &mut Vec<String>) -> Verd
 
 #[cfg(test)]
 mod tests {
-    use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMovePatch};
+    use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMovePatch, PotionSplashPatch};
     use rspigot_core::plugins::{EntityView, EventPatch, Location};
     use rspigot_domain::{EntityId, Rotation, Vec3};
     use rspigot_plugin_protocol::v1::{from_plugin, patch};
@@ -158,6 +158,57 @@ mod tests {
             }
         );
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn an_indexed_patch_converts_each_entity_and_its_value() {
+        let splash = |entries| {
+            vec![v1::Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(v1::Patch {
+                    change: Some(patch::Change::PotionSplash(v1::PotionSplashPatch {
+                        intensities: entries,
+                    })),
+                }),
+            }]
+        };
+        let mut warnings = Vec::new();
+        let FromPlugin::Decision { verdicts, .. } = decide(
+            splash(vec![v1::EntitySnapshotDoubleEntry {
+                key: Some(zombie()),
+                value: 0.25,
+            }]),
+            &mut warnings,
+        ) else {
+            panic!("expected a decision");
+        };
+        assert!(warnings.is_empty());
+        assert_eq!(
+            verdicts[0].patch,
+            Some(EventPatch::PotionSplash(PotionSplashPatch {
+                intensities: vec![(
+                    EntityView {
+                        id: EntityId(4),
+                        uuid: Uuid::from_u128(4),
+                        kind: "minecraft:zombie".to_owned(),
+                        position: Vec3::new(0.0, 64.0, 0.0),
+                    },
+                    0.25
+                )],
+            }))
+        );
+        decide(
+            splash(vec![v1::EntitySnapshotDoubleEntry {
+                key: None,
+                value: 0.25,
+            }]),
+            &mut warnings,
+        );
+        assert_eq!(
+            warnings,
+            ["patch of handler 1 for event 7 was dropped: the message carries nothing"]
+        );
     }
 
     #[test]

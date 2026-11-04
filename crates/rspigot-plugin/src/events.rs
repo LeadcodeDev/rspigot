@@ -15384,10 +15384,12 @@ pub struct PotionSplash {
     affected_entities: Vec<Entity>,
     entity: Entity,
     entity_type: EntityType,
+    intensities: Vec<(Entity, f64)>,
     hit_block: Option<Block>,
     hit_block_face: Option<Face>,
     hit_entity: Option<Entity>,
     potion: Entity,
+    patch: v1::PotionSplashPatch,
 }
 
 impl PotionSplash {
@@ -15403,6 +15405,16 @@ impl PotionSplash {
                 .collect::<Result<Vec<_>, _>>()?,
             entity: Entity::from_wire(required(message.entity, "entity")?, link)?,
             entity_type: entity_type(message.entity_type)?,
+            intensities: message
+                .intensities
+                .into_iter()
+                .map(|entry| {
+                    Ok((
+                        Entity::from_wire(required(entry.key, "intensities")?, link)?,
+                        entry.value,
+                    ))
+                })
+                .collect::<Result<Vec<_>, Error>>()?,
             hit_block: message.hit_block.map(|value| block(value, link)),
             hit_block_face: message.hit_block_face.map(Face::from_wire).transpose()?,
             hit_entity: message
@@ -15410,6 +15422,7 @@ impl PotionSplash {
                 .map(|value| Entity::from_wire(value, link))
                 .transpose()?,
             potion: Entity::from_wire(required(message.potion, "potion")?, link)?,
+            patch: v1::PotionSplashPatch::default(),
         })
     }
 
@@ -15429,6 +15442,14 @@ impl PotionSplash {
         self.entity_type
     }
 
+    pub fn intensity(&self, key: &Entity) -> f64 {
+        self.intensities
+            .iter()
+            .find(|(known, _)| known.entity_id == key.entity_id)
+            .map(|(_, value)| *value)
+            .unwrap_or_default()
+    }
+
     pub fn hit_block(&self) -> Option<&Block> {
         self.hit_block.as_ref()
     }
@@ -15443,6 +15464,30 @@ impl PotionSplash {
 
     pub fn potion(&self) -> &Entity {
         &self.potion
+    }
+
+    pub fn set_intensity(&mut self, key: &Entity, value: f64) {
+        let entry = v1::EntitySnapshotDoubleEntry {
+            key: Some(key.to_wire()),
+            value,
+        };
+        match self.patch.intensities.iter_mut().find(|known| {
+            known
+                .key
+                .as_ref()
+                .is_some_and(|known| known.entity_id == key.entity_id)
+        }) {
+            Some(known) => *known = entry,
+            None => self.patch.intensities.push(entry),
+        }
+        match self
+            .intensities
+            .iter_mut()
+            .find(|(known, _)| known.entity_id == key.entity_id)
+        {
+            Some((_, known)) => *known = value,
+            None => self.intensities.push((key.clone(), value)),
+        }
     }
 
     pub const fn cancel(&mut self) {
@@ -15462,7 +15507,11 @@ impl From<PotionSplash> for Verdict {
     fn from(event: PotionSplash) -> Self {
         Self {
             cancel: event.cancelled,
-            patch: None,
+            patch: (event.patch != v1::PotionSplashPatch::default()).then(|| {
+                Box::new(v1::Patch {
+                    change: Some(patch::Change::PotionSplash(event.patch)),
+                })
+            }),
         }
     }
 }

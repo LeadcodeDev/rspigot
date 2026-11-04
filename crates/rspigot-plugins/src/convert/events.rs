@@ -33,14 +33,14 @@ use rspigot_core::plugins::events::{
     PlayerPortalPatch, PlayerRecipeBookClickPatch, PlayerRecipeBookSettingsChangeRecipeBookType,
     PlayerRespawnPatch, PlayerRespawnReason, PlayerSignOpenCause, PlayerSpawnChangeCause,
     PlayerSpawnChangePatch, PlayerSwapHandItemsPatch, PlayerTeleportCause, PlayerTeleportPatch,
-    PlayerVelocityPatch, PortalCreateReason, Pose, PrepareAnvilPatch, PrepareGrindstonePatch,
-    PrepareItemCraftPatch, PrepareSmithingPatch, RaidStopReason, RemoteServerCommandPatch,
-    ResourcePackStatus, SculkBloomPatch, ServerCommandPatch, ServerListPingPatch, ServerLoadType,
-    SheepDyeWoolPatch, Side, SignChangePatch, SmithItemPatch, SpellcasterSpell, Statistic,
-    TNTPrimeCause, TabCompletePatch, TimeSkipPatch, TimeSkipReason, TradeSelectPatch, TreeType,
-    VaultDisplayItemPatch, VehicleDamagePatch, VehicleEntityCollisionPatch,
-    VillagerAcquireTradePatch, VillagerCareerChangePatch, VillagerCareerChangeReason,
-    VillagerReplenishTradePatch, VillagerReputationChangePatch,
+    PlayerVelocityPatch, PortalCreateReason, Pose, PotionSplashPatch, PrepareAnvilPatch,
+    PrepareGrindstonePatch, PrepareItemCraftPatch, PrepareSmithingPatch, RaidStopReason,
+    RemoteServerCommandPatch, ResourcePackStatus, SculkBloomPatch, ServerCommandPatch,
+    ServerListPingPatch, ServerLoadType, SheepDyeWoolPatch, Side, SignChangePatch, SmithItemPatch,
+    SpellcasterSpell, Statistic, TNTPrimeCause, TabCompletePatch, TimeSkipPatch, TimeSkipReason,
+    TradeSelectPatch, TreeType, VaultDisplayItemPatch, VehicleDamagePatch,
+    VehicleEntityCollisionPatch, VillagerAcquireTradePatch, VillagerCareerChangePatch,
+    VillagerCareerChangeReason, VillagerReplenishTradePatch, VillagerReputationChangePatch,
 };
 use rspigot_plugin_protocol::v1::{self, event, patch};
 
@@ -1799,6 +1799,14 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
                 .collect(),
             entity: Some(entity::wire_view(event.entity)),
             entity_type: event.entity_type,
+            intensities: event
+                .intensities
+                .into_iter()
+                .map(|(key, value)| v1::EntitySnapshotDoubleEntry {
+                    key: Some(entity::wire_view(key)),
+                    value,
+                })
+                .collect(),
             hit_block: event.hit_block.map(shared::wire_block_pos),
             hit_block_face: event.hit_block_face.map(|value| face_to_wire(value) as i32),
             hit_entity: event.hit_entity.map(entity::wire_view),
@@ -2624,6 +2632,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         }),
         patch::Change::PlayerVelocity(patch) => EventPatch::PlayerVelocity(PlayerVelocityPatch {
             velocity: patch.velocity.map(shared::vec3),
+        }),
+        patch::Change::PotionSplash(patch) => EventPatch::PotionSplash(PotionSplashPatch {
+            intensities: patch
+                .intensities
+                .into_iter()
+                .map(|entry| Ok((entity::view(shared::required(entry.key)?)?, entry.value)))
+                .collect::<Result<Vec<_>, Malformed>>()?,
         }),
         patch::Change::PrepareAnvil(patch) => EventPatch::PrepareAnvil(PrepareAnvilPatch {
             result: patch.result.map(|wrapped| wrapped.value.map(shared::item)),

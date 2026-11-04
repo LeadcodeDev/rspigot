@@ -61,6 +61,7 @@ enum VillagerCareerChangeReason { VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED = 0;
 
 message BlockPosList { repeated BlockPos values = 1; }
 message CommandSenderList { repeated CommandSender values = 1; }
+message EntitySnapshotDoubleEntry { EntitySnapshot key = 1; double value = 2; }
 message EntitySnapshotList { repeated EntitySnapshot values = 1; }
 message ItemList { repeated Item values = 1; }
 message NullableBlockPos { BlockPos value = 1; }
@@ -366,7 +367,8 @@ message PlayerVelocityPatch { Vec3 velocity = 2; }
 message PluginDisable { PluginInfo plugin = 1; }
 message PluginEnable { PluginInfo plugin = 1; }
 message PortalCreate { repeated BlockSnapshot blocks = 1; EntitySnapshot entity = 2; PortalCreateReason reason = 3; string world = 4; }
-message PotionSplash { repeated EntitySnapshot affected_entities = 1; EntitySnapshot entity = 2; string entity_type = 3; BlockPos hit_block = 5; optional Face hit_block_face = 6; EntitySnapshot hit_entity = 7; EntitySnapshot potion = 9; }
+message PotionSplash { repeated EntitySnapshot affected_entities = 1; EntitySnapshot entity = 2; string entity_type = 3; repeated EntitySnapshotDoubleEntry intensities = 4; BlockPos hit_block = 5; optional Face hit_block_face = 6; EntitySnapshot hit_entity = 7; EntitySnapshot potion = 9; }
+message PotionSplashPatch { repeated EntitySnapshotDoubleEntry intensities = 4; }
 message PrepareAnvil { InventoryRef inventory = 1; Item result = 2; InventoryView view = 3; repeated PlayerSnapshot viewers = 4; }
 message PrepareAnvilPatch { NullableItem result = 2; }
 message PrepareGrindstone { InventoryRef inventory = 1; Item result = 2; InventoryView view = 3; repeated PlayerSnapshot viewers = 4; }
@@ -791,6 +793,7 @@ message Patch {
     PlayerSwapHandItemsPatch player_swap_hand_items = 202;
     PlayerTeleportPatch player_teleport = 204;
     PlayerVelocityPatch player_velocity = 210;
+    PotionSplashPatch potion_splash = 214;
     PrepareAnvilPatch prepare_anvil = 215;
     PrepareGrindstonePatch prepare_grindstone = 216;
     PrepareItemCraftPatch prepare_item_craft = 218;

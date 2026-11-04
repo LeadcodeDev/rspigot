@@ -24,7 +24,7 @@ use crate::plugins::SignData;
 use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
-use crate::plugins::patch::{location_refusal, number_refusal, vector_refusal};
+use crate::plugins::patch::{location_refusal, merge_indexed, number_refusal, vector_refusal};
 use rspigot_domain::BlockPos;
 use rspigot_domain::Vec3;
 use rspigot_domain::player::GameMode;
@@ -4168,6 +4168,7 @@ pub struct PotionSplash {
     pub affected_entities: Vec<EntityView>,
     pub entity: EntityView,
     pub entity_type: String,
+    pub intensities: Vec<(EntityView, f64)>,
     pub hit_block: Option<BlockPos>,
     pub hit_block_face: Option<Face>,
     pub hit_entity: Option<EntityView>,
@@ -6731,6 +6732,29 @@ impl PlayerVelocityPatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct PotionSplashPatch {
+    pub intensities: Vec<(EntityView, f64)>,
+}
+
+impl PotionSplashPatch {
+    fn then(self, later: Self) -> Self {
+        Self {
+            intensities: merge_indexed(self.intensities, later.intensities),
+        }
+    }
+
+    fn settle(self, event: &mut PotionSplash) {
+        event.intensities = merge_indexed(std::mem::take(&mut event.intensities), self.intensities);
+    }
+
+    fn refusal(&self) -> Option<String> {
+        self.intensities
+            .iter()
+            .find_map(|(_, value)| number_refusal("intensities", *value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PrepareAnvilPatch {
     pub result: Option<Option<ItemSpec>>,
 }
@@ -7801,6 +7825,7 @@ pub enum EventPatch {
     PlayerSwapHandItems(PlayerSwapHandItemsPatch),
     PlayerTeleport(PlayerTeleportPatch),
     PlayerVelocity(PlayerVelocityPatch),
+    PotionSplash(PotionSplashPatch),
     PrepareAnvil(PrepareAnvilPatch),
     PrepareGrindstone(PrepareGrindstonePatch),
     PrepareItemCraft(PrepareItemCraftPatch),
@@ -7921,6 +7946,7 @@ impl EventPatch {
             Self::PlayerSwapHandItems(_) => EventKind::PlayerSwapHandItems,
             Self::PlayerTeleport(_) => EventKind::PlayerTeleport,
             Self::PlayerVelocity(_) => EventKind::PlayerVelocity,
+            Self::PotionSplash(_) => EventKind::PotionSplash,
             Self::PrepareAnvil(_) => EventKind::PrepareAnvil,
             Self::PrepareGrindstone(_) => EventKind::PrepareGrindstone,
             Self::PrepareItemCraft(_) => EventKind::PrepareItemCraft,
@@ -8227,6 +8253,9 @@ impl EventPatch {
             (Self::PlayerVelocity(earlier), Self::PlayerVelocity(later)) => {
                 Self::PlayerVelocity(earlier.then(later))
             }
+            (Self::PotionSplash(earlier), Self::PotionSplash(later)) => {
+                Self::PotionSplash(earlier.then(later))
+            }
             (Self::PrepareAnvil(earlier), Self::PrepareAnvil(later)) => {
                 Self::PrepareAnvil(earlier.then(later))
             }
@@ -8502,6 +8531,7 @@ impl EventPatch {
             (Self::PlayerVelocity(patch), EventPayload::PlayerVelocity(event)) => {
                 patch.settle(event)
             }
+            (Self::PotionSplash(patch), EventPayload::PotionSplash(event)) => patch.settle(event),
             (Self::PrepareAnvil(patch), EventPayload::PrepareAnvil(event)) => patch.settle(event),
             (Self::PrepareGrindstone(patch), EventPayload::PrepareGrindstone(event)) => {
                 patch.settle(event)
@@ -8622,6 +8652,7 @@ impl EventPatch {
             Self::PlayerSpawnChange(patch) => patch.refusal(),
             Self::PlayerTeleport(patch) => patch.refusal(),
             Self::PlayerVelocity(patch) => patch.refusal(),
+            Self::PotionSplash(patch) => patch.refusal(),
             Self::VehicleDamage(patch) => patch.refusal(),
             _ => None,
         }
@@ -8739,6 +8770,7 @@ impl EventPatch {
             (patch @ Self::PlayerSwapHandItems(_), EventKind::PlayerSwapHandItems) => Some(patch),
             (patch @ Self::PlayerTeleport(_), EventKind::PlayerTeleport) => Some(patch),
             (patch @ Self::PlayerVelocity(_), EventKind::PlayerVelocity) => Some(patch),
+            (patch @ Self::PotionSplash(_), EventKind::PotionSplash) => Some(patch),
             (patch @ Self::PrepareAnvil(_), EventKind::PrepareAnvil) => Some(patch),
             (patch @ Self::PrepareGrindstone(_), EventKind::PrepareGrindstone) => Some(patch),
             (patch @ Self::PrepareItemCraft(_), EventKind::PrepareItemCraft) => Some(patch),
