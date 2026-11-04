@@ -8,6 +8,7 @@ use crate::BoundingBox;
 use crate::ChunkRef;
 use crate::CommandSender;
 use crate::DamageSource;
+use crate::DroppedItem;
 use crate::Effect;
 use crate::EffectType;
 use crate::EnchantOffer;
@@ -2689,7 +2690,7 @@ pub struct BlockDropItem {
     rolled_back: bool,
     block: Block,
     block_state: BlockSnapshot,
-    items: Vec<Entity>,
+    items: Vec<DroppedItem>,
     player: Player,
     patch: v1::BlockDropItemPatch,
 }
@@ -2708,7 +2709,7 @@ impl BlockDropItem {
             items: message
                 .items
                 .into_iter()
-                .map(|value| Entity::from_wire(value, link))
+                .map(|value| DroppedItem::from_wire(value, link))
                 .collect::<Result<Vec<_>, _>>()?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
             patch: v1::BlockDropItemPatch::default(),
@@ -2727,7 +2728,7 @@ impl BlockDropItem {
         &self.block_state
     }
 
-    pub fn items(&self) -> &[Entity] {
+    pub fn items(&self) -> &[DroppedItem] {
         &self.items
     }
 
@@ -2735,8 +2736,8 @@ impl BlockDropItem {
         &self.player
     }
 
-    pub fn set_items(&mut self, value: Vec<Entity>) {
-        self.patch.items = Some(v1::EntitySnapshotList {
+    pub fn set_items(&mut self, value: Vec<DroppedItem>) {
+        self.patch.items = Some(v1::DroppedItemList {
             values: value.iter().map(|value| value.to_wire()).collect(),
         });
         self.items = value;

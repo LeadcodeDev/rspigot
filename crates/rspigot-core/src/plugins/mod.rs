@@ -39,9 +39,10 @@ use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
 pub use contract::{
-    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, EnchantOffer, HolderRef,
-    Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location, LootContext,
-    MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade, TrialSpawnerData,
+    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
+    HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
+    LootContext, MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade,
+    TrialSpawnerData,
 };
 pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
 pub(crate) use digging::Mining;

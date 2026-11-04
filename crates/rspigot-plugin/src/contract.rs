@@ -352,6 +352,28 @@ impl LecternData {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DroppedItem {
+    pub entity: Entity,
+    pub item: ItemStack,
+}
+
+impl DroppedItem {
+    pub(crate) fn from_wire(dropped: v1::DroppedItem, link: &Link) -> Result<Self, Error> {
+        Ok(Self {
+            entity: Entity::from_wire(required(dropped.entity, "entity")?, link)?,
+            item: ItemStack::from_wire(required(dropped.item, "item")?)?,
+        })
+    }
+
+    pub(crate) fn to_wire(&self) -> v1::DroppedItem {
+        v1::DroppedItem {
+            entity: Some(self.entity.to_wire()),
+            item: Some(self.item.to_wire()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignData {
     pub pos: BlockPos,

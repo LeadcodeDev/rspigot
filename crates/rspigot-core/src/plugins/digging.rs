@@ -4,7 +4,7 @@ use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 use rspigot_items::ItemKind;
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 use uuid::Uuid;
 
 use crate::events::{ClientEvent, Direction};
@@ -19,7 +19,9 @@ use crate::plugins::events::{
 use crate::plugins::steps::{
     AbortStep, Announced, BreakStep, DamageStep, DropItemsStep, FinishStep,
 };
-use crate::plugins::{EntityView, EventPayload, ItemSpec, spec_of};
+use crate::plugins::{
+    DroppedItem, EntityView, EventKind, EventPayload, ItemSpec, spec_of, stack_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -375,22 +377,31 @@ impl<L: ClientLink> Server<L> {
             .into_iter()
             .map(|stack| (self.block_drop_launch(pos), stack))
             .collect();
-        let handles: Vec<(EntityId, Uuid, Vec3)> = drops
-            .iter()
-            .map(|(launch, _)| (launch.base.id, launch.base.uuid, launch.base.position))
-            .collect();
+        let handles: Option<Vec<(EntityId, Uuid, Vec3, ItemStack)>> =
+            self.listened(EventKind::BlockDropItem).then(|| {
+                drops
+                    .iter()
+                    .map(|(launch, stack)| {
+                        let base = &launch.base;
+                        (base.id, base.uuid, base.position, stack.clone())
+                    })
+                    .collect()
+            });
         let step = DropItemsStep { pos, drops, exp };
         self.fire(id, Continuation::DropItems(Box::new(step)), move |server| {
             Some(EventPayload::BlockDropItem(BlockDropItem {
                 block: pos,
                 block_state: snapshot_of(pos, state),
-                items: handles
+                items: handles?
                     .into_iter()
-                    .map(|(id, uuid, position)| EntityView {
-                        id,
-                        uuid,
-                        kind: Kind::Item.name().to_owned(),
-                        position,
+                    .map(|(id, uuid, position, stack)| DroppedItem {
+                        entity: EntityView {
+                            id,
+                            uuid,
+                            kind: Kind::Item.name().to_owned(),
+                            position,
+                        },
+                        item: spec_of(&stack),
                     })
                     .collect(),
                 player: server.snapshot_of(id)?,
@@ -405,14 +416,21 @@ impl<L: ClientLink> Server<L> {
         patch: BlockDropItemPatch,
     ) {
         if !cancelled {
-            let kept: Option<FxHashSet<_>> = patch
-                .items
-                .map(|items| items.into_iter().map(|item| item.id).collect());
+            let kept: Option<FxHashMap<EntityId, ItemSpec>> = patch.items.map(|items| {
+                items
+                    .into_iter()
+                    .map(|dropped| (dropped.entity.id, dropped.item))
+                    .collect()
+            });
             for (launch, stack) in step.drops {
-                let wanted = kept
-                    .as_ref()
-                    .is_none_or(|kept| kept.contains(&launch.base.id));
-                if wanted && self.world.chunks.is_loaded(launch.base.position.chunk()) {
+                let settled = match kept.as_ref().map(|kept| kept.get(&launch.base.id)) {
+                    None => Some(stack),
+                    Some(None) => None,
+                    Some(Some(spec)) => stack_of(spec).unwrap_or(Some(stack)),
+                };
+                if let Some(stack) = settled
+                    && self.world.chunks.is_loaded(launch.base.position.chunk())
+                {
                     self.drop_launched(launch, stack);
                 }
             }

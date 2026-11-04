@@ -132,7 +132,8 @@ fn mining_a_block_fires_damage_break_and_drop_in_order() {
     assert_eq!(dropped.block, DIRT);
     assert_eq!(dropped.block_state.state.kind, "minecraft:dirt");
     assert_eq!(dropped.items.len(), 1);
-    assert_eq!(dropped.items[0].kind, "minecraft:item");
+    assert_eq!(dropped.items[0].entity.kind, "minecraft:item");
+    assert_eq!(dropped.items[0].item, ItemSpec::of("minecraft:dirt", 1));
     assert_eq!(kind_at(&mut s, DIRT), "minecraft:air");
     assert_eq!(s.server.items_on_ground(), 1);
 }
@@ -468,4 +469,30 @@ fn a_block_without_drops_still_fires_an_empty_drop_event() {
     let dropped = drop_of(&settled_for(&s.plugin, EventKind::BlockDropItem)[0]);
     assert!(dropped.items.is_empty());
     assert_eq!(s.server.items_on_ground(), 0);
+}
+
+#[test]
+fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
+    let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockDropItem)]);
+    mine(&mut s, &alice, DIRT);
+    let asked = last_asked(&s.plugin, EventKind::BlockDropItem);
+    let mut kept = drop_of(&asked).items;
+    assert_eq!(kept.len(), 1);
+    kept[0].item = ItemSpec::of("minecraft:diamond", 3);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::BlockDropItem(BlockDropItemPatch {
+            items: Some(kept),
+        })),
+    );
+    let thrown: Vec<String> = s
+        .server
+        .ground_items()
+        .iter()
+        .filter_map(|(_, stack)| Some(format!("{} {}", stack.item.kind()?.name(), stack.count)))
+        .collect();
+    assert_eq!(thrown, ["minecraft:diamond 3"]);
 }

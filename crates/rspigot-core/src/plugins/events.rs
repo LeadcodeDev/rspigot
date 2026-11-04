@@ -4,6 +4,7 @@ use crate::plugins::BookMeta;
 use crate::plugins::BoundingBox;
 use crate::plugins::ChunkRef;
 use crate::plugins::DamageSourceView;
+use crate::plugins::DroppedItem;
 use crate::plugins::EffectSpec;
 use crate::plugins::EnchantOffer;
 use crate::plugins::EntityView;
@@ -2699,7 +2700,7 @@ pub struct BlockDispenseLoot {
 pub struct BlockDropItem {
     pub block: BlockPos,
     pub block_state: BlockSnapshot,
-    pub items: Vec<EntityView>,
+    pub items: Vec<DroppedItem>,
     pub player: PlayerSnapshot,
 }
 
@@ -4781,7 +4782,7 @@ impl BlockDispenseLootPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockDropItemPatch {
-    pub items: Option<Vec<EntityView>>,
+    pub items: Option<Vec<DroppedItem>>,
 }
 
 impl BlockDropItemPatch {

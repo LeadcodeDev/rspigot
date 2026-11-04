@@ -305,6 +305,14 @@ pub struct LecternData {
     pub page: i32,
 }
 #[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DroppedItem {
+    #[prost(message, optional, tag = "1")]
+    pub entity: ::core::option::Option<EntitySnapshot>,
+    #[prost(message, optional, tag = "2")]
+    pub item: ::core::option::Option<Item>,
+}
+#[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SignData {
     #[prost(message, optional, tag = "1")]
@@ -486,17 +494,17 @@ pub struct CommandSenderList {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DroppedItemList {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<DroppedItem>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntitySnapshotDoubleEntry {
     #[prost(message, optional, tag = "1")]
     pub key: ::core::option::Option<EntitySnapshot>,
     #[prost(double, tag = "2")]
     pub value: f64,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EntitySnapshotList {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<EntitySnapshot>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -956,7 +964,7 @@ pub struct BlockDropItem {
     #[prost(message, optional, tag = "2")]
     pub block_state: ::core::option::Option<BlockSnapshot>,
     #[prost(message, repeated, tag = "3")]
-    pub items: ::prost::alloc::vec::Vec<EntitySnapshot>,
+    pub items: ::prost::alloc::vec::Vec<DroppedItem>,
     #[prost(message, optional, tag = "4")]
     pub player: ::core::option::Option<PlayerSnapshot>,
 }
@@ -964,7 +972,7 @@ pub struct BlockDropItem {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockDropItemPatch {
     #[prost(message, optional, tag = "3")]
-    pub items: ::core::option::Option<EntitySnapshotList>,
+    pub items: ::core::option::Option<DroppedItemList>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]

@@ -23,9 +23,10 @@ mod world;
 pub use block::{Block, BlockPos, BlockState};
 pub use color::Color;
 pub use contract::{
-    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, CommandSender, DamageSource, EnchantOffer,
-    HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
-    LootContext, MerchantRef, OwnerRef, PluginInfo, SignData, SpawnerData, Trade, TrialSpawnerData,
+    BlockSnapshot, BookMeta, BoundingBox, ChunkRef, CommandSender, DamageSource, DroppedItem,
+    EnchantOffer, HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData,
+    Location, LootContext, MerchantRef, OwnerRef, PluginInfo, SignData, SpawnerData, Trade,
+    TrialSpawnerData,
 };
 pub use custom_inventory::{CustomInventory, CustomInventoryState};
 pub use effect::Effect;

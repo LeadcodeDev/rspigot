@@ -309,6 +309,7 @@ MAPS = {
         "shared::enchant({})", "enchant({})", "enchant_to_wire({})", sdk_copy=True,
         sdk_uses=("crate::Enchantment", "crate::wire::enchant", "crate::wire::enchant_to_wire"),
     ),
+    "java.util.List<org.bukkit.entity.Item>": contract("DroppedItem", "DroppedItem"),
     "java.util.Map<java.lang.Integer, org.bukkit.inventory.ItemStack>": message(
         "slot", "Slot", "(i32, ItemSpec)", "(i32, ItemStack)", "shared::wire_slot({})", "shared::slot({})",
         "slot({})", "slot_to_wire({})", host_in_try=True, sdk_copy=False,

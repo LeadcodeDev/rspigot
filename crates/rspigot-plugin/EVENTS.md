@@ -29,7 +29,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `BlockDispenseEvent` | `BlockDispense` | yes | `set_item`, `set_velocity` | `BlockDispenseArmor` | not fired yet: needs redstone (#55) |
 | `BlockDispenseArmorEvent` | `BlockDispenseArmor` | yes | `set_item`, `set_velocity` | - | not fired yet: needs redstone (#55) |
 | `BlockDispenseLootEvent` | `BlockDispenseLoot` | yes | `set_dispensed_loot` | - | not fired yet: needs redstone (#55) |
-| `BlockDropItemEvent` | `BlockDropItem` | yes | `set_items` | - | fired: after every break that keeps its drops, also when empty; the items are the handles of the item entities it will spawn |
+| `BlockDropItemEvent` | `BlockDropItem` | yes | `set_items` | - | fired: after every break that keeps its drops, also when empty; each item carries the handle of the item entity it will spawn and its stack, which a deciding handler may replace while keeping a subset; velocity and pickup delay are not exposed |
 | `BlockExpEvent` | `BlockExp` | no | `set_exp_to_drop` | `BlockBreak`, `FurnaceExtract` | fired: the experience a furnace kept when its block entity goes, one event per recipe used, also for 0 |
 | `BlockExplodeEvent` | `BlockExplode` | yes | `set_block_list`, `set_yield` | - | fired: explosions without a source entity or a causing entity, today the plugin explosion order; the block list patch replaces the blocks to destroy |
 | `BlockFadeEvent` | `BlockFade` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |

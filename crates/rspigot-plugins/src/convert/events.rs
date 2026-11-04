@@ -455,7 +455,11 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
         EventPayload::BlockDropItem(event) => event::Payload::BlockDropItem(v1::BlockDropItem {
             block: Some(shared::wire_block_pos(event.block)),
             block_state: Some(contract::wire_block_snapshot(event.block_state)),
-            items: event.items.into_iter().map(entity::wire_view).collect(),
+            items: event
+                .items
+                .into_iter()
+                .map(contract::wire_dropped_item)
+                .collect(),
             player: Some(player::wire_player(event.player)),
         }),
         EventPayload::BlockExp(event) => event::Payload::BlockExp(v1::BlockExp {
@@ -2209,7 +2213,7 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 .map(|list| {
                     list.values
                         .into_iter()
-                        .map(entity::view)
+                        .map(contract::dropped_item)
                         .collect::<Result<Vec<_>, _>>()
                 })
                 .transpose()?,

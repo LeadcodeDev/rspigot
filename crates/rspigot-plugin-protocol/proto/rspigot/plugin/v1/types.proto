@@ -31,6 +31,7 @@ message Input { bool forward = 1; bool backward = 2; bool left = 3; bool right =
 message SpawnerData { BlockPos pos = 1; optional string spawned = 2; int32 delay = 3; }
 message TrialSpawnerData { BlockPos pos = 1; bool ominous = 2; }
 message LecternData { BlockPos pos = 1; Item book = 2; int32 page = 3; }
+message DroppedItem { EntitySnapshot entity = 1; Item item = 2; }
 message SignData { BlockPos pos = 1; repeated string front = 2; repeated string back = 3; bool waxed = 4; }
 message EnchantOffer { string enchantment = 1; int32 level = 2; int32 cost = 3; }
 message OwnerRef { oneof owner { PlayerSnapshot player = 1; EntitySnapshot entity = 2; string offline = 3; } }

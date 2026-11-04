@@ -118,6 +118,12 @@ pub struct LecternData {
     pub page: i32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DroppedItem {
+    pub entity: EntityView,
+    pub item: ItemSpec,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignData {
     pub pos: BlockPos,

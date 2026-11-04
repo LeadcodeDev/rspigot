@@ -2,10 +2,10 @@ use prost::Message;
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::{
     Access, BlockPos, BlockPosList, BlockSnapshot, BlockState, BookMeta, BoundingBox, ChunkRef,
-    ClickKind, CommandSender, CommandSenderList, DamageSource, Decision, Effect, Empty, Enchant,
-    EnchantOffer, EntityDamageByEntity, EntityDamageCause, EntitySnapshot, EntitySnapshotList,
-    EntityTargetPatch, Event, EventKind, EventResult, ExplosionResult, FromPlugin, GameMode,
-    Handler, Hello, HolderRef, Input, InventoryAction, InventoryClick, InventoryRef,
+    ClickKind, CommandSender, CommandSenderList, DamageSource, Decision, DroppedItem,
+    DroppedItemList, Effect, Empty, Enchant, EnchantOffer, EntityDamageByEntity, EntityDamageCause,
+    EntitySnapshot, EntityTargetPatch, Event, EventKind, EventResult, ExplosionResult, FromPlugin,
+    GameMode, Handler, Hello, HolderRef, Input, InventoryAction, InventoryClick, InventoryRef,
     InventoryTypeSlotType, InventoryView, Item, ItemList, LecternData, Location, LootContext,
     MerchantRef, NullableBlockPos, NullableEntitySnapshot, NullableInventoryRef, NullableItem,
     NullableLocation, NullableString, OwnerRef, Patch, Phase, PlayerDeath, PlayerDeathPatch,
@@ -482,8 +482,15 @@ fn every_wrapper_of_a_patch_survives_encoding() {
             sender: Some(command_sender::Sender::Console(Empty {})),
         }],
     });
-    round_trips(&EntitySnapshotList {
-        values: vec![zombie()],
+    round_trips(&DroppedItemList {
+        values: vec![DroppedItem {
+            entity: Some(zombie()),
+            item: Some(Item {
+                key: "minecraft:dirt".to_owned(),
+                count: 1,
+                ..Item::default()
+            }),
+        }],
     });
     round_trips(&PlayerSnapshotList {
         values: vec![steve()],
