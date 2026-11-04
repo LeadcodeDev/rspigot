@@ -57,6 +57,7 @@ use uuid::Uuid;
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
+pub(crate) use broadcast::Broadcasts;
 pub(crate) use burning::Combuster;
 pub use contract::{
     BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
@@ -315,6 +316,7 @@ pub enum ToPlugin {
 pub enum FromPlugin {
     Decision { event: u64, verdicts: Vec<Verdict> },
     Order(Order),
+    Reaction { event: u64, order: Order },
     Question { request: u64, question: Question },
 }
 

@@ -62,6 +62,7 @@ mod tests {
         from_plugin(
             v1::FromPlugin {
                 body: Some(from_plugin::Body::Block(v1::BlockOrder { pos, order })),
+                origin: None,
             },
             &mut Vec::new(),
         )
@@ -121,6 +122,7 @@ mod tests {
                     request: 5,
                     question: Some(question::Question::Block(AT)),
                 })),
+                origin: None,
             },
             &mut Vec::new(),
         );

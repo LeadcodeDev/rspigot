@@ -54,6 +54,7 @@ mod tests {
                     player: STEVE.into(),
                     order: Some(order),
                 })),
+                origin: None,
             },
             &mut Vec::new(),
         )?;
@@ -141,6 +142,7 @@ mod tests {
                     player: STEVE.into(),
                     order: None,
                 })),
+                origin: None,
             },
             &mut Vec::new(),
         );
@@ -184,6 +186,7 @@ mod tests {
                     request: 9,
                     question: Some(question::Question::Inventory(STEVE.into())),
                 })),
+                origin: None,
             },
             &mut Vec::new(),
         );

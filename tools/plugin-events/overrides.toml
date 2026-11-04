@@ -141,7 +141,7 @@ PluginEnable = "when a plugin connects, for the other plugins and never for the 
 PluginDisable = "when a plugin disconnects, for the plugins left, and at shutdown for every plugin in reverse connection order, heard by all the others before the connections close; never for the plugin itself"
 ServerCommand = "console lines only, run in the order they were typed; not for dispatched commands, player commands or Ctrl+C; a cancel drops the line silently"
 TabComplete = "players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; a cancel or an empty list sends no suggestions; there is no console completion"
-BroadcastMessage = "the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast a deciding handler orders before its verdict is sent without firing again"
+BroadcastMessage = "the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast ordered while a handler of a BroadcastMessage runs, deciding or observing, goes out without firing again, and every other one waits behind the broadcasts already asked"
 
 [states]
 ready = []

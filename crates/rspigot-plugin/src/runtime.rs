@@ -12,7 +12,7 @@ use tonic::{Code, Status, Streaming};
 
 use crate::Error;
 use crate::events::EventKind;
-use crate::link::{ANSWER_TIMEOUT, Link, Outbound, message};
+use crate::link::{ANSWER_TIMEOUT, Link, Outbound, handling, message};
 use crate::listener::{HandlerSpec, Listeners, Outcome, Plugin, Verdict};
 use crate::server::Server;
 
@@ -288,7 +288,7 @@ async fn handle<P: Listeners>(
                 for (handler, call) in calls(&received, &handlers, kinds, link) {
                     match call {
                         Some(call) => {
-                            plugin.dispatch(call).await;
+                            handling(id, plugin.dispatch(call)).await;
                         }
                         None => tracing::warn!("Skipped event {id} for handler {handler}"),
                     }
@@ -310,7 +310,7 @@ async fn handle<P: Listeners>(
                     tracing::warn!("Let event {id} through for handler {handler}");
                     continue;
                 };
-                let verdict = match plugin.dispatch(call).await {
+                let verdict = match handling(id, plugin.dispatch(call)).await {
                     Outcome::Decided(verdict) => verdict,
                     Outcome::Observed => Verdict::default(),
                 };

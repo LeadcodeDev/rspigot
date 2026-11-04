@@ -186,7 +186,11 @@ struct Plugin {
 impl Plugin {
     async fn open(address: SocketAddr, first: from_plugin::Body) -> Result<Self, Status> {
         let (says, said) = mpsc::unbounded_channel();
-        says.send(v1::FromPlugin { body: Some(first) }).unwrap();
+        says.send(v1::FromPlugin {
+            body: Some(first),
+            origin: None,
+        })
+        .unwrap();
         let mut client = PluginHostClient::new(channel(address).await);
         let hears = within(client.connect(UnboundedReceiverStream::new(said)))
             .await?
@@ -206,7 +210,12 @@ impl Plugin {
     }
 
     fn say(&self, body: from_plugin::Body) {
-        self.says.send(v1::FromPlugin { body: Some(body) }).unwrap();
+        self.says
+            .send(v1::FromPlugin {
+                body: Some(body),
+                origin: None,
+            })
+            .unwrap();
     }
 
     async fn hear(&mut self) -> Option<to_plugin::Body> {

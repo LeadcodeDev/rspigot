@@ -90,7 +90,10 @@ mod tests {
     const ZOMBIE: EntityId = EntityId(42);
 
     fn body(body: from_plugin::Body) -> v1::FromPlugin {
-        v1::FromPlugin { body: Some(body) }
+        v1::FromPlugin {
+            body: Some(body),
+            origin: None,
+        }
     }
 
     fn entity(order: Option<entity_order::Order>) -> Result<FromPlugin, Malformed> {

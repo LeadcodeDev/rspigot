@@ -27,8 +27,8 @@ use crate::player::Player;
 use crate::player_io::PlayerIo;
 use crate::plugins::events::PlayerLoginResult;
 use crate::plugins::{
-    Arrival, Decisions, Impacts, Lane, PluginInfo, PluginIntro, PluginInventories, Refusal,
-    Registry, ToPlugin, Visibility,
+    Arrival, Broadcasts, Decisions, Impacts, Lane, PluginInfo, PluginIntro, PluginInventories,
+    Refusal, Registry, ToPlugin, Visibility,
 };
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
@@ -109,6 +109,7 @@ pub struct Server<L> {
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
     pub(crate) decisions: Decisions,
+    pub(crate) broadcasts: Broadcasts,
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
     pub(crate) impacts: Impacts,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             spawning,
             plugins: Registry::default(),
             decisions: Decisions::default(),
+            broadcasts: Broadcasts::default(),
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
             impacts: Impacts::default(),

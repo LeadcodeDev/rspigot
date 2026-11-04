@@ -50,7 +50,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `BrewEvent` | `Brew` | yes | - | - | not fired yet: needs potions and the brewing stand |
 | `BrewingStandFuelEvent` | `BrewingStandFuel` | yes | `set_consuming`, `set_fuel_power` | - | not fired yet: needs potions and the brewing stand |
 | `BrewingStartEvent` | `BrewingStart` | no | `set_total_brew_time` | - | not fired yet: needs potions and the brewing stand |
-| `BroadcastMessageEvent` | `BroadcastMessage` | yes | `set_message`, `set_recipients` | - | fired: the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast a deciding handler orders before its verdict is sent without firing again |
+| `BroadcastMessageEvent` | `BroadcastMessage` | yes | `set_message`, `set_recipients` | - | fired: the plugin broadcast order, never /say or /me; the recipients are the console then every player; a broadcast ordered while a handler of a BroadcastMessage runs, deciding or observing, goes out without firing again, and every other one waits behind the broadcasts already asked |
 | `CampfireStartEvent` | `CampfireStart` | no | `set_total_cook_time` | - | fired: when food goes on a campfire; the recipe is its key and the patched cook time is written without a check, as in Spigot |
 | `CauldronLevelChangeEvent` | `CauldronLevelChange` | yes | - | - | not fired yet: needs fluids (#54) |
 | `ChunkLoadEvent` | `ChunkLoad` | no | - | - | fired: once a loaded chunk is accepted, at the next tick; the spawn chunks load at startup and reach the plugins already connected |

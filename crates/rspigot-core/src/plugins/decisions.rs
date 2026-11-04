@@ -383,14 +383,6 @@ impl Decisions {
         self.heads.last().map(|(lane, _)| *lane)
     }
 
-    pub(crate) fn owes(&self, connection: u64, lane: Lane) -> bool {
-        self.lanes.get(&lane).is_some_and(|queue| {
-            queue.iter().any(|queued| {
-                matches!(queued, Queued::Asked(_, pending) if pending.waiting.contains(&connection))
-            })
-        })
-    }
-
     pub(crate) fn queue(&mut self, event: u64, pending: Pending) {
         let lane = pending.lane;
         self.insert(lane, Queued::Asked(event, Box::new(pending)));
@@ -969,33 +961,6 @@ mod tests {
         assert_eq!(decisions.current(), Some(mob));
         decisions.leave();
         assert_eq!(decisions.current(), None);
-    }
-
-    #[test]
-    fn a_connection_owes_a_lane_until_it_answers_every_event_it_was_asked() {
-        let alice = PlayerId::offline("Alice");
-        let mut decisions = Decisions::default();
-        decisions.queue(1, pending(alice, 1.0, &[7, 8]));
-        decisions.queue(2, pending(alice, 2.0, &[8]));
-        let lane = Lane::Player(alice);
-        assert!(decisions.owes(7, lane) && decisions.owes(8, lane));
-        assert!(!decisions.owes(9, lane));
-        assert!(!decisions.owes(7, Lane::Broadcast));
-        assert!(matches!(
-            taken(&mut decisions, 7, 1, cancel(false), 0),
-            Taken::Counted
-        ));
-        assert!(!decisions.owes(7, lane));
-        assert!(matches!(
-            taken(&mut decisions, 8, 1, cancel(false), 0),
-            Taken::Counted
-        ));
-        assert!(decisions.owes(8, lane));
-        assert!(matches!(
-            taken(&mut decisions, 8, 2, cancel(false), 0),
-            Taken::Counted
-        ));
-        assert!(!decisions.owes(8, lane));
     }
 
     #[test]

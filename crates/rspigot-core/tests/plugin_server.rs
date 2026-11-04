@@ -482,29 +482,79 @@ fn say_and_me_fire_no_broadcast_message() {
     assert_eq!(system_texts(&alice), ["[Server] hi", "* Server waves"]);
 }
 
-#[test]
-fn a_broadcast_a_deciding_handler_sends_before_its_verdict_does_not_fire_again() {
-    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BroadcastMessage)]);
-    let alice = s.players[0].clone();
-    let other = connect(&mut s.server, 2, "other");
-    broadcast(&mut s, "outer");
-    let asked = last_asked(&s.plugin, EventKind::BroadcastMessage);
+fn plugin_broadcast(text: &str) -> Order {
+    Order::Server(ServerOrder::Broadcast(text.to_owned()))
+}
+
+fn react(s: &mut Scene, connection: u64, event: u64, text: &str) {
     order(
         &mut s.server,
-        1,
-        FromPlugin::Order(Order::Server(ServerOrder::Broadcast("inner".to_owned()))),
+        connection,
+        FromPlugin::Reaction {
+            event,
+            order: plugin_broadcast(text),
+        },
     );
+}
+
+#[test]
+fn a_broadcast_a_deciding_handler_sends_while_it_runs_goes_out_without_firing_again() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BroadcastMessage)]);
+    let alice = s.players[0].clone();
+    broadcast(&mut s, "outer");
+    let asked = last_asked(&s.plugin, EventKind::BroadcastMessage);
+    react(&mut s, 1, asked.id, "inner");
     assert_eq!(system_texts(&alice), ["inner"]);
     assert_eq!(asked_for(&s.plugin, EventKind::BroadcastMessage).len(), 1);
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert_eq!(system_texts(&alice), ["outer"]);
+}
+
+#[test]
+fn a_deciding_handler_that_broadcasts_and_answers_after_the_deadline_does_not_loop() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BroadcastMessage)]);
+    let alice = s.players[0].clone();
+    broadcast(&mut s, "outer");
+    let asked = last_asked(&s.plugin, EventKind::BroadcastMessage);
+    s.tick(3);
+    assert_eq!(system_texts(&alice), ["outer"]);
+    react(&mut s, 1, asked.id, "late");
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(system_texts(&alice), ["late"]);
+    assert_eq!(asked_for(&s.plugin, EventKind::BroadcastMessage).len(), 1);
+}
+
+#[test]
+fn an_observer_that_rebroadcasts_does_not_loop() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::BroadcastMessage)]);
+    let alice = s.players[0].clone();
+    broadcast(&mut s, "outer");
+    let heard = settled_for(&s.plugin, EventKind::BroadcastMessage);
+    assert_eq!(heard.len(), 1);
+    react(&mut s, 1, heard[0].id, "echo");
+    assert_eq!(system_texts(&alice), ["outer", "echo"]);
+    assert_eq!(settled_for(&s.plugin, EventKind::BroadcastMessage).len(), 1);
+}
+
+#[test]
+fn an_untagged_broadcast_from_a_plugin_owing_a_verdict_fires_and_waits_behind_the_parked_one() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BroadcastMessage)]);
+    let alice = s.players[0].clone();
+    let other = connect(&mut s.server, 2, "other");
+    broadcast(&mut s, "outer");
     order(
         &mut s.server,
-        2,
-        FromPlugin::Order(Order::Server(ServerOrder::Broadcast("again".to_owned()))),
+        1,
+        FromPlugin::Order(plugin_broadcast("inner")),
     );
-    assert_eq!(asked_for(&s.plugin, EventKind::BroadcastMessage).len(), 2);
+    let asked = asked_for(&s.plugin, EventKind::BroadcastMessage);
+    assert_eq!(asked.len(), 2);
+    rule_on(&mut s.server, 1, asked[1].id, false, None);
     assert!(system_texts(&alice).is_empty());
+    rule_on(&mut s.server, 1, asked[0].id, false, None);
+    assert_eq!(system_texts(&alice), ["outer", "inner"]);
+    react(&mut s, 2, 999, "unknown");
+    assert_eq!(asked_for(&s.plugin, EventKind::BroadcastMessage).len(), 3);
     assert!(heard(&other).is_empty());
 }
 

@@ -68,8 +68,14 @@ mod tests {
     }
 
     fn convert(body: from_plugin::Body) -> FromPlugin {
-        from_plugin(v1::FromPlugin { body: Some(body) }, &mut Vec::new())
-            .expect("the message converts")
+        from_plugin(
+            v1::FromPlugin {
+                body: Some(body),
+                origin: None,
+            },
+            &mut Vec::new(),
+        )
+        .expect("the message converts")
     }
 
     fn payload(payload: EventPayload) -> event::Payload {
@@ -284,6 +290,7 @@ mod tests {
                             order: None,
                         }
                     )),
+                    origin: None,
                 },
                 &mut Vec::new()
             )
