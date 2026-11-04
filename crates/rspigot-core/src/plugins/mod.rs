@@ -1,6 +1,7 @@
 mod block;
 mod blocks;
 mod chat;
+mod chunks;
 mod contract;
 mod decisions;
 mod digging;

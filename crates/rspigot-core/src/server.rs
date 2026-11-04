@@ -238,6 +238,7 @@ impl<L: ClientLink> Server<L> {
                 self.world.chunks.accept(result);
             }
         }
+        self.handle_chunk_events();
         self.world.chunks.stats().loaded
     }
 
@@ -766,7 +767,9 @@ impl<L: ClientLink> Server<L> {
         if self.world.level.daylight_cycle {
             self.world.level.day_time += 1;
         }
-        self.world.chunks.tick(&self.workers);
+        for pos in self.world.chunks.tick(&self.workers) {
+            self.ask_chunk_unload(pos);
+        }
         self.handle_chunk_events();
         for player in self.players.values_mut() {
             player.streamer.tick(&self.world.chunks, &player.link);

@@ -452,8 +452,12 @@ impl<L: ClientLink> Server<L> {
                 self.entities.pending_saves.remove(&pos);
             }
         }
+        for (pos, new_chunk) in events.loaded {
+            self.chunk_loaded(pos, new_chunk);
+        }
         for (pos, entities) in events.entity_loads {
             self.load_chunk_entities(pos, entities);
+            self.entities_loaded(pos);
         }
         for pos in events.unloaded {
             self.save_chunk_entities(pos, true);
@@ -496,13 +500,14 @@ impl<L: ClientLink> Server<L> {
     fn save_chunk_entities(&mut self, pos: ChunkPos, unload: bool) {
         let world_uuid = self.world.level.uuid;
         let ids = self.entities.store.in_chunk(pos).to_vec();
-        let saved: Vec<Compound> = ids
+        let (kept, saved): (Vec<EntityId>, Vec<Compound>) = ids
             .iter()
             .filter_map(|id| self.entities.store.get(*id))
-            .filter_map(|entity| save::save_entity(entity, world_uuid))
-            .collect();
+            .filter_map(|entity| Some((entity.base.id, save::save_entity(entity, world_uuid)?)))
+            .unzip();
         let merge = !unload && !self.world.chunks.is_loaded(pos);
         if unload {
+            self.entities_unloading(pos, &kept);
             for id in ids {
                 self.remove_entity(id, RemovalReason::UnloadedToChunk);
             }

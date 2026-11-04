@@ -463,6 +463,10 @@ impl<L: ClientLink> Server<L> {
             Settlement::Cancelled(written) => (true, written),
             Settlement::Applied(patch) => (false, patch),
         };
+        if self.stale(&then) {
+            self.decisions.remember(event, record);
+            return;
+        }
         if let Some(patch) = patch.clone() {
             patch.settle(&mut payload);
         }
@@ -699,13 +703,24 @@ impl<L: ClientLink> Server<L> {
                 }
                 Vec::new()
             }
+            Continuation::ChunkUnload(pos) => {
+                self.finish_chunk_unload(pos, patch_of!(patch, ChunkUnload));
+                Vec::new()
+            }
+        }
+    }
+
+    fn stale(&self, then: &Continuation) -> bool {
+        match then {
+            Continuation::ChunkUnload(pos) => !self.world.chunks.unload_due(*pos),
+            _ => false,
         }
     }
 
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_) | Lane::Block(_), Undo::SendBack(_)) => {}
+            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_), Undo::SendBack(_)) => {}
         }
     }
 

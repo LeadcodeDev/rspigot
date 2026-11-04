@@ -3,7 +3,7 @@ use rspigot_domain::entity::EntityBase;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
-use rspigot_domain::{BlockPos, BlockStateId, EntityId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
 use crate::commands::CommandSender;
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
@@ -459,6 +459,7 @@ pub(crate) enum Continuation {
     CampfireStart(Box<CampfireStep>),
     Exp(ExpStep),
     Explode(Box<ExplodeStep>),
+    ChunkUnload(ChunkPos),
 }
 
 impl Continuation {
@@ -510,6 +511,7 @@ impl Continuation {
             Self::CampfireStart(_) => EventKind::CampfireStart,
             Self::Exp(_) => EventKind::BlockExp,
             Self::Explode(_) => EventKind::BlockExplode,
+            Self::ChunkUnload(_) => EventKind::ChunkUnload,
         }
     }
 
@@ -538,6 +540,7 @@ impl Continuation {
                 one.player == other.player && one.arrow == other.arrow
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos,
+            (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
             _ => false,
         }
     }
@@ -545,7 +548,7 @@ impl Continuation {
     pub(crate) const fn may_skip(&self) -> bool {
         matches!(
             self,
-            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_)
+            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
         )
     }
 }
