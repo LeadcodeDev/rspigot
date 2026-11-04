@@ -8,7 +8,7 @@ use rspigot_core::plugins::events::{
     ClickKind, DragType, EventResult, InventoryAction, InventoryClose, InventoryCreative,
     InventoryCreativePatch, InventoryDrag, InventoryDragPatch, InventoryOpen,
     InventoryTypeSlotType, PrepareItemCraft, PrepareItemCraftPatch, PrepareSmithing,
-    PrepareSmithingPatch,
+    PrepareSmithingPatch, SmithItemPatch,
 };
 use rspigot_core::plugins::{
     Answer, EventKind, EventPatch, EventPayload, HandlerSpec, InventoryOwner, InventoryState,
@@ -1070,5 +1070,231 @@ fn a_cancelled_creative_slot_keeps_its_current_item_write_and_drops_its_cursor()
     assert_eq!(
         held(&mut s, &alice, 0),
         Some(("minecraft:gold_ingot".to_owned(), 2))
+    );
+}
+
+const CHEST_HOTBAR: i16 = 54;
+
+#[test]
+fn a_drag_in_a_chest_and_in_a_plugin_inventory_is_asked_with_its_raw_and_converted_slots() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::InventoryDrag),
+            observe(2, EventKind::InventoryDrag),
+        ],
+    );
+    let alice = s.players[0].clone();
+    set_block(&mut s, CHEST, "minecraft:chest");
+    give(&mut s, &alice, 0, STONE, 6);
+    alice.link.take();
+    let mut chest = open_block(&mut s, &alice, CHEST);
+    carry(&mut s, &alice, &mut chest, CHEST_HOTBAR, (STONE, 6));
+    spread(&mut s, &alice, &mut chest, &[0, 1, 27], 2);
+    let asked = last_asked(&s.plugin, EventKind::InventoryDrag);
+    let drag = drag_of(&asked);
+    assert_eq!(drag.inventory.kind, "CHEST");
+    assert_eq!(drag.raw_slots, [0, 1, 27]);
+    assert_eq!(drag.inventory_slots, [0, 1, 9]);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    refresh(&alice, &mut chest);
+    assert_eq!(chest.at(0), None);
+    assert_eq!(chest.at(27), None);
+    assert_eq!(chest.held(), Some((STONE, 6)));
+    spread(&mut s, &alice, &mut chest, &[0, 1, 27], 2);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryDrag).id,
+        false,
+        None,
+    );
+    refresh(&alice, &mut chest);
+    assert_eq!(chest.at(0), Some((STONE, 2)));
+    assert_eq!(chest.at(27), Some((STONE, 2)));
+    assert_eq!(held(&mut s, &alice, 9), Some((STONE.to_owned(), 2)));
+    close_window(&mut s, &alice, &mut chest);
+
+    s.act(Order::Server(ServerOrder::CreateInventory {
+        id: MENU,
+        rows: 1,
+        title: "Box".to_owned(),
+        locked: false,
+    }));
+    give(&mut s, &alice, 0, STONE, 4);
+    s.act(to(&alice, PlayerOrder::OpenInventory(MENU)));
+    let mut menu = opened_view(&alice).expect("the plugin menu opens");
+    carry(&mut s, &alice, &mut menu, 36, (STONE, 4));
+    spread(&mut s, &alice, &mut menu, &[3, 4], 2);
+    let asked = last_asked(&s.plugin, EventKind::InventoryDrag);
+    let drag = drag_of(&asked);
+    assert_eq!(drag.raw_slots, [3, 4]);
+    assert_eq!(drag.inventory_slots, [3, 4]);
+    assert_eq!(
+        drag.inventory.owner,
+        InventoryOwner::Custom {
+            plugin: "tester".to_owned(),
+            id: MENU
+        }
+    );
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    refresh(&alice, &mut menu);
+    assert_eq!(menu.at(3), Some((STONE, 2)));
+    assert_eq!(menu.at(4), Some((STONE, 2)));
+    assert_eq!(menu.held(), None);
+}
+
+fn smithy_ready(s: &mut Scene, alice: &Player) -> View {
+    set_block(s, SMITHY, "minecraft:smithing_table");
+    give(
+        s,
+        alice,
+        0,
+        "minecraft:netherite_upgrade_smithing_template",
+        1,
+    );
+    give(s, alice, 1, "minecraft:diamond_sword", 1);
+    give(s, alice, 2, "minecraft:netherite_ingot", 1);
+    alice.link.take();
+    let mut smithy = open_block(s, alice, SMITHY);
+    for (index, key) in [
+        "minecraft:netherite_upgrade_smithing_template",
+        "minecraft:diamond_sword",
+        "minecraft:netherite_ingot",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let slot = i16::try_from(index).expect("small");
+        carry(s, alice, &mut smithy, 31 + slot, (key, 1));
+        let put = place(&mut smithy, slot, (key, 1));
+        send_click(s, alice, &mut smithy, put);
+    }
+    smithy
+}
+
+#[test]
+fn a_smith_patch_writes_the_taken_item_and_its_result_refuses_it() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::SmithItem),
+            observe(2, EventKind::SmithItem),
+        ],
+    );
+    let alice = s.players[0].clone();
+    let mut smithy = smithy_ready(&mut s, &alice);
+    let take = pickup(&mut smithy, 3, ("minecraft:netherite_sword", 1));
+    send_click(&mut s, &alice, &mut smithy, take);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::SmithItem).id,
+        false,
+        Some(EventPatch::SmithItem(SmithItemPatch {
+            current_item: Some(Some(spec("minecraft:golden_sword", 1))),
+            ..SmithItemPatch::default()
+        })),
+    );
+    refresh(&alice, &mut smithy);
+    assert_eq!(smithy.held(), Some(("minecraft:golden_sword", 1)));
+    assert_eq!(smithy.at(1), None);
+    close_window(&mut s, &alice, &mut smithy);
+
+    let mut smithy = smithy_ready(&mut s, &alice);
+    let take = pickup(&mut smithy, 3, ("minecraft:netherite_sword", 1));
+    send_click(&mut s, &alice, &mut smithy, take);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::SmithItem).id,
+        false,
+        Some(EventPatch::SmithItem(SmithItemPatch {
+            cursor: Some(Some(spec("minecraft:emerald", 4))),
+            result: Some(EventResult::Deny),
+            ..SmithItemPatch::default()
+        })),
+    );
+    refresh(&alice, &mut smithy);
+    assert_eq!(smithy.held(), Some(("minecraft:emerald", 4)));
+    assert_eq!(smithy.at(1), Some(("minecraft:diamond_sword", 1)));
+    assert_eq!(smithy.at(3), Some(("minecraft:netherite_sword", 1)));
+    assert!(
+        settled_for(&s.plugin, EventKind::SmithItem)
+            .last()
+            .expect("settled")
+            .cancelled
+    );
+}
+
+fn parked_chest_click(s: &mut Scene, alice: &Player) -> (View, Fired) {
+    set_block(s, CHEST, "minecraft:chest");
+    give(s, alice, 0, STONE, 3);
+    alice.link.take();
+    let mut chest = open_block(s, alice, CHEST);
+    carry(s, alice, &mut chest, CHEST_HOTBAR, (STONE, 3));
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let put = place(&mut chest, 0, (STONE, 3));
+    send_click(s, alice, &mut chest, put);
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryClick).id,
+        false,
+        None,
+    );
+    let take = pickup(&mut chest, 0, (STONE, 3));
+    send_click(s, alice, &mut chest, take);
+    let parked = last_asked(&s.plugin, EventKind::InventoryClick);
+    (chest, parked)
+}
+
+#[test]
+fn a_parked_click_is_dropped_when_its_window_closed_its_menu_broke_or_its_player_died() {
+    let clicks = || {
+        vec![
+            deciding(1, EventKind::InventoryClick),
+            observe(2, EventKind::InventoryClick),
+        ]
+    };
+    let mut s = scene_with(&["Alice"], clicks());
+    let alice = s.players[0].clone();
+    let (_chest, parked) = parked_chest_click(&mut s, &alice);
+    s.act(to(&alice, PlayerOrder::CloseInventory));
+    rule_on(&mut s.server, 1, parked.id, false, None);
+    let mut reopened = open_block(&mut s, &alice, CHEST);
+    assert_eq!(reopened.at(0), Some((STONE, 3)));
+    assert_eq!(reopened.held(), None);
+    close_window(&mut s, &alice, &mut reopened);
+
+    let mut s = scene_with(&["Alice"], clicks());
+    let alice = s.players[0].clone();
+    let (_chest, parked) = parked_chest_click(&mut s, &alice);
+    set_block(&mut s, CHEST, "minecraft:air");
+    rule_on(&mut s.server, 1, parked.id, false, None);
+    assert_eq!(count_of(&mut s, &alice, STONE), 0);
+
+    let mut s = scene_with(&["Alice"], clicks());
+    let alice = s.players[0].clone();
+    give(&mut s, &alice, 9, STONE, 3);
+    let mut own = View::inventory();
+    refresh(&alice, &mut own);
+    let take = pickup(&mut own, 9, (STONE, 3));
+    send_click(&mut s, &alice, &mut own, take);
+    let parked = last_asked(&s.plugin, EventKind::InventoryClick);
+    s.act(to(&alice, PlayerOrder::Kill));
+    rule_on(&mut s.server, 1, parked.id, false, None);
+    s.tick(1);
+    assert_eq!(count_of(&mut s, &alice, STONE), 0);
+    assert!(
+        settled_for(&s.plugin, EventKind::InventoryClick)
+            .last()
+            .is_some_and(|event| event.id == parked.id)
     );
 }
