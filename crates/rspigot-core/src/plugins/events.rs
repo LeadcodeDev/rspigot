@@ -2770,6 +2770,8 @@ pub struct BlockMultiPlace {
     pub item_in_hand: ItemSpec,
     pub player: PlayerSnapshot,
     pub replaced_block_states: Vec<BlockSnapshot>,
+    pub placed_state: BlockSnapshot,
+    pub placed_states: Vec<BlockSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2805,6 +2807,7 @@ pub struct BlockPlace {
     pub hand: EquipmentSlot,
     pub item_in_hand: ItemSpec,
     pub player: PlayerSnapshot,
+    pub placed_state: BlockSnapshot,
 }
 
 #[derive(Debug, Clone, PartialEq)]

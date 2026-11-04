@@ -3295,6 +3295,8 @@ pub struct BlockMultiPlace {
     item_in_hand: ItemStack,
     player: Player,
     replaced_block_states: Vec<BlockSnapshot>,
+    placed_state: BlockSnapshot,
+    placed_states: Vec<BlockSnapshot>,
     patch: v1::BlockMultiPlacePatch,
 }
 
@@ -3317,6 +3319,15 @@ impl BlockMultiPlace {
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
             replaced_block_states: message
                 .replaced_block_states
+                .into_iter()
+                .map(|value| BlockSnapshot::from_wire(value, link))
+                .collect::<Result<Vec<_>, _>>()?,
+            placed_state: BlockSnapshot::from_wire(
+                required(message.placed_state, "placed_state")?,
+                link,
+            )?,
+            placed_states: message
+                .placed_states
                 .into_iter()
                 .map(|value| BlockSnapshot::from_wire(value, link))
                 .collect::<Result<Vec<_>, _>>()?,
@@ -3362,6 +3373,14 @@ impl BlockMultiPlace {
 
     pub fn replaced_block_states(&self) -> &[BlockSnapshot] {
         &self.replaced_block_states
+    }
+
+    pub fn placed_state(&self) -> &BlockSnapshot {
+        &self.placed_state
+    }
+
+    pub fn placed_states(&self) -> &[BlockSnapshot] {
+        &self.placed_states
     }
 
     pub fn set_build(&mut self, value: bool) {
@@ -3608,6 +3627,7 @@ pub struct BlockPlace {
     hand: EquipmentSlot,
     item_in_hand: ItemStack,
     player: Player,
+    placed_state: BlockSnapshot,
     patch: v1::BlockPlacePatch,
 }
 
@@ -3628,6 +3648,10 @@ impl BlockPlace {
             hand: EquipmentSlot::from_wire(message.hand)?,
             item_in_hand: ItemStack::from_wire(required(message.item_in_hand, "item_in_hand")?)?,
             player: Player::from_snapshot(required(message.player, "player")?, link)?,
+            placed_state: BlockSnapshot::from_wire(
+                required(message.placed_state, "placed_state")?,
+                link,
+            )?,
             patch: v1::BlockPlacePatch::default(),
         })
     }
@@ -3666,6 +3690,10 @@ impl BlockPlace {
 
     pub fn player(&self) -> &Player {
         &self.player
+    }
+
+    pub fn placed_state(&self) -> &BlockSnapshot {
+        &self.placed_state
     }
 
     pub fn set_build(&mut self, value: bool) {
@@ -20933,6 +20961,7 @@ fn project_block_multi_place_block_place(message: &v1::BlockMultiPlace) -> v1::B
         hand: message.hand,
         item_in_hand: message.item_in_hand.clone(),
         player: message.player.clone(),
+        placed_state: message.placed_state.clone(),
     }
 }
 

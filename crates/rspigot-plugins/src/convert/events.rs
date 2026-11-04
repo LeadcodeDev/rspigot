@@ -523,6 +523,12 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
                     .into_iter()
                     .map(contract::wire_block_snapshot)
                     .collect(),
+                placed_state: Some(contract::wire_block_snapshot(event.placed_state)),
+                placed_states: event
+                    .placed_states
+                    .into_iter()
+                    .map(contract::wire_block_snapshot)
+                    .collect(),
             })
         }
         EventPayload::BlockPhysics(event) => event::Payload::BlockPhysics(v1::BlockPhysics {
@@ -563,6 +569,7 @@ pub(super) fn wire_payload(payload: EventPayload) -> event::Payload {
             hand: equipment_slot_to_wire(event.hand) as i32,
             item_in_hand: Some(shared::wire_item(event.item_in_hand)),
             player: Some(player::wire_player(event.player)),
+            placed_state: Some(contract::wire_block_snapshot(event.placed_state)),
         }),
         EventPayload::BlockReceiveGame(event) => {
             event::Payload::BlockReceiveGame(v1::BlockReceiveGame {

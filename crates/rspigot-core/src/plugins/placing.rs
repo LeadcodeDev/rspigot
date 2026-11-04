@@ -89,6 +89,11 @@ impl<L: ClientLink> Server<L> {
             .iter()
             .map(|change| snapshot_of(change.pos, change.old))
             .collect();
+        let placed: Vec<BlockSnapshot> = step
+            .changes
+            .iter()
+            .map(|change| snapshot_of(change.pos, change.new))
+            .collect();
         let against = step.using.against;
         let build = step.build;
         let hand = slot_of(step.using.hand);
@@ -108,6 +113,8 @@ impl<L: ClientLink> Server<L> {
                         item_in_hand,
                         player: server.snapshot_of(id)?,
                         replaced_block_states: replaced,
+                        placed_state: placed[0].clone(),
+                        placed_states: placed,
                     }))
                 },
             );
@@ -123,6 +130,7 @@ impl<L: ClientLink> Server<L> {
                 hand,
                 item_in_hand,
                 player: server.snapshot_of(id)?,
+                placed_state: placed.into_iter().next()?,
             }))
         });
     }

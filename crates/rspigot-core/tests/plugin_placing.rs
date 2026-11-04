@@ -336,3 +336,63 @@ fn tilling_fires_a_place_and_a_cancel_keeps_the_dirt_and_the_hoe() {
     assert_eq!(kind_at(&mut s, FLOOR), "minecraft:farmland");
     assert_eq!(settled_for(&s.plugin, EventKind::PlayerItemDamage).len(), 1);
 }
+
+fn half_of(snapshot: &rspigot_core::plugins::BlockSnapshot) -> (BlockPos, String, Option<String>) {
+    let half = snapshot
+        .state
+        .properties
+        .iter()
+        .find(|(name, _)| name == "half")
+        .map(|(_, value)| value.clone());
+    (snapshot.pos, snapshot.state.kind.clone(), half)
+}
+
+#[test]
+fn a_place_carries_the_state_its_block_will_get() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockPlace)], "stone 4");
+    use_on(&mut s, &alice, FLOOR, 1);
+    let placed = place_of(&last_asked(&s.plugin, EventKind::BlockPlace));
+    assert_eq!(placed.placed_state.pos, ABOVE);
+    assert_eq!(placed.placed_state.state.kind, "minecraft:stone");
+    assert_eq!(placed.block_replaced_state.state.kind, "minecraft:air");
+    assert_eq!(kind_at(&mut s, ABOVE), "minecraft:air");
+}
+
+#[test]
+fn a_multi_place_carries_the_states_of_both_door_halves() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockMultiPlace)], "oak_door 1");
+    use_on(&mut s, &alice, FLOOR, 1);
+    let asked = last_asked(&s.plugin, EventKind::BlockMultiPlace);
+    let EventPayload::BlockMultiPlace(BlockMultiPlace {
+        placed_state,
+        placed_states,
+        ..
+    }) = &asked.payload
+    else {
+        panic!("expected a multi place");
+    };
+    let door = "minecraft:oak_door".to_owned();
+    let halves: Vec<_> = placed_states.iter().map(half_of).collect();
+    assert_eq!(
+        halves,
+        [
+            (TOP, door.clone(), Some("upper".to_owned())),
+            (ABOVE, door, Some("lower".to_owned())),
+        ]
+    );
+    assert_eq!(placed_state, &placed_states[0]);
+}
+
+#[test]
+fn a_tilled_place_carries_the_farmland_state() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockPlace)], "iron_hoe");
+    s.act(Order::Block {
+        pos: FLOOR,
+        order: BlockOrder::Set("minecraft:dirt".to_owned()),
+    });
+    use_on(&mut s, &alice, FLOOR, 7);
+    let placed = place_of(&last_asked(&s.plugin, EventKind::BlockPlace));
+    assert_eq!(placed.placed_state.pos, FLOOR);
+    assert_eq!(placed.placed_state.state.kind, "minecraft:farmland");
+    assert_eq!(kind_at(&mut s, FLOOR), "minecraft:dirt");
+}

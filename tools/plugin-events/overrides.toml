@@ -324,6 +324,17 @@ collections = ["getDrops"]
 [events.PlayerDeath]
 collections = ["getDrops"]
 
+[events.BlockPlace]
+extra = [
+    { name = "placed_state", java = "org.bukkit.block.BlockState", number = 100, reason = "rspigot asks before the world changes, so the placed block still shows its old state: this is the state it will get" },
+]
+
+[events.BlockMultiPlace]
+extra = [
+    { name = "placed_state", java = "org.bukkit.block.BlockState", number = 100, reason = "rspigot asks before the world changes, so the placed block still shows its old state: this is the state it will get" },
+    { name = "placed_states", java = "java.util.List<org.bukkit.block.BlockState>", number = 101, reason = "the states every captured block will get, in capture order" },
+]
+
 [events.BlockDropItem]
 collections = ["getItems"]
 

@@ -1081,6 +1081,10 @@ pub struct BlockMultiPlace {
     pub player: ::core::option::Option<PlayerSnapshot>,
     #[prost(message, repeated, tag = "9")]
     pub replaced_block_states: ::prost::alloc::vec::Vec<BlockSnapshot>,
+    #[prost(message, optional, tag = "100")]
+    pub placed_state: ::core::option::Option<BlockSnapshot>,
+    #[prost(message, repeated, tag = "101")]
+    pub placed_states: ::prost::alloc::vec::Vec<BlockSnapshot>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1141,6 +1145,8 @@ pub struct BlockPlace {
     pub item_in_hand: ::core::option::Option<Item>,
     #[prost(message, optional, tag = "8")]
     pub player: ::core::option::Option<PlayerSnapshot>,
+    #[prost(message, optional, tag = "100")]
+    pub placed_state: ::core::option::Option<BlockSnapshot>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
