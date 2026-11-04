@@ -10,7 +10,7 @@ use crate::player::Player;
 use crate::plugins::decisions::{
     Asked, Continuation, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
 };
-use crate::plugins::events::{PlayerMove, PlayerMovePatch};
+use crate::plugins::events::{PlayerMove, PlayerMovePatch, PlayerTeleportCause};
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
     Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
@@ -450,6 +450,23 @@ impl<L: ClientLink> Server<L> {
                 self.finish_command(step, patch_of!(patch, PlayerCommandPreprocess));
                 Vec::new()
             }
+            Continuation::Teleport(step) => {
+                self.finish_teleport(step, cancelled, patch_of!(patch, PlayerTeleport));
+                Vec::new()
+            }
+            Continuation::Velocity(_) if cancelled => Vec::new(),
+            Continuation::Velocity(step) => {
+                self.finish_velocity(step, patch_of!(patch, PlayerVelocity));
+                Vec::new()
+            }
+            Continuation::Respawn(step) => {
+                self.finish_respawn(step, patch_of!(patch, PlayerRespawn));
+                Vec::new()
+            }
+            Continuation::Death(step) => {
+                self.finish_death(*step, patch_of!(patch, PlayerDeath));
+                Vec::new()
+            }
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
@@ -475,7 +492,13 @@ impl<L: ClientLink> Server<L> {
     fn finish_move(&mut self, step: MoveStep, patch: PlayerMovePatch, held: Vec<Held>) -> Undone {
         if let Some(to) = patch.to.map(|to| to.position).filter(|to| *to != step.to) {
             let dropped = self.decisions.drop_pending(step.player);
-            self.teleport_player(step.player, to);
+            self.ask_teleport(
+                step.player,
+                to,
+                None,
+                PlayerTeleportCause::Plugin,
+                Some(step),
+            );
             return dropped;
         }
         self.apply_move(step.player, Some(step.to), step.rotation, step.on_ground);

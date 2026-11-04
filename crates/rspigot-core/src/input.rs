@@ -14,6 +14,7 @@ use crate::events::{
 };
 use crate::loot::{self, LootContext, LootEntity};
 use crate::plugins::Held;
+use crate::plugins::events::PlayerRespawnReason;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -133,7 +134,7 @@ impl<L: ClientLink> Server<L> {
             PlayerInput::CommandSuggestion { id: request, text } => {
                 self.handle_suggestion(id, request, &text)
             }
-            PlayerInput::Respawn => self.respawn(id),
+            PlayerInput::Respawn => self.respawn(id, PlayerRespawnReason::Death),
             PlayerInput::ClientTickEnd => {
                 if let Some(player) = self.players.get_mut(&id) {
                     if !player.moved_this_tick {

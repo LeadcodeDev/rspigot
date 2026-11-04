@@ -35,7 +35,7 @@ impl ItemSpec {
     }
 }
 
-pub(super) fn stack_of(spec: &ItemSpec) -> Result<Option<ItemStack>, String> {
+pub(crate) fn stack_of(spec: &ItemSpec) -> Result<Option<ItemStack>, String> {
     let kind =
         ItemKind::from_name(&spec.key).ok_or_else(|| format!("unknown item {}", spec.key))?;
     if kind == ItemKind::Air {
@@ -66,7 +66,7 @@ pub(super) fn stack_of(spec: &ItemSpec) -> Result<Option<ItemStack>, String> {
     Ok(Some(stack))
 }
 
-pub(super) fn spec_of(stack: &ItemStack) -> ItemSpec {
+pub(crate) fn spec_of(stack: &ItemStack) -> ItemSpec {
     let mut others = stack.components.clone();
     for typed in [CUSTOM_NAME, LORE, ENCHANTMENTS] {
         others.remove(typed);

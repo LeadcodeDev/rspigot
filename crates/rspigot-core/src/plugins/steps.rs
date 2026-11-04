@@ -1,10 +1,12 @@
 use crossbeam_channel::Sender;
+use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, PlayerId};
 use rspigot_domain::text::Component;
-use rspigot_domain::{Rotation, Vec3};
+use rspigot_domain::{EntityId, Rotation, Vec3};
 
 use crate::events::PreLoginVerdict;
 use crate::plugins::EventKind;
+use crate::plugins::events::PlayerTeleportCause;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Held {
@@ -51,6 +53,40 @@ pub(crate) struct ChatStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct TeleportStep {
+    pub(crate) player: PlayerId,
+    pub(crate) position: Vec3,
+    pub(crate) rotation: Option<Rotation>,
+    pub(crate) cause: PlayerTeleportCause,
+    pub(crate) fallback: Option<MoveStep>,
+}
+
+#[derive(Debug)]
+pub(crate) struct VelocityStep {
+    pub(crate) player: PlayerId,
+    pub(crate) restore: Option<Vec3>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RespawnStep {
+    pub(crate) player: PlayerId,
+}
+
+#[derive(Debug)]
+pub(crate) struct DeathStep {
+    pub(crate) player: PlayerId,
+    pub(crate) entity: EntityId,
+    pub(crate) message: Component,
+    pub(crate) text: String,
+    pub(crate) show: bool,
+    pub(crate) keep: bool,
+    pub(crate) taken: Vec<(usize, ItemStack)>,
+    pub(crate) origin: Vec3,
+    pub(crate) feet: Vec3,
+    pub(crate) experience: i32,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -63,6 +99,10 @@ pub(crate) enum Continuation {
     CommandSend(PlayerId),
     Chat(ChatStep),
     Command(ChatStep),
+    Teleport(TeleportStep),
+    Velocity(VelocityStep),
+    Respawn(RespawnStep),
+    Death(Box<DeathStep>),
 }
 
 impl Continuation {
@@ -79,6 +119,10 @@ impl Continuation {
             Self::CommandSend(_) => EventKind::PlayerCommandSend,
             Self::Chat(_) => EventKind::AsyncPlayerChat,
             Self::Command(_) => EventKind::PlayerCommandPreprocess,
+            Self::Teleport(_) => EventKind::PlayerTeleport,
+            Self::Velocity(_) => EventKind::PlayerVelocity,
+            Self::Respawn(_) => EventKind::PlayerRespawn,
+            Self::Death(_) => EventKind::PlayerDeath,
         }
     }
 
@@ -100,12 +144,15 @@ impl Continuation {
         matches!(self, Self::PlayerMove(_))
     }
 
-    pub(crate) fn same_as(&self, _other: &Self) -> bool {
-        false
+    pub(crate) fn same_as(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Velocity(one), Self::Velocity(other)) => one.player == other.player,
+            _ => false,
+        }
     }
 
     pub(crate) const fn hot(&self) -> bool {
-        false
+        matches!(self, Self::Velocity(_))
     }
 }
 

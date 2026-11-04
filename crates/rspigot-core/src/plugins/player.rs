@@ -11,6 +11,7 @@ use crate::commands::{self, CommandContext, CommandSender};
 use crate::events::{ClientEvent, SoundSource};
 use crate::health::{self, DamageSource};
 use crate::player::Player;
+use crate::plugins::events::{PlayerRespawnReason, PlayerTeleportCause};
 use crate::plugins::resolve::{self, finite_not_negative, not_negative, within};
 use crate::plugins::{PlayerOrder, TitleSpec};
 use crate::ports::ClientLink;
@@ -69,13 +70,18 @@ impl<L: ClientLink> Server<L> {
             ),
             PlayerOrder::Teleport(position) => {
                 let position = resolve::position_of(position)?;
-                CommandContext::teleport(self, id, position);
+                self.ask_teleport(id, position, None, PlayerTeleportCause::Plugin, None);
             }
             PlayerOrder::TeleportFacing(position, rotation) => {
                 let position = resolve::position_of(position)?;
                 let rotation = resolve::rotation_of(rotation)?;
-                self.update(id, |player| player.rotation = rotation);
-                CommandContext::teleport(self, id, position);
+                self.ask_teleport(
+                    id,
+                    position,
+                    Some(rotation),
+                    PlayerTeleportCause::Plugin,
+                    None,
+                );
             }
             PlayerOrder::SetGameMode(mode) => self.apply_game_mode(id, mode),
             PlayerOrder::Kick(reason) => CommandContext::kick(self, id, resolve::text(&reason)),
@@ -193,7 +199,7 @@ impl<L: ClientLink> Server<L> {
                 if !self.players.get(&id).is_some_and(|p| p.vitals.is_dead()) {
                     return Err("the player is not dead".to_owned());
                 }
-                self.respawn(id);
+                self.respawn(id, PlayerRespawnReason::Plugin);
             }
             PlayerOrder::PerformCommand(line) => {
                 commands::execute(self, CommandSender::Player(id), &line);

@@ -21,6 +21,7 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::{ClientEvent, GameEvent};
 use crate::mobs::ServerRandom;
+use crate::plugins::events::PlayerTeleportCause;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -93,8 +94,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn teleport(&mut self, player: PlayerId, position: Vec3) {
-        self.decisions.forget(player);
-        self.teleport_player(player, position);
+        self.ask_teleport(player, position, None, PlayerTeleportCause::Command, None);
     }
 
     fn day_time(&self) -> i64 {
