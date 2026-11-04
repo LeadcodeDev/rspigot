@@ -24,6 +24,7 @@ impl Item for FermentedSpiderEye {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:fermented_spider_eye",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1272)]),
             ItemSet::Direct(&[ItemId(317)]),

@@ -25,6 +25,7 @@ impl Item for RedNetherBrickWall {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:red_nether_brick_wall",
             width: 3,
             height: 2,
             symmetrical: true,

@@ -24,6 +24,7 @@ impl Item for CrimsonSlab {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:crimson_slab",
         width: 3,
         height: 1,
         symmetrical: true,

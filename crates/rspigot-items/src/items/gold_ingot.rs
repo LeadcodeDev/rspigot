@@ -55,10 +55,12 @@ impl Item for GoldIngot {
             cooking_time: 200,
         },
         Craft::Shapeless {
+            id: "minecraft:gold_ingot_from_gold_block",
             ingredients: &[ItemSet::Direct(&[ItemId(128)])],
             product: Product::of(9),
         },
         Craft::Shaped {
+            id: "minecraft:gold_ingot_from_nuggets",
             width: 3,
             height: 3,
             symmetrical: true,

@@ -26,6 +26,7 @@ impl Item for MangroveDoor {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:mangrove_door",
         width: 2,
         height: 3,
         symmetrical: true,

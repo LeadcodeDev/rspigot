@@ -25,18 +25,22 @@ impl Item for OrangeDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:orange_dye_from_open_eyeblossom",
             ingredients: &[ItemSet::Direct(&[ItemId(300)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:orange_dye_from_orange_tulip",
             ingredients: &[ItemSet::Direct(&[ItemId(307)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:orange_dye_from_red_yellow",
             ingredients: &[ItemSet::Direct(&[ItemId(1213)]), ItemSet::Direct(&[ItemId(1203)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:orange_dye_from_torchflower",
             ingredients: &[ItemSet::Direct(&[ItemId(314)])],
             product: Product::of(1),
         },

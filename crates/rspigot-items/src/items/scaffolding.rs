@@ -26,6 +26,7 @@ impl Item for Scaffolding {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:scaffolding",
         width: 3,
         height: 3,
         symmetrical: true,

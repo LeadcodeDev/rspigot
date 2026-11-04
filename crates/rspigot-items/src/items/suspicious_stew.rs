@@ -30,6 +30,7 @@ impl Item for SuspiciousStew {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_allium",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -45,6 +46,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_azure_bluet",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -60,6 +62,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_blue_orchid",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -75,6 +78,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_closed_eyeblossom",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -90,6 +94,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_cornflower",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -105,6 +110,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_dandelion",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -120,6 +126,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_golden_dandelion",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -135,6 +142,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_lily_of_the_valley",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -150,6 +158,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_open_eyeblossom",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -165,6 +174,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_orange_tulip",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -180,6 +190,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_oxeye_daisy",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -195,6 +206,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_pink_tulip",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -210,6 +222,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_poppy",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -225,6 +238,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_red_tulip",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -240,6 +254,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_torchflower",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -255,6 +270,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_white_tulip",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),
@@ -270,6 +286,7 @@ impl Item for SuspiciousStew {
             },
         },
         Craft::Shapeless {
+            id: "minecraft:suspicious_stew_from_wither_rose",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1006)]),
                 ItemSet::Tag(&tags::ITEM_MUSHROOMS),

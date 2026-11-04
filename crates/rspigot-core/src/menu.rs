@@ -1,14 +1,19 @@
 use rspigot_domain::item::{OFFHAND_SLOT, Slot, stacks_match};
-use rspigot_domain::menu::{Clicker, MenuEffect, OUTSIDE, RESULT_SLOT, RemoteUpdate};
+use rspigot_domain::menu::{Clicker, MenuEffect, RESULT_SLOT, RemoteUpdate};
 use rspigot_domain::player::{GameMode, PlayerId};
 
-use crate::events::{ClickInput, ClientEvent, ContainerClick, EquipmentSlot};
+use crate::events::{ClientEvent, ContainerClick, EquipmentSlot};
 use crate::player::Player;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
-const INVENTORY_MENU: i32 = 0;
-const MENU_SLOTS: i16 = 46;
+pub(crate) const MENU_SLOTS: i16 = 46;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Move {
+    Click,
+    Once(usize),
+}
+
 const EQUIPMENT: [EquipmentSlot; 6] = [
     EquipmentSlot::MainHand,
     EquipmentSlot::OffHand,
@@ -54,77 +59,62 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn handle_container_click(&mut self, id: PlayerId, click: ContainerClick) {
-        if self.handle_plugin_menu_click(id, &click) || self.handle_open_menu_click(id, &click) {
-            return;
-        }
-        let Some(player) = self.players.get_mut(&id) else {
-            return;
-        };
-        if player.vitals.is_dead() || click.container != INVENTORY_MENU {
-            return;
-        }
-        let slot = click.slot;
-        if slot != -1 && slot != OUTSIDE && slot >= MENU_SLOTS {
-            tracing::debug!(
-                "Player {} clicked invalid slot index: {slot}, available slots: {MENU_SLOTS}",
-                player.profile.name
-            );
-            return;
-        }
-        let full_resync = click.state_id != player.inventory_state;
+    pub(crate) fn apply_inventory_click(
+        &mut self,
+        id: PlayerId,
+        click: &ContainerClick,
+        act: Option<Move>,
+        full: bool,
+    ) -> Slot {
+        let player = self.players.get_mut(&id)?;
+        let full = full || click.state_id != player.inventory_state;
         player.menu.suppress_remote_updates();
-        if slot < -1 && slot != OUTSIDE {
-            return;
-        }
         let before = Self::equipment_of(player);
-        let spectator = player.game_mode == GameMode::Spectator;
-        let effects = if !spectator
-            || click.input == ClickInput::QuickCraft
-            || player.menu.quick_crafting()
-        {
-            let clicker = Clicker {
-                infinite_materials: player.game_mode == GameMode::Creative,
-            };
-            player.menu.click(
-                &mut player.inventory,
-                slot,
-                click.button,
-                click.input,
-                clicker,
-            )
-        } else {
-            Vec::new()
+        let clicker = Clicker {
+            infinite_materials: player.game_mode == GameMode::Creative,
+        };
+        let (moved, effects) = match act {
+            Some(Move::Click) => (
+                None,
+                player.menu.click(
+                    &mut player.inventory,
+                    click.slot,
+                    click.button,
+                    click.input,
+                    clicker,
+                ),
+            ),
+            Some(Move::Once(slot)) => {
+                player
+                    .menu
+                    .quick_move_once(&mut player.inventory, slot, clicker)
+            }
+            None => (None, Vec::new()),
         };
         self.apply_menu_effects(id, effects);
         let Some(player) = self.players.get_mut(&id) else {
-            return;
+            return moved;
         };
-        for (slot, hash) in click.changed {
-            if !player.menu.receive_remote(slot, hash) {
+        for (slot, hash) in &click.changed {
+            if !player.menu.receive_remote(*slot, hash.clone()) {
                 tracing::debug!("Incorrect slot index: {slot} available slots: {MENU_SLOTS}");
             }
         }
-        player.menu.receive_remote_carried(click.carried);
+        player.menu.receive_remote_carried(click.carried.clone());
         player.menu.resume_remote_updates();
-        if full_resync {
+        if full {
             self.send_inventory(id);
         } else {
             self.sync_inventory(id);
         }
         self.broadcast_equipment_changes(id, before);
+        moved
     }
 
-    pub(crate) fn handle_container_close(&mut self, id: PlayerId, window: i32) {
-        if self.handle_open_menu_close(id, window) {
-            return;
-        }
+    pub(crate) fn close_inventory_menu(&mut self, id: PlayerId) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if player.vitals.is_dead() {
-            return;
-        }
         let before = Self::equipment_of(player);
         let effects = player.menu.close(&mut player.inventory);
         self.apply_menu_effects(id, effects);
@@ -154,7 +144,11 @@ impl<L: ClientLink> Server<L> {
                     predicted,
                 } => self.drop_from_player(id, stack, thrower, predicted),
                 MenuEffect::ResultUpdated => {
-                    if let Some(player) = self.players.get_mut(&id) {
+                    if let Some(player) = self
+                        .players
+                        .get_mut(&id)
+                        .filter(|player| !player.menu.result_held())
+                    {
                         let result = player.inventory.get(RESULT_SLOT).cloned();
                         player.menu.set_remote(RESULT_SLOT, result.clone());
                         Self::send_slot(player, RESULT_SLOT, result);
@@ -168,7 +162,7 @@ impl<L: ClientLink> Server<L> {
                         }
                     }
                 }
-                MenuEffect::FurnaceOutputTaken
+                MenuEffect::FurnaceOutputTaken { .. }
                 | MenuEffect::StonecutterTaken
                 | MenuEffect::SmithingTaken => {}
                 MenuEffect::FullResync => self.send_inventory(id),

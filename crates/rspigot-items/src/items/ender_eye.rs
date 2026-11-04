@@ -24,6 +24,7 @@ impl Item for EnderEye {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:ender_eye",
         ingredients: &[ItemSet::Direct(&[ItemId(1265)]), ItemSet::Direct(&[ItemId(1274)])],
         product: Product::of(1),
     }];

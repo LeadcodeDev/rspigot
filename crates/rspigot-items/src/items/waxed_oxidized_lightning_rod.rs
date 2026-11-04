@@ -24,6 +24,7 @@ impl Item for WaxedOxidizedLightningRod {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:waxed_oxidized_lightning_rod_from_honeycomb",
         ingredients: &[ItemSet::Direct(&[ItemId(843)]), ItemSet::Direct(&[ItemId(1530)])],
         product: Product::of(1),
     }];

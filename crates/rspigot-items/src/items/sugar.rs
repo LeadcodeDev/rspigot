@@ -25,10 +25,12 @@ impl Item for Sugar {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:sugar_from_honey_bottle",
             ingredients: &[ItemSet::Direct(&[ItemId(1533)])],
             product: Product::of(3),
         },
         Craft::Shapeless {
+            id: "minecraft:sugar_from_sugar_cane",
             ingredients: &[ItemSet::Direct(&[ItemId(327)])],
             product: Product::of(1),
         },

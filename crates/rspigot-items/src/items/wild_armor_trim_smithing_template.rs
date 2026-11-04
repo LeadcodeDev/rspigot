@@ -26,6 +26,7 @@ impl Item for WildArmorTrimSmithingTemplate {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:wild_armor_trim_smithing_template",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -43,6 +44,7 @@ impl Item for WildArmorTrimSmithingTemplate {
             product: Product::of(2),
         },
         Craft::SmithingTrim {
+            id: "minecraft:wild_armor_trim_smithing_template_smithing_trim",
             template: ItemSet::Direct(&[ItemId(1583)]),
             base: ItemSet::Tag(&tags::ITEM_TRIMMABLE_ARMOR),
             addition: ItemSet::Tag(&tags::ITEM_TRIM_MATERIALS),

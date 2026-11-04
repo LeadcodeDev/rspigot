@@ -25,6 +25,7 @@ impl Item for OrangeHarness {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_orange_harness",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1200)]),
                 ItemSet::Direct(&[
@@ -48,6 +49,7 @@ impl Item for OrangeHarness {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:orange_harness",
             width: 3,
             height: 2,
             symmetrical: true,

@@ -25,10 +25,11 @@ impl Item for FlintAndSteel {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:flint_and_steel",
             ingredients: &[ItemSet::Direct(&[ItemId(1018)]), ItemSet::Direct(&[ItemId(1096)])],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

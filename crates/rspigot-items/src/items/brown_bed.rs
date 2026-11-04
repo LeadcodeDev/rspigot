@@ -26,6 +26,7 @@ impl Item for BrownBed {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:brown_bed",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -40,6 +41,7 @@ impl Item for BrownBed {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_brown_bed",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1211)]),
                 ItemSet::Direct(&[

@@ -5949,8 +5949,8 @@ impl InventoryCreativePatch {
     fn when_cancelled(self) -> Option<Self> {
         let kept = Self {
             current_item: self.current_item,
-            cursor: self.cursor,
             result: self.result,
+            ..Self::default()
         };
         (kept != Self::default()).then_some(kept)
     }

@@ -27,6 +27,7 @@ impl Item for Bow {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:bow",
             width: 3,
             height: 3,
             symmetrical: false,
@@ -43,7 +44,7 @@ impl Item for Bow {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

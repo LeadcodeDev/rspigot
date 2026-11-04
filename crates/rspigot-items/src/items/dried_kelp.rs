@@ -30,6 +30,7 @@ impl Item for DriedKelp {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dried_kelp",
             ingredients: &[ItemSet::Direct(&[ItemId(1144)])],
             product: Product::of(9),
         },

@@ -25,6 +25,7 @@ impl Item for RedNetherBrickStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:red_nether_brick_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

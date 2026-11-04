@@ -25,6 +25,7 @@ impl Item for ExposedCutCopper {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:exposed_cut_copper",
             width: 2,
             height: 2,
             symmetrical: true,

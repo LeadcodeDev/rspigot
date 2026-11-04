@@ -25,6 +25,7 @@ impl Item for WaxedOxidizedCutCopperStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:waxed_oxidized_cut_copper_stairs",
             width: 3,
             height: 3,
             symmetrical: false,
@@ -42,6 +43,7 @@ impl Item for WaxedOxidizedCutCopperStairs {
             product: Product::of(4),
         },
         Craft::Shapeless {
+            id: "minecraft:waxed_oxidized_cut_copper_stairs_from_honeycomb",
             ingredients: &[ItemSet::Direct(&[ItemId(150)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },

@@ -26,6 +26,7 @@ impl Item for NetheriteIngot {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:netherite");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:netherite_ingot",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1024)]),
                 ItemSet::Direct(&[ItemId(1024)]),
@@ -39,6 +40,7 @@ impl Item for NetheriteIngot {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:netherite_ingot_from_netherite_block",
             ingredients: &[ItemSet::Direct(&[ItemId(130)])],
             product: Product::of(9),
         },

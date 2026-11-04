@@ -27,6 +27,7 @@ impl Item for Redstone {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:redstone");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:redstone",
             ingredients: &[ItemSet::Direct(&[ItemId(826)])],
             product: Product::of(9),
         },

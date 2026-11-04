@@ -1074,6 +1074,14 @@ class Crafts:
             return self.item(result["id"], where), struct_node("Craft::BookCloning", fields)
         fail("unhandled crafting recipe type %s in %s" % (kind, where))
 
+    def identified(self, node):
+        field = Prefix("id: ", Atom(rust_string(self.recipe_id)))
+        if isinstance(node, Atom):
+            return Group(node.text + " {", [field], "}", True)
+        if any(isinstance(item, Prefix) and item.text == "id: " for item in node.items):
+            return node
+        return Group(node.open, [field] + node.items, node.close, node.spaced)
+
     def read(self, datapack):
         root = os.path.join(datapack, "recipe")
         total = 0
@@ -1089,7 +1097,7 @@ class Crafts:
             pairs = outcome if isinstance(outcome, list) else [outcome]
             expanded += len(pairs) - 1
             for owner, node in pairs:
-                self.by_item.setdefault(owner, []).append(node)
+                self.by_item.setdefault(owner, []).append(self.identified(node))
         declared = sum(len(nodes) for nodes in self.by_item.values())
         if declared != total + expanded:
             fail("declared %d crafts, expected %d" % (declared, total + expanded))

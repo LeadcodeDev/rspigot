@@ -24,6 +24,7 @@ impl Item for RedSandstone {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:red_sandstone",
         width: 2,
         height: 2,
         symmetrical: true,

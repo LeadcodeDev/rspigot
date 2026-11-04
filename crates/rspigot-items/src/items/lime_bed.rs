@@ -26,6 +26,7 @@ impl Item for LimeBed {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_lime_bed",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1204)]),
                 ItemSet::Direct(&[
@@ -49,6 +50,7 @@ impl Item for LimeBed {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:lime_bed",
             width: 3,
             height: 2,
             symmetrical: true,

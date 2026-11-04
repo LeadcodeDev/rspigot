@@ -39,23 +39,34 @@ pub(super) fn wire_block_snapshot(snapshot: BlockSnapshot) -> v1::BlockSnapshot 
 }
 
 pub(super) fn wire_inventory_ref(inventory: InventoryRef) -> v1::InventoryRef {
-    let owner = match inventory.owner {
-        InventoryOwner::Custom(id) => inventory_ref::Owner::Custom(id),
-        InventoryOwner::Player(id) => inventory_ref::Owner::Player(id.0.hyphenated().to_string()),
-        InventoryOwner::Block(pos) => inventory_ref::Owner::Block(wire_block_pos(pos)),
-        InventoryOwner::Entity(id) => inventory_ref::Owner::Entity(id.0),
-        InventoryOwner::Detached => inventory_ref::Owner::Detached(v1::Empty {}),
+    let (owner, plugin) = match inventory.owner {
+        InventoryOwner::Custom { plugin, id } => (inventory_ref::Owner::Custom(id), plugin),
+        InventoryOwner::Player(id) => (
+            inventory_ref::Owner::Player(id.0.hyphenated().to_string()),
+            String::new(),
+        ),
+        InventoryOwner::Block(pos) => (
+            inventory_ref::Owner::Block(wire_block_pos(pos)),
+            String::new(),
+        ),
+        InventoryOwner::Entity(id) => (inventory_ref::Owner::Entity(id.0), String::new()),
+        InventoryOwner::Detached => (inventory_ref::Owner::Detached(v1::Empty {}), String::new()),
     };
     v1::InventoryRef {
         owner: Some(owner),
         size: inventory.size,
         kind: inventory.kind,
+        plugin,
+        id: inventory.id,
     }
 }
 
 pub(super) fn inventory_ref(inventory: v1::InventoryRef) -> Result<InventoryRef, Malformed> {
     let owner = match required(inventory.owner)? {
-        inventory_ref::Owner::Custom(id) => InventoryOwner::Custom(id),
+        inventory_ref::Owner::Custom(id) => InventoryOwner::Custom {
+            plugin: inventory.plugin,
+            id,
+        },
         inventory_ref::Owner::Player(id) => InventoryOwner::Player(player::id(id)?),
         inventory_ref::Owner::Block(pos) => InventoryOwner::Block(block_pos(pos)),
         inventory_ref::Owner::Entity(id) => InventoryOwner::Entity(EntityId(id)),
@@ -65,6 +76,7 @@ pub(super) fn inventory_ref(inventory: v1::InventoryRef) -> Result<InventoryRef,
         owner,
         size: inventory.size,
         kind: inventory.kind,
+        id: inventory.id,
     })
 }
 
@@ -292,7 +304,10 @@ mod tests {
         };
         assert_eq!(location(wire_location(spot.clone())).ok(), Some(spot));
         for owner in [
-            InventoryOwner::Custom(7),
+            InventoryOwner::Custom {
+                plugin: "shop".to_owned(),
+                id: 7,
+            },
             InventoryOwner::Player(PlayerId(Uuid::from_u128(3))),
             InventoryOwner::Block(BlockPos::new(1, 2, 3)),
             InventoryOwner::Entity(EntityId(9)),
@@ -302,6 +317,7 @@ mod tests {
                 owner,
                 size: 27,
                 kind: "CHEST".to_owned(),
+                id: 12,
             };
             assert_eq!(
                 inventory_ref(wire_inventory_ref(inventory.clone())).ok(),

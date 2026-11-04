@@ -24,6 +24,7 @@ impl Item for WaxedExposedCopperTrapdoor {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:waxed_exposed_copper_trapdoor_from_honeycomb",
         ingredients: &[ItemSet::Direct(&[ItemId(925)]), ItemSet::Direct(&[ItemId(1530)])],
         product: Product::of(1),
     }];

@@ -24,6 +24,7 @@ impl Item for JackOLantern {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:jack_o_lantern",
         width: 1,
         height: 2,
         symmetrical: true,

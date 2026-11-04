@@ -25,6 +25,7 @@ impl Item for PolishedTuffStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_tuff_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

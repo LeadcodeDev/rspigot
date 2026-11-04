@@ -57,8 +57,9 @@ impl Item for WoodenAxe {
     ];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:wooden_axe",
             width: 2,
             height: 3,
             symmetrical: false,

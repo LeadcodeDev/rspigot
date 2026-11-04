@@ -27,6 +27,7 @@ impl Item for MagentaWoolSlab {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_magenta_wool_slab",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1201)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for MagentaWoolSlab {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:magenta_wool_slab",
             width: 3,
             height: 1,
             symmetrical: true,

@@ -23,6 +23,7 @@ struct Shared {
     current: Mutex<Option<Connection>>,
     generation: AtomicU64,
     last_request: AtomicU64,
+    name: Mutex<String>,
 }
 
 struct Connection {
@@ -56,6 +57,19 @@ impl Link {
 
     pub(crate) fn generation(&self) -> u64 {
         self.0.generation.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn name_as(&self, name: &str) {
+        let mut own = self.0.name.lock().unwrap_or_else(PoisonError::into_inner);
+        name.clone_into(&mut own);
+    }
+
+    pub(crate) fn name(&self) -> String {
+        self.0
+            .name
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     pub(crate) fn order(&self, body: from_plugin::Body) {

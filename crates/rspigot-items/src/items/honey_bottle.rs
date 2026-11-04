@@ -29,6 +29,7 @@ impl Item for HoneyBottle {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTING_REMAINDER: Option<ItemId> = Some(ItemId(1270));
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:honey_bottle",
         ingredients: &[
             ItemSet::Direct(&[ItemId(832)]),
             ItemSet::Direct(&[ItemId(1270)]),

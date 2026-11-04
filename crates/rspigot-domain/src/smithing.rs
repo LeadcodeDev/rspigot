@@ -46,6 +46,7 @@ fn entries() -> &'static [Entry] {
                         template,
                         base,
                         addition,
+                        ..
                     } => Some(Entry {
                         recipe: Recipe::Transform { result: owner },
                         template,
@@ -57,6 +58,7 @@ fn entries() -> &'static [Entry] {
                         base,
                         addition,
                         pattern,
+                        ..
                     } => Some(Entry {
                         recipe: Recipe::Trim { pattern },
                         template,

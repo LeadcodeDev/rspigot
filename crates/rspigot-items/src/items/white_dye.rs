@@ -25,10 +25,12 @@ impl Item for WhiteDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:white_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1215)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:white_dye_from_lily_of_the_valley",
             ingredients: &[ItemSet::Direct(&[ItemId(312)])],
             product: Product::of(1),
         },

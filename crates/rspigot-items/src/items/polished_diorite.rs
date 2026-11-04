@@ -25,6 +25,7 @@ impl Item for PolishedDiorite {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_diorite",
             width: 2,
             height: 2,
             symmetrical: true,

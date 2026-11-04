@@ -25,12 +25,14 @@ impl Item for FireworkRocket {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::FireworkRocket {
+            id: "minecraft:firework_rocket",
             shell: ItemSet::Direct(&[ItemId(1145)]),
             star: ItemSet::Direct(&[ItemId(1394)]),
             fuel: ItemSet::Direct(&[ItemId(1064)]),
             count: 3,
         },
         Craft::Shapeless {
+            id: "minecraft:firework_rocket_simple",
             ingredients: &[ItemSet::Direct(&[ItemId(1064)]), ItemSet::Direct(&[ItemId(1145)])],
             product: Product::of(3),
         },

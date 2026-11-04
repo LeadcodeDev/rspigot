@@ -57,11 +57,12 @@ impl Item for NetheriteShovel {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::SmithingTransform {
+            id: "minecraft:netherite_shovel_smithing",
             template: ItemSet::Direct(&[ItemId(1579)]),
             base: ItemSet::Direct(&[ItemId(1051)]),
             addition: ItemSet::Tag(&tags::ITEM_NETHERITE_TOOL_MATERIALS),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

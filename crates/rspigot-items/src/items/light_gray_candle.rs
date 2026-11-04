@@ -24,6 +24,7 @@ impl Item for LightGrayCandle {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:light_gray_candle",
         ingredients: &[ItemSet::Direct(&[ItemId(1550)]), ItemSet::Direct(&[ItemId(1207)])],
         product: Product::of(1),
     }];

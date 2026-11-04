@@ -25,6 +25,7 @@ impl Item for TuffBricks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:tuff_bricks",
             width: 2,
             height: 2,
             symmetrical: true,

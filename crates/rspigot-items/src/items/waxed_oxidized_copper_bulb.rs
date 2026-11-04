@@ -25,6 +25,7 @@ impl Item for WaxedOxidizedCopperBulb {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:waxed_oxidized_copper_bulb",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -42,6 +43,7 @@ impl Item for WaxedOxidizedCopperBulb {
             product: Product::of(4),
         },
         Craft::Shapeless {
+            id: "minecraft:waxed_oxidized_copper_bulb_from_honeycomb",
             ingredients: &[ItemSet::Direct(&[ItemId(1632)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },

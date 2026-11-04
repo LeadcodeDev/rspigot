@@ -25,6 +25,7 @@ impl Item for OxidizedCutCopperStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:oxidized_cut_copper_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

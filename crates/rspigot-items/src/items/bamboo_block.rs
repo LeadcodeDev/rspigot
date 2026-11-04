@@ -26,6 +26,7 @@ impl Item for BambooBlock {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:bamboo_block",
         ingredients: &[
             ItemSet::Direct(&[ItemId(340)]),
             ItemSet::Direct(&[ItemId(340)]),

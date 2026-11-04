@@ -24,6 +24,7 @@ impl Item for PotentSulfur {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:potent_sulfur",
         ingredients: &[
             ItemSet::Direct(&[ItemId(26)]),
             ItemSet::Direct(&[ItemId(26)]),

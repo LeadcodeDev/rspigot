@@ -25,6 +25,7 @@ impl Item for WaxedExposedChiseledCopper {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:waxed_exposed_chiseled_copper",
             width: 1,
             height: 2,
             symmetrical: true,
@@ -32,6 +33,7 @@ impl Item for WaxedExposedChiseledCopper {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:waxed_exposed_chiseled_copper_from_honeycomb",
             ingredients: &[ItemSet::Direct(&[ItemId(132)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },

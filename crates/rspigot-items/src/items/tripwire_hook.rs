@@ -25,6 +25,7 @@ impl Item for TripwireHook {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:tripwire_hook",
         width: 1,
         height: 3,
         symmetrical: true,

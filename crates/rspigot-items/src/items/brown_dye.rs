@@ -24,6 +24,7 @@ impl Item for BrownDye {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:brown_dye",
         ingredients: &[ItemSet::Direct(&[ItemId(1198)])],
         product: Product::of(1),
     }];

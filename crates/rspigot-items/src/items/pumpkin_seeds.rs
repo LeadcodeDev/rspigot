@@ -24,6 +24,7 @@ impl Item for PumpkinSeeds {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:pumpkin_seeds",
         ingredients: &[ItemSet::Direct(&[ItemId(430)])],
         product: Product::of(4),
     }];

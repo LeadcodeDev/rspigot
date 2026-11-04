@@ -64,8 +64,8 @@ enum ClickKind {
 }
 
 fn custom_id(inventory: &InventoryRef) -> u64 {
-    match inventory.owner {
-        InventoryOwner::Custom(id) => id,
+    match &inventory.owner {
+        InventoryOwner::Custom { id, .. } => *id,
         other => panic!("expected a plugin inventory, got {other:?}"),
     }
 }
@@ -74,9 +74,9 @@ fn clicked(click: &InventoryClick) -> (ClickedSlot, ClickKind) {
     let slot = match click
         .clicked_inventory
         .as_ref()
-        .map(|inventory| inventory.owner)
+        .map(|inventory| &inventory.owner)
     {
-        Some(InventoryOwner::Custom(_)) => {
+        Some(InventoryOwner::Custom { .. }) => {
             ClickedSlot::Menu(u16::try_from(click.slot).expect("a menu slot"))
         }
         Some(InventoryOwner::Player(_)) => ClickedSlot::Player(click.slot),
@@ -662,7 +662,7 @@ fn the_owner_disconnecting_closes_its_menus_everywhere() {
 }
 
 #[test]
-fn only_the_owner_hears_its_inventory_events() {
+fn every_listening_plugin_hears_the_events_of_a_plugin_inventory() {
     let (mut s, alice, _bob) = menu_scene();
     let other = connect_with(&mut s.server, 2, "other", handlers());
     let (mut screen, _) = open(&mut s, &alice, MENU);
@@ -670,7 +670,9 @@ fn only_the_owner_hears_its_inventory_events() {
     close_window(&mut s, &alice, screen.window);
     assert_eq!(clicks(&s.plugin, &alice).len(), 1);
     assert_eq!(closes(&s.plugin, &alice).len(), 1);
-    assert!(events_of(&other).is_empty());
+    assert_eq!(clicks(&other, &alice).len(), 1);
+    assert_eq!(closes(&other, &alice).len(), 1);
+    assert_eq!(clicks(&other, &alice)[0].inventory, MENU);
 
     order(
         &mut s.server,
@@ -684,7 +686,6 @@ fn only_the_owner_hears_its_inventory_events() {
     );
     let (slots, _) = content(&alice.link.take(), screen.window + 1).expect("the other menu");
     assert!(slots[0].is_none());
-    assert!(events_of(&other).is_empty());
 }
 
 #[test]
@@ -779,4 +780,54 @@ fn limits_and_unknown_ids() {
         s.ask(Question::CustomInventory(MAX_PLUGIN_INVENTORIES as u64 + 1)),
         Answer::NotFound
     );
+}
+
+#[test]
+fn two_plugins_with_the_same_inventory_id_hand_out_different_inventories() {
+    let (mut s, alice, bob) = menu_scene();
+    let other = connect_with(&mut s.server, 2, "other", handlers());
+    order(
+        &mut s.server,
+        2,
+        FromPlugin::Order(create(MENU, 1, "Theirs", true)),
+    );
+    let (mut mine, _) = open(&mut s, &alice, MENU);
+    order(
+        &mut s.server,
+        2,
+        FromPlugin::Order(to(&bob, PlayerOrder::OpenInventory(MENU))),
+    );
+    let window = bob
+        .link
+        .take()
+        .iter()
+        .find_map(|event| match event {
+            ClientEvent::OpenScreen { window, .. } => Some(*window),
+            _ => None,
+        })
+        .expect("the other plugin opens its menu");
+    let mut theirs = Screen { window, state: 0 };
+    click(&mut s, &alice, &mut mine, press(0, 0, ClickInput::Pickup));
+    click(&mut s, &bob, &mut theirs, press(0, 0, ClickInput::Pickup));
+    let owners: Vec<InventoryOwner> = events_of(&other)
+        .into_iter()
+        .filter_map(|(_, payload)| match payload {
+            EventPayload::InventoryClick(click) => Some(click.inventory.owner),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        owners,
+        [
+            InventoryOwner::Custom {
+                plugin: "tester".to_owned(),
+                id: MENU
+            },
+            InventoryOwner::Custom {
+                plugin: "other".to_owned(),
+                id: MENU
+            },
+        ]
+    );
+    assert_ne!(owners[0], owners[1]);
 }

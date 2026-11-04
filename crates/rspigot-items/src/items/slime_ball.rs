@@ -24,6 +24,7 @@ impl Item for SlimeBall {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:slime_ball",
         ingredients: &[ItemSet::Direct(&[ItemId(831)])],
         product: Product::of(9),
     }];

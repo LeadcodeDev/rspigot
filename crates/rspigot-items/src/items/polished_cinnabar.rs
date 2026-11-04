@@ -25,6 +25,7 @@ impl Item for PolishedCinnabar {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_cinnabar",
             width: 2,
             height: 2,
             symmetrical: true,

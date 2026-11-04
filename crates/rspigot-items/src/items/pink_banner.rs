@@ -27,6 +27,7 @@ impl Item for PinkBanner {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:pink_banner",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -43,7 +44,7 @@ impl Item for PinkBanner {
             ],
             product: Product::of(1),
         },
-        Craft::BannerDuplicate,
+        Craft::BannerDuplicate { id: "minecraft:pink_banner_duplicate" },
     ];
     type Behavior = crate::family::BlockItem;
 }

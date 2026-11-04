@@ -101,14 +101,19 @@ mod tests {
     #[test]
     fn inventory_events_convert_to_the_wire() {
         let menu = InventoryRef {
-            owner: InventoryOwner::Custom(7),
+            owner: InventoryOwner::Custom {
+                plugin: "shop".to_owned(),
+                id: 7,
+            },
             size: 9,
             kind: "CHEST".to_owned(),
+            id: 7,
         };
         let own = InventoryRef {
             owner: InventoryOwner::Player(steve().id),
             size: 41,
             kind: "PLAYER".to_owned(),
+            id: 3,
         };
         let view = InventoryView {
             top: menu.clone(),
@@ -139,11 +144,15 @@ mod tests {
             owner: Some(inventory_ref::Owner::Custom(7)),
             size: 9,
             kind: "CHEST".into(),
+            plugin: "shop".into(),
+            id: 7,
         };
         let wire_own = v1::InventoryRef {
             owner: Some(inventory_ref::Owner::Player(STEVE.into())),
             size: 41,
             kind: "PLAYER".into(),
+            plugin: String::new(),
+            id: 3,
         };
         let wire_view = v1::InventoryView {
             top: Some(wire_menu.clone()),

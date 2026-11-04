@@ -24,6 +24,7 @@ impl Item for RawIron {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:raw_iron",
         ingredients: &[ItemSet::Direct(&[ItemId(113)])],
         product: Product::of(9),
     }];

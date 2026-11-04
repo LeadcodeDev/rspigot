@@ -24,6 +24,7 @@ impl Item for NetherWartBlock {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:nether_wart_block",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1269)]),
             ItemSet::Direct(&[ItemId(1269)]),

@@ -27,6 +27,7 @@ impl Item for CopperIngot {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:copper");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:copper_ingot",
             ingredients: &[ItemSet::Direct(&[ItemId(120)])],
             product: Product::of(9),
         },
@@ -52,6 +53,7 @@ impl Item for CopperIngot {
             cooking_time: 200,
         },
         Craft::Shaped {
+            id: "minecraft:copper_ingot_from_nuggets",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -90,6 +92,7 @@ impl Item for CopperIngot {
             cooking_time: 200,
         },
         Craft::Shapeless {
+            id: "minecraft:copper_ingot_from_waxed_copper_block",
             ingredients: &[ItemSet::Direct(&[ItemId(124)])],
             product: Product::of(9),
         },

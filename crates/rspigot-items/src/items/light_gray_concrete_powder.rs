@@ -24,6 +24,7 @@ impl Item for LightGrayConcretePowder {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:light_gray_concrete_powder",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1207)]),
             ItemSet::Direct(&[ItemId(88)]),

@@ -25,6 +25,7 @@ impl Item for YellowStainedGlassPane {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:yellow_stained_glass_pane",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -39,6 +40,7 @@ impl Item for YellowStainedGlassPane {
             product: Product::of(16),
         },
         Craft::Shaped {
+            id: "minecraft:yellow_stained_glass_pane_from_glass_pane",
             width: 3,
             height: 3,
             symmetrical: true,

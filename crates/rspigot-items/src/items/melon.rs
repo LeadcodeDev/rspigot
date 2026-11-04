@@ -24,6 +24,7 @@ impl Item for Melon {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:melon",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1256)]),
             ItemSet::Direct(&[ItemId(1256)]),

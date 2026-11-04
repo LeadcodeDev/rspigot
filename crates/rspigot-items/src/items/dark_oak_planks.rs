@@ -26,6 +26,7 @@ impl Item for DarkOakPlanks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:dark_oak_planks",
         ingredients: &[ItemSet::Tag(&tags::ITEM_DARK_OAK_LOGS)],
         product: Product::of(4),
     }];

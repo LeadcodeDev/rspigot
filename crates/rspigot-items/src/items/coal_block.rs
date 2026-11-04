@@ -26,6 +26,7 @@ impl Item for CoalBlock {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 16000, fast_burn_time: 8000 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:coal_block",
         width: 3,
         height: 3,
         symmetrical: true,

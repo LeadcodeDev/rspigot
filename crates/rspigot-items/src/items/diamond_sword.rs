@@ -62,6 +62,7 @@ impl Item for DiamondSword {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:diamond_sword",
             width: 1,
             height: 3,
             symmetrical: true,
@@ -72,7 +73,7 @@ impl Item for DiamondSword {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

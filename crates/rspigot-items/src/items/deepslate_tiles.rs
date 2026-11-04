@@ -25,6 +25,7 @@ impl Item for DeepslateTiles {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:deepslate_tiles",
             width: 2,
             height: 2,
             symmetrical: true,

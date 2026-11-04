@@ -29,6 +29,7 @@ impl Item for RabbitStew {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:rabbit_stew_from_brown_mushroom",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1380)]),
                 ItemSet::Direct(&[ItemId(1401)]),
@@ -39,6 +40,7 @@ impl Item for RabbitStew {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:rabbit_stew_from_red_mushroom",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1380)]),
                 ItemSet::Direct(&[ItemId(1401)]),
@@ -49,6 +51,7 @@ impl Item for RabbitStew {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:rabbit_stew_from_shelf_mushroom",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1380)]),
                 ItemSet::Direct(&[ItemId(1401)]),

@@ -24,6 +24,7 @@ impl Item for OrangeConcretePowder {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:orange_concrete_powder",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1200)]),
             ItemSet::Direct(&[ItemId(88)]),

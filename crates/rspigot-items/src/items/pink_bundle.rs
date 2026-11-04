@@ -24,6 +24,7 @@ impl Item for PinkBundle {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Transmute {
+        id: "minecraft:pink_bundle",
         input: ItemSet::Tag(&tags::ITEM_BUNDLES),
         material: ItemSet::Direct(&[ItemId(1205)]),
         min_material: 1,

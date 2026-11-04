@@ -41,6 +41,7 @@ impl Item for GoldenChestplate {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:golden_chestplate",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -57,7 +58,7 @@ impl Item for GoldenChestplate {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

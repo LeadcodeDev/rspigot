@@ -27,6 +27,7 @@ impl Item for LapisLazuli {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:lapis");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:lapis_lazuli",
             ingredients: &[ItemSet::Direct(&[ItemId(233)])],
             product: Product::of(9),
         },

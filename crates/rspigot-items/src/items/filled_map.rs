@@ -25,6 +25,7 @@ impl Item for FilledMap {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Transmute {
+            id: "minecraft:map_cloning",
             input: ItemSet::Direct(&[ItemId(1238)]),
             material: ItemSet::Direct(&[ItemId(1382)]),
             min_material: 1,
@@ -33,6 +34,7 @@ impl Item for FilledMap {
             count: 1,
         },
         Craft::MapExtending {
+            id: "minecraft:map_extending",
             map: ItemSet::Tag(&tags::ITEM_EXTENDABLE_MAPS),
             material: ItemSet::Direct(&[ItemId(1145)]),
         },

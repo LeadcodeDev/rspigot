@@ -24,6 +24,7 @@ impl Item for Granite {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:granite",
         ingredients: &[ItemSet::Direct(&[ItemId(4)]), ItemSet::Direct(&[ItemId(1015)])],
         product: Product::of(1),
     }];

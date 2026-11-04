@@ -41,6 +41,7 @@ impl Item for IronLeggings {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:iron_leggings",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -57,7 +58,7 @@ impl Item for IronLeggings {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

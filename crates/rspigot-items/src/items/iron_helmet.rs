@@ -41,6 +41,7 @@ impl Item for IronHelmet {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:iron_helmet",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -54,7 +55,7 @@ impl Item for IronHelmet {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

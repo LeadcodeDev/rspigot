@@ -26,12 +26,14 @@ impl Item for DecoratedPot {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::DecoratedPot {
+            id: "minecraft:decorated_pot",
             back: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
             front: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
             left: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
             right: ItemSet::Tag(&tags::ITEM_DECORATED_POT_INGREDIENTS),
         },
         Craft::Shaped {
+            id: "minecraft:decorated_pot_simple",
             width: 3,
             height: 3,
             symmetrical: true,

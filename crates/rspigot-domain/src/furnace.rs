@@ -141,6 +141,73 @@ impl Default for Furnace {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Ask {
+    Burn {
+        fuel: ItemStack,
+        burn_time: i32,
+    },
+    StartSmelt {
+        source: ItemStack,
+        recipe: CookingRecipe,
+        total_cook_time: i32,
+    },
+    Smelt {
+        source: ItemStack,
+        result: ItemStack,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BurnAnswer {
+    Cancelled,
+    Burn { burn_time: i32, burning: bool },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SmeltAnswer {
+    Cancelled,
+    Result(Slot),
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Answers {
+    pub burn: Option<BurnAnswer>,
+    pub start: Option<i32>,
+    pub smelt: Option<SmeltAnswer>,
+}
+
+impl Answers {
+    pub fn settle_default(&mut self, ask: &Ask) {
+        match ask {
+            Ask::Burn { burn_time, .. } => {
+                self.burn = Some(BurnAnswer::Burn {
+                    burn_time: *burn_time,
+                    burning: true,
+                });
+            }
+            Ask::StartSmelt {
+                total_cook_time, ..
+            } => self.start = Some(*total_cook_time),
+            Ask::Smelt { result, .. } => {
+                self.smelt = Some(SmeltAnswer::Result(Some(result.clone())));
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Progress {
+    Done(Tick),
+    Ask(Ask),
+}
+
+enum Cooked {
+    Changed(bool),
+    Ask(Ask),
+    Refused,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tick {
     pub changed: bool,
@@ -186,12 +253,15 @@ impl Furnace {
                 <= CONTAINER_MAX_STACK.min(max_stack(result))
     }
 
-    fn burn(&mut self, result: &ItemStack) {
-        match &self.items[RESULT_SLOT] {
-            None => self.items[RESULT_SLOT] = Some(result.clone()),
-            Some(existing) => {
-                let total = count(&self.items[RESULT_SLOT]) + u32::from(result.count.get());
-                self.items[RESULT_SLOT] = with_count(existing, total);
+    fn burn(&mut self, result: Slot) -> bool {
+        if let Some(result) = result {
+            match &self.items[RESULT_SLOT] {
+                None => self.items[RESULT_SLOT] = Some(result),
+                Some(existing) if same_item_same_components(existing, &result) => {
+                    let total = count(&self.items[RESULT_SLOT]) + u32::from(result.count.get());
+                    self.items[RESULT_SLOT] = with_count(existing, total);
+                }
+                Some(_) => return false,
             }
         }
         let wet_sponge = self.items[INPUT_SLOT]
@@ -205,6 +275,7 @@ impl Furnace {
         if let Some(input) = self.items[INPUT_SLOT].take() {
             self.items[INPUT_SLOT] = with_count(&input, u32::from(input.count.get()) - 1);
         }
+        true
     }
 
     fn consume_fuel(&mut self) {
@@ -220,6 +291,20 @@ impl Furnace {
     }
 
     pub fn tick(&mut self, kind: CookingKind) -> Tick {
+        let mut answers = Answers::default();
+        let start = self.clone();
+        loop {
+            match self.step(kind, &answers) {
+                Progress::Done(tick) => return tick,
+                Progress::Ask(ask) => {
+                    answers.settle_default(&ask);
+                    *self = start.clone();
+                }
+            }
+        }
+    }
+
+    pub fn step(&mut self, kind: CookingKind, answers: &Answers) -> Progress {
         let mut changed = false;
         let was_lit = self.is_lit();
         let mut is_lit = was_lit;
@@ -233,7 +318,17 @@ impl Furnace {
                 None => self.cooking_time_spent = 0,
                 Some(input) => {
                     if let Some(recipe) = recipe_for(kind, &input) {
-                        changed |= self.cook(kind, recipe, &mut is_lit);
+                        match self.cook(kind, recipe, &input, &mut is_lit, answers) {
+                            Cooked::Changed(cooked) => changed |= cooked,
+                            Cooked::Ask(ask) => return Progress::Ask(ask),
+                            Cooked::Refused => {
+                                return Progress::Done(Tick {
+                                    changed: true,
+                                    was_lit,
+                                    is_lit: was_lit,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -244,24 +339,40 @@ impl Furnace {
         if was_lit != is_lit {
             changed = true;
         }
-        Tick {
+        Progress::Done(Tick {
             changed,
             was_lit,
             is_lit,
-        }
+        })
     }
 
-    fn cook(&mut self, kind: CookingKind, recipe: CookingRecipe, is_lit: &mut bool) -> bool {
+    fn cook(
+        &mut self,
+        kind: CookingKind,
+        recipe: CookingRecipe,
+        input: &ItemStack,
+        is_lit: &mut bool,
+        answers: &Answers,
+    ) -> Cooked {
         let result = ItemStack::new(recipe.result.id(), NonZeroU8::MIN);
         if !self.can_burn(&result) {
             self.cooking_time_spent = 0;
-            return false;
+            return Cooked::Changed(false);
         }
         let mut changed = false;
         if !*is_lit {
-            let burn = self.items[FUEL_SLOT]
-                .as_ref()
-                .map_or(0, |fuel| burn_time(kind, fuel));
+            let fuel = self.items[FUEL_SLOT].clone();
+            let vanilla = fuel.as_ref().map_or(0, |fuel| burn_time(kind, fuel));
+            let (burn, burning) = match answers.burn {
+                None => {
+                    return Cooked::Ask(Ask::Burn {
+                        fuel: fuel.unwrap_or_else(|| input.clone()),
+                        burn_time: vanilla,
+                    });
+                }
+                Some(BurnAnswer::Cancelled) => return Cooked::Refused,
+                Some(BurnAnswer::Burn { burn_time, burning }) => (burn_time, burning),
+            };
             self.lit_time_remaining = burn;
             self.lit_total_time = burn;
             self.speed_multiplier = speed_of(kind);
@@ -271,7 +382,7 @@ impl Furnace {
                     total_cook_time(recipe.cooking_time, self.speed_multiplier);
                 self.cooking_time_spent = (ratio * self.cooking_total_time as f32).ceil() as i32;
             }
-            if burn > 0 {
+            if burn > 0 && burning {
                 self.consume_fuel();
                 *is_lit = true;
                 changed = true;
@@ -279,17 +390,43 @@ impl Furnace {
         }
         if !*is_lit {
             self.cooking_time_spent = 0;
-            return changed;
+            return Cooked::Changed(changed);
+        }
+        if self.cooking_time_spent == 0 {
+            match answers.start {
+                None => {
+                    return Cooked::Ask(Ask::StartSmelt {
+                        source: input.clone(),
+                        recipe,
+                        total_cook_time: total_cook_time(
+                            recipe.cooking_time,
+                            self.speed_multiplier,
+                        ),
+                    });
+                }
+                Some(total) => self.cooking_total_time = total,
+            }
         }
         self.cooking_time_spent += 1;
         if self.cooking_time_spent >= self.cooking_total_time {
             self.cooking_time_spent = 0;
             self.cooking_total_time = total_cook_time(recipe.cooking_time, self.speed_multiplier);
-            self.burn(&result);
-            *self.recipes_used.entry(recipe.id.to_owned()).or_insert(0) += 1;
+            let smelted = match &answers.smelt {
+                None => {
+                    return Cooked::Ask(Ask::Smelt {
+                        source: input.clone(),
+                        result,
+                    });
+                }
+                Some(SmeltAnswer::Cancelled) => false,
+                Some(SmeltAnswer::Result(made)) => self.burn(made.clone()),
+            };
+            if smelted {
+                *self.recipes_used.entry(recipe.id.to_owned()).or_insert(0) += 1;
+            }
             changed = true;
         }
-        changed
+        Cooked::Changed(changed)
     }
 
     pub fn experience(&self, next_float: &mut impl FnMut() -> f32) -> Vec<i32> {
@@ -341,6 +478,139 @@ mod tests {
         for _ in 0..ticks {
             furnace.tick(kind);
         }
+    }
+
+    fn answered(furnace: &mut Furnace, answers: &Answers) -> Progress {
+        furnace.step(CookingKind::Smelting, answers)
+    }
+
+    #[test]
+    fn a_furnace_asks_before_it_burns_fuel_starts_an_item_and_smelts_it() {
+        let mut furnace = furnace(stack(ItemKind::Potato, 1), stack(ItemKind::Coal, 1));
+        let fresh = furnace.clone();
+        assert_eq!(
+            answered(&mut furnace, &Answers::default()),
+            Progress::Ask(Ask::Burn {
+                fuel: ItemStack::new(ItemKind::Coal.id(), NonZeroU8::MIN),
+                burn_time: 1600
+            })
+        );
+        let mut answers = Answers {
+            burn: Some(BurnAnswer::Burn {
+                burn_time: 1600,
+                burning: true,
+            }),
+            ..Answers::default()
+        };
+        furnace = fresh.clone();
+        let Progress::Ask(Ask::StartSmelt {
+            total_cook_time, ..
+        }) = answered(&mut furnace, &answers)
+        else {
+            panic!("the furnace asks before it starts an item");
+        };
+        assert_eq!(total_cook_time, 200);
+        answers.start = Some(1);
+        furnace = fresh;
+        assert_eq!(
+            answered(&mut furnace, &answers),
+            Progress::Ask(Ask::Smelt {
+                source: ItemStack::new(ItemKind::Potato.id(), NonZeroU8::MIN),
+                result: ItemStack::new(ItemKind::BakedPotato.id(), NonZeroU8::MIN)
+            })
+        );
+    }
+
+    #[test]
+    fn a_refused_burn_keeps_the_fuel_and_reports_no_change_of_light() {
+        let mut furnace = furnace(stack(ItemKind::Potato, 1), stack(ItemKind::Coal, 1));
+        furnace.lit_time_remaining = 1;
+        let answers = Answers {
+            burn: Some(BurnAnswer::Cancelled),
+            ..Answers::default()
+        };
+        assert_eq!(
+            answered(&mut furnace, &answers),
+            Progress::Done(Tick {
+                changed: true,
+                was_lit: true,
+                is_lit: true
+            })
+        );
+        assert_eq!(furnace.items[FUEL_SLOT], stack(ItemKind::Coal, 1));
+        assert_eq!(furnace.lit_time_remaining, 0);
+    }
+
+    #[test]
+    fn a_burn_without_burning_keeps_the_fuel_and_cooks_from_the_next_tick() {
+        let mut furnace = furnace(stack(ItemKind::Potato, 1), stack(ItemKind::Coal, 1));
+        let answers = Answers {
+            burn: Some(BurnAnswer::Burn {
+                burn_time: 40,
+                burning: false,
+            }),
+            ..Answers::default()
+        };
+        let Progress::Done(tick) = answered(&mut furnace, &answers) else {
+            panic!("an unlit furnace does not cook");
+        };
+        assert!(!tick.is_lit);
+        assert_eq!(furnace.items[FUEL_SLOT], stack(ItemKind::Coal, 1));
+        assert_eq!(furnace.lit_time_remaining, 40);
+        assert_eq!(furnace.cooking_time_spent, 0);
+        furnace.tick(CookingKind::Smelting);
+        assert_eq!(furnace.items[FUEL_SLOT], stack(ItemKind::Coal, 1));
+        assert_eq!(furnace.cooking_time_spent, 1);
+    }
+
+    #[test]
+    fn a_refused_smelt_loses_the_progress_and_keeps_the_input() {
+        let mut furnace = furnace(stack(ItemKind::Potato, 1), stack(ItemKind::Coal, 1));
+        furnace.lit_time_remaining = 100;
+        furnace.cooking_time_spent = 199;
+        let answers = Answers {
+            start: Some(200),
+            smelt: Some(SmeltAnswer::Cancelled),
+            ..Answers::default()
+        };
+        assert!(matches!(
+            answered(&mut furnace, &answers),
+            Progress::Done(_)
+        ));
+        assert_eq!(furnace.items[INPUT_SLOT], stack(ItemKind::Potato, 1));
+        assert_eq!(furnace.items[RESULT_SLOT], None);
+        assert_eq!(furnace.cooking_time_spent, 0);
+        assert!(furnace.recipes_used.is_empty());
+    }
+
+    #[test]
+    fn a_patched_smelt_result_grows_a_similar_output_past_its_stack_and_skips_a_different_one() {
+        let smelt = |output: Slot, made: Slot| {
+            let mut furnace = furnace(stack(ItemKind::Potato, 2), stack(ItemKind::Coal, 1));
+            furnace.items[RESULT_SLOT] = output;
+            furnace.lit_time_remaining = 100;
+            furnace.cooking_time_spent = 199;
+            let answers = Answers {
+                start: Some(200),
+                smelt: Some(SmeltAnswer::Result(made)),
+                ..Answers::default()
+            };
+            furnace.step(CookingKind::Smelting, &answers);
+            furnace
+        };
+        let grown = smelt(
+            stack(ItemKind::BakedPotato, 60),
+            stack(ItemKind::BakedPotato, 10),
+        );
+        assert_eq!(grown.items[RESULT_SLOT], stack(ItemKind::BakedPotato, 70));
+        assert_eq!(grown.items[INPUT_SLOT], stack(ItemKind::Potato, 1));
+        let kept = smelt(stack(ItemKind::BakedPotato, 1), stack(ItemKind::Diamond, 1));
+        assert_eq!(kept.items[RESULT_SLOT], stack(ItemKind::BakedPotato, 1));
+        assert_eq!(kept.items[INPUT_SLOT], stack(ItemKind::Potato, 2));
+        assert!(kept.recipes_used.is_empty());
+        let empty = smelt(None, None);
+        assert_eq!(empty.items[RESULT_SLOT], None);
+        assert_eq!(empty.items[INPUT_SLOT], stack(ItemKind::Potato, 1));
     }
 
     #[test]

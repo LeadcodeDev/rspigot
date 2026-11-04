@@ -26,6 +26,7 @@ impl Item for MangroveChestBoat {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1200, fast_burn_time: 600 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:mangrove_chest_boat",
         ingredients: &[ItemSet::Direct(&[ItemId(404)]), ItemSet::Direct(&[ItemId(991)])],
         product: Product::of(1),
     }];

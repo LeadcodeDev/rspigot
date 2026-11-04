@@ -1,9 +1,8 @@
 use rand::Rng;
 use rspigot_blocks::BlockKind;
 use rspigot_domain::chunk::BlockEntity;
-use rspigot_domain::furnace::{self, Furnace};
+use rspigot_domain::furnace::{self, Answers, Furnace, Tick};
 use rspigot_domain::item::Slot;
-use rspigot_domain::player::PlayerId;
 use rspigot_domain::{BlockPos, BlockStateId, Identifier};
 use rspigot_items::CookingKind;
 use rspigot_nbt::{Compound, Tag};
@@ -88,7 +87,7 @@ fn same_content(before: &Slot, after: &Slot) -> bool {
 }
 
 impl<L: ClientLink> Server<L> {
-    fn furnace_at(&self, pos: BlockPos) -> Option<Furnace> {
+    pub(crate) fn furnace_at(&self, pos: BlockPos) -> Option<Furnace> {
         self.world
             .chunks
             .get(pos.chunk())
@@ -96,7 +95,7 @@ impl<L: ClientLink> Server<L> {
             .map(|entity| read_furnace(&entity.data))
     }
 
-    fn store_furnace(&mut self, pos: BlockPos, furnace: &Furnace) {
+    pub(crate) fn store_furnace(&mut self, pos: BlockPos, furnace: &Furnace) {
         let Some(chunk) = self.world.chunks.chunk_mut(pos.chunk()) else {
             return;
         };
@@ -129,21 +128,28 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn tick_furnace(&mut self, pos: BlockPos, kind: CookingKind) {
+        if self.furnace_asking(pos) {
+            return;
+        }
+        let Some(furnace) = self.cooking_furnace(pos, kind) else {
+            return;
+        };
+        self.run_furnace(pos, kind, &furnace, Answers::default());
+    }
+
+    pub(crate) fn cooking_furnace(&self, pos: BlockPos, kind: CookingKind) -> Option<Furnace> {
+        let state = self.world.chunks.block(pos)?;
+        if state.kind().and_then(cooking_of) != Some(kind) {
+            return None;
+        }
+        self.furnace_at(pos)
+    }
+
+    pub(crate) fn furnace_ticked(&mut self, pos: BlockPos, furnace: &Furnace, tick: Tick) {
+        self.store_furnace(pos, furnace);
         let Some(state) = self.world.chunks.block(pos) else {
             return;
         };
-        if state.kind().and_then(cooking_of) != Some(kind) {
-            return;
-        }
-        let Some(mut furnace) = self.furnace_at(pos) else {
-            return;
-        };
-        let before = furnace.clone();
-        let tick = furnace.tick(kind);
-        if furnace == before {
-            return;
-        }
-        self.store_furnace(pos, &furnace);
         if tick.was_lit != tick.is_lit
             && let Some(lit) = state.with_property(LIT, if tick.is_lit { "true" } else { "false" })
         {
@@ -170,22 +176,6 @@ impl<L: ClientLink> Server<L> {
         self.store_furnace(pos, &furnace);
     }
 
-    pub(crate) fn pay_furnace_experience(&mut self, id: PlayerId, pos: BlockPos) {
-        let Some(mut furnace) = self.furnace_at(pos) else {
-            return;
-        };
-        let Some(position) = self.players.get(&id).map(|player| player.position) else {
-            return;
-        };
-        let rng = &mut self.rng;
-        let amounts = furnace.experience(&mut || rng.random::<f32>());
-        furnace.recipes_used.clear();
-        self.store_furnace(pos, &furnace);
-        for amount in amounts {
-            self.award_experience(position, amount);
-        }
-    }
-
     pub(crate) fn furnace_experience_lost_by(
         &mut self,
         pos: BlockPos,
@@ -204,7 +194,11 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn pop_furnace_experience(&mut self, pos: BlockPos, amounts: Vec<i32>) {
         for amount in amounts {
-            self.ask_block_exp(ExpStep { pos, amount });
+            self.ask_block_exp(ExpStep {
+                pos,
+                amount,
+                at: pos.center(),
+            });
         }
     }
 }

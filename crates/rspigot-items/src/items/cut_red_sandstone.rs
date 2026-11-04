@@ -25,6 +25,7 @@ impl Item for CutRedSandstone {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cut_red_sandstone",
             width: 2,
             height: 2,
             symmetrical: true,

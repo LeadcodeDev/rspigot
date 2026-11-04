@@ -24,6 +24,7 @@ impl Item for WaxedWeatheredCopperChest {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:waxed_weathered_copper_chest_from_honeycomb",
         ingredients: &[ItemSet::Direct(&[ItemId(1639)]), ItemSet::Direct(&[ItemId(1530)])],
         product: Product::of(1),
     }];

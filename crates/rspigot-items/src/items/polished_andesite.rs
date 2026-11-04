@@ -25,6 +25,7 @@ impl Item for PolishedAndesite {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_andesite",
             width: 2,
             height: 2,
             symmetrical: true,

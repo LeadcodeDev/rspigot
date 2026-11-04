@@ -24,6 +24,7 @@ impl Item for BlazePowder {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:blaze_powder",
         ingredients: &[ItemSet::Direct(&[ItemId(1266)])],
         product: Product::of(2),
     }];

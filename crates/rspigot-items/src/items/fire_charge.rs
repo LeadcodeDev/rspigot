@@ -24,6 +24,7 @@ impl Item for FireCharge {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:fire_charge",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1064)]),
             ItemSet::Direct(&[ItemId(1274)]),

@@ -25,6 +25,7 @@ impl Item for TuffStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:tuff_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

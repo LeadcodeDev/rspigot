@@ -25,6 +25,7 @@ impl Item for SmoothSandstoneStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:smooth_sandstone_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

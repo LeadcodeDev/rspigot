@@ -24,6 +24,7 @@ impl Item for RawCopper {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:raw_copper",
         ingredients: &[ItemSet::Direct(&[ItemId(114)])],
         product: Product::of(9),
     }];

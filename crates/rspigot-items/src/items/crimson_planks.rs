@@ -25,6 +25,7 @@ impl Item for CrimsonPlanks {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:crimson_planks",
         ingredients: &[ItemSet::Tag(&tags::ITEM_CRIMSON_STEMS)],
         product: Product::of(4),
     }];

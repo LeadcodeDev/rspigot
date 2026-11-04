@@ -82,6 +82,7 @@ pub async fn run_with<P: Plugin>(
 ) -> Result<(), Error> {
     let endpoint = endpoint(&url)?;
     let link = Link::default();
+    link.name_as(P::NAME);
     let (queue, queued) = mpsc::unbounded_channel();
     let specs = P::handlers();
     let kinds: Vec<(u32, EventKind)> = specs.iter().map(|spec| (spec.id, spec.event)).collect();

@@ -25,6 +25,7 @@ impl Item for OxidizedCopperGrate {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:oxidized_copper_grate",
             width: 3,
             height: 3,
             symmetrical: true,

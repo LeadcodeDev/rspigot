@@ -24,6 +24,7 @@ impl Item for PackedMud {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:packed_mud",
         ingredients: &[ItemSet::Direct(&[ItemId(59)]), ItemSet::Direct(&[ItemId(1066)])],
         product: Product::of(1),
     }];

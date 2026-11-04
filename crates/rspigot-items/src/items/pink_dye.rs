@@ -25,22 +25,27 @@ impl Item for PinkDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:pink_dye_from_cactus_flower",
             ingredients: &[ItemSet::Direct(&[ItemId(414)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:pink_dye_from_peony",
             ingredients: &[ItemSet::Direct(&[ItemId(602)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:pink_dye_from_pink_petals",
             ingredients: &[ItemSet::Direct(&[ItemId(329)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:pink_dye_from_pink_tulip",
             ingredients: &[ItemSet::Direct(&[ItemId(309)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:pink_dye_from_red_white_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1213)]), ItemSet::Direct(&[ItemId(1199)])],
             product: Product::of(2),
         },

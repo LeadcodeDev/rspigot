@@ -8,7 +8,7 @@ use rspigot_core::plugins::events::{
     PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use rspigot_core::plugins::{
-    Answer, EventKind, EventPatch, EventPayload, ItemSpec, Phase, Question,
+    Answer, EventKind, EventPatch, EventPayload, ItemSpec, Phase, PlayerOrder, Question,
 };
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
@@ -938,7 +938,7 @@ fn a_book_take_whose_menu_closed_while_it_waited_leaves_the_book() {
         PlayerInput::ContainerButtonClick { window, button: 3 },
     );
     let asked = last_asked(&s.plugin, EventKind::PlayerTakeLecternBook);
-    send_input(&mut s.server, &alice, PlayerInput::ContainerClose(window));
+    s.act(to(&alice, PlayerOrder::CloseInventory));
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert!(
         !inventory(&mut s, &alice)
@@ -947,4 +947,62 @@ fn a_book_take_whose_menu_closed_while_it_waited_leaves_the_book() {
             .any(|item| item.key == "minecraft:writable_book")
     );
     assert_eq!(s.server.items_on_ground(), 0);
+}
+
+#[test]
+fn a_lectern_click_is_classified_as_spigot_does_and_writes_nothing_into_the_lectern() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::InventoryClick),
+            observe(2, EventKind::InventoryClick),
+        ],
+    );
+    let alice = s.players[0].clone();
+    let window = lectern_with_a_book(&mut s, &alice);
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::ContainerClick(rspigot_core::events::ContainerClick {
+            container: window,
+            state_id: 0,
+            slot: 0,
+            button: 0,
+            input: rspigot_core::events::ClickInput::Pickup,
+            changed: Vec::new(),
+            carried: rspigot_core::events::HashedSlot::EMPTY,
+        }),
+    );
+    let asked = last_asked(&s.plugin, EventKind::InventoryClick);
+    let EventPayload::InventoryClick(click) = &asked.payload else {
+        panic!("expected a click");
+    };
+    assert_eq!(
+        click.action,
+        rspigot_core::plugins::events::InventoryAction::PickupAll
+    );
+    assert_eq!(click.inventory.kind, "LECTERN");
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::InventoryClick(
+            rspigot_core::plugins::events::InventoryClickPatch {
+                current_item: Some(None),
+                ..Default::default()
+            },
+        )),
+    );
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::ContainerButtonClick { window, button: 3 },
+    );
+    assert!(
+        inventory(&mut s, &alice)
+            .iter()
+            .flatten()
+            .any(|item| item.key == "minecraft:writable_book")
+    );
 }

@@ -56,8 +56,9 @@ impl Item for StoneHoe {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:stone_hoe",
             width: 2,
             height: 3,
             symmetrical: false,

@@ -26,6 +26,7 @@ impl Item for JungleShelf {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:jungle_shelf",
         width: 3,
         height: 3,
         symmetrical: true,

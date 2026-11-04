@@ -25,6 +25,7 @@ impl Item for WaxedExposedCutCopperSlab {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:waxed_exposed_cut_copper_slab",
             width: 3,
             height: 1,
             symmetrical: true,
@@ -36,6 +37,7 @@ impl Item for WaxedExposedCutCopperSlab {
             product: Product::of(6),
         },
         Craft::Shapeless {
+            id: "minecraft:waxed_exposed_cut_copper_slab_from_honeycomb",
             ingredients: &[ItemSet::Direct(&[ItemId(156)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },

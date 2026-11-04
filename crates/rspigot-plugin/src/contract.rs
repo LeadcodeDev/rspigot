@@ -66,13 +66,14 @@ pub struct InventoryRef {
     pub owner: InventoryOwner,
     pub size: i32,
     pub kind: String,
+    pub id: u64,
 }
 
 impl InventoryRef {
     pub(crate) fn from_wire(inventory: v1::InventoryRef, link: &Link) -> Result<Self, Error> {
         let owner = match required(inventory.owner, "owner")? {
             inventory_ref::Owner::Custom(id) => {
-                InventoryOwner::Custom(CustomInventory::new(id, link))
+                InventoryOwner::Custom(CustomInventory::owned_by(id, inventory.plugin, link))
             }
             inventory_ref::Owner::Player(id) => {
                 InventoryOwner::Player(parse_uuid(&id, "a player")?)
@@ -85,10 +86,15 @@ impl InventoryRef {
             owner,
             size: inventory.size,
             kind: inventory.kind,
+            id: inventory.id,
         })
     }
 
     pub(crate) fn to_wire(&self) -> v1::InventoryRef {
+        let plugin = self
+            .custom()
+            .map(|inventory| inventory.plugin().to_owned())
+            .unwrap_or_default();
         let owner = match &self.owner {
             InventoryOwner::Custom(inventory) => inventory_ref::Owner::Custom(inventory.id()),
             InventoryOwner::Player(id) => inventory_ref::Owner::Player(id.hyphenated().to_string()),
@@ -100,6 +106,8 @@ impl InventoryRef {
             owner: Some(owner),
             size: self.size,
             kind: self.kind.clone(),
+            plugin,
+            id: self.id,
         }
     }
 

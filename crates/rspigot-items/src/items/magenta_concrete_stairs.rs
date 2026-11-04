@@ -25,6 +25,7 @@ impl Item for MagentaConcreteStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:magenta_concrete_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

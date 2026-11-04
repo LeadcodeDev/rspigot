@@ -25,6 +25,7 @@ impl Item for WarpedPlanks {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:warped_planks",
         ingredients: &[ItemSet::Tag(&tags::ITEM_WARPED_STEMS)],
         product: Product::of(4),
     }];

@@ -63,10 +63,16 @@ fn item(key: &str, count: i32) -> v1::Item {
 }
 
 fn custom(id: u64) -> v1::InventoryRef {
+    custom_of("caller", id)
+}
+
+fn custom_of(plugin: &str, id: u64) -> v1::InventoryRef {
     v1::InventoryRef {
         owner: Some(inventory_ref::Owner::Custom(id)),
         size: 54,
         kind: "CHEST".to_owned(),
+        plugin: plugin.to_owned(),
+        id: 0,
     }
 }
 
@@ -75,6 +81,8 @@ fn own() -> v1::InventoryRef {
         owner: Some(inventory_ref::Owner::Player(STEVE.to_owned())),
         size: 41,
         kind: "PLAYER".to_owned(),
+        plugin: String::new(),
+        id: 0,
     }
 }
 
@@ -528,4 +536,39 @@ async fn every_deciding_handler_of_a_click_runs_after_a_cancel() {
             ],
         })
     );
+}
+
+#[tokio::test]
+async fn an_inventory_of_another_plugin_never_equals_mine_and_takes_no_order() {
+    let mut called = calling(|_| Box::pin(async {})).await;
+    called.finished().await;
+
+    called.session.say(settled(
+        2,
+        2,
+        click(Some(custom(7)), 4, v1::ClickKind::Left, -1, None),
+    ));
+    let mine = clicked(&mut called.marks).await;
+    let mut foreign = click(Some(custom_of("shop", 7)), 4, v1::ClickKind::Left, -1, None);
+    if let event::Payload::InventoryClick(click) = &mut foreign {
+        click.inventory = Some(custom_of("shop", 7));
+    }
+    called.session.say(settled(3, 2, foreign));
+    let theirs = clicked(&mut called.marks).await;
+    let (Some(mine), Some(theirs)) = (mine.inventory.custom(), theirs.inventory.custom()) else {
+        panic!("both clicks are in a plugin inventory");
+    };
+    assert_eq!(mine.id(), theirs.id());
+    assert_eq!(theirs.plugin(), "shop");
+    assert!(mine.is_mine());
+    assert!(!theirs.is_mine());
+    assert_ne!(mine, theirs);
+    assert_eq!(mine, &mine.clone());
+    theirs.close();
+    mine.close();
+    assert_eq!(
+        called.session.hear().await,
+        stocked(7, custom_inventory_order::Order::Close(v1::Empty {}))
+    );
+    assert!(matches!(theirs.resolve().await, Err(Error::NotFound)));
 }

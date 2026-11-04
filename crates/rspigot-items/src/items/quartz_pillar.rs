@@ -25,6 +25,7 @@ impl Item for QuartzPillar {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:quartz_pillar",
             width: 1,
             height: 2,
             symmetrical: true,

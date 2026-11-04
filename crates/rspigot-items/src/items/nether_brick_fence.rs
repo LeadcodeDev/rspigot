@@ -24,6 +24,7 @@ impl Item for NetherBrickFence {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:nether_brick_fence",
         width: 3,
         height: 2,
         symmetrical: true,

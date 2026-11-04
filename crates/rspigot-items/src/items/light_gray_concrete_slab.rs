@@ -25,6 +25,7 @@ impl Item for LightGrayConcreteSlab {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:light_gray_concrete_slab",
             width: 3,
             height: 1,
             symmetrical: true,

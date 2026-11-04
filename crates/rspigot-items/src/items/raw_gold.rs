@@ -24,6 +24,7 @@ impl Item for RawGold {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:raw_gold",
         ingredients: &[ItemSet::Direct(&[ItemId(115)])],
         product: Product::of(9),
     }];

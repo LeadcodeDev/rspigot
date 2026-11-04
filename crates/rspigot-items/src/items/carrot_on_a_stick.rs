@@ -25,6 +25,7 @@ impl Item for CarrotOnAStick {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:carrot_on_a_stick",
             width: 2,
             height: 2,
             symmetrical: false,
@@ -36,7 +37,7 @@ impl Item for CarrotOnAStick {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

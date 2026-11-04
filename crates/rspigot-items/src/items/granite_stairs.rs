@@ -25,6 +25,7 @@ impl Item for GraniteStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:granite_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

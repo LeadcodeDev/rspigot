@@ -24,6 +24,7 @@ impl Item for WrittenBook {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::BookCloning {
+        id: "minecraft:book_cloning",
         source: ItemSet::Direct(&[ItemId(1372)]),
         material: ItemSet::Tag(&tags::ITEM_BOOK_CLONING_TARGET),
     }];

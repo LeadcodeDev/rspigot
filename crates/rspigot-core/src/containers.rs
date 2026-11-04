@@ -5,7 +5,7 @@ use rspigot_domain::container_menu::{ContainerMenu, MenuKind};
 use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::entity::save::{item_stack_from_nbt, item_stack_to_nbt};
 use rspigot_domain::item::{Inventory, ItemStack, Slot, split};
-use rspigot_domain::menu::{Clicker, MenuEffect, OUTSIDE, RemoteUpdate};
+use rspigot_domain::menu::{Clicker, MenuEffect, RemoteUpdate};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::spawn::placement::is_redstone_conductor;
 use rspigot_domain::text::Component;
@@ -15,7 +15,9 @@ use rspigot_nbt::{Compound, Tag};
 
 use crate::chests::{self, Oxidation};
 use crate::events::{ClientEvent, ContainerClick};
+use crate::menu::Move;
 use crate::player::Player;
+use crate::plugins::views::Window;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 use crate::{beacon, campfire, cooking, lectern};
@@ -54,7 +56,7 @@ pub(crate) struct Backing {
 }
 
 impl Backing {
-    fn positions(&self) -> impl Iterator<Item = BlockPos> {
+    pub(crate) fn positions(&self) -> impl Iterator<Item = BlockPos> {
         std::iter::once(self.pos).chain(self.second)
     }
 
@@ -66,6 +68,8 @@ impl Backing {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct OpenMenu {
     pub window: i32,
+    pub inventory: u64,
+    pub title: &'static str,
     pub menu: ContainerMenu,
     pub backing: Backing,
     pub state_id: i32,
@@ -419,7 +423,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn open_items(&self, open: &OpenMenu) -> Vec<Slot> {
+    pub(crate) fn open_items(&self, open: &OpenMenu) -> Vec<Slot> {
         let size = open.menu.kind().container_size();
         if open.backing.entity.is_some() {
             self.container_items(open.backing, size)
@@ -465,9 +469,24 @@ impl<L: ClientLink> Server<L> {
         pos: BlockPos,
         state: BlockStateId,
     ) -> bool {
-        let Some(mut opening) = opening_of(state) else {
+        let Some(opening) = self.opening_at(pos, state) else {
             return false;
         };
+        let Some(mut open) = opening else {
+            return true;
+        };
+        self.close_open_menu(id, true);
+        open.inventory = self.inventory_of(open.backing);
+        self.ask_open(id, pos, open);
+        true
+    }
+
+    pub(crate) fn opening_at(
+        &self,
+        pos: BlockPos,
+        state: BlockStateId,
+    ) -> Option<Option<OpenMenu>> {
+        let mut opening = opening_of(state)?;
         let viewers = self.viewer_count(pos);
         let shut = match opening.lid {
             Lid::Chest | Lid::CopperChest(_) | Lid::Ender => {
@@ -477,7 +496,7 @@ impl<L: ClientLink> Server<L> {
             Lid::Barrel | Lid::None => false,
         };
         if shut {
-            return true;
+            return Some(None);
         }
         let (mut first, mut second) = (pos, None);
         let chunks = &self.world.chunks;
@@ -497,11 +516,59 @@ impl<L: ClientLink> Server<L> {
             block: opening.block,
             lid: opening.lid,
         };
-        self.close_open_menu(id, true);
-        let size = opening.kind.container_size();
-        let items = if opening.entity.is_some() {
+        Some(Some(OpenMenu {
+            window: 0,
+            inventory: 0,
+            title: opening.title,
+            menu: ContainerMenu::new(opening.kind),
+            backing,
+            state_id: 0,
+            local: Vec::new(),
+            data: Vec::new(),
+        }))
+    }
+
+    fn inventory_of(&mut self, backing: Backing) -> u64 {
+        let shared = backing.entity.is_some().then(|| {
+            self.players.values().find_map(|player| {
+                player
+                    .open_menu
+                    .as_ref()
+                    .filter(|open| open.backing.entity.is_some() && open.backing.pos == backing.pos)
+                    .map(|open| open.inventory)
+            })
+        });
+        shared.flatten().unwrap_or_else(|| self.next_inventory_id())
+    }
+
+    pub(crate) fn opening_in_reach(&self, id: PlayerId, pos: BlockPos, open: &OpenMenu) -> bool {
+        let Some(player) = self.players.get(&id) else {
+            return false;
+        };
+        let current = self
+            .world
+            .chunks
+            .block(pos)
+            .and_then(|state| self.opening_at(pos, state))
+            .flatten();
+        let same = current.is_some_and(|current| {
+            current.backing == open.backing && current.menu.kind() == open.menu.kind()
+        });
+        same && !player.vitals.is_dead()
+            && player.open_menu.is_none()
+            && player.plugin_menu.is_none()
+            && open.backing.positions().all(|at| {
+                player.position.distance_squared(at.center()) <= MAX_VIEW_DISTANCE_SQUARED
+            })
+    }
+
+    pub(crate) fn show_block_menu(&mut self, id: PlayerId, pos: BlockPos, mut open: OpenMenu) {
+        let backing = open.backing;
+        let kind = open.menu.kind();
+        let size = kind.container_size();
+        let items = if backing.entity.is_some() {
             self.container_items(backing, size)
-        } else if opening.ender {
+        } else if backing.ender {
             let mut own = self
                 .players
                 .get(&id)
@@ -511,32 +578,27 @@ impl<L: ClientLink> Server<L> {
         } else {
             vec![None; size]
         };
-        let initial_data = match opening.kind {
+        let initial_data = match kind {
             MenuKind::Lectern => vec![i16::try_from(self.lectern_page(pos)).unwrap_or(0)],
             MenuKind::Beacon => self.beacon_menu_data(pos),
             kind if kind.is_furnace() => self.furnace_data(pos),
             kind => vec![0; kind.data_count()],
         };
         let Some(player) = self.players.get_mut(&id) else {
-            return false;
+            return;
         };
         let window = next_window(player);
-        let mut open = OpenMenu {
-            window,
-            menu: ContainerMenu::new(opening.kind),
-            backing,
-            state_id: 0,
-            local: if opening.entity.is_some() {
-                Vec::new()
-            } else {
-                items.clone()
-            },
-            data: initial_data.clone(),
+        open.window = window;
+        open.local = if backing.entity.is_some() {
+            Vec::new()
+        } else {
+            items.clone()
         };
+        open.data = initial_data.clone();
         player.link.send(ClientEvent::OpenScreen {
             window,
-            menu: opening.kind.protocol_id(),
-            title: Component::translatable(opening.title, Vec::new()),
+            menu: kind.protocol_id(),
+            title: Component::translatable(open.title, Vec::new()),
         });
         sync_menu_view(
             &player.link,
@@ -557,7 +619,6 @@ impl<L: ClientLink> Server<L> {
         player.open_menu = Some(open);
         let count = self.viewer_count(pos);
         self.viewers_changed(backing, count, true);
-        true
     }
 
     fn viewer_count(&self, pos: BlockPos) -> u8 {
@@ -644,79 +705,82 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn handle_open_menu_click(&mut self, id: PlayerId, click: &ContainerClick) -> bool {
-        let Some(player) = self.players.get(&id) else {
-            return false;
-        };
-        let Some(open) = player.open_menu.as_ref() else {
-            return false;
-        };
-        if open.window != click.container {
-            return false;
-        }
+    pub(crate) fn apply_container_click(
+        &mut self,
+        id: PlayerId,
+        click: &ContainerClick,
+        act: Option<Move>,
+        full: bool,
+    ) -> Slot {
+        let player = self.players.get(&id)?;
+        let open = player.open_menu.as_ref()?;
         let backing = open.backing;
-        let total = open.menu.kind().slot_count() as i16;
-        if click.slot != -1 && click.slot != OUTSIDE && (click.slot < 0 || click.slot >= total) {
-            return true;
-        }
-        let spectator =
-            player.game_mode == GameMode::Spectator || backing.block == BlockKind::Lectern;
+        let lectern = backing.block == BlockKind::Lectern;
+        let act = act.filter(|_| !lectern);
         let clicker = Clicker {
             infinite_materials: player.game_mode == GameMode::Creative,
         };
-        let full_resync = click.state_id != open.state_id || backing.block == BlockKind::Lectern;
+        let full = full || click.state_id != open.state_id || lectern;
         let mut items = self.open_items(open);
         let before = items.clone();
-        let Some(player) = self.players.get_mut(&id) else {
-            return true;
-        };
-        let Some(open) = player.open_menu.as_mut() else {
-            return true;
-        };
-        let effects = if spectator {
-            Vec::new()
-        } else {
-            open.menu.click(
-                &mut items,
-                &mut player.inventory,
-                click.slot,
-                click.button,
-                click.input,
-                clicker,
-            )
+        let player = self.players.get_mut(&id)?;
+        let open = player.open_menu.as_mut()?;
+        let (moved, effects) = match act {
+            Some(Move::Click) => (
+                None,
+                open.menu.click(
+                    &mut items,
+                    &mut player.inventory,
+                    click.slot,
+                    click.button,
+                    click.input,
+                    clicker,
+                ),
+            ),
+            Some(Move::Once(slot)) => {
+                open.menu
+                    .quick_move_once(&mut items, &mut player.inventory, slot, clicker)
+            }
+            None => (None, Vec::new()),
         };
         for (slot, hash) in &click.changed {
             open.menu.receive_remote(*slot, hash.clone());
         }
         open.menu.receive_remote_carried(click.carried.clone());
-        let resync = full_resync
+        let resync = full
             || effects
                 .iter()
                 .any(|effect| matches!(effect, MenuEffect::FullResync));
-        let output_taken = effects.contains(&MenuEffect::FurnaceOutputTaken);
+        if act.is_some() {
+            self.store_open_items(id, &before, items);
+        }
+        self.container_effects(id, backing, effects);
+        self.sync_open_menu(id, resync);
+        self.sync_menu_data();
+        self.sync_viewers(backing.pos, Some(id));
+        self.sync_inventory(id);
+        moved
+    }
+
+    pub(crate) fn container_effects(
+        &mut self,
+        id: PlayerId,
+        backing: Backing,
+        effects: Vec<MenuEffect>,
+    ) {
         let cut = effects.contains(&MenuEffect::StonecutterTaken);
         let smithed = effects.contains(&MenuEffect::SmithingTaken);
-        let drops: Vec<MenuEffect> = effects
-            .into_iter()
-            .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
-            .collect();
-        if !spectator {
-            if backing.entity.is_some() {
-                self.store_container(backing, &items);
-                if let Some(kind) = cooking::cooking_of(backing.block) {
-                    self.furnace_clicked(backing.pos, kind, &before, &items);
-                    if output_taken {
-                        self.pay_furnace_experience(id, backing.pos);
-                    }
-                }
-            } else if let Some(player) = self.players.get_mut(&id) {
-                if backing.ender {
-                    player.ender_items = items.clone();
-                }
-                if let Some(open) = player.open_menu.as_mut() {
-                    open.local = items;
-                }
+        let mut drops = Vec::new();
+        let mut taken = Vec::new();
+        for effect in effects {
+            match effect {
+                MenuEffect::Drop { .. } => drops.push(effect),
+                MenuEffect::FurnaceOutputTaken { item, amount } => taken.push((item, amount)),
+                _ => {}
             }
+        }
+        for (item, amount) in taken {
+            self.pay_furnace_experience(id, backing.pos, item, amount);
         }
         self.apply_menu_effects(id, drops);
         if cut {
@@ -740,11 +804,35 @@ impl<L: ClientLink> Server<L> {
                 pitch,
             );
         }
-        self.sync_open_menu(id, resync);
-        self.sync_menu_data();
-        self.sync_viewers(backing.pos, Some(id));
-        self.sync_inventory(id);
-        true
+    }
+
+    pub(crate) fn store_open_items(&mut self, id: PlayerId, before: &[Slot], items: Vec<Slot>) {
+        let Some(backing) = self
+            .players
+            .get(&id)
+            .and_then(|player| player.open_menu.as_ref())
+            .map(|open| open.backing)
+        else {
+            return;
+        };
+        if backing.entity.is_some() {
+            self.store_container(backing, &items);
+            if let Some(kind) = cooking::cooking_of(backing.block) {
+                self.furnace_clicked(backing.pos, kind, before, &items);
+            }
+        } else if let Some(player) = self.players.get_mut(&id) {
+            if backing.ender {
+                player.ender_items = items.clone();
+            }
+            if let Some(open) = player.open_menu.as_mut() {
+                open.local = items;
+            }
+        }
+    }
+
+    pub(crate) fn open_menu_items(&self, id: PlayerId) -> Option<Vec<Slot>> {
+        let open = self.players.get(&id)?.open_menu.as_ref()?;
+        Some(self.open_items(open))
     }
 
     pub(crate) fn sync_open_menu(&mut self, id: PlayerId, full: bool) {
@@ -772,7 +860,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn sync_viewers(&mut self, pos: BlockPos, except: Option<PlayerId>) {
+    pub(crate) fn sync_viewers(&mut self, pos: BlockPos, except: Option<PlayerId>) {
         let viewers: Vec<PlayerId> = self
             .players
             .iter()
@@ -790,9 +878,22 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn close_open_menu(&mut self, id: PlayerId, notify_client: bool) -> bool {
-        if self.close_plugin_menu(id, notify_client, false) {
+        self.close_open_menu_by(id, notify_client, false)
+    }
+
+    fn close_open_menu_by(&mut self, id: PlayerId, notify_client: bool, by_player: bool) -> bool {
+        if self.close_plugin_menu(id, notify_client, by_player) {
             return true;
         }
+        let Some(window) = self
+            .players
+            .get(&id)
+            .and_then(|player| player.open_menu.as_ref())
+            .map(|open| open.window)
+        else {
+            return false;
+        };
+        self.notify_close(id, Window::Container(window), by_player);
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -817,21 +918,18 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn handle_open_menu_close(&mut self, id: PlayerId, window: i32) -> bool {
-        let plugin = self
-            .players
-            .get(&id)
-            .and_then(|player| player.plugin_menu.as_ref())
-            .is_some_and(|open| open.window == window);
-        if plugin {
-            return self.close_plugin_menu(id, false, true);
-        }
-        let matches = self
-            .players
-            .get(&id)
-            .and_then(|player| player.open_menu.as_ref())
-            .is_some_and(|open| open.window == window);
+        let matches = self.players.get(&id).is_some_and(|player| {
+            player
+                .plugin_menu
+                .as_ref()
+                .is_some_and(|open| open.window == window)
+                || player
+                    .open_menu
+                    .as_ref()
+                    .is_some_and(|open| open.window == window)
+        });
         if matches {
-            self.close_open_menu(id, false);
+            self.close_open_menu_by(id, false, true);
         }
         matches
     }
@@ -947,7 +1045,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn open_menu_is_valid(&self, id: PlayerId) -> bool {
+    pub(crate) fn open_menu_is_valid(&self, id: PlayerId) -> bool {
         let Some(player) = self.players.get(&id) else {
             return false;
         };

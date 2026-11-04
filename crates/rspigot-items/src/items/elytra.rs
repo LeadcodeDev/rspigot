@@ -21,6 +21,6 @@ impl Item for Elytra {
     const DAMAGE_RESISTANT: Option<&'static str> = None;
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
-    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
+    const CRAFTS: &'static [Craft] = &[Craft::RepairItem { id: "minecraft:repair_item" }];
     type Behavior = crate::family::Plain;
 }

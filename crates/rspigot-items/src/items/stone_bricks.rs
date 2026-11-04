@@ -25,6 +25,7 @@ impl Item for StoneBricks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:stone_bricks",
             width: 2,
             height: 2,
             symmetrical: true,

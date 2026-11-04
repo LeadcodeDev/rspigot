@@ -25,6 +25,7 @@ impl Item for WeatheredChiseledCopper {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:weathered_chiseled_copper",
             width: 1,
             height: 2,
             symmetrical: true,

@@ -27,6 +27,7 @@ impl Item for Diamond {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:diamond");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:diamond",
             ingredients: &[ItemSet::Direct(&[ItemId(129)])],
             product: Product::of(9),
         },

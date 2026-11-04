@@ -24,6 +24,7 @@ impl Item for MelonSeeds {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:melon_seeds",
         ingredients: &[ItemSet::Direct(&[ItemId(1256)])],
         product: Product::of(1),
     }];

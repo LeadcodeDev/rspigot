@@ -24,8 +24,9 @@ impl Item for WarpedFungusOnAStick {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:warped_fungus_on_a_stick",
             width: 2,
             height: 2,
             symmetrical: false,

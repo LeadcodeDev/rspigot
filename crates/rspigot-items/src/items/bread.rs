@@ -28,6 +28,7 @@ impl Item for Bread {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:bread",
         width: 3,
         height: 1,
         symmetrical: true,

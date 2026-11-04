@@ -24,6 +24,7 @@ impl Item for Dispenser {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:dispenser",
         width: 3,
         height: 3,
         symmetrical: true,

@@ -24,6 +24,7 @@ impl Item for Candle {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:candle",
         width: 1,
         height: 2,
         symmetrical: true,

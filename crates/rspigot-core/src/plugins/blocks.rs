@@ -53,7 +53,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn ask_block_exp(&mut self, step: ExpStep) {
-        let ExpStep { pos, amount } = step;
+        let ExpStep { pos, amount, .. } = step;
         self.fire(Lane::Block(pos), Continuation::Exp(step), move |_| {
             Some(EventPayload::BlockExp(BlockExp {
                 block: pos,
@@ -65,7 +65,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn finish_block_exp(&mut self, step: ExpStep, patch: BlockExpPatch) {
         let amount = patch.exp_to_drop.unwrap_or(step.amount);
         if self.world.chunks.is_loaded(step.pos.chunk()) {
-            self.award_experience(step.pos.center(), amount);
+            self.award_experience(step.at, amount);
         }
     }
 

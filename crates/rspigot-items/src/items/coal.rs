@@ -27,6 +27,7 @@ impl Item for Coal {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1600, fast_burn_time: 800 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:coal",
             ingredients: &[ItemSet::Direct(&[ItemId(112)])],
             product: Product::of(9),
         },

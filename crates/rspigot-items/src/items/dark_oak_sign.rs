@@ -26,6 +26,7 @@ impl Item for DarkOakSign {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:dark_oak_sign",
         width: 3,
         height: 3,
         symmetrical: true,
