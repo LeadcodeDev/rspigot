@@ -1,5 +1,6 @@
 use rspigot_items::{CookingKind, ItemId, ItemKind};
 
+use crate::click::{self, Classified, ClickView, Drag};
 use crate::crafting;
 use crate::entity::reward::max_damage;
 use crate::furnace;
@@ -413,26 +414,117 @@ fn set_cutter_result(container: &mut [Slot], cutter: &Cutter) {
     }
 }
 
-fn quick_craft_place_count(slots: usize, kind: i32, stack: &ItemStack) -> u32 {
-    match kind {
-        0 => u32::from(stack.count.get()) / u32::try_from(slots).unwrap_or(u32::MAX).max(1),
-        1 => 1,
-        2 => max_stack(stack),
-        _ => u32::from(stack.count.get()),
+fn cell(kind: MenuKind, slot: usize) -> Option<Cell> {
+    let size = kind.container_size();
+    if slot < size {
+        Some(Cell::Container(slot))
+    } else if slot < size + MAIN_SLOTS {
+        Some(Cell::Player(MAIN_START + slot - size))
+    } else if slot < size + MAIN_SLOTS + HOTBAR_SLOTS {
+        Some(Cell::Player(HOTBAR_START + slot - size - MAIN_SLOTS))
+    } else {
+        None
+    }
+}
+
+fn stack_limit(kind: MenuKind, slot: usize, stack: &ItemStack) -> u32 {
+    if kind == MenuKind::Beacon && slot == 0 {
+        return 1;
+    }
+    if kind.is_furnace() && slot == furnace::FUEL_SLOT && furnace::is_empty_bucket(stack) {
+        return 1;
+    }
+    CONTAINER_MAX_STACK.min(max_stack(stack))
+}
+
+struct Look<'a> {
+    kind: MenuKind,
+    container: &'a [Slot],
+    player: &'a Inventory,
+    carried: &'a Slot,
+    instabuild: bool,
+}
+
+impl ClickView for Look<'_> {
+    fn slot(&self, raw: i32) -> Option<usize> {
+        usize::try_from(raw)
+            .ok()
+            .filter(|slot| *slot < self.kind.slot_count())
+    }
+
+    fn item(&self, slot: usize) -> Slot {
+        match cell(self.kind, slot) {
+            Some(Cell::Container(index)) => self.container.get(index).cloned().flatten(),
+            Some(Cell::Player(index)) => self.player.get(index).cloned(),
+            None => None,
+        }
+    }
+
+    fn carried(&self) -> &Slot {
+        self.carried
+    }
+
+    fn may_pickup(&self, _: usize) -> bool {
+        self.kind != MenuKind::Lectern
+    }
+
+    fn may_place(&self, slot: usize, stack: &ItemStack) -> bool {
+        self.kind.accepts(slot, stack)
+    }
+
+    fn slot_limit(&self, slot: usize) -> u32 {
+        self.container_limit(slot)
+    }
+
+    fn stack_limit(&self, slot: usize, stack: &ItemStack) -> u32 {
+        stack_limit(self.kind, slot, stack)
+    }
+
+    fn container_limit(&self, slot: usize) -> u32 {
+        if matches!(self.kind, MenuKind::Beacon | MenuKind::Lectern) && slot == 0 {
+            1
+        } else {
+            CONTAINER_MAX_STACK
+        }
+    }
+
+    fn hotbar(&self, button: i32) -> Slot {
+        usize::try_from(button)
+            .ok()
+            .and_then(menu_slot)
+            .and_then(|slot| self.player.get(slot))
+            .cloned()
+    }
+
+    fn in_player(&self, slot: usize) -> bool {
+        slot >= self.kind.container_size()
+    }
+
+    fn holds(&self, item: ItemId) -> bool {
+        self.container
+            .iter()
+            .chain(self.player.slots()[MAIN_START..HOTBAR_START + HOTBAR_SLOTS].iter())
+            .flatten()
+            .any(|stack| stack.item == item)
+    }
+
+    fn instabuild(&self) -> bool {
+        self.instabuild
     }
 }
 
 impl Session<'_> {
     fn cell(&self, slot: usize) -> Option<Cell> {
-        let size = self.kind.container_size();
-        if slot < size {
-            Some(Cell::Container(slot))
-        } else if slot < size + MAIN_SLOTS {
-            Some(Cell::Player(MAIN_START + slot - size))
-        } else if slot < size + MAIN_SLOTS + HOTBAR_SLOTS {
-            Some(Cell::Player(HOTBAR_START + slot - size - MAIN_SLOTS))
-        } else {
-            None
+        cell(self.kind, slot)
+    }
+
+    fn look(&self) -> Look<'_> {
+        Look {
+            kind: self.kind,
+            container: self.container,
+            player: self.player,
+            carried: self.carried,
+            instabuild: self.infinite,
         }
     }
 
@@ -490,13 +582,7 @@ impl Session<'_> {
     }
 
     fn slot_max_for(&self, slot: usize, stack: &ItemStack) -> u32 {
-        if self.kind == MenuKind::Beacon && slot == 0 {
-            return 1;
-        }
-        if self.kind.is_furnace() && slot == furnace::FUEL_SLOT && furnace::is_empty_bucket(stack) {
-            return 1;
-        }
-        CONTAINER_MAX_STACK.min(max_stack(stack))
+        stack_limit(self.kind, slot, stack)
     }
 
     fn try_remove(&mut self, slot: usize, amount: u32, decrement: u32) -> Slot {
@@ -542,7 +628,7 @@ impl Session<'_> {
             && self.container[smithing::RESULT].is_none();
     }
 
-    fn took(&mut self, slot: usize, taken: &Slot) {
+    fn took(&mut self, slot: usize, taken: &Slot, amount: u32) {
         if self.kind == MenuKind::Smithing && slot == smithing::RESULT && taken.is_some() {
             for index in 0..smithing::INPUTS {
                 if let Some(input) = self.container[index].take() {
@@ -566,9 +652,12 @@ impl Session<'_> {
             }
             return;
         }
-        if self.kind.is_furnace() && slot == furnace::RESULT_SLOT && taken.is_some() {
-            if self.effects.last() != Some(&MenuEffect::FurnaceOutputTaken) {
-                self.effects.push(MenuEffect::FurnaceOutputTaken);
+        if self.kind.is_furnace() && slot == furnace::RESULT_SLOT {
+            if let Some(stack) = taken {
+                self.effects.push(MenuEffect::FurnaceOutputTaken {
+                    item: stack.item,
+                    amount,
+                });
             }
             return;
         }
@@ -716,27 +805,10 @@ impl Session<'_> {
     }
 
     fn finish_quick_craft(&mut self, craft: &QuickCraft, copy: &ItemStack) {
-        let spread = craft.slots.len();
-        let mut remaining = i64::from(copy.count.get());
-        let mut placements = Vec::new();
-        for &target in &craft.slots {
-            let wide = craft.kind == 2
-                || u32::from(copy.count.get()) >= u32::try_from(spread).unwrap_or(u32::MAX);
-            if !self.can_quick_replace(target, copy)
-                || !self.may_place(target, &Some(copy.clone()))
-                || !wide
-            {
-                continue;
-            }
-            let existing = count(&self.item(target));
-            let limit = max_stack(copy).min(self.slot_max_for(target, copy));
-            let placed = (quick_craft_place_count(spread, craft.kind, copy) + existing).min(limit);
-            remaining -= i64::from(placed) - i64::from(existing);
-            placements.push((target, with_count(copy, placed)));
-        }
-        *self.carried = with_count(copy, u32::try_from(remaining.max(0)).unwrap_or(0));
-        for (target, stack) in placements {
-            self.put(target, stack);
+        let drag = click::plan_drag(&self.look(), &craft.slots, craft.kind, copy);
+        *self.carried = drag.remaining;
+        for (target, stack) in drag.placed {
+            self.put(target, Some(stack));
         }
         self.effects.push(MenuEffect::FullResync);
     }
@@ -780,7 +852,8 @@ impl Session<'_> {
                     };
                     if let Some(taken) = self.try_remove(target, amount, u32::MAX) {
                         *self.carried = Some(taken.clone());
-                        self.took(target, &Some(taken));
+                        let amount = u32::from(taken.count.get());
+                        self.took(target, &Some(taken), amount);
                     }
                 }
                 Some(held) if self.may_place(target, &carried) => {
@@ -795,9 +868,9 @@ impl Session<'_> {
                 Some(held) if same_item_same_components(existing, held) => {
                     let room = max_stack(held).saturating_sub(count(&carried));
                     if let Some(taken) = self.try_remove(target, count(&in_slot), room) {
-                        *self.carried =
-                            with_count(held, count(&carried) + count(&Some(taken.clone())));
-                        self.took(target, &Some(taken));
+                        let amount = u32::from(taken.count.get());
+                        *self.carried = with_count(held, count(&carried) + amount);
+                        self.took(target, &Some(taken), amount);
                     }
                 }
                 Some(_) => {}
@@ -822,15 +895,16 @@ impl Session<'_> {
         if count(&stack) == u32::from(copy.count.get()) {
             return None;
         }
+        let moved_count = u32::from(copy.count.get()) - count(&stack);
         if (self.kind == MenuKind::Crafting && slot == CRAFTING_RESULT)
             || (self.kind == MenuKind::Stonecutter && slot == CUTTER_RESULT)
         {
-            self.took(slot, &Some(copy.clone()));
+            self.took(slot, &Some(copy.clone()), moved_count);
             self.drop_stack(stack, false, true);
         } else if (self.kind.is_furnace() && slot == furnace::RESULT_SLOT)
             || (self.kind == MenuKind::Smithing && slot == smithing::RESULT)
         {
-            self.took(slot, &Some(copy.clone()));
+            self.took(slot, &Some(copy.clone()), moved_count);
         }
         Some(copy)
     }
@@ -894,7 +968,7 @@ impl Session<'_> {
             (None, Some(_)) => {
                 self.player.set(own, in_slot.clone());
                 self.put(target, None);
-                self.took(target, &in_slot);
+                self.took(target, &in_slot, 0);
             }
             (Some(stack), None) => {
                 if self.may_place(target, &held) {
@@ -956,12 +1030,12 @@ impl Session<'_> {
             count(&self.item(target))
         };
         let mut dropped = self.try_remove(target, amount, u32::MAX);
-        self.took(target, &dropped);
+        self.took(target, &dropped, count(&dropped));
         self.drop_stack(dropped.clone(), true, true);
         if button == 1 {
             while dropped.is_some() && same_item(&self.item(target), &dropped) {
                 dropped = self.try_remove(target, amount, u32::MAX);
-                self.took(target, &dropped);
+                self.took(target, &dropped, count(&dropped));
                 if !self.drop_stack(dropped.clone(), true, true) {
                     break;
                 }
@@ -1054,6 +1128,147 @@ impl ContainerMenu {
             input,
         );
         session.effects
+    }
+
+    pub fn classify(
+        &self,
+        container: &[Slot],
+        player: &Inventory,
+        slot: i16,
+        button: i8,
+        input: ClickInput,
+        clicker: Clicker,
+    ) -> Classified {
+        let look = Look {
+            kind: self.kind,
+            container,
+            player,
+            carried: &self.carried,
+            instabuild: clicker.infinite_materials,
+        };
+        click::classify(&look, slot, button, input)
+    }
+
+    pub fn quick_crafting(&self) -> bool {
+        self.quick_craft.status != 0
+    }
+
+    pub fn pending_drag(&self, container: &[Slot], player: &Inventory, button: i8) -> Option<Drag> {
+        let ends = self.quick_craft.status == 1 && i32::from(button) & 3 == 2;
+        let carried = self.carried.as_ref()?;
+        if !ends || self.quick_craft.slots.is_empty() {
+            return None;
+        }
+        let look = Look {
+            kind: self.kind,
+            container,
+            player,
+            carried: &self.carried,
+            instabuild: false,
+        };
+        Some(click::plan_drag(
+            &look,
+            &self.quick_craft.slots,
+            self.quick_craft.kind,
+            carried,
+        ))
+    }
+
+    pub fn drag_holds(&self, container: &[Slot], player: &Inventory, drag: &Drag) -> bool {
+        self.quick_craft.status == 1
+            && self.carried.as_ref() == Some(&drag.cursor)
+            && drag
+                .before
+                .iter()
+                .all(|(slot, stack)| stacks_match(&self.view(*slot, container, player), stack))
+    }
+
+    pub fn finish_drag(
+        &mut self,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        drag: &Drag,
+        cursor: Option<Slot>,
+    ) -> Vec<MenuEffect> {
+        self.quick_craft.reset();
+        container.resize(self.kind.container_size(), None);
+        let mut session = Session {
+            kind: self.kind,
+            container,
+            player,
+            carried: &mut self.carried,
+            cutter: &mut self.cutter,
+            infinite: false,
+            effects: Vec::new(),
+        };
+        if let Some(cursor) = cursor {
+            *session.carried = cursor;
+            for (target, stack) in &drag.placed {
+                session.put(*target, Some(stack.clone()));
+            }
+        }
+        session.effects.push(MenuEffect::FullResync);
+        session.effects
+    }
+
+    pub fn set_slot(
+        &mut self,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        slot: usize,
+        stack: Slot,
+    ) -> Vec<MenuEffect> {
+        container.resize(self.kind.container_size(), None);
+        let mut session = Session {
+            kind: self.kind,
+            container,
+            player,
+            carried: &mut self.carried,
+            cutter: &mut self.cutter,
+            infinite: false,
+            effects: Vec::new(),
+        };
+        session.put(slot, stack);
+        session.effects
+    }
+
+    pub fn quick_move_once(
+        &mut self,
+        container: &mut Vec<Slot>,
+        player: &mut Inventory,
+        slot: usize,
+        clicker: Clicker,
+    ) -> (Slot, Vec<MenuEffect>) {
+        container.resize(self.kind.container_size(), None);
+        let mut session = Session {
+            kind: self.kind,
+            container,
+            player,
+            carried: &mut self.carried,
+            cutter: &mut self.cutter,
+            infinite: clicker.infinite_materials,
+            effects: Vec::new(),
+        };
+        let moved = session.quick_move_stack(slot);
+        (moved, session.effects)
+    }
+
+    pub fn set_remote(&mut self, slot: usize, stack: Slot) {
+        if let Some(remote) = self.remote.get_mut(slot) {
+            *remote = RemoteSlot::Known(stack);
+        }
+    }
+
+    pub fn set_carried(&mut self, stack: Slot) {
+        self.carried = stack.clone();
+        self.remote_carried = RemoteSlot::Known(stack);
+    }
+
+    pub fn item(&self, slot: usize, container: &[Slot], player: &Inventory) -> Slot {
+        if slot >= self.kind.slot_count() {
+            return None;
+        }
+        self.view(slot, container, player)
     }
 
     pub fn data(&self) -> Vec<i16> {
@@ -1203,6 +1418,34 @@ mod tests {
         input: ClickInput,
     ) -> Vec<MenuEffect> {
         menu.click(container, player, slot, button, input, Clicker::default())
+    }
+
+    #[test]
+    fn a_slot_that_cannot_be_picked_up_classifies_every_take_as_nothing() {
+        use crate::click::{ClickAction, ClickType};
+        let menu = ContainerMenu::new(MenuKind::Lectern);
+        let container = vec![Some(stack("minecraft:written_book", 1))];
+        let player = Inventory::default();
+        let classify = |input: ClickInput, button: i8| {
+            let found = menu.classify(&container, &player, 0, button, input, Clicker::default());
+            (found.click, found.action)
+        };
+        assert_eq!(
+            classify(ClickInput::Pickup, 0),
+            (ClickType::Left, ClickAction::Nothing)
+        );
+        assert_eq!(
+            classify(ClickInput::QuickMove, 0),
+            (ClickType::ShiftLeft, ClickAction::Nothing)
+        );
+        assert_eq!(
+            classify(ClickInput::Swap, 0),
+            (ClickType::NumberKey, ClickAction::Nothing)
+        );
+        assert_eq!(
+            classify(ClickInput::Throw, 0),
+            (ClickType::Drop, ClickAction::Nothing)
+        );
     }
 
     #[test]
@@ -1914,22 +2157,27 @@ mod tests {
     }
 
     #[test]
-    fn taking_from_the_output_slot_reports_it_whichever_way_it_is_taken() {
+    fn taking_from_the_output_slot_reports_the_amount_removed_whichever_way_it_is_taken() {
         let taken = |input: ClickInput, slot: i16, button: i8| {
             let (mut menu, mut container, mut player) = workstation(MenuKind::Furnace);
             container[2] = Some(stack("minecraft:iron_ingot", 5));
             click(&mut menu, &mut container, &mut player, slot, button, input)
                 .into_iter()
-                .filter(|effect| *effect == MenuEffect::FurnaceOutputTaken)
-                .count()
+                .filter_map(|effect| match effect {
+                    MenuEffect::FurnaceOutputTaken { item, amount } => Some((item, amount)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
         };
-        assert_eq!(taken(ClickInput::Pickup, 2, 0), 1);
-        assert_eq!(taken(ClickInput::Pickup, 2, 1), 1);
-        assert_eq!(taken(ClickInput::QuickMove, 2, 0), 1);
-        assert_eq!(taken(ClickInput::Swap, 2, 3), 1);
-        assert_eq!(taken(ClickInput::Throw, 2, 1), 1);
-        assert_eq!(taken(ClickInput::Pickup, 0, 0), 0);
-        assert_eq!(taken(ClickInput::Pickup, 20, 0), 0);
+        let ingot = ItemKind::IronIngot.id();
+        assert_eq!(taken(ClickInput::Pickup, 2, 0), [(ingot, 5)]);
+        assert_eq!(taken(ClickInput::Pickup, 2, 1), [(ingot, 3)]);
+        assert_eq!(taken(ClickInput::QuickMove, 2, 0), [(ingot, 5)]);
+        assert_eq!(taken(ClickInput::Swap, 2, 3), [(ingot, 0)]);
+        assert_eq!(taken(ClickInput::Throw, 2, 0), [(ingot, 1)]);
+        assert_eq!(taken(ClickInput::Throw, 2, 1), [(ingot, 5)]);
+        assert!(taken(ClickInput::Pickup, 0, 0).is_empty());
+        assert!(taken(ClickInput::Pickup, 20, 0).is_empty());
     }
 
     #[test]
@@ -1965,7 +2213,13 @@ mod tests {
             0,
             ClickInput::Pickup,
         );
-        assert_eq!(effects, vec![MenuEffect::FurnaceOutputTaken]);
+        assert_eq!(
+            effects,
+            vec![MenuEffect::FurnaceOutputTaken {
+                item: ItemKind::IronIngot.id(),
+                amount: 5
+            }]
+        );
         assert_eq!(menu.carried(), &Some(stack("minecraft:iron_ingot", 64)));
     }
 

@@ -2,21 +2,19 @@ use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
 use rspigot_domain::container_menu::{ContainerMenu, MenuKind};
-use rspigot_domain::item::{Inventory, OFFHAND_SLOT, Slot, menu_slot};
-use rspigot_domain::menu::{ClickInput, Clicker, MenuEffect, OUTSIDE};
+use rspigot_domain::item::{Inventory, OFFHAND_SLOT, Slot};
+use rspigot_domain::menu::{Clicker, MenuEffect};
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 
 use crate::containers::{next_window, sync_menu_view};
 use crate::events::{ClientEvent, ContainerClick};
-use crate::plugins::events::{
-    ClickKind, EventResult, InventoryAction, InventoryClick, InventoryClose, InventoryTypeSlotType,
-};
 use crate::plugins::items::{spec_of, stack_of};
 use crate::plugins::resolve::text;
+use crate::plugins::views::Window;
 use crate::plugins::{
-    CustomInventoryOrder, CustomInventoryState, EventPayload, InventoryOwner, InventoryRef,
-    InventoryView, PlayerSnapshot,
+    CustomInventoryOrder, CustomInventoryState, InventoryOwner, InventoryRef, InventoryView,
+    PlayerSnapshot,
 };
 use crate::ports::ClientLink;
 use crate::server::Server;
@@ -24,20 +22,9 @@ use crate::server::Server;
 pub const MAX_PLUGIN_INVENTORIES: usize = 1024;
 const ROWS: RangeInclusive<u8> = 1..=6;
 const ROW_SLOTS: usize = 9;
-const MAIN_SLOTS: usize = 27;
-const FIRST_MAIN: i32 = 9;
-const NO_SLOT: i16 = -1;
-const OFFHAND_BUTTON: i8 = 40;
 const OFFHAND: i32 = 40;
 
 type Key = (u64, u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClickedSlot {
-    Menu(u16),
-    Player(i32),
-    Outside,
-}
 
 const PLAYER_SLOTS: i32 = 41;
 
@@ -71,7 +58,7 @@ pub(crate) struct PluginMenu {
 }
 
 impl PluginMenu {
-    const fn key(&self) -> Key {
+    pub(crate) const fn key(&self) -> Key {
         (self.connection, self.inventory)
     }
 }
@@ -116,6 +103,11 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         self.close_open_menu(id, true);
+        self.ask_plugin_open(id, connection, inventory);
+    }
+
+    pub(crate) fn show_plugin_menu(&mut self, connection: u64, id: PlayerId, inventory: u64) {
+        let key = (connection, inventory);
         let (Some(held), Some(player)) = (
             self.plugin_inventories.held.get(&key),
             self.players.get_mut(&id),
@@ -148,38 +140,24 @@ impl<L: ClientLink> Server<L> {
         player.plugin_menu = Some(open);
     }
 
-    pub(crate) fn handle_plugin_menu_click(
+    pub(crate) fn apply_plugin_click(
         &mut self,
         id: PlayerId,
         click: &ContainerClick,
-    ) -> bool {
+        act: bool,
+        full: bool,
+    ) {
         let Some(player) = self.players.get_mut(&id) else {
-            return false;
+            return;
         };
         let Some(open) = player.plugin_menu.as_mut() else {
-            return false;
+            return;
         };
-        if open.window != click.container {
-            return true;
-        }
         let key = open.key();
         let Some(held) = self.plugin_inventories.held.get_mut(&key) else {
-            return true;
+            return;
         };
-        let size = held.items.len();
-        let total = open.menu.kind().slot_count() as i16;
-        if click.slot != NO_SLOT && click.slot != OUTSIDE && !(0..total).contains(&click.slot) {
-            return true;
-        }
-        let slot = clicked_slot(click.slot, size);
-        let item = view(slot, &held.items, &player.inventory)
-            .as_ref()
-            .map(spec_of);
-        let cursor = open.menu.carried().as_ref().map(spec_of);
-        let refused = held.locked || player.game_mode == GameMode::Spectator;
-        let effects = if refused {
-            Vec::new()
-        } else {
+        let effects = if act {
             let clicker = Clicker {
                 infinite_materials: player.game_mode == GameMode::Creative,
             };
@@ -191,23 +169,24 @@ impl<L: ClientLink> Server<L> {
                 click.input,
                 clicker,
             )
+        } else {
+            Vec::new()
         };
         for (slot, hash) in &click.changed {
             open.menu.receive_remote(*slot, hash.clone());
         }
         open.menu.receive_remote_carried(click.carried.clone());
-        let full =
-            refused || click.state_id != open.state_id || effects.contains(&MenuEffect::FullResync);
+        let full = full
+            || !act
+            || click.state_id != open.state_id
+            || effects.contains(&MenuEffect::FullResync);
         let drops = effects
             .into_iter()
             .filter(|effect| matches!(effect, MenuEffect::Drop { .. }))
             .collect();
         self.apply_menu_effects(id, drops);
         self.sync_plugin_viewer(id, full);
-        if refused && click.input == ClickInput::Swap && click.button == OFFHAND_BUTTON {
-            self.resend_offhand(id);
-        }
-        if !refused {
+        if act {
             for viewer in self.plugin_viewers(|menu| menu.key() == key) {
                 if viewer != id {
                     self.sync_plugin_viewer(viewer, false);
@@ -215,62 +194,60 @@ impl<L: ClientLink> Server<L> {
             }
         }
         self.sync_inventory(id);
-        if let (Some((kind, hotbar_button)), Some(player)) =
-            (click_kind(click.input, click.button), self.snapshot_of(id))
-        {
-            let (inventory, view, viewers) = self.menu_view(key, &player);
-            let (clicked_inventory, index, slot_type) = match slot {
-                ClickedSlot::Menu(index) => (
-                    Some(inventory.clone()),
-                    i32::from(index),
-                    InventoryTypeSlotType::Container,
-                ),
-                ClickedSlot::Player(index) => (
-                    Some(view.bottom.clone()),
-                    index,
-                    if index < FIRST_MAIN {
-                        InventoryTypeSlotType::Quickbar
-                    } else {
-                        InventoryTypeSlotType::Container
-                    },
-                ),
-                ClickedSlot::Outside => (None, i32::from(OUTSIDE), InventoryTypeSlotType::Outside),
-            };
-            let raw_slot = if slot == ClickedSlot::Outside {
-                i32::from(OUTSIDE)
-            } else {
-                i32::from(click.slot)
-            };
-            self.notify_owner(
-                key.0,
-                EventPayload::InventoryClick(InventoryClick {
-                    action: InventoryAction::Unknown,
-                    click: kind,
-                    clicked_inventory,
-                    current_item: item,
-                    cursor,
-                    hotbar_button,
-                    inventory,
-                    left_click: matches!(
-                        kind,
-                        ClickKind::Left | ClickKind::ShiftLeft | ClickKind::DoubleClick
-                    ),
-                    raw_slot,
-                    result: EventResult::Default,
-                    right_click: matches!(kind, ClickKind::Right | ClickKind::ShiftRight),
-                    shift_click: matches!(kind, ClickKind::ShiftLeft | ClickKind::ShiftRight),
-                    slot: index,
-                    slot_type,
-                    view,
-                    viewers,
-                    who_clicked: player,
-                }),
-            );
-        }
-        true
     }
 
-    fn menu_view(
+    pub(crate) fn plugin_menu_refuses(&self, id: PlayerId) -> bool {
+        let Some(player) = self.players.get(&id) else {
+            return true;
+        };
+        let locked = player
+            .plugin_menu
+            .as_ref()
+            .and_then(|open| self.plugin_inventories.held.get(&open.key()))
+            .is_none_or(|held| held.locked);
+        locked || player.game_mode == GameMode::Spectator
+    }
+
+    pub(crate) fn plugin_menu_items(&self, id: PlayerId) -> Option<&[Slot]> {
+        let open = self.players.get(&id)?.plugin_menu.as_ref()?;
+        self.plugin_inventories
+            .held
+            .get(&open.key())
+            .map(|held| held.items.as_slice())
+    }
+
+    pub(crate) fn with_plugin_menu<T>(
+        &mut self,
+        id: PlayerId,
+        change: impl FnOnce(&mut ContainerMenu, &mut Vec<Slot>, &mut Inventory) -> T,
+    ) -> Option<T> {
+        let player = self.players.get_mut(&id)?;
+        let open = player.plugin_menu.as_mut()?;
+        let held = self.plugin_inventories.held.get_mut(&open.key())?;
+        Some(change(
+            &mut open.menu,
+            &mut held.items,
+            &mut player.inventory,
+        ))
+    }
+
+    pub(crate) fn sync_plugin_viewers_of(&mut self, id: PlayerId) {
+        let Some(key) = self
+            .players
+            .get(&id)
+            .and_then(|player| player.plugin_menu.as_ref())
+            .map(PluginMenu::key)
+        else {
+            return;
+        };
+        for viewer in self.plugin_viewers(|menu| menu.key() == key) {
+            if viewer != id {
+                self.sync_plugin_viewer(viewer, false);
+            }
+        }
+    }
+
+    pub(crate) fn menu_view(
         &self,
         key: Key,
         player: &PlayerSnapshot,
@@ -309,24 +286,15 @@ impl<L: ClientLink> Server<L> {
         notify_client: bool,
         by_player: bool,
     ) -> bool {
-        let Some(key) = self
+        let Some(window) = self
             .players
             .get(&id)
             .and_then(|player| player.plugin_menu.as_ref())
-            .map(PluginMenu::key)
+            .map(|open| open.window)
         else {
             return false;
         };
-        let closing = self.snapshot_of(id).map(|player| {
-            let (inventory, view, viewers) = self.menu_view(key, &player);
-            InventoryClose {
-                by_player,
-                inventory,
-                player,
-                view,
-                viewers,
-            }
-        });
+        self.notify_close(id, Window::Plugin(window), by_player);
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -340,9 +308,6 @@ impl<L: ClientLink> Server<L> {
         }
         self.apply_menu_effects(id, effects);
         self.broadcast_equipment_changes(id, before);
-        if let Some(closing) = closing {
-            self.notify_owner(open.connection, EventPayload::InventoryClose(closing));
-        }
         true
     }
 
@@ -450,7 +415,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn sync_plugin_viewer(&mut self, id: PlayerId, full: bool) {
+    pub(crate) fn sync_plugin_viewer(&mut self, id: PlayerId, full: bool) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -471,97 +436,12 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn resend_offhand(&self, id: PlayerId) {
+    pub(crate) fn resend_offhand(&self, id: PlayerId) {
         if let Some(player) = self.players.get(&id) {
             player.link.send(ClientEvent::PlayerInventorySlot {
                 slot: OFFHAND,
                 stack: player.inventory.get(OFFHAND_SLOT).cloned(),
             });
         }
-    }
-}
-
-fn clicked_slot(slot: i16, size: usize) -> ClickedSlot {
-    let Ok(index) = usize::try_from(slot) else {
-        return ClickedSlot::Outside;
-    };
-    if index < size {
-        ClickedSlot::Menu(index as u16)
-    } else if index < size + MAIN_SLOTS {
-        ClickedSlot::Player(FIRST_MAIN + (index - size) as i32)
-    } else {
-        ClickedSlot::Player((index - size - MAIN_SLOTS) as i32)
-    }
-}
-
-fn view(slot: ClickedSlot, items: &[Slot], inventory: &Inventory) -> Slot {
-    match slot {
-        ClickedSlot::Menu(index) => items.get(usize::from(index)).cloned().flatten(),
-        ClickedSlot::Player(spigot) => usize::try_from(spigot)
-            .ok()
-            .and_then(menu_slot)
-            .and_then(|index| inventory.get(index))
-            .cloned(),
-        ClickedSlot::Outside => None,
-    }
-}
-
-fn click_kind(input: ClickInput, button: i8) -> Option<(ClickKind, i32)> {
-    let kind = match (input, button) {
-        (ClickInput::Pickup, 0) => ClickKind::Left,
-        (ClickInput::Pickup, 1) => ClickKind::Right,
-        (ClickInput::QuickMove, 0) => ClickKind::ShiftLeft,
-        (ClickInput::QuickMove, 1) => ClickKind::ShiftRight,
-        (ClickInput::Swap, OFFHAND_BUTTON) => ClickKind::SwapOffhand,
-        (ClickInput::Swap, 0..=8) => return Some((ClickKind::NumberKey, i32::from(button))),
-        (ClickInput::Clone, _) => ClickKind::Middle,
-        (ClickInput::Throw, 0) => ClickKind::Drop,
-        (ClickInput::Throw, 1) => ClickKind::ControlDrop,
-        (ClickInput::PickupAll, _) => ClickKind::DoubleClick,
-        _ => return None,
-    };
-    Some((kind, -1))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn menu_slots_map_to_the_menu_then_the_main_inventory_then_the_hotbar() {
-        assert_eq!(clicked_slot(OUTSIDE, 9), ClickedSlot::Outside);
-        assert_eq!(clicked_slot(NO_SLOT, 9), ClickedSlot::Outside);
-        assert_eq!(clicked_slot(0, 9), ClickedSlot::Menu(0));
-        assert_eq!(clicked_slot(53, 54), ClickedSlot::Menu(53));
-        assert_eq!(clicked_slot(9, 9), ClickedSlot::Player(9));
-        assert_eq!(clicked_slot(35, 9), ClickedSlot::Player(35));
-        assert_eq!(clicked_slot(36, 9), ClickedSlot::Player(0));
-        assert_eq!(clicked_slot(44, 9), ClickedSlot::Player(8));
-        assert_eq!(clicked_slot(54, 54), ClickedSlot::Player(9));
-        assert_eq!(clicked_slot(89, 54), ClickedSlot::Player(8));
-    }
-
-    #[test]
-    fn clicks_map_to_their_spigot_kind() {
-        assert_eq!(
-            click_kind(ClickInput::Swap, 0),
-            Some((ClickKind::NumberKey, 0))
-        );
-        assert_eq!(
-            click_kind(ClickInput::Swap, 8),
-            Some((ClickKind::NumberKey, 8))
-        );
-        assert_eq!(click_kind(ClickInput::Swap, 9), None);
-        assert_eq!(click_kind(ClickInput::Swap, -1), None);
-        assert_eq!(
-            click_kind(ClickInput::Swap, 40),
-            Some((ClickKind::SwapOffhand, -1))
-        );
-        assert_eq!(click_kind(ClickInput::Pickup, 2), None);
-        assert_eq!(click_kind(ClickInput::QuickCraft, 0), None);
-        assert_eq!(
-            click_kind(ClickInput::Throw, 1),
-            Some((ClickKind::ControlDrop, -1))
-        );
     }
 }

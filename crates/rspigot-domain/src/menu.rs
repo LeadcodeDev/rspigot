@@ -1,5 +1,6 @@
-use rspigot_items::EquipmentSlot;
+use rspigot_items::{EquipmentSlot, ItemId};
 
+use crate::click::{self, Classified, ClickView, Drag};
 use crate::crafting;
 use crate::item::{
     HOTBAR_START, Inventory, ItemStack, OFFHAND_SLOT, PLAYER_INVENTORY_SIZE, Slot, count,
@@ -12,6 +13,7 @@ const GRID: std::ops::RangeInclusive<usize> = 1..=4;
 const CONTAINER_MAX_STACK: u32 = 99;
 const ARMOR_MAX_STACK: u32 = 1;
 const OFFHAND_BUTTON: i32 = 40;
+const STORAGE: std::ops::Range<usize> = 9..OFFHAND_SLOT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClickInput {
@@ -85,7 +87,10 @@ pub enum MenuEffect {
         predicted: bool,
     },
     ResultUpdated,
-    FurnaceOutputTaken,
+    FurnaceOutputTaken {
+        item: ItemId,
+        amount: u32,
+    },
     StonecutterTaken,
     SmithingTaken,
     SlotResent(usize),
@@ -180,15 +185,6 @@ fn index(slot: i32) -> Option<usize> {
     usize::try_from(slot)
         .ok()
         .filter(|slot| *slot < PLAYER_INVENTORY_SIZE)
-}
-
-fn quick_craft_place_count(slots: usize, kind: i32, stack: &ItemStack) -> u32 {
-    match kind {
-        0 => u32::from(stack.count.get()) / u32::try_from(slots).unwrap_or(u32::MAX).max(1),
-        1 => 1,
-        2 => max_stack(stack),
-        _ => u32::from(stack.count.get()),
-    }
 }
 
 struct Session<'a> {
@@ -407,28 +403,19 @@ impl Session<'_> {
         }
     }
 
-    fn finish_quick_craft(&mut self, craft: &QuickCraft, copy: &ItemStack) {
-        let spread = craft.slots.len();
-        let mut remaining = i64::from(copy.count.get());
-        let mut placements = Vec::new();
-        for &target in &craft.slots {
-            let wide = craft.kind == 2
-                || u32::from(copy.count.get()) >= u32::try_from(spread).unwrap_or(u32::MAX);
-            if !self.can_quick_replace(target, copy)
-                || !self.may_place(target, &Some(copy.clone()))
-                || !wide
-            {
-                continue;
-            }
-            let existing = count(&self.item(target));
-            let limit = max_stack(copy).min(self.slot_max_for(target, copy));
-            let placed = (quick_craft_place_count(spread, craft.kind, copy) + existing).min(limit);
-            remaining -= i64::from(placed) - i64::from(existing);
-            placements.push((target, with_count(copy, placed)));
+    fn look(&self) -> Look<'_> {
+        Look {
+            inventory: self.inventory,
+            carried: self.carried,
+            instabuild: self.infinite,
         }
-        *self.carried = with_count(copy, u32::try_from(remaining.max(0)).unwrap_or(0));
-        for (target, stack) in placements {
-            self.set(target, stack);
+    }
+
+    fn finish_quick_craft(&mut self, craft: &QuickCraft, copy: &ItemStack) {
+        let drag = click::plan_drag(&self.look(), &craft.slots, craft.kind, copy);
+        *self.carried = drag.remaining;
+        for (target, stack) in drag.placed {
+            self.set(target, Some(stack));
         }
         self.effects.push(MenuEffect::FullResync);
     }
@@ -714,6 +701,77 @@ impl Session<'_> {
     }
 }
 
+struct Look<'a> {
+    inventory: &'a Inventory,
+    carried: &'a Slot,
+    instabuild: bool,
+}
+
+impl ClickView for Look<'_> {
+    fn slot(&self, raw: i32) -> Option<usize> {
+        index(raw)
+    }
+
+    fn item(&self, slot: usize) -> Slot {
+        self.inventory.get(slot).cloned()
+    }
+
+    fn carried(&self) -> &Slot {
+        self.carried
+    }
+
+    fn may_pickup(&self, _: usize) -> bool {
+        true
+    }
+
+    fn may_place(&self, slot: usize, stack: &ItemStack) -> bool {
+        match kind(slot) {
+            SlotKind::Result => false,
+            SlotKind::Armor(piece) => equippable(stack) == Some(piece),
+            SlotKind::Grid | SlotKind::Storage => true,
+        }
+    }
+
+    fn slot_limit(&self, slot: usize) -> u32 {
+        match kind(slot) {
+            SlotKind::Armor(_) => ARMOR_MAX_STACK,
+            _ => CONTAINER_MAX_STACK,
+        }
+    }
+
+    fn stack_limit(&self, slot: usize, stack: &ItemStack) -> u32 {
+        self.slot_limit(slot).min(max_stack(stack))
+    }
+
+    fn container_limit(&self, _: usize) -> u32 {
+        CONTAINER_MAX_STACK
+    }
+
+    fn hotbar(&self, button: i32) -> Slot {
+        usize::try_from(button)
+            .ok()
+            .and_then(menu_slot)
+            .and_then(|slot| self.inventory.get(slot))
+            .cloned()
+    }
+
+    fn in_player(&self, slot: usize) -> bool {
+        slot > *GRID.end()
+    }
+
+    fn holds(&self, item: ItemId) -> bool {
+        (RESULT_SLOT..=*GRID.end()).chain(STORAGE).any(|slot| {
+            self.inventory
+                .get(slot)
+                .is_some_and(|stack| stack.item == item)
+        })
+    }
+
+    fn instabuild(&self) -> bool {
+        self.instabuild
+    }
+}
+
 impl InventoryMenu {
     pub fn carried(&self) -> &Slot {
         &self.carried
@@ -744,6 +802,102 @@ impl InventoryMenu {
             input,
         );
         session.effects
+    }
+
+    pub fn classify(
+        &self,
+        inventory: &Inventory,
+        slot: i16,
+        button: i8,
+        input: ClickInput,
+        clicker: Clicker,
+    ) -> Classified {
+        let look = Look {
+            inventory,
+            carried: &self.carried,
+            instabuild: clicker.infinite_materials,
+        };
+        click::classify(&look, slot, button, input)
+    }
+
+    pub fn pending_drag(&self, inventory: &Inventory, button: i8) -> Option<Drag> {
+        let ends = self.quick_craft.status == 1 && i32::from(button) & 3 == 2;
+        let carried = self.carried.as_ref()?;
+        if !ends || self.quick_craft.slots.is_empty() {
+            return None;
+        }
+        let look = Look {
+            inventory,
+            carried: &self.carried,
+            instabuild: false,
+        };
+        Some(click::plan_drag(
+            &look,
+            &self.quick_craft.slots,
+            self.quick_craft.kind,
+            carried,
+        ))
+    }
+
+    pub fn drag_holds(&self, inventory: &Inventory, drag: &Drag) -> bool {
+        self.quick_craft.status == 1
+            && self.carried.as_ref() == Some(&drag.cursor)
+            && drag
+                .before
+                .iter()
+                .all(|(slot, stack)| stacks_match(&inventory.get(*slot).cloned(), stack))
+    }
+
+    pub fn finish_drag(
+        &mut self,
+        inventory: &mut Inventory,
+        drag: &Drag,
+        cursor: Option<Slot>,
+    ) -> Vec<MenuEffect> {
+        self.quick_craft.reset();
+        let mut session = Session {
+            inventory,
+            carried: &mut self.carried,
+            infinite: false,
+            effects: Vec::new(),
+        };
+        if let Some(cursor) = cursor {
+            *session.carried = cursor;
+            for (target, stack) in &drag.placed {
+                session.set(*target, Some(stack.clone()));
+            }
+        }
+        session.effects.push(MenuEffect::FullResync);
+        session.effects
+    }
+
+    pub fn quick_move_once(
+        &mut self,
+        inventory: &mut Inventory,
+        slot: usize,
+        clicker: Clicker,
+    ) -> (Slot, Vec<MenuEffect>) {
+        let mut session = Session {
+            inventory,
+            carried: &mut self.carried,
+            infinite: clicker.infinite_materials,
+            effects: Vec::new(),
+        };
+        let moved = session.quick_move_stack(slot);
+        (moved, session.effects)
+    }
+
+    pub fn set_remote_result(&mut self, inventory: &Inventory) {
+        self.set_remote(RESULT_SLOT, inventory.get(RESULT_SLOT).cloned());
+    }
+
+    pub fn set_carried(&mut self, stack: Slot) {
+        self.carried = stack.clone();
+        self.remote_carried = RemoteSlot::Known(stack);
+    }
+
+    pub fn crafting_grid(inventory: &Inventory) -> [Slot; 4] {
+        std::array::from_fn(|offset| inventory.get(GRID.start() + offset).cloned())
     }
 
     pub fn set_by_player(

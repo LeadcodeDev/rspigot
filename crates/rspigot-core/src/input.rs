@@ -604,27 +604,6 @@ impl<L: ClientLink> Server<L> {
         self.broadcast_held_item(id);
     }
 
-    fn handle_creative_slot(&mut self, id: PlayerId, slot: i16, stack: Option<ItemStack>) {
-        if self
-            .players
-            .get(&id)
-            .is_none_or(|p| p.game_mode != GameMode::Creative)
-        {
-            return;
-        }
-        let valid_data = stack
-            .as_ref()
-            .is_none_or(|s| s.count.get() <= s.item.max_stack_size());
-        if !valid_data {
-            return;
-        }
-        match usize::try_from(slot) {
-            Ok(index @ 1..=45) => self.set_slot_by_player(id, index, stack),
-            Err(_) => self.drop_creative(id, stack),
-            Ok(_) => {}
-        }
-    }
-
     fn handle_pick_block(&mut self, id: PlayerId, pos: BlockPos) {
         let Some(state) = self.world.chunks.block(pos) else {
             return;

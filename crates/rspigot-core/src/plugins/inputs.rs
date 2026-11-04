@@ -51,6 +51,12 @@ impl<L: ClientLink> Server<L> {
                 None
             }
             Continuation::Login(key) => self.login_at_head(key).map(Continuation::Login),
+            Continuation::Window(packet) => self.click_at_head(*packet),
+            Continuation::CreativeSlot(packet) => self.creative_at_head(*packet),
+            Continuation::Close(packet) => {
+                self.close_at_head(packet);
+                None
+            }
             Continuation::ClickBlock(step) => self
                 .click_block_at_head(*step)
                 .map(|step| Continuation::UseItemOn(Box::new(step))),
@@ -98,6 +104,9 @@ impl<L: ClientLink> Server<L> {
             Continuation::UseItem(step) => return self.use_payload(step),
             Continuation::Drop(step) => return self.drop_payload_of(step),
             Continuation::ItemDamage(step) => return self.wear_payload(step),
+            Continuation::Click(kind, step) => return self.window_click_payload(*kind, step),
+            Continuation::Drag(step) => return self.drag_payload(step),
+            Continuation::Creative(step) => return self.creative_payload(step),
             Continuation::Input(step) => EventPayload::PlayerInput(Pressed {
                 input: pressed(step.state),
                 player: self.snapshot_of(step.player)?,

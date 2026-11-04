@@ -662,7 +662,7 @@ fn the_owner_disconnecting_closes_its_menus_everywhere() {
 }
 
 #[test]
-fn only_the_owner_hears_its_inventory_events() {
+fn every_listening_plugin_hears_the_events_of_a_plugin_inventory() {
     let (mut s, alice, _bob) = menu_scene();
     let other = connect_with(&mut s.server, 2, "other", handlers());
     let (mut screen, _) = open(&mut s, &alice, MENU);
@@ -670,7 +670,9 @@ fn only_the_owner_hears_its_inventory_events() {
     close_window(&mut s, &alice, screen.window);
     assert_eq!(clicks(&s.plugin, &alice).len(), 1);
     assert_eq!(closes(&s.plugin, &alice).len(), 1);
-    assert!(events_of(&other).is_empty());
+    assert_eq!(clicks(&other, &alice).len(), 1);
+    assert_eq!(closes(&other, &alice).len(), 1);
+    assert_eq!(clicks(&other, &alice)[0].inventory, MENU);
 
     order(
         &mut s.server,
@@ -684,7 +686,6 @@ fn only_the_owner_hears_its_inventory_events() {
     );
     let (slots, _) = content(&alice.link.take(), screen.window + 1).expect("the other menu");
     assert!(slots[0].is_none());
-    assert!(events_of(&other).is_empty());
 }
 
 #[test]

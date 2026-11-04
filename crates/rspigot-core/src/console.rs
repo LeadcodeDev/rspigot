@@ -147,6 +147,37 @@ fn english(key: &str) -> Option<&'static str> {
     })
 }
 
+const TITLES: [(&str, &str); 21] = [
+    ("container.chest", "Chest"),
+    ("container.chestDouble", "Large Chest"),
+    ("container.enderchest", "Ender Chest"),
+    ("container.barrel", "Barrel"),
+    ("container.hopper", "Item Hopper"),
+    ("container.dispenser", "Dispenser"),
+    ("container.dropper", "Dropper"),
+    ("container.crafting", "Crafting"),
+    ("container.grindstone_title", "Repair & Disenchant"),
+    ("container.stonecutter", "Stonecutter"),
+    ("container.cartography_table", "Cartography Table"),
+    ("container.loom", "Loom"),
+    ("container.beacon", "Beacon"),
+    ("container.lectern", "Lectern"),
+    ("container.upgrade", "Upgrade Gear"),
+    ("container.repair", "Repair & Name"),
+    ("container.furnace", "Furnace"),
+    ("container.blast_furnace", "Blast Furnace"),
+    ("container.smoker", "Smoker"),
+    ("container.shulkerBox", "Shulker Box"),
+    ("container.inventory", "Inventory"),
+];
+
+pub(crate) fn english_title(key: &str) -> String {
+    TITLES
+        .iter()
+        .find(|(known, _)| *known == key)
+        .map_or_else(|| key.to_owned(), |(_, text)| (*text).to_owned())
+}
+
 pub fn console_text(component: &Component) -> String {
     component.render(&english)
 }

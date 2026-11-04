@@ -9,15 +9,18 @@ use crate::events::ClientEvent;
 use crate::player::Player;
 use crate::plugins::aims::settled_target;
 use crate::plugins::burning::settled_duration;
+use crate::plugins::clicks::Writes;
 use crate::plugins::damage::settled_damage;
 use crate::plugins::decisions::{
     Asked, Continuation, Flushed, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo,
     Undone,
 };
 use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTeleportCause};
+use crate::plugins::furnaces::FurnaceAnswer;
 use crate::plugins::knockback::settled_knockback;
 use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
+use crate::plugins::prepare::settled_result;
 use crate::plugins::{
     Access, Answer, EffectSpec, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec,
     Location, Order, Phase, PlayerSnapshot, PlayerState, Question, ToPlugin, Verdict,
@@ -59,29 +62,6 @@ impl<L: ClientLink> Server<L> {
                     phase,
                     cancelled,
                     payload: payload.clone(),
-                },
-            );
-        }
-    }
-
-    pub(crate) fn notify_owner(&mut self, connection: u64, payload: EventPayload) {
-        let owned = self
-            .plugins
-            .listeners(payload.kind(), Access::Observe, &self.config.plugins)
-            .into_iter()
-            .filter(|(listener, _)| *listener == connection)
-            .collect();
-        let (cancelled, heard) = audience(owned, &payload, false, Phase::Settled);
-        if let Some((connection, handlers)) = heard.into_iter().next() {
-            let id = self.next_event_id();
-            self.plugins.send(
-                connection,
-                ToPlugin::Event {
-                    id,
-                    handlers,
-                    phase: Phase::Settled,
-                    cancelled,
-                    payload,
                 },
             );
         }
@@ -834,6 +814,47 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::Dye(step) => {
                 self.finish_dye(*step, cancelled, patch_of!(patch, SheepDyeWool));
+                Vec::new()
+            }
+            Continuation::Window(_) => Vec::new(),
+            Continuation::Click(kind, step) => {
+                self.finish_click(kind, *step, Writes::of(patch));
+                Vec::new()
+            }
+            Continuation::Drag(step) => {
+                self.finish_drag(*step, Writes::of(patch));
+                Vec::new()
+            }
+            Continuation::Furnace(kind, step) => {
+                let answer = match kind {
+                    EventKind::FurnaceBurn => FurnaceAnswer::Burn(patch_of!(patch, FurnaceBurn)),
+                    EventKind::FurnaceStartSmelt => {
+                        FurnaceAnswer::Start(patch_of!(patch, FurnaceStartSmelt))
+                    }
+                    _ => FurnaceAnswer::Smelt(patch_of!(patch, FurnaceSmelt)),
+                };
+                self.finish_furnace(*step, cancelled, answer);
+                Vec::new()
+            }
+            Continuation::Extract(step) => {
+                self.finish_extract(step, patch_of!(patch, FurnaceExtract));
+                Vec::new()
+            }
+            Continuation::Prepare(_, step) => {
+                self.finish_prepare(*step, settled_result(patch));
+                Vec::new()
+            }
+            Continuation::Open(step) => {
+                self.finish_open(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::OpenPlugin(step) => {
+                self.finish_plugin_open(step, cancelled);
+                Vec::new()
+            }
+            Continuation::Close(_) | Continuation::CreativeSlot(_) => Vec::new(),
+            Continuation::Creative(step) => {
+                self.finish_creative(*step, Writes::of(patch));
                 Vec::new()
             }
         }

@@ -8,7 +8,7 @@ use rspigot_core::plugins::events::{
     PlayerItemDamagePatch, PlayerTakeLecternBook,
 };
 use rspigot_core::plugins::{
-    Answer, EventKind, EventPatch, EventPayload, ItemSpec, Phase, Question,
+    Answer, EventKind, EventPatch, EventPayload, ItemSpec, Phase, PlayerOrder, Question,
 };
 use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
@@ -938,7 +938,7 @@ fn a_book_take_whose_menu_closed_while_it_waited_leaves_the_book() {
         PlayerInput::ContainerButtonClick { window, button: 3 },
     );
     let asked = last_asked(&s.plugin, EventKind::PlayerTakeLecternBook);
-    send_input(&mut s.server, &alice, PlayerInput::ContainerClose(window));
+    s.act(to(&alice, PlayerOrder::CloseInventory));
     rule_on(&mut s.server, 1, asked.id, false, None);
     assert!(
         !inventory(&mut s, &alice)
