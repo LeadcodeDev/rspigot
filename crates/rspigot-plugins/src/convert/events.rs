@@ -2161,6 +2161,16 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 recipients: match patch.recipients {
                     Some(diff) => ListDiff {
                         removed: diff.removed,
+                        replaced: diff
+                            .replaced
+                            .into_iter()
+                            .map(|entry| {
+                                Ok((
+                                    entry.index,
+                                    player::snapshot(shared::required(entry.value)?)?,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, Malformed>>()?,
                         added: diff
                             .added
                             .into_iter()
@@ -2208,6 +2218,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 dispensed_loot: match patch.dispensed_loot {
                     Some(diff) => ListDiff {
                         removed: diff.removed,
+                        replaced: diff
+                            .replaced
+                            .into_iter()
+                            .map(|entry| {
+                                Ok((entry.index, shared::item(shared::required(entry.value)?)))
+                            })
+                            .collect::<Result<Vec<_>, Malformed>>()?,
                         added: diff.added.into_iter().map(shared::item).collect(),
                     },
                     None => ListDiff::default(),
@@ -2218,6 +2235,16 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             items: match patch.items {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((
+                                entry.index,
+                                contract::dropped_item(shared::required(entry.value)?)?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff
                         .added
                         .into_iter()
@@ -2234,6 +2261,16 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             block_list: match patch.block_list {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((
+                                entry.index,
+                                shared::block_pos(shared::required(entry.value)?),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added.into_iter().map(shared::block_pos).collect(),
                 },
                 None => ListDiff::default(),
@@ -2264,6 +2301,16 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 recipients: match patch.recipients {
                     Some(diff) => ListDiff {
                         removed: diff.removed,
+                        replaced: diff
+                            .replaced
+                            .into_iter()
+                            .map(|entry| {
+                                Ok((
+                                    entry.index,
+                                    contract::command_sender(shared::required(entry.value)?)?,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, Malformed>>()?,
                         added: diff
                             .added
                             .into_iter()
@@ -2343,6 +2390,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             drops: match patch.drops {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((entry.index, shared::item(shared::required(entry.value)?)))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added.into_iter().map(shared::item).collect(),
                 },
                 None => ListDiff::default(),
@@ -2362,6 +2416,16 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             block_list: match patch.block_list {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((
+                                entry.index,
+                                shared::block_pos(shared::required(entry.value)?),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added.into_iter().map(shared::block_pos).collect(),
                 },
                 None => ListDiff::default(),
@@ -2509,6 +2573,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             loot: match patch.loot {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((entry.index, shared::item(shared::required(entry.value)?)))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added.into_iter().map(shared::item).collect(),
                 },
                 None => ListDiff::default(),
@@ -2547,6 +2618,11 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 commands: match patch.commands {
                     Some(diff) => ListDiff {
                         removed: diff.removed,
+                        replaced: diff
+                            .replaced
+                            .into_iter()
+                            .map(|entry| Ok((entry.index, entry.value)))
+                            .collect::<Result<Vec<_>, Malformed>>()?,
                         added: diff.added,
                     },
                     None => ListDiff::default(),
@@ -2559,6 +2635,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             drops: match patch.drops {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| {
+                            Ok((entry.index, shared::item(shared::required(entry.value)?)))
+                        })
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added.into_iter().map(shared::item).collect(),
                 },
                 None => ListDiff::default(),
@@ -2599,6 +2682,13 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
                 items_harvested: match patch.items_harvested {
                     Some(diff) => ListDiff {
                         removed: diff.removed,
+                        replaced: diff
+                            .replaced
+                            .into_iter()
+                            .map(|entry| {
+                                Ok((entry.index, shared::item(shared::required(entry.value)?)))
+                            })
+                            .collect::<Result<Vec<_>, Malformed>>()?,
                         added: diff.added.into_iter().map(shared::item).collect(),
                     },
                     None => ListDiff::default(),
@@ -2732,6 +2822,11 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             hidden_players: match patch.hidden_players {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| Ok((entry.index, shared::uuid(entry.value)?)))
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff
                         .added
                         .into_iter()
@@ -2748,6 +2843,11 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             lines: match patch.lines {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| Ok((entry.index, entry.value)))
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added,
                 },
                 None => ListDiff::default(),
@@ -2764,6 +2864,11 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             completions: match patch.completions {
                 Some(diff) => ListDiff {
                     removed: diff.removed,
+                    replaced: diff
+                        .replaced
+                        .into_iter()
+                        .map(|entry| Ok((entry.index, entry.value)))
+                        .collect::<Result<Vec<_>, Malformed>>()?,
                     added: diff.added,
                 },
                 None => ListDiff::default(),

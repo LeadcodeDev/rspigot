@@ -92,10 +92,11 @@ impl<L: ClientLink> Server<L> {
         }
         let mut console = false;
         let mut players: Vec<PlayerId> = Vec::new();
-        for recipient in patch
-            .recipients
-            .apply_with(offered, |sender| Some(Recipient::of(&sender)))
-        {
+        for recipient in patch.recipients.apply_with(
+            offered,
+            |_, sender| Some(Recipient::of(&sender)),
+            |sender| Some(Recipient::of(&sender)),
+        ) {
             match recipient {
                 Recipient::Console => console = true,
                 Recipient::Player(id) if !players.contains(&id) => players.push(id),

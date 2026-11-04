@@ -59,19 +59,25 @@ enum TimeSkipReason { TIME_SKIP_REASON_UNSPECIFIED = 0; TIME_SKIP_REASON_COMMAND
 enum TreeType { TREE_TYPE_UNSPECIFIED = 0; TREE_TYPE_TREE = 1; TREE_TYPE_BIG_TREE = 2; TREE_TYPE_REDWOOD = 3; TREE_TYPE_TALL_REDWOOD = 4; TREE_TYPE_BIRCH = 5; TREE_TYPE_JUNGLE = 6; TREE_TYPE_SMALL_JUNGLE = 7; TREE_TYPE_COCOA_TREE = 8; TREE_TYPE_JUNGLE_BUSH = 9; TREE_TYPE_RED_MUSHROOM = 10; TREE_TYPE_BROWN_MUSHROOM = 11; TREE_TYPE_SWAMP = 12; TREE_TYPE_ACACIA = 13; TREE_TYPE_DARK_OAK = 14; TREE_TYPE_MEGA_REDWOOD = 15; TREE_TYPE_MEGA_PINE = 16; TREE_TYPE_TALL_BIRCH = 17; TREE_TYPE_CHORUS_PLANT = 18; TREE_TYPE_CRIMSON_FUNGUS = 19; TREE_TYPE_WARPED_FUNGUS = 20; TREE_TYPE_AZALEA = 21; TREE_TYPE_MANGROVE = 22; TREE_TYPE_TALL_MANGROVE = 23; TREE_TYPE_CHERRY = 24; TREE_TYPE_PALE_OAK = 25; TREE_TYPE_PALE_OAK_CREAKING = 26; TREE_TYPE_RED_POPLAR = 27; TREE_TYPE_ORANGE_POPLAR = 28; TREE_TYPE_YELLOW_POPLAR = 29; }
 enum VillagerCareerChangeReason { VILLAGER_CAREER_CHANGE_REASON_UNSPECIFIED = 0; VILLAGER_CAREER_CHANGE_REASON_LOSING_JOB = 1; VILLAGER_CAREER_CHANGE_REASON_EMPLOYED = 2; }
 
-message BlockPosListDiff { repeated uint32 removed = 1; repeated BlockPos added = 2; }
-message CommandSenderListDiff { repeated uint32 removed = 1; repeated CommandSender added = 2; }
-message DroppedItemListDiff { repeated uint32 removed = 1; repeated DroppedItem added = 2; }
+message BlockPosListDiff { repeated uint32 removed = 1; repeated BlockPos added = 2; repeated BlockPosReplacement replaced = 3; }
+message BlockPosReplacement { uint32 index = 1; BlockPos value = 2; }
+message CommandSenderListDiff { repeated uint32 removed = 1; repeated CommandSender added = 2; repeated CommandSenderReplacement replaced = 3; }
+message CommandSenderReplacement { uint32 index = 1; CommandSender value = 2; }
+message DroppedItemListDiff { repeated uint32 removed = 1; repeated DroppedItem added = 2; repeated DroppedItemReplacement replaced = 3; }
+message DroppedItemReplacement { uint32 index = 1; DroppedItem value = 2; }
 message EntitySnapshotDoubleEntry { EntitySnapshot key = 1; double value = 2; }
-message ItemListDiff { repeated uint32 removed = 1; repeated Item added = 2; }
+message ItemListDiff { repeated uint32 removed = 1; repeated Item added = 2; repeated ItemReplacement replaced = 3; }
+message ItemReplacement { uint32 index = 1; Item value = 2; }
 message NullableBlockPos { BlockPos value = 1; }
 message NullableEntitySnapshot { EntitySnapshot value = 1; }
 message NullableInventoryRef { InventoryRef value = 1; }
 message NullableItem { Item value = 1; }
 message NullableLocation { Location value = 1; }
 message NullableString { optional string value = 1; }
-message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; }
-message StringListDiff { repeated uint32 removed = 1; repeated string added = 2; }
+message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; repeated PlayerSnapshotReplacement replaced = 3; }
+message PlayerSnapshotReplacement { uint32 index = 1; PlayerSnapshot value = 2; }
+message StringListDiff { repeated uint32 removed = 1; repeated string added = 2; repeated StringReplacement replaced = 3; }
+message StringReplacement { uint32 index = 1; string value = 2; }
 
 message PlayerJoin { optional string join_message = 1; PlayerSnapshot player = 2; }
 message PlayerJoinPatch { NullableString join_message = 1; }

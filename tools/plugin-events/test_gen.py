@@ -166,8 +166,12 @@ class Generator(unittest.TestCase):
     def test_every_list_patch_travels_as_a_diff_against_the_snapshot(self):
         self.assertEqual(generator(self.root).returncode, 0)
         proto = (self.root / OUTPUTS[0]).read_text()
-        self.assertIn("message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; }", proto)
-        self.assertIn("message ItemListDiff { repeated uint32 removed = 1; repeated Item added = 2; }", proto)
+        self.assertIn(
+            "message PlayerSnapshotListDiff { repeated uint32 removed = 1; repeated PlayerSnapshot added = 2; "
+            "repeated PlayerSnapshotReplacement replaced = 3; }",
+            proto,
+        )
+        self.assertIn("message ItemReplacement { uint32 index = 1; Item value = 2; }", proto)
         self.assertRegex(proto, r"message AsyncPlayerChatPatch {[^}]* PlayerSnapshotListDiff recipients = 1004; reserved 4; }")
         self.assertRegex(proto, r"message EntityDeathPatch {[^}]* ItemListDiff drops = 1003; reserved 3; }")
         self.assertRegex(proto, r"message ServerListPingPatch {[^}]* StringListDiff hidden_players = 1100; reserved 100; }")
@@ -175,9 +179,13 @@ class Generator(unittest.TestCase):
         core = (self.root / OUTPUTS[1]).read_text()
         self.assertIn("pub recipients: ListDiff<PlayerSnapshot>,", core)
         self.assertIn("recipients: self.recipients.then(later.recipients),", core)
-        self.assertIn("lines: self.lines.then_slots(later.lines),", core)
+        self.assertIn("lines: self.lines.then(later.lines),", core)
+        self.assertIn('self.lines.slot_refusal("lines", event.lines.len())', core)
         sdk = (self.root / OUTPUTS[3]).read_text()
         self.assertIn("recipients_snapshot: Option<Vec<Player>>,", sdk)
+        self.assertIn("diff::same_item,", sdk)
+        self.assertIn("diff::same_entity,", sdk)
+        self.assertIn("diff::slots(snapshot, value.clone())", sdk)
 
     def test_a_field_number_past_the_diff_offset_fails_the_generation(self):
         catalog = self.catalog()

@@ -513,6 +513,7 @@ fn an_entity_death_handler_also_decides_the_death_of_a_player() {
             dropped_exp: None,
             drops: ListDiff {
                 removed: Vec::new(),
+                replaced: Vec::new(),
                 added: vec![ItemSpec::of("minecraft:stick", 2)],
             },
         })),

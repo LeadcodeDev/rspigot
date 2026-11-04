@@ -491,6 +491,16 @@ pub struct BlockPosListDiff {
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(message, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<BlockPos>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<BlockPosReplacement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BlockPosReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<BlockPos>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -499,6 +509,16 @@ pub struct CommandSenderListDiff {
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(message, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<CommandSender>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<CommandSenderReplacement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandSenderReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<CommandSender>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -507,6 +527,16 @@ pub struct DroppedItemListDiff {
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(message, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<DroppedItem>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<DroppedItemReplacement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DroppedItemReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<DroppedItem>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -523,6 +553,16 @@ pub struct ItemListDiff {
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(message, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<Item>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<ItemReplacement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<Item>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -567,14 +607,34 @@ pub struct PlayerSnapshotListDiff {
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(message, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<PlayerSnapshot>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<PlayerSnapshotReplacement>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PlayerSnapshotReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<PlayerSnapshot>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringListDiff {
     #[prost(uint32, repeated, tag = "1")]
     pub removed: ::prost::alloc::vec::Vec<u32>,
     #[prost(string, repeated, tag = "2")]
     pub added: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "3")]
+    pub replaced: ::prost::alloc::vec::Vec<StringReplacement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StringReplacement {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2938,7 +2998,7 @@ pub struct PlayerCommandSend {
     pub player: ::core::option::Option<PlayerSnapshot>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlayerCommandSendPatch {
     #[prost(message, optional, tag = "1001")]
     pub commands: ::core::option::Option<StringListDiff>,
@@ -3914,7 +3974,7 @@ pub struct ServerListPing {
     pub hidden_players: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerListPingPatch {
     #[prost(int32, optional, tag = "4")]
     pub max_players: ::core::option::Option<i32>,
@@ -3970,7 +4030,7 @@ pub struct SignChange {
     pub side: i32,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignChangePatch {
     #[prost(message, optional, tag = "1004")]
     pub lines: ::core::option::Option<StringListDiff>,
@@ -4100,7 +4160,7 @@ pub struct TabComplete {
     pub sender: ::core::option::Option<CommandSender>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TabCompletePatch {
     #[prost(message, optional, tag = "1002")]
     pub completions: ::core::option::Option<StringListDiff>,

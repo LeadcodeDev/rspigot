@@ -819,6 +819,13 @@ def list_diff(f):
     return f"{f.ty.leaf.base}ListDiff"
 
 
+def replacement(f):
+    return f"{f.ty.leaf.base}Replacement"
+
+
+KIN = {"Item": "diff::same_item", "DroppedItem": "diff::same_entity"}
+
+
 def patch_number(f):
     return f.number + DIFF_OFFSET if listed(f) else f.number
 
@@ -928,7 +935,8 @@ def emit_proto(model):
             if f.index:
                 continue
             if f.ty.many:
-                wrappers[list_diff(f)] = f"repeated uint32 removed = 1; repeated {leaf.proto} added = 2;"
+                wrappers[list_diff(f)] = f"repeated uint32 removed = 1; repeated {leaf.proto} added = 2; repeated {replacement(f)} replaced = 3;"
+                wrappers[replacement(f)] = f"uint32 index = 1; {leaf.proto} value = 2;"
             elif f.patch_nullable:
                 inner = leaf.proto if leaf.shape == "message" else f"optional {leaf.proto}"
                 wrappers[f"Nullable{leaf.base}"] = f"{inner} value = 1;"
@@ -1001,7 +1009,7 @@ def value_check(f):
         return f'self.{name}.as_deref().and_then(|value| icon_refusal("{name}", value))'
     if proto == "Location":
         if listed(f):
-            return f"self.{name}.added.iter().find_map(location_refusal)"
+            return f"self.{name}.added.iter().chain(self.{name}.replaced.iter().map(|(_, value)| value)).find_map(location_refusal)"
         if f.patch_nullable:
             return f"self.{name}.as_ref().and_then(Option::as_ref).and_then(location_refusal)"
         return f"self.{name}.as_ref().and_then(location_refusal)"
@@ -1016,7 +1024,7 @@ def value_check(f):
     if f.index:
         return f'self.{name}.iter().find_map(|(_, value)| {helper}("{name}", {value.format("*value")}))'
     if listed(f):
-        return f'self.{name}.added.iter().find_map(|value| {helper}("{name}", {value.format("*value")}))'
+        return f'self.{name}.added.iter().chain(self.{name}.replaced.iter().map(|(_, value)| value)).find_map(|value| {helper}("{name}", {value.format("*value")}))'
     each = f'|value| {helper}("{name}", {value.format("value")})'
     if f.patch_nullable:
         return f"self.{name}.flatten().and_then({each})"
@@ -1127,7 +1135,7 @@ def emit_core(model):
             if f.index:
                 body(f"            {f.name}: merge_indexed(self.{f.name}, later.{f.name}),")
             elif listed(f):
-                body(f"            {f.name}: self.{f.name}.{'then_slots' if f.ty.array else 'then'}(later.{f.name}),")
+                body(f"            {f.name}: self.{f.name}.then(later.{f.name}),")
             else:
                 body(f"            {f.name}: later.{f.name}.or(self.{f.name}),")
         body("        }")
@@ -1141,7 +1149,7 @@ def emit_core(model):
                 body(f"        event.{f.name} = merge_indexed(std::mem::take(&mut event.{f.name}), self.{f.name});")
                 continue
             if listed(f):
-                body(f"        event.{f.name} = self.{f.name}.{'apply_slots' if f.ty.array else 'apply'}(std::mem::take(&mut event.{f.name}));")
+                body(f"        event.{f.name} = self.{f.name}.apply(std::mem::take(&mut event.{f.name}));")
                 continue
             value = "Some(value)" if f.nullable and not f.patch_nullable and not f.ty.many else "value"
             body(f"        if let Some(value) = self.{f.name} {{")
@@ -1359,7 +1367,10 @@ def host_patch_field(f, usage):
             added = f"diff.added.into_iter().map({convert}).collect::<Result<Vec<_>, _>>()?"
         else:
             added = f"diff.added.into_iter().map({convert}).collect()"
-        return f"match {value} {{ Some(diff) => ListDiff {{ removed: diff.removed, added: {added} }}, None => ListDiff::default() }}"
+        wire = "shared::required(entry.value)?" if leaf.shape == "message" else "entry.value"
+        each = apply(leaf.host_in, wire) + ("?" if leaf.host_in_try else "")
+        replaced = f"diff.replaced.into_iter().map(|entry| Ok((entry.index, {each}))).collect::<Result<Vec<_>, Malformed>>()?"
+        return f"match {value} {{ Some(diff) => ListDiff {{ removed: diff.removed, replaced: {replaced}, added: {added} }}, None => ListDiff::default() }}"
     if f.patch_nullable:
         if simple_in:
             return f"{value}.map(|wrapped| wrapped.value)"
@@ -1640,7 +1651,14 @@ def emit_sdk(model):
                 body()
                 body(f"    pub fn {f.setter_method}(&mut self, value: {sdk_setter_type(f)}) {{")
                 body(f"        let snapshot = self.{snapshot_field(f)}.get_or_insert_with(|| std::mem::take(&mut self.{f.name}));")
-                body(f"        self.patch.{f.name} = diff::{'slots' if f.ty.array else 'list'}({before}, {after}).map(|(removed, added)| v1::{pn(list_diff(f))} {{ removed, added }});")
+                if f.ty.array:
+                    diffed = f"diff::slots({before}, {after})"
+                elif f.ty.leaf.proto in KIN:
+                    diffed = f"diff::list_by({before}, {after}, {KIN[f.ty.leaf.proto]})"
+                else:
+                    diffed = f"diff::list({before}, {after})"
+                value = "value: Some(value)" if f.ty.leaf.shape == "message" else "value"
+                body(f"        self.patch.{f.name} = {diffed}.map(|diff| v1::{pn(list_diff(f))} {{ removed: diff.removed, replaced: diff.replaced.into_iter().map(|(index, value)| v1::{pn(replacement(f))} {{ index, {value} }}).collect(), added: diff.added }});")
                 body(f"        self.{f.name} = value;")
                 body("    }")
                 continue

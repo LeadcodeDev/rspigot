@@ -1601,7 +1601,18 @@ impl AsyncPlayerChat {
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_snapshot()).collect(),
         )
-        .map(|(removed, added)| v1::PlayerSnapshotListDiff { removed, added });
+        .map(|diff| v1::PlayerSnapshotListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::PlayerSnapshotReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.recipients = value;
     }
 
@@ -2667,14 +2678,26 @@ impl BlockDispenseLoot {
         let snapshot = self
             .dispensed_loot_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.dispensed_loot));
-        self.patch.dispensed_loot = diff::list(
+        self.patch.dispensed_loot = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
         )
-        .map(|(removed, added)| v1::ItemListDiff { removed, added });
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.dispensed_loot = value;
     }
 
@@ -2763,14 +2786,26 @@ impl BlockDropItem {
         let snapshot = self
             .items_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.items));
-        self.patch.items = diff::list(
+        self.patch.items = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_entity,
         )
-        .map(|(removed, added)| v1::DroppedItemListDiff { removed, added });
+        .map(|diff| v1::DroppedItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::DroppedItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.items = value;
     }
 
@@ -2921,7 +2956,18 @@ impl BlockExplode {
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.pos.to_wire()).collect(),
         )
-        .map(|(removed, added)| v1::BlockPosListDiff { removed, added });
+        .map(|diff| v1::BlockPosListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::BlockPosReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.block_list = value;
     }
 
@@ -4270,7 +4316,18 @@ impl BroadcastMessage {
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
         )
-        .map(|(removed, added)| v1::CommandSenderListDiff { removed, added });
+        .map(|diff| v1::CommandSenderListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::CommandSenderReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.recipients = value;
     }
 
@@ -6281,14 +6338,26 @@ impl EntityDeath {
         let snapshot = self
             .drops_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.drops));
-        self.patch.drops = diff::list(
+        self.patch.drops = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
         )
-        .map(|(removed, added)| v1::ItemListDiff { removed, added });
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.drops = value;
     }
 }
@@ -6718,7 +6787,18 @@ impl EntityExplode {
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.pos.to_wire()).collect(),
         )
-        .map(|(removed, added)| v1::BlockPosListDiff { removed, added });
+        .map(|diff| v1::BlockPosListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::BlockPosReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.block_list = value;
     }
 
@@ -10889,14 +10969,26 @@ impl LootGenerate {
         let snapshot = self
             .loot_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.loot));
-        self.patch.loot = diff::list(
+        self.patch.loot = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
         )
-        .map(|(removed, added)| v1::ItemListDiff { removed, added });
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.loot = value;
     }
 
@@ -12113,8 +12205,15 @@ impl PlayerCommandSend {
         let snapshot = self
             .commands_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.commands));
-        self.patch.commands = diff::list(snapshot, value.clone())
-            .map(|(removed, added)| v1::StringListDiff { removed, added });
+        self.patch.commands = diff::list(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
+        });
         self.commands = value;
     }
 }
@@ -12276,14 +12375,26 @@ impl PlayerDeath {
         let snapshot = self
             .drops_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.drops));
-        self.patch.drops = diff::list(
+        self.patch.drops = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
         )
-        .map(|(removed, added)| v1::ItemListDiff { removed, added });
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.drops = value;
     }
 
@@ -12870,14 +12981,26 @@ impl PlayerHarvestBlock {
         let snapshot = self
             .items_harvested_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.items_harvested));
-        self.patch.items_harvested = diff::list(
+        self.patch.items_harvested = diff::list_by(
             &snapshot
                 .iter()
                 .map(|value| value.to_wire())
                 .collect::<Vec<_>>(),
             value.iter().map(|value| value.to_wire()).collect(),
+            diff::same_item,
         )
-        .map(|(removed, added)| v1::ItemListDiff { removed, added });
+        .map(|diff| v1::ItemListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::ItemReplacement {
+                    index,
+                    value: Some(value),
+                })
+                .collect(),
+            added: diff.added,
+        });
         self.items_harvested = value;
     }
 
@@ -16627,7 +16750,15 @@ impl ServerListPing {
                 .map(|value| value.hyphenated().to_string())
                 .collect(),
         )
-        .map(|(removed, added)| v1::StringListDiff { removed, added });
+        .map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
+        });
         self.hidden_players = value;
     }
 }
@@ -16854,8 +16985,15 @@ impl SignChange {
         let snapshot = self
             .lines_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.lines));
-        self.patch.lines = diff::slots(snapshot, value.clone())
-            .map(|(removed, added)| v1::StringListDiff { removed, added });
+        self.patch.lines = diff::slots(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+            removed: diff.removed,
+            replaced: diff
+                .replaced
+                .into_iter()
+                .map(|(index, value)| v1::StringReplacement { index, value })
+                .collect(),
+            added: diff.added,
+        });
         self.lines = value;
     }
 
@@ -17482,8 +17620,16 @@ impl TabComplete {
         let snapshot = self
             .completions_snapshot
             .get_or_insert_with(|| std::mem::take(&mut self.completions));
-        self.patch.completions = diff::list(snapshot, value.clone())
-            .map(|(removed, added)| v1::StringListDiff { removed, added });
+        self.patch.completions =
+            diff::list(snapshot, value.clone()).map(|diff| v1::StringListDiff {
+                removed: diff.removed,
+                replaced: diff
+                    .replaced
+                    .into_iter()
+                    .map(|(index, value)| v1::StringReplacement { index, value })
+                    .collect(),
+                added: diff.added,
+            });
         self.completions = value;
     }
 

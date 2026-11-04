@@ -7016,12 +7016,12 @@ pub struct SignChangePatch {
 impl SignChangePatch {
     fn then(self, later: Self) -> Self {
         Self {
-            lines: self.lines.then_slots(later.lines),
+            lines: self.lines.then(later.lines),
         }
     }
 
     fn settle(self, event: &mut SignChange) {
-        event.lines = self.lines.apply_slots(std::mem::take(&mut event.lines));
+        event.lines = self.lines.apply(std::mem::take(&mut event.lines));
     }
 
     fn refusal(&self, event: &SignChange) -> Option<String> {

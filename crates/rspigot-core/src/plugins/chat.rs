@@ -134,7 +134,11 @@ impl<L: ClientLink> Server<L> {
             let mut seen = FxHashSet::default();
             patch
                 .recipients
-                .apply_with(offered, |player| Some(player.id))
+                .apply_with(
+                    offered,
+                    |_, player| Some(player.id),
+                    |player| Some(player.id),
+                )
                 .into_iter()
                 .filter(|id| self.players.contains_key(id) && seen.insert(*id))
                 .collect()

@@ -196,6 +196,7 @@ fn a_recipient_removed_by_one_plugin_and_added_back_by_a_later_one_reads_the_cha
                 2,
                 ListDiff {
                     removed: Vec::new(),
+                    replaced: Vec::new(),
                     added: bob_again,
                 },
             ),

@@ -786,6 +786,7 @@ async fn a_list_setter_sends_the_diff_from_the_snapshot_it_received() {
                     change: Some(patch::Change::AsyncPlayerChat(v1::AsyncPlayerChatPatch {
                         recipients: Some(v1::PlayerSnapshotListDiff {
                             removed: vec![1],
+                            replaced: Vec::new(),
                             added: vec![steve()],
                         }),
                         ..v1::AsyncPlayerChatPatch::default()

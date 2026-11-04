@@ -13,6 +13,7 @@ pub struct Verdict {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListDiff<T> {
     pub removed: Vec<u32>,
+    pub replaced: Vec<(u32, T)>,
     pub added: Vec<T>,
 }
 
@@ -20,6 +21,7 @@ impl<T> Default for ListDiff<T> {
     fn default() -> Self {
         Self {
             removed: Vec::new(),
+            replaced: Vec::new(),
             added: Vec::new(),
         }
     }
@@ -27,11 +29,19 @@ impl<T> Default for ListDiff<T> {
 
 impl<T> ListDiff<T> {
     pub const fn is_empty(&self) -> bool {
-        self.removed.is_empty() && self.added.is_empty()
+        self.removed.is_empty() && self.replaced.is_empty() && self.added.is_empty()
     }
 
     pub fn keeps(&self, index: usize) -> bool {
         u32::try_from(index).map_or(true, |index| !self.removed.contains(&index))
+    }
+
+    pub fn replacement(&self, index: usize) -> Option<&T> {
+        let index = u32::try_from(index).ok()?;
+        self.replaced
+            .iter()
+            .find(|(known, _)| *known == index)
+            .map(|(_, value)| value)
     }
 
     #[must_use]
@@ -41,15 +51,26 @@ impl<T> ListDiff<T> {
                 self.removed.push(index);
             }
         }
+        for (index, value) in later.replaced {
+            match self.replaced.iter_mut().find(|(known, _)| *known == index) {
+                Some((_, known)) => *known = value,
+                None => self.replaced.push((index, value)),
+            }
+        }
         self.added.extend(later.added);
         self
     }
 
     pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
-        self.apply_with(snapshot, Some)
+        self.apply_with(snapshot, |_, value| Some(value), Some)
     }
 
-    pub fn apply_with<U>(self, snapshot: Vec<U>, convert: impl FnMut(T) -> Option<U>) -> Vec<U> {
+    pub fn apply_with<U>(
+        self,
+        snapshot: Vec<U>,
+        mut replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
         if self.is_empty() {
             return snapshot;
         }
@@ -62,56 +83,45 @@ impl<T> ListDiff<T> {
                 *slot = false;
             }
         }
+        let mut replacements: Vec<Option<T>> = std::iter::repeat_with(|| None)
+            .take(snapshot.len())
+            .collect();
+        for (index, value) in self.replaced {
+            if let Some(slot) = usize::try_from(index)
+                .ok()
+                .and_then(|index| replacements.get_mut(index))
+            {
+                *slot = Some(value);
+            }
+        }
         snapshot
             .into_iter()
             .zip(kept)
-            .filter_map(|(value, kept)| kept.then_some(value))
-            .chain(self.added.into_iter().filter_map(convert))
+            .zip(replacements)
+            .filter_map(|((old, kept), new)| match (kept, new) {
+                (false, _) => None,
+                (true, Some(new)) => replace(old, new),
+                (true, None) => Some(old),
+            })
+            .chain(self.added.into_iter().filter_map(add))
             .collect()
-    }
-
-    #[must_use]
-    pub fn then_slots(mut self, later: Self) -> Self {
-        for (slot, value) in later.removed.into_iter().zip(later.added) {
-            match self.removed.iter().position(|known| *known == slot) {
-                Some(at) => {
-                    if let Some(known) = self.added.get_mut(at) {
-                        *known = value;
-                    }
-                }
-                None => {
-                    self.removed.push(slot);
-                    self.added.push(value);
-                }
-            }
-        }
-        self
-    }
-
-    pub fn apply_slots(self, mut snapshot: Vec<T>) -> Vec<T> {
-        for (slot, value) in self.removed.into_iter().zip(self.added) {
-            if let Some(known) = usize::try_from(slot)
-                .ok()
-                .and_then(|slot| snapshot.get_mut(slot))
-            {
-                *known = value;
-            }
-        }
-        snapshot
     }
 
     pub fn refusal(&self, name: &str, len: usize) -> Option<String> {
         self.removed
             .iter()
+            .chain(self.replaced.iter().map(|(index, _)| index))
             .find(|index| usize::try_from(**index).map_or(true, |index| index >= len))
             .map(|index| format!("{name} has no element {index}"))
     }
 
     pub fn slot_refusal(&self, name: &str, len: usize) -> Option<String> {
-        match self.removed.len().cmp(&self.added.len()) {
-            std::cmp::Ordering::Greater => Some(format!("{name} replaces a slot without a value")),
-            std::cmp::Ordering::Less => Some(format!("{name} gives a value without a slot")),
-            std::cmp::Ordering::Equal => self.refusal(name, len),
+        if self.removed.is_empty() && self.added.is_empty() {
+            self.refusal(name, len)
+        } else {
+            Some(format!(
+                "{name} keeps its length: it only replaces elements in place"
+            ))
         }
     }
 }
@@ -211,9 +221,14 @@ mod tests {
         EventPatch::PlayerMove(PlayerMovePatch { to })
     }
 
-    fn diff(removed: &[u32], added: &[&'static str]) -> ListDiff<&'static str> {
+    fn diff(
+        removed: &[u32],
+        replaced: &[(u32, &'static str)],
+        added: &[&'static str],
+    ) -> ListDiff<&'static str> {
         ListDiff {
             removed: removed.to_vec(),
+            replaced: replaced.to_vec(),
             added: added.to_vec(),
         }
     }
@@ -222,17 +237,17 @@ mod tests {
 
     #[test]
     fn removals_of_two_handlers_both_apply() {
-        let folded = diff(&[1], &[]).then(diff(&[3], &[]));
+        let folded = diff(&[1], &[], &[]).then(diff(&[3], &[], &[]));
         assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["alice", "carol"]);
-        let folded = diff(&[3], &[]).then(diff(&[1], &[]));
+        let folded = diff(&[3], &[], &[]).then(diff(&[1], &[], &[]));
         assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["alice", "carol"]);
     }
 
     #[test]
     fn additions_append_in_fold_order_after_the_kept_elements() {
-        let folded = diff(&[0], &["erin"])
-            .then(diff(&[], &["frank", "gina"]))
-            .then(diff(&[0, 2], &[]));
+        let folded = diff(&[0], &[], &["erin"])
+            .then(diff(&[], &[], &["frank", "gina"]))
+            .then(diff(&[0, 2], &[], &[]));
         assert_eq!(folded.removed, [0, 2]);
         assert_eq!(
             folded.apply(SNAPSHOT.to_vec()),
@@ -242,7 +257,7 @@ mod tests {
 
     #[test]
     fn an_element_removed_then_added_back_is_present_once() {
-        let folded = diff(&[1], &[]).then(diff(&[], &["bob"]));
+        let folded = diff(&[1], &[], &[]).then(diff(&[], &[], &["bob"]));
         assert_eq!(
             folded.apply(SNAPSHOT.to_vec()),
             ["alice", "carol", "dave", "bob"]
@@ -254,49 +269,91 @@ mod tests {
         let empty = ListDiff::<&str>::default();
         assert!(empty.is_empty());
         assert!(empty.keeps(0));
+        assert_eq!(empty.replacement(0), None);
         assert_eq!(empty.clone().then(empty.clone()), empty);
         assert_eq!(empty.apply(SNAPSHOT.to_vec()), SNAPSHOT);
     }
 
     #[test]
-    fn a_diff_applies_to_the_server_side_copy_of_the_snapshot() {
-        let folded = diff(&[0, 2], &["erin", "", "frank"]);
-        assert!(!folded.keeps(0));
-        assert!(folded.keeps(1));
-        let lengths = folded.apply_with(vec![10, 20, 30, 40], |name| {
-            (!name.is_empty()).then_some(name.len() * 100)
-        });
-        assert_eq!(lengths, [20, 40, 400, 500]);
+    fn a_replaced_element_keeps_its_place() {
+        let folded = diff(&[], &[(1, "bea")], &["erin"]);
+        assert!(!folded.is_empty());
+        assert_eq!(folded.replacement(1), Some(&"bea"));
+        assert_eq!(
+            folded.apply(SNAPSHOT.to_vec()),
+            ["alice", "bea", "carol", "dave", "erin"]
+        );
     }
 
     #[test]
-    fn a_slot_takes_the_value_of_the_last_handler_that_replaced_it() {
-        let folded = diff(&[0, 2], &["x", "y"]).then_slots(diff(&[2, 3], &["z", "w"]));
-        assert_eq!(folded, diff(&[0, 2, 3], &["x", "z", "w"]));
+    fn a_removal_by_any_handler_wins_over_a_replacement_in_both_orders() {
+        let removing = diff(&[0], &[], &[]);
+        let replacing = diff(&[], &[(0, "ada")], &[]);
+        for folded in [
+            removing.clone().then(replacing.clone()),
+            replacing.then(removing),
+        ] {
+            assert!(!folded.keeps(0));
+            assert_eq!(folded.apply(SNAPSHOT.to_vec()), ["bob", "carol", "dave"]);
+        }
+    }
+
+    #[test]
+    fn two_replacements_of_one_element_keep_the_later_one() {
+        let earlier = diff(&[], &[(2, "cleo"), (3, "dina")], &[]);
+        let later = diff(&[], &[(2, "cora")], &[]);
         assert_eq!(
-            folded.apply_slots(SNAPSHOT.to_vec()),
-            ["x", "bob", "z", "w"]
+            earlier.clone().then(later.clone()),
+            diff(&[], &[(2, "cora"), (3, "dina")], &[])
         );
+        assert_eq!(
+            later.then(earlier).apply(SNAPSHOT.to_vec()),
+            ["alice", "bob", "cleo", "dina"]
+        );
+    }
+
+    #[test]
+    fn a_diff_applies_to_the_server_side_copy_of_the_snapshot() {
+        let folded = diff(&[0, 2], &[(1, "bea"), (2, "cleo")], &["erin", "", "frank"]);
+        assert!(!folded.keeps(0));
+        assert!(folded.keeps(1));
+        let lengths = folded.apply_with(
+            vec![10, 20, 30, 40],
+            |old, name| Some(old + name.len()),
+            |name| (!name.is_empty()).then_some(name.len() * 100),
+        );
+        assert_eq!(lengths, [23, 40, 400, 500]);
     }
 
     #[test]
     fn a_diff_naming_an_element_the_snapshot_lacks_is_refused() {
-        assert_eq!(diff(&[0, 3], &["erin"]).refusal("recipients", 4), None);
         assert_eq!(
-            diff(&[1, 4], &[]).refusal("recipients", 4),
+            diff(&[0, 3], &[(2, "x")], &["erin"]).refusal("recipients", 4),
+            None
+        );
+        assert_eq!(
+            diff(&[1, 4], &[], &[]).refusal("recipients", 4),
             Some("recipients has no element 4".to_owned())
         );
-        assert_eq!(diff(&[3], &["x"]).slot_refusal("lines", 4), None);
         assert_eq!(
-            diff(&[0, 1], &["x"]).slot_refusal("lines", 4),
-            Some("lines replaces a slot without a value".to_owned())
+            diff(&[], &[(5, "x")], &[]).refusal("recipients", 4),
+            Some("recipients has no element 5".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_array_only_takes_replacements() {
+        assert_eq!(diff(&[], &[(3, "x")], &[]).slot_refusal("lines", 4), None);
+        assert_eq!(
+            diff(&[0], &[], &[]).slot_refusal("lines", 4),
+            Some("lines keeps its length: it only replaces elements in place".to_owned())
         );
         assert_eq!(
-            diff(&[0], &["x", "y"]).slot_refusal("lines", 4),
-            Some("lines gives a value without a slot".to_owned())
+            diff(&[], &[], &["x"]).slot_refusal("lines", 4),
+            Some("lines keeps its length: it only replaces elements in place".to_owned())
         );
         assert_eq!(
-            diff(&[4], &["x"]).slot_refusal("lines", 4),
+            diff(&[], &[(4, "x")], &[]).slot_refusal("lines", 4),
             Some("lines has no element 4".to_owned())
         );
     }

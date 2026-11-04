@@ -684,6 +684,7 @@ impl<L: ClientLink> Server<L> {
                 .iter()
                 .map(|(_, stack)| (stack.clone(), true))
                 .collect(),
+            |_, spec| stack_of(&spec).ok().flatten().map(|stack| (stack, false)),
             |spec| stack_of(&spec).ok().flatten().map(|stack| (stack, false)),
         );
         for (stack, from_inventory) in drops {

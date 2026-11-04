@@ -637,18 +637,18 @@ mod tests {
 
     use super::*;
     use crate::plugins::events::{
-        Action, AsyncPlayerChat, AsyncPlayerChatPatch, ClickKind, EntityDamageByEntity,
-        EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch, EntityDeathPatch,
-        EventResult, Face, InventoryAction, InventoryClick, InventoryClickPatch,
-        InventoryTypeSlotType, PlayerCommandSend, PlayerCommandSendPatch, PlayerDeath,
-        PlayerDeathPatch, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
+        Action, AsyncPlayerChat, AsyncPlayerChatPatch, BlockDropItem, BlockDropItemPatch,
+        ClickKind, EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause,
+        EntityDamagePatch, EntityDeathPatch, EventResult, Face, InventoryAction, InventoryClick,
+        InventoryClickPatch, InventoryTypeSlotType, PlayerCommandSend, PlayerCommandSendPatch,
+        PlayerDeath, PlayerDeathPatch, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
         PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport,
         PlayerTeleportCause, PlayerTeleportPatch, PlayerVelocity, PlayerVelocityPatch,
         ServerListPing, ServerListPingPatch, TabComplete, TabCompletePatch,
     };
     use crate::plugins::{
-        DamageSourceView, EntityView, InventoryOwner, InventoryRef, InventoryView, ItemSpec,
-        ListDiff, Location, PlayerSnapshot, SenderView,
+        BlockSnapshot, BlockState, DamageSourceView, DroppedItem, EntityView, InventoryOwner,
+        InventoryRef, InventoryView, ItemSpec, ListDiff, Location, PlayerSnapshot, SenderView,
     };
 
     fn snapshot(player: PlayerId, position: Vec3) -> PlayerSnapshot {
@@ -1797,6 +1797,7 @@ mod tests {
         EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
             recipients: ListDiff {
                 removed: removed.to_vec(),
+                replaced: Vec::new(),
                 added: added.iter().map(|name| listener(name)).collect(),
             },
             ..AsyncPlayerChatPatch::default()
@@ -1919,6 +1920,7 @@ mod tests {
             EventPatch::TabComplete(TabCompletePatch {
                 completions: ListDiff {
                     removed: removed.to_vec(),
+                    replaced: Vec::new(),
                     added: added.iter().map(|text| (*text).to_owned()).collect(),
                 },
             })
@@ -1943,6 +1945,7 @@ mod tests {
             EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
                 commands: ListDiff {
                     removed: vec![index],
+                    replaced: Vec::new(),
                     added: Vec::new(),
                 },
             })
@@ -1968,6 +1971,7 @@ mod tests {
             EventPatch::ServerListPing(ServerListPingPatch {
                 hidden_players: ListDiff {
                     removed: Vec::new(),
+                    replaced: Vec::new(),
                     added: vec![uuid],
                 },
                 ..ServerListPingPatch::default()
@@ -2008,6 +2012,7 @@ mod tests {
         let parent = EventPatch::EntityDeath(EntityDeathPatch {
             drops: ListDiff {
                 removed: vec![0],
+                replaced: Vec::new(),
                 added: vec![ItemSpec::of("minecraft:apple", 1)],
             },
             ..EntityDeathPatch::default()
@@ -2015,6 +2020,7 @@ mod tests {
         let child = EventPatch::PlayerDeath(PlayerDeathPatch {
             drops: ListDiff {
                 removed: vec![2],
+                replaced: Vec::new(),
                 added: Vec::new(),
             },
             ..PlayerDeathPatch::default()
@@ -2031,6 +2037,81 @@ mod tests {
                 ]
             );
         }
+    }
+
+    fn dropped(id: i32, key: &str, count: i32) -> DroppedItem {
+        DroppedItem {
+            entity: entity(id),
+            item: ItemSpec::of(key, count),
+        }
+    }
+
+    fn dropping() -> EventPayload {
+        let at = rspigot_domain::BlockPos::new(1, 63, 0);
+        EventPayload::BlockDropItem(BlockDropItem {
+            block: at,
+            block_state: BlockSnapshot {
+                pos: at,
+                state: BlockState {
+                    kind: "minecraft:air".to_owned(),
+                    properties: Vec::new(),
+                },
+            },
+            items: vec![
+                dropped(7, "minecraft:dirt", 1),
+                dropped(8, "minecraft:dirt", 1),
+            ],
+            player: listener("Alice"),
+        })
+    }
+
+    fn items(removed: &[u32], replaced: Vec<(u32, DroppedItem)>) -> EventPatch {
+        EventPatch::BlockDropItem(BlockDropItemPatch {
+            items: ListDiff {
+                removed: removed.to_vec(),
+                replaced,
+                added: Vec::new(),
+            },
+        })
+    }
+
+    fn items_of(payload: &EventPayload) -> Vec<DroppedItem> {
+        let EventPayload::BlockDropItem(dropping) = payload else {
+            panic!("expected a block drop");
+        };
+        dropping.items.clone()
+    }
+
+    #[test]
+    fn an_item_cleared_by_one_handler_is_gone_even_if_another_doubles_it() {
+        let cleared = items(&[0, 1], Vec::new());
+        let doubled = items(&[], vec![(0, dropped(7, "minecraft:dirt", 2))]);
+        for patches in [[cleared.clone(), doubled.clone()], [doubled, cleared]] {
+            assert!(items_of(&settled_lists(&dropping(), &patches)).is_empty());
+        }
+    }
+
+    #[test]
+    fn two_replacements_of_one_item_keep_the_later_handler_one() {
+        let diamond = items(&[], vec![(0, dropped(7, "minecraft:diamond", 1))]);
+        let emerald = items(&[], vec![(0, dropped(7, "minecraft:emerald", 3))]);
+        assert_eq!(
+            items_of(&settled_lists(
+                &dropping(),
+                &[diamond.clone(), emerald.clone()]
+            )),
+            [
+                dropped(7, "minecraft:emerald", 3),
+                dropped(8, "minecraft:dirt", 1)
+            ]
+        );
+        assert_eq!(
+            items_of(&settled_lists(&dropping(), &[emerald, diamond])),
+            [
+                dropped(7, "minecraft:diamond", 1),
+                dropped(8, "minecraft:dirt", 1)
+            ]
+        );
     }
 
     #[test]

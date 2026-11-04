@@ -231,6 +231,10 @@ mod tests {
         let FromPlugin::Decision { verdicts, .. } = decide(
             commands(Some(v1::StringListDiff {
                 removed: vec![3, 0],
+                replaced: vec![v1::StringReplacement {
+                    index: 1,
+                    value: "tp".to_owned(),
+                }],
                 added: vec!["warp".to_owned()],
             })),
             &mut warnings,
@@ -242,6 +246,7 @@ mod tests {
             Some(EventPatch::PlayerCommandSend(PlayerCommandSendPatch {
                 commands: ListDiff {
                     removed: vec![3, 0],
+                    replaced: vec![(1, "tp".to_owned())],
                     added: vec!["warp".to_owned()],
                 },
             }))
@@ -272,8 +277,12 @@ mod tests {
                 patch: Some(v1::Patch {
                     change: Some(patch::Change::BlockDropItem(v1::BlockDropItemPatch {
                         items: Some(v1::DroppedItemListDiff {
-                            removed: vec![0],
-                            added: vec![dropped],
+                            removed: Vec::new(),
+                            replaced: vec![v1::DroppedItemReplacement {
+                                index: 0,
+                                value: Some(dropped),
+                            }],
+                            added: Vec::new(),
                         }),
                     })),
                 }),

@@ -675,6 +675,7 @@ fn a_status_ping_waits_for_the_deciding_handlers_and_applies_every_field_of_thei
             server_icon: Some(icon()),
             hidden_players: ListDiff {
                 removed: Vec::new(),
+                replaced: Vec::new(),
                 added: vec![alice.id.0],
             },
         })),
@@ -768,6 +769,7 @@ fn a_legacy_ping_shows_no_player_and_ignores_the_icon_and_the_hidden_players() {
             server_icon: Some(icon()),
             hidden_players: ListDiff {
                 removed: Vec::new(),
+                replaced: Vec::new(),
                 added: vec![alice.id.0],
             },
             ..ServerListPingPatch::default()
