@@ -4,6 +4,7 @@ mod contract;
 mod decisions;
 mod entity;
 pub mod events;
+mod inputs;
 mod inventory;
 mod items;
 mod menus;

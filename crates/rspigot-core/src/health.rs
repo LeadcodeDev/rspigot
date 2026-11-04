@@ -817,7 +817,7 @@ impl<L: ClientLink> Server<L> {
         player.menu = InventoryMenu::synced(&player.inventory);
         self.send_commands(id);
         if hardcore {
-            self.apply_game_mode(id, GameMode::Spectator);
+            self.change_game_mode(id, GameMode::Spectator, Vec::new());
         }
     }
 

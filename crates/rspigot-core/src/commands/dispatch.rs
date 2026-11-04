@@ -50,7 +50,12 @@ pub trait CommandContext {
     fn plugin_names(&self) -> Vec<String>;
     fn max_players(&self) -> u32;
     fn player_position(&self, player: PlayerId) -> Option<Vec3>;
-    fn set_game_mode(&mut self, player: PlayerId, mode: GameMode);
+    fn set_game_mode(
+        &mut self,
+        player: PlayerId,
+        mode: GameMode,
+        replies: Vec<(CommandSender, Component)>,
+    );
     fn teleport(&mut self, player: PlayerId, position: Vec3);
     fn day_time(&self) -> i64;
     fn game_time(&self) -> i64;
@@ -481,27 +486,29 @@ fn gamemode<C: CommandContext>(
     let Some(target) = target_or_self(ctx, sender, args.get(1)) else {
         return not_found(ctx, sender);
     };
-    ctx.set_game_mode(target, mode);
     let mode_name = Component::translatable(mode_key(mode), Vec::new());
-    if CommandSender::Player(target) == sender {
-        ctx.reply(
+    let replies = if CommandSender::Player(target) == sender {
+        vec![(
             sender,
             Component::translatable("commands.gamemode.success.self", vec![mode_name]),
-        );
+        )]
     } else {
         let name = ctx.player_name(target).unwrap_or_default();
-        ctx.reply(
-            CommandSender::Player(target),
-            Component::translatable("gameMode.changed", vec![mode_name.clone()]),
-        );
-        ctx.reply(
-            sender,
-            Component::translatable(
-                "commands.gamemode.success.other",
-                vec![Component::text(name), mode_name],
+        vec![
+            (
+                CommandSender::Player(target),
+                Component::translatable("gameMode.changed", vec![mode_name.clone()]),
             ),
-        );
-    }
+            (
+                sender,
+                Component::translatable(
+                    "commands.gamemode.success.other",
+                    vec![Component::text(name), mode_name],
+                ),
+            ),
+        ]
+    };
+    ctx.set_game_mode(target, mode, replies);
     CommandOutcome::Success
 }
 
@@ -1683,8 +1690,16 @@ mod tests {
         fn player_position(&self, _: PlayerId) -> Option<Vec3> {
             Some(Vec3::new(10.0, 64.0, 10.0))
         }
-        fn set_game_mode(&mut self, player: PlayerId, mode: GameMode) {
+        fn set_game_mode(
+            &mut self,
+            player: PlayerId,
+            mode: GameMode,
+            replies: Vec<(CommandSender, Component)>,
+        ) {
             self.modes.push((player, mode));
+            for (sender, reply) in replies {
+                self.reply(sender, reply);
+            }
         }
         fn teleport(&mut self, player: PlayerId, position: Vec3) {
             self.teleports.push((player, position));

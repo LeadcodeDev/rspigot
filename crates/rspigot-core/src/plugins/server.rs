@@ -217,14 +217,14 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn fire_head(&mut self, lane: Lane, order: Option<u64>, then: Continuation) {
-        let Some(then) = self.due(then) else {
+        let Some(then) = self.at_head(then) else {
             return;
         };
         let kind = then.kind();
         let listened = self.plugins.listens(kind, Access::Observe)
             || self.plugins.listens(kind, Access::Decide);
         let payload = if listened {
-            self.due_payload(&then)
+            self.head_payload(&then)
         } else {
             None
         };
@@ -467,6 +467,47 @@ impl<L: ClientLink> Server<L> {
                 self.finish_death(*step, patch_of!(patch, PlayerDeath));
                 Vec::new()
             }
+            Continuation::Input(step) => {
+                self.finish_input(step);
+                Vec::new()
+            }
+            Continuation::Sneak(_)
+            | Continuation::Sprint(_)
+            | Continuation::GameMode(_)
+            | Continuation::Swing(_)
+            | Continuation::Swap(_)
+                if cancelled =>
+            {
+                Vec::new()
+            }
+            Continuation::Sneak(step) => {
+                self.finish_sneak(step);
+                Vec::new()
+            }
+            Continuation::Sprint(step) => {
+                self.finish_sprint(step);
+                Vec::new()
+            }
+            Continuation::Flight(step) => {
+                self.finish_flight(step, cancelled);
+                Vec::new()
+            }
+            Continuation::GameMode(step) => {
+                self.finish_game_mode(step);
+                Vec::new()
+            }
+            Continuation::HeldSlot(step) => {
+                self.finish_held_slot(step, cancelled);
+                Vec::new()
+            }
+            Continuation::Swing(step) => {
+                self.finish_swing(step);
+                Vec::new()
+            }
+            Continuation::Swap(step) => {
+                self.finish_swap(*step, patch_of!(patch, PlayerSwapHandItems));
+                Vec::new()
+            }
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
@@ -479,14 +520,6 @@ impl<L: ClientLink> Server<L> {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
             (Lane::Login(_), Undo::SendBack(_)) => {}
         }
-    }
-
-    fn due(&self, then: Continuation) -> Option<Continuation> {
-        Some(then)
-    }
-
-    fn due_payload(&self, _then: &Continuation) -> Option<EventPayload> {
-        None
     }
 
     fn finish_move(&mut self, step: MoveStep, patch: PlayerMovePatch, held: Vec<Held>) -> Undone {

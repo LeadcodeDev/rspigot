@@ -1,10 +1,11 @@
 use crossbeam_channel::Sender;
 use rspigot_domain::item::ItemStack;
-use rspigot_domain::player::{ClientSettings, PlayerId};
+use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::{EntityId, Rotation, Vec3};
 
-use crate::events::PreLoginVerdict;
+use crate::commands::CommandSender;
+use crate::events::{Hand, InputState, PreLoginVerdict};
 use crate::plugins::EventKind;
 use crate::plugins::events::PlayerTeleportCause;
 
@@ -87,6 +88,46 @@ pub(crate) struct DeathStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct InputStep {
+    pub(crate) player: PlayerId,
+    pub(crate) state: InputState,
+}
+
+#[derive(Debug)]
+pub(crate) struct ToggleStep {
+    pub(crate) player: PlayerId,
+    pub(crate) value: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct GameModeStep {
+    pub(crate) player: PlayerId,
+    pub(crate) mode: GameMode,
+    pub(crate) replies: Vec<(CommandSender, Component)>,
+}
+
+#[derive(Debug)]
+pub(crate) struct HeldStep {
+    pub(crate) player: PlayerId,
+    pub(crate) slot: u8,
+    pub(crate) previous: Option<u8>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SwingStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+}
+
+#[derive(Debug)]
+pub(crate) struct SwapStep {
+    pub(crate) player: PlayerId,
+    pub(crate) selected: u8,
+    pub(crate) main: Option<ItemStack>,
+    pub(crate) off: Option<ItemStack>,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -103,6 +144,14 @@ pub(crate) enum Continuation {
     Velocity(VelocityStep),
     Respawn(RespawnStep),
     Death(Box<DeathStep>),
+    Input(InputStep),
+    Sneak(ToggleStep),
+    Sprint(ToggleStep),
+    Flight(ToggleStep),
+    GameMode(GameModeStep),
+    HeldSlot(HeldStep),
+    Swing(SwingStep),
+    Swap(Box<SwapStep>),
 }
 
 impl Continuation {
@@ -123,6 +172,14 @@ impl Continuation {
             Self::Velocity(_) => EventKind::PlayerVelocity,
             Self::Respawn(_) => EventKind::PlayerRespawn,
             Self::Death(_) => EventKind::PlayerDeath,
+            Self::Input(_) => EventKind::PlayerInput,
+            Self::Sneak(_) => EventKind::PlayerToggleSneak,
+            Self::Sprint(_) => EventKind::PlayerToggleSprint,
+            Self::Flight(_) => EventKind::PlayerToggleFlight,
+            Self::GameMode(_) => EventKind::PlayerGameModeChange,
+            Self::HeldSlot(_) => EventKind::PlayerItemHeld,
+            Self::Swing(_) => EventKind::PlayerAnimation,
+            Self::Swap(_) => EventKind::PlayerSwapHandItems,
         }
     }
 

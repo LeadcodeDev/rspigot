@@ -13,7 +13,7 @@ use crate::health::{self, DamageSource};
 use crate::player::Player;
 use crate::plugins::events::{PlayerRespawnReason, PlayerTeleportCause};
 use crate::plugins::resolve::{self, finite_not_negative, not_negative, within};
-use crate::plugins::{PlayerOrder, TitleSpec};
+use crate::plugins::{EventKind, PlayerOrder, TitleSpec};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -83,7 +83,7 @@ impl<L: ClientLink> Server<L> {
                     None,
                 );
             }
-            PlayerOrder::SetGameMode(mode) => self.apply_game_mode(id, mode),
+            PlayerOrder::SetGameMode(mode) => self.change_game_mode(id, mode, Vec::new()),
             PlayerOrder::Kick(reason) => CommandContext::kick(self, id, resolve::text(&reason)),
             PlayerOrder::SetHealth(health) => {
                 let max = self.players.get(&id).map_or(0.0, health::max_health);
@@ -295,6 +295,7 @@ impl<L: ClientLink> Server<L> {
                 .link
                 .send(ClientEvent::PlayerInfoRemove(vec![target]));
         }
+        self.notify_visibility(EventKind::PlayerHideEntity, viewer, target);
     }
 
     fn show_player(&mut self, connection: u64, viewer: PlayerId, target: PlayerId) {
@@ -304,15 +305,16 @@ impl<L: ClientLink> Server<L> {
         if !self.visibility.show(plugin, viewer, target) {
             return;
         }
-        if let (Some(viewer), Some(target)) = (self.players.get(&viewer), self.players.get(&target))
+        if let (Some(watcher), Some(shown)) = (self.players.get(&viewer), self.players.get(&target))
         {
-            viewer
+            watcher
                 .link
-                .send(ClientEvent::PlayerInfo(vec![Self::list_entry(target)]));
+                .send(ClientEvent::PlayerInfo(vec![Self::list_entry(shown)]));
         }
+        self.notify_visibility(EventKind::PlayerShowEntity, viewer, target);
     }
 
-    fn send_abilities(&mut self, id: PlayerId) {
+    pub(super) fn send_abilities(&mut self, id: PlayerId) {
         if let Some(abilities) = self.players.get(&id).map(Player::abilities) {
             self.push(Audience::One(id), ClientEvent::Abilities(abilities));
         }

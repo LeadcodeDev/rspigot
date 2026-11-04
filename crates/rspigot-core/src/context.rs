@@ -89,8 +89,13 @@ impl<L: ClientLink> CommandContext for Server<L> {
         self.players.get(&player).map(|p| p.position)
     }
 
-    fn set_game_mode(&mut self, player: PlayerId, mode: GameMode) {
-        self.apply_game_mode(player, mode);
+    fn set_game_mode(
+        &mut self,
+        player: PlayerId,
+        mode: GameMode,
+        replies: Vec<(CommandSender, Component)>,
+    ) {
+        self.change_game_mode(player, mode, replies);
     }
 
     fn teleport(&mut self, player: PlayerId, position: Vec3) {

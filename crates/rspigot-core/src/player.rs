@@ -54,6 +54,7 @@ pub struct Player<L> {
     pub(crate) window_counter: u8,
     pub ender_items: Vec<rspigot_domain::item::Slot>,
     pub kick_leave_message: Option<String>,
+    pub last_input: crate::events::InputState,
 }
 
 impl<L> Player<L> {

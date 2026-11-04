@@ -43,6 +43,16 @@ PlayerTeleport = "COMMAND for /tp and PLUGIN for plugin orders and a changed Pla
 PlayerVelocity = "at the velocity sync and when a player hits a player; asked only when a deciding handler exists, one at a time"
 PlayerRespawn = "DEATH and PLUGIN; there is no bed, anchor or End respawn"
 PlayerDeath = "also reaches EntityDeath handlers; the new level fields wait for the respawn"
+PlayerInput = "compared with the last input when the packet reaches the head of the lane"
+PlayerToggleSneak = "after PlayerInput of the same packet, compared at the head of the lane"
+PlayerToggleSprint = "on every start and stop sprinting packet of a loaded client"
+PlayerToggleFlight = "only for a player who may fly and changes flight; a cancel resends the abilities"
+PlayerGameModeChange = "from /gamemode, the game mode packet, plugin orders and the hardcore respawn; the mode is read at the head of the lane"
+PlayerHideEntity = "players only, after the effect of the first plugin hiding them"
+PlayerShowEntity = "players only, after the effect of the last plugin showing them"
+PlayerItemHeld = "the previous slot is read at the head of the lane; a cancel sends it back"
+PlayerAnimation = "ARM_SWING from the punch packet only"
+PlayerSwapHandItems = "the items are those after the swap; an outdated swap is refused and resynced"
 
 [states]
 ready = [
@@ -58,15 +68,13 @@ ready = [
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
-    "PlayerAnimation", "PlayerDropItem", "PlayerExpChange", "PlayerExpCooldownChange",
-    "PlayerGameModeChange", "PlayerHideEntity", "PlayerInput", "PlayerInteract",
+    "PlayerDropItem", "PlayerExpChange", "PlayerExpCooldownChange", "PlayerInteract",
     "PlayerInteractAtEntity", "PlayerInteractEntity", "PlayerItemBreak", "PlayerItemDamage",
-    "PlayerItemHeld", "PlayerLevelChange", "PlayerPickupArrow", "PlayerShearEntity",
-    "PlayerShowEntity", "PlayerSwapHandItems", "PlayerTakeLecternBook", "PlayerToggleFlight",
-    "PlayerToggleSneak", "PlayerToggleSprint", "PluginDisable", "PluginEnable", "PrepareItemCraft",
-    "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand", "ServerListPing",
-    "ServerLoad", "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete",
-    "ThunderChange", "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
+    "PlayerLevelChange", "PlayerPickupArrow", "PlayerShearEntity", "PlayerTakeLecternBook",
+    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
+    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
+    "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete", "ThunderChange", "TimeSkip",
+    "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
 ]
 
 [states.blocked]

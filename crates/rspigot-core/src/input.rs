@@ -10,7 +10,7 @@ use rspigot_blocks::{BlockKind, Face, PlaceContext, StateFlags, UseContext};
 use crate::block_tools::ToolUse;
 use crate::chests;
 use crate::events::{
-    Animation, ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
+    ClientEvent, DigAction, Direction, EquipmentSlot, Hand, MovementAction, PlayerInput,
 };
 use crate::loot::{self, LootContext, LootEntity};
 use crate::plugins::Held;
@@ -61,53 +61,18 @@ impl<L: ClientLink> Server<L> {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
             }
             PlayerInput::HeldSlot(slot) => {
-                if slot < 9
-                    && let Some(player) = self.players.get_mut(&id)
-                {
-                    let changed = player.inventory.selected_hotbar != slot;
-                    player.inventory.selected_hotbar = slot;
-                    if changed {
-                        self.stop_using_main_hand(id);
-                    }
-                    self.broadcast_held_item(id);
+                if slot < 9 {
+                    self.select_slot(id, slot);
                 }
             }
             PlayerInput::CreativeSlot { slot, stack } => self.handle_creative_slot(id, slot, stack),
-            PlayerInput::Swing(hand) => {
-                if let Some(player) = self.players.get_mut(&id)
-                    && !player.vitals.is_dead()
-                {
-                    player.vitals.attack_ticker = 0;
-                }
-                if let Some(entity) = self.players.get(&id).map(|p| p.entity_id) {
-                    let animation = match hand {
-                        Hand::Main => Animation::SwingMainArm,
-                        Hand::Off => Animation::SwingOffHand,
-                    };
-                    self.push(
-                        Audience::Trackers(entity),
-                        ClientEvent::EntityAnimation { entity, animation },
-                    );
-                }
-            }
-            PlayerInput::Movement(action) => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    match action {
-                        MovementAction::StartSprinting => player.sprinting = true,
-                        MovementAction::StopSprinting => player.sprinting = false,
-                        _ => return,
-                    }
-                    self.broadcast_metadata(id);
-                }
-            }
-            PlayerInput::Input(state) => {
-                if let Some(player) = self.players.get_mut(&id)
-                    && player.sneaking != state.shift
-                {
-                    player.sneaking = state.shift;
-                    self.broadcast_metadata(id);
-                }
-            }
+            PlayerInput::Swing(hand) => self.swing_arm(id, hand),
+            PlayerInput::Movement(action) => match action {
+                MovementAction::StartSprinting => self.toggle_sprint(id, true),
+                MovementAction::StopSprinting => self.toggle_sprint(id, false),
+                _ => {}
+            },
+            PlayerInput::Input(state) => self.press(id, state),
             PlayerInput::Settings(settings) => self.change_settings(id, settings),
             PlayerInput::ChunkBatchReceived { chunks_per_tick } => {
                 if let Some(player) = self.players.get_mut(&id) {
@@ -120,14 +85,10 @@ impl<L: ClientLink> Server<L> {
                     player.vitals.load_timeout = 0;
                 }
             }
-            PlayerInput::Abilities { flying } => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    player.flying = flying && player.abilities().may_fly;
-                }
-            }
+            PlayerInput::Abilities { flying } => self.toggle_flight(id, flying),
             PlayerInput::ChangeGameMode(mode) => {
                 if self.players.get(&id).is_some_and(|p| p.operator) {
-                    self.apply_game_mode(id, mode);
+                    self.change_game_mode(id, mode, Vec::new());
                 }
             }
             PlayerInput::PickBlock { pos, .. } => self.handle_pick_block(id, pos),
@@ -361,17 +322,7 @@ impl<L: ClientLink> Server<L> {
             DigAction::Cancel => {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
             }
-            DigAction::SwapHands => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    let main = HOTBAR_START + usize::from(player.inventory.selected_hotbar);
-                    let main_stack = player.inventory.get(main).cloned();
-                    let off_stack = player.inventory.get(OFFHAND_SLOT).cloned();
-                    player.inventory.set(main, off_stack);
-                    player.inventory.set(OFFHAND_SLOT, main_stack);
-                    self.send_inventory(id);
-                    self.broadcast_held_item(id);
-                }
-            }
+            DigAction::SwapHands => self.swap_hands(id),
             DigAction::DropItem => self.handle_drop_action(id, false),
             DigAction::DropStack => self.handle_drop_action(id, true),
             DigAction::ReleaseUseItem => self.release_use_item(id),
@@ -724,7 +675,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn apply_game_mode(&mut self, id: PlayerId, mode: GameMode) {
+    pub(crate) fn set_game_mode_now(&mut self, id: PlayerId, mode: GameMode) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
