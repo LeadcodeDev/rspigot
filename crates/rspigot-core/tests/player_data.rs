@@ -226,7 +226,6 @@ fn run_ticks(
     ticks: usize,
     log: &mut Vec<ClientEvent>,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(20);
     for _ in 0..ticks {
         server.wait_for_spawn(Duration::from_millis(20));
         server.tick();
@@ -244,9 +243,6 @@ fn run_ticks(
             });
         }
         log.extend(events);
-        if Instant::now() > deadline {
-            break;
-        }
     }
 }
 

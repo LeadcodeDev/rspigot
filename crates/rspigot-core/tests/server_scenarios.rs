@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rspigot_core::admin::{AdminLists, ListEntry};
 use rspigot_core::config::{GameConfig, LevelData};
@@ -186,7 +186,6 @@ fn run_ticks(
     links: &[(PlayerId, &Link)],
     log: &mut [Vec<ClientEvent>],
 ) {
-    let deadline = Instant::now() + Duration::from_secs(20);
     for _ in 0..ticks {
         server.wait_for_spawn(Duration::from_millis(20));
         server.tick();
@@ -205,9 +204,6 @@ fn run_ticks(
                 });
             }
             log[index].extend(events);
-        }
-        if Instant::now() > deadline {
-            break;
         }
     }
 }
