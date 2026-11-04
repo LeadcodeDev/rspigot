@@ -8,8 +8,8 @@ use std::time::Duration;
 use rspigot_core::config::{GameConfig, LevelData, PluginSettings};
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::{
-    Access, Answer, EventKind, FromPlugin, HandlerSpec, Order, PlayerOrder, PluginIntro, Priority,
-    Question, ToPlugin,
+    Access, Answer, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Order, Phase,
+    PlayerOrder, PluginIntro, Priority, Question, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PluginOutbox, StoreError,
@@ -164,6 +164,14 @@ pub fn join(server: &mut Server<Link>, name: &str) -> Player {
 }
 
 pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Player {
+    join_as(server, name, address, ClientSettings::default())
+}
+
+pub fn join_with(server: &mut Server<Link>, name: &str, settings: ClientSettings) -> Player {
+    join_as(server, name, IpAddr::from([127, 0, 0, 1]), settings)
+}
+
+pub fn arrive(server: &mut Server<Link>, name: &str) -> Player {
     let link = Link::default();
     let id = PlayerId::offline(name);
     server.handle(Inbound::Join {
@@ -173,6 +181,43 @@ pub fn join_from(server: &mut Server<Link>, name: &str, address: IpAddr) -> Play
             properties: Vec::new(),
         },
         settings: ClientSettings::default(),
+        link: link.clone(),
+        address: IpAddr::from([127, 0, 0, 1]),
+    });
+    server.deliver();
+    Player { id, link }
+}
+
+pub fn settle_arrival(server: &mut Server<Link>, player: &Player) {
+    for event in player.link.take() {
+        if let ClientEvent::Teleport { id: teleport, .. } = event {
+            server.handle(Inbound::Input {
+                player: player.id,
+                input: PlayerInput::TeleportConfirm(teleport),
+            });
+        }
+    }
+    server.handle(Inbound::Input {
+        player: player.id,
+        input: PlayerInput::Loaded,
+    });
+}
+
+fn join_as(
+    server: &mut Server<Link>,
+    name: &str,
+    address: IpAddr,
+    settings: ClientSettings,
+) -> Player {
+    let link = Link::default();
+    let id = PlayerId::offline(name);
+    server.handle(Inbound::Join {
+        profile: GameProfile {
+            id,
+            name: name.to_owned(),
+            properties: Vec::new(),
+        },
+        settings,
         link: link.clone(),
         address,
     });
@@ -394,4 +439,114 @@ pub fn to(player: &Player, order: PlayerOrder) -> Order {
         player: player.id,
         order,
     }
+}
+
+pub fn deciding(id: u32, event: EventKind) -> HandlerSpec {
+    HandlerSpec {
+        id,
+        event,
+        access: Access::Decide,
+        priority: Priority::Normal,
+        ignore_cancelled: false,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fired {
+    pub id: u64,
+    pub phase: Phase,
+    pub cancelled: bool,
+    pub payload: EventPayload,
+}
+
+pub fn fired(mailbox: &Mailbox) -> Vec<Fired> {
+    mailbox
+        .received()
+        .into_iter()
+        .filter_map(|message| match message {
+            ToPlugin::Event {
+                id,
+                phase,
+                cancelled,
+                payload,
+                ..
+            } => Some(Fired {
+                id,
+                phase,
+                cancelled,
+                payload,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+pub fn fired_kinds(mailbox: &Mailbox) -> Vec<(Phase, EventKind)> {
+    fired(mailbox)
+        .into_iter()
+        .map(|event| (event.phase, event.payload.kind()))
+        .collect()
+}
+
+pub fn asked_for(mailbox: &Mailbox, kind: EventKind) -> Vec<Fired> {
+    fired(mailbox)
+        .into_iter()
+        .filter(|event| event.phase == Phase::Decide && event.payload.kind() == kind)
+        .collect()
+}
+
+pub fn settled_for(mailbox: &Mailbox, kind: EventKind) -> Vec<Fired> {
+    fired(mailbox)
+        .into_iter()
+        .filter(|event| event.phase == Phase::Settled && event.payload.kind() == kind)
+        .collect()
+}
+
+pub fn last_asked(mailbox: &Mailbox, kind: EventKind) -> Fired {
+    asked_for(mailbox, kind)
+        .pop()
+        .unwrap_or_else(|| panic!("a {kind:?} was asked"))
+}
+
+pub fn rule_on(
+    server: &mut Server<Link>,
+    connection: u64,
+    event: u64,
+    cancel: bool,
+    patch: Option<EventPatch>,
+) {
+    server.handle(Inbound::PluginMessage {
+        connection,
+        message: FromPlugin::Decision {
+            event,
+            verdicts: vec![Verdict {
+                handler: 1,
+                cancel,
+                patch,
+            }],
+        },
+    });
+    server.deliver();
+}
+
+pub fn send_input(server: &mut Server<Link>, player: &Player, input: PlayerInput) {
+    server.handle(Inbound::Input {
+        player: player.id,
+        input,
+    });
+    server.deliver();
+}
+
+pub fn system_texts(player: &Player) -> Vec<String> {
+    player
+        .link
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::SystemChat { message, .. } => {
+                Some(rspigot_core::console::console_text(&message))
+            }
+            _ => None,
+        })
+        .collect()
 }

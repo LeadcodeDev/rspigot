@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use crossbeam_channel::Sender;
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
@@ -175,7 +176,20 @@ pub struct ContainerClick {
     pub carried: HashedSlot,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreLoginVerdict {
+    Allowed,
+    Refused(String),
+}
+
 pub enum Inbound<L> {
+    PreLogin {
+        name: String,
+        id: PlayerId,
+        address: IpAddr,
+        transferred: bool,
+        reply: Sender<PreLoginVerdict>,
+    },
     Join {
         profile: GameProfile,
         settings: ClientSettings,

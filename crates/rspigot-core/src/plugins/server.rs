@@ -10,7 +10,7 @@ use crate::player::Player;
 use crate::plugins::decisions::{
     Asked, Continuation, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
 };
-use crate::plugins::events::{PlayerJoin, PlayerLeave, PlayerMove, PlayerMovePatch};
+use crate::plugins::events::{PlayerMove, PlayerMovePatch};
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
     Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
@@ -414,6 +414,37 @@ impl<L: ClientLink> Server<L> {
                 self.finish_move(step, patch_of!(patch, PlayerMove), held)
             }
             Continuation::Notice(_) => Vec::new(),
+            Continuation::PreLogin(reply) => {
+                self.answer_pre_login(&reply, patch_of!(patch, AsyncPlayerPreLogin));
+                Vec::new()
+            }
+            Continuation::Login(key) => {
+                self.finish_login(key, patch_of!(patch, PlayerLogin));
+                Vec::new()
+            }
+            Continuation::Join(id) => {
+                self.announce_join(id, patch_of!(patch, PlayerJoin));
+                Vec::new()
+            }
+            Continuation::Leave(step) => {
+                self.announce_leave(step, patch_of!(patch, PlayerLeave));
+                Vec::new()
+            }
+            Continuation::Kick(_) if cancelled => Vec::new(),
+            Continuation::Kick(step) => {
+                self.finish_kick(step, patch_of!(patch, PlayerKick));
+                Vec::new()
+            }
+            Continuation::Settings(step) => {
+                if let Some(settings) = step.settings {
+                    self.apply_settings(step.player, settings);
+                }
+                Vec::new()
+            }
+            Continuation::CommandSend(id) => {
+                self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
+                Vec::new()
+            }
         }
     }
 
@@ -504,37 +535,6 @@ impl<L: ClientLink> Server<L> {
                 to: Some(to),
             })
         })
-    }
-
-    pub(crate) fn tell_plugins_of_join(&mut self, id: PlayerId) {
-        self.settle_for_plugins(id, |player| {
-            let join_message = Some(format!("§e{} joined the game", player.name));
-            EventPayload::PlayerJoin(PlayerJoin {
-                player,
-                join_message,
-            })
-        });
-    }
-
-    pub(crate) fn tell_plugins_of_leave(&mut self, id: PlayerId) {
-        self.settle_for_plugins(id, |player| {
-            let quit_message = Some(format!("§e{} left the game", player.name));
-            EventPayload::PlayerLeave(PlayerLeave {
-                player,
-                quit_message,
-            })
-        });
-    }
-
-    fn settle_for_plugins(
-        &mut self,
-        id: PlayerId,
-        payload: impl FnOnce(PlayerSnapshot) -> EventPayload,
-    ) {
-        if let Some(player) = self.snapshot_of(id) {
-            let event = self.next_event_id();
-            self.notify_plugins(event, &payload(player), false, Phase::Settled);
-        }
     }
 
     fn describe(&self, player: &Player<L>) -> PlayerSnapshot {

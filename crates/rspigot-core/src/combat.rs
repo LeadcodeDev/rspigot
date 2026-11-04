@@ -222,10 +222,13 @@ impl<L: ClientLink> Server<L> {
                 "Player {} tried to attack an invalid entity",
                 attacker.name()
             );
-            attacker.link.disconnect(Component::translatable(
-                "multiplayer.disconnect.invalid_entity_attacked",
-                Vec::new(),
-            ));
+            self.disconnect_player(
+                id,
+                Component::translatable(
+                    "multiplayer.disconnect.invalid_entity_attacked",
+                    Vec::new(),
+                ),
+            );
             return;
         }
         self.attack(id, victim);

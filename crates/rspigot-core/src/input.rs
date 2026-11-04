@@ -107,19 +107,7 @@ impl<L: ClientLink> Server<L> {
                     self.broadcast_metadata(id);
                 }
             }
-            PlayerInput::Settings(settings) => {
-                let max = self.config.view_distance;
-                if let Some(player) = self.players.get_mut(&id) {
-                    let view = max.min(settings.view_distance.max(2));
-                    player.settings = settings;
-                    player.streamer.set_view_distance(
-                        view,
-                        &mut self.world.chunks,
-                        &self.workers,
-                        &player.link,
-                    );
-                }
-            }
+            PlayerInput::Settings(settings) => self.change_settings(id, settings),
             PlayerInput::ChunkBatchReceived { chunks_per_tick } => {
                 if let Some(player) = self.players.get_mut(&id) {
                     player.streamer.on_batch_received(chunks_per_tick);
@@ -207,10 +195,13 @@ impl<L: ClientLink> Server<L> {
                 || target.z.abs() > 3.0e7
                 || target.y.abs() > 2.0e7
             {
-                player.link.disconnect(Component::translatable(
-                    "multiplayer.disconnect.invalid_player_movement",
-                    Vec::new(),
-                ));
+                self.disconnect_player(
+                    id,
+                    Component::translatable(
+                        "multiplayer.disconnect.invalid_player_movement",
+                        Vec::new(),
+                    ),
+                );
                 return;
             }
             if from.distance_squared(target) > MAX_MOVE_SQUARED {
@@ -298,14 +289,14 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn handle_chat(&mut self, id: PlayerId, message: &str) {
-        let Some(player) = self.players.get(&id) else {
+        if !self.players.contains_key(&id) {
             return;
-        };
+        }
         if message.chars().count() > 256 || message.chars().any(|c| c == '§' || c.is_control()) {
-            player.link.disconnect(Component::translatable(
-                "multiplayer.disconnect.illegal_characters",
-                Vec::new(),
-            ));
+            self.disconnect_player(
+                id,
+                Component::translatable("multiplayer.disconnect.illegal_characters", Vec::new()),
+            );
             return;
         }
         self.broadcast_chat(id, message);

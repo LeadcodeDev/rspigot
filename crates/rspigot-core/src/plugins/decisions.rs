@@ -302,7 +302,7 @@ pub(crate) enum Taken {
 }
 
 enum Queued {
-    Asked(u64, Pending),
+    Asked(u64, Box<Pending>),
     Due(u64, Continuation),
 }
 
@@ -351,7 +351,7 @@ impl Decisions {
 
     pub(crate) fn queue(&mut self, event: u64, pending: Pending) {
         let lane = pending.lane;
-        self.insert(lane, Queued::Asked(event, pending));
+        self.insert(lane, Queued::Asked(event, Box::new(pending)));
     }
 
     pub(crate) fn defer(&mut self, event: u64, lane: Lane, then: Continuation) {
@@ -398,7 +398,7 @@ impl Decisions {
             .values_mut()
             .flatten()
             .find_map(|queued| match queued {
-                Queued::Asked(order, pending) if *order == event => Some(pending),
+                Queued::Asked(order, pending) if *order == event => Some(pending.as_mut()),
                 _ => None,
             })
     }
@@ -490,7 +490,7 @@ impl Decisions {
             })
             .min_by_key(|(_, event)| *event)?;
         match self.pop(lane)? {
-            Queued::Asked(_, pending) => Some(pending.settle(event)),
+            Queued::Asked(_, pending) => Some((*pending).settle(event)),
             Queued::Due(..) => None,
         }
     }

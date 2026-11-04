@@ -26,19 +26,25 @@ ServiceRegister = "the Java service manager is out of scope"
 ServiceUnregister = "the Java service manager is out of scope"
 
 [fired]
-PlayerJoin = "observers only; deciding handlers are asked once the player events land"
-PlayerQuit = "observers only; deciding handlers are asked once the player events land"
 PlayerMove = "observers and deciding handlers; only set_to is applied"
 InventoryClick = "plugin inventories only, and only the plugin that made the inventory observes it"
 InventoryClose = "plugin inventories only, and only the plugin that made the inventory observes it"
+PlayerJoin = "the join message is announced once the event settles"
+PlayerQuit = "the quit message is announced once the event settles, after the player is removed"
+AsyncPlayerPreLogin = "the login waits for the core; a refusal ends it with the literal kick message"
+PlayerLogin = "hostname is empty and the real address is the remote address, neither is tracked"
+PlayerKick = "every server-side disconnect of a player in game, never at shutdown or during the login"
+PlayerLocaleChange = "at join when the locale is not en_us and on every settings packet that changes it"
+PlayerChangedMainHand = "carries the old hand, as the Spigot bytecode does"
+PlayerCommandSend = "at join, at respawn and when the operator status changes; only root commands can be removed"
 
 [states]
 ready = [
-    "AsyncPlayerChat", "AsyncPlayerPreLogin", "BlockBreak", "BlockCanBuild", "BlockCook",
-    "BlockDamage", "BlockDamageAbort", "BlockDropItem", "BlockExp", "BlockExplode",
-    "BlockMultiPlace", "BlockPhysics", "BlockPlace", "BroadcastMessage", "CampfireStart",
-    "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem", "CreatureSpawn", "EntitiesLoad",
-    "EntitiesUnload", "EntityBreed", "EntityChangeBlock", "EntityCombust", "EntityCombustByBlock",
+    "AsyncPlayerChat", "BlockBreak", "BlockCanBuild", "BlockCook", "BlockDamage",
+    "BlockDamageAbort", "BlockDropItem", "BlockExp", "BlockExplode", "BlockMultiPlace",
+    "BlockPhysics", "BlockPlace", "BroadcastMessage", "CampfireStart", "ChunkLoad",
+    "ChunkPopulate", "ChunkUnload", "CraftItem", "CreatureSpawn", "EntitiesLoad", "EntitiesUnload",
+    "EntityBreed", "EntityChangeBlock", "EntityCombust", "EntityCombustByBlock",
     "EntityCombustByEntity", "EntityDamage", "EntityDamageByBlock", "EntityDamageByEntity",
     "EntityDeath", "EntityDropItem", "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode",
     "EntityInteract", "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem",
@@ -46,12 +52,11 @@ ready = [
     "EntityShootBow", "EntitySpawn", "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport",
     "ExplosionPrime", "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt",
     "FurnaceStartSmelt", "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn",
-    "ItemSpawn", "PlayerAnimation", "PlayerChangedMainHand", "PlayerCommandPreprocess",
-    "PlayerCommandSend", "PlayerDeath", "PlayerDropItem", "PlayerExpChange",
-    "PlayerExpCooldownChange", "PlayerGameModeChange", "PlayerHideEntity", "PlayerInput",
-    "PlayerInteract", "PlayerInteractAtEntity", "PlayerInteractEntity", "PlayerItemBreak",
-    "PlayerItemDamage", "PlayerItemHeld", "PlayerKick", "PlayerLevelChange", "PlayerLocaleChange",
-    "PlayerLogin", "PlayerPickupArrow", "PlayerRespawn", "PlayerShearEntity", "PlayerShowEntity",
+    "ItemSpawn", "PlayerAnimation", "PlayerCommandPreprocess", "PlayerDeath", "PlayerDropItem",
+    "PlayerExpChange", "PlayerExpCooldownChange", "PlayerGameModeChange", "PlayerHideEntity",
+    "PlayerInput", "PlayerInteract", "PlayerInteractAtEntity", "PlayerInteractEntity",
+    "PlayerItemBreak", "PlayerItemDamage", "PlayerItemHeld", "PlayerLevelChange",
+    "PlayerPickupArrow", "PlayerRespawn", "PlayerShearEntity", "PlayerShowEntity",
     "PlayerSwapHandItems", "PlayerTakeLecternBook", "PlayerTeleport", "PlayerToggleFlight",
     "PlayerToggleSneak", "PlayerToggleSprint", "PlayerVelocity", "PluginDisable", "PluginEnable",
     "PrepareItemCraft", "PrepareSmithing", "ProjectileHit", "ProjectileLaunch", "ServerCommand",

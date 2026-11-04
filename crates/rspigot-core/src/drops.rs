@@ -63,9 +63,10 @@ impl<L: ClientLink> Server<L> {
         }
         if !all && !player.drops.allow_single(tick) {
             tracing::warn!("{} dropped their items too quickly!", player.profile.name);
-            player.link.disconnect(Component::text(
-                "You dropped your items too quickly (Hacking?)",
-            ));
+            self.disconnect_player(
+                id,
+                Component::text("You dropped your items too quickly (Hacking?)"),
+            );
             return;
         }
         self.drop_selected(id, all);

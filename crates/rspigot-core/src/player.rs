@@ -53,6 +53,7 @@ pub struct Player<L> {
     pub(crate) plugin_menu: Option<PluginMenu>,
     pub(crate) window_counter: u8,
     pub ender_items: Vec<rspigot_domain::item::Slot>,
+    pub kick_leave_message: Option<String>,
 }
 
 impl<L> Player<L> {

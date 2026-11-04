@@ -626,7 +626,6 @@ impl<L: ClientLink> Server<L> {
         let difficulty = self.world.difficulty;
         let raining = self.world.level.raining;
         let thundering = self.world.level.thundering;
-        let tree = self.command_tree(self.players.get(&id).is_some_and(|p| p.operator));
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
@@ -651,7 +650,6 @@ impl<L: ClientLink> Server<L> {
             entity,
             level: if player.operator { 4 } else { 0 },
         });
-        link.send(ClientEvent::Commands(tree));
         link.send(time);
         if raining {
             link.send(ClientEvent::GameEvent(GameEvent::StartRaining));
@@ -670,6 +668,7 @@ impl<L: ClientLink> Server<L> {
             carried: None,
         });
         player.menu = InventoryMenu::synced(&player.inventory);
+        self.send_commands(id);
         if hardcore {
             self.apply_game_mode(id, GameMode::Spectator);
         }

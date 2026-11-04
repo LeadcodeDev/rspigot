@@ -114,9 +114,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         if target == player.entity_id && player.game_mode != GameMode::Spectator {
-            player
-                .link
-                .disconnect(Component::text("Cannot interact with self!"));
+            self.disconnect_player(id, Component::text("Cannot interact with self!"));
             return;
         }
         if player.sneaking != sneaking {

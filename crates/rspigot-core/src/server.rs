@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime};
 use crossbeam_channel::{Receiver, Sender, select};
 use rspigot_domain::item::HOTBAR_START;
 use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
-use rspigot_domain::text::{Component, NamedColor};
+use rspigot_domain::text::Component;
 use rspigot_domain::world::{Difficulty, Dimension};
 use rspigot_domain::{ChunkPos, EntityId, Identifier, Rotation, Vec3};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -25,7 +25,10 @@ use crate::events::{
 use crate::falling::ScheduledFalls;
 use crate::player::Player;
 use crate::player_io::PlayerIo;
-use crate::plugins::{Decisions, PluginIntro, PluginInventories, Registry, ToPlugin, Visibility};
+use crate::plugins::events::PlayerLoginResult;
+use crate::plugins::{
+    Arrival, Decisions, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin, Visibility,
+};
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
@@ -107,6 +110,9 @@ pub struct Server<L> {
     pub(crate) decisions: Decisions,
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
+    arrivals: FxHashMap<u64, Arrival<L>>,
+    arrival_counter: u64,
+    login_counter: u64,
     clock: fn() -> SystemTime,
     next_entity_id: i32,
     status: StatusBoard,
@@ -173,6 +179,9 @@ impl<L: ClientLink> Server<L> {
             decisions: Decisions::default(),
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
+            arrivals: FxHashMap::default(),
+            arrival_counter: 0,
+            login_counter: 0,
             clock: SystemTime::now,
             next_entity_id: 1,
             status,
@@ -282,6 +291,13 @@ impl<L: ClientLink> Server<L> {
 
     pub fn handle(&mut self, message: Inbound<L>) {
         match message {
+            Inbound::PreLogin {
+                name,
+                id,
+                address,
+                transferred,
+                reply,
+            } => self.pre_login(name, id, address, transferred, reply),
             Inbound::Join {
                 profile,
                 settings,
@@ -421,59 +437,82 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn next_login_attempt(&mut self) -> u64 {
+        self.login_counter += 1;
+        self.login_counter
+    }
+
+    pub(crate) fn park_arrival(&mut self, arrival: Arrival<L>) -> u64 {
+        self.arrival_counter += 1;
+        self.arrivals.insert(self.arrival_counter, arrival);
+        self.arrival_counter
+    }
+
+    pub(crate) fn take_arrival(&mut self, key: u64) -> Option<Arrival<L>> {
+        self.arrivals.remove(&key)
+    }
+
     fn join(&mut self, profile: GameProfile, settings: ClientSettings, link: L, address: IpAddr) {
         if self.players.contains_key(&profile.id) {
-            if let Some(existing) = self.players.get(&profile.id) {
-                existing.link.disconnect(Component::translatable(
-                    "multiplayer.disconnect.duplicate_login",
-                    Vec::new(),
-                ));
-            }
-            self.remove_player(profile.id, true);
+            self.disconnect_player(
+                profile.id,
+                Component::translatable("multiplayer.disconnect.duplicate_login", Vec::new()),
+            );
         }
         let address = address.to_canonical();
+        let refusal = self.refusal(&profile, address);
+        self.ask_login(Arrival {
+            profile,
+            settings,
+            link,
+            address,
+            refusal,
+        });
+    }
+
+    fn refusal(&mut self, profile: &GameProfile, address: IpAddr) -> Option<Refusal> {
         let now = self.prune_expired_bans();
-        if let Some(ban) = self.admin.profile_ban(&profile, now) {
-            self.refuse_banned(
-                &profile,
-                address,
-                &link,
-                "multiplayer.disconnect.banned",
-                ban,
-            );
-            if self.admin.learn_uuid(&profile) {
+        if let Some(ban) = self.admin.profile_ban(profile, now) {
+            let reason = ban_reason("multiplayer.disconnect.banned", ban);
+            if self.admin.learn_uuid(profile) {
                 self.publish_admin();
             }
-            return;
+            return Some(Refusal {
+                result: PlayerLoginResult::KickBanned,
+                reason,
+            });
         }
-        let operator = self.admin.is_operator(&profile);
-        if !self.admin.may_join(&profile) {
-            tracing::info!(
-                "Disconnecting {} ({}): {}",
-                profile.name,
-                profile.id,
-                self.config.whitelist_message
-            );
-            link.disconnect(Component::text(self.config.whitelist_message.clone()));
-            return;
+        if !self.admin.may_join(profile) {
+            return Some(Refusal {
+                result: PlayerLoginResult::KickWhitelist,
+                reason: Component::text(self.config.whitelist_message.clone()),
+            });
         }
         if let Some(ban) = self.admin.ip_ban(address, now) {
-            self.refuse_banned(
-                &profile,
-                address,
-                &link,
-                "multiplayer.disconnect.banned_ip",
-                ban,
-            );
-            return;
+            return Some(Refusal {
+                result: PlayerLoginResult::KickBanned,
+                reason: ban_reason("multiplayer.disconnect.banned_ip", ban),
+            });
         }
+        let operator = self.admin.is_operator(profile);
         if self.players.len() as u32 >= self.config.max_players && !operator {
-            link.disconnect(Component::translatable(
-                "multiplayer.disconnect.server_full",
-                Vec::new(),
-            ));
-            return;
+            return Some(Refusal {
+                result: PlayerLoginResult::KickFull,
+                reason: Component::translatable("multiplayer.disconnect.server_full", Vec::new()),
+            });
         }
+        None
+    }
+
+    pub(crate) fn arrive(&mut self, arrival: Arrival<L>) {
+        let Arrival {
+            profile,
+            settings,
+            link,
+            address,
+            ..
+        } = arrival;
+        let operator = self.admin.is_operator(&profile);
         let saved = self.load_saved_player(&profile);
         let entity_id = self.allocate_entity_id();
         let position = saved
@@ -481,6 +520,7 @@ impl<L: ClientLink> Server<L> {
             .filter(|save| !save.is_dead())
             .map_or(self.world.spawn, |save| save.position);
         let view_distance = self.config.view_distance.min(settings.view_distance.max(2));
+        let initial = settings.clone();
         let mut player = Player {
             id: profile.id,
             profile,
@@ -519,6 +559,7 @@ impl<L: ClientLink> Server<L> {
             plugin_menu: None,
             window_counter: 0,
             ender_items: vec![None; 27],
+            kick_leave_message: None,
         };
         if let Some(save) = &saved {
             save.restore(&mut player, self.world.spawn, self.world.level.spawn_angle);
@@ -548,47 +589,16 @@ impl<L: ClientLink> Server<L> {
         player
             .streamer
             .start(&mut self.world.chunks, &self.workers, &player.link);
-        let name = player.profile.name.clone();
         let id = player.id;
         self.players.insert(id, player);
         self.update_player_view(id);
         if let Some(save) = &saved {
             self.announce_restored(id, save);
         }
-        let joined =
-            Component::translatable("multiplayer.player.joined", vec![Component::text(name)])
-                .color(NamedColor::Yellow);
-        tracing::info!("{}", crate::console::console_text(&joined));
-        self.push(Audience::All, ClientEvent::system(joined));
         self.refresh_status();
-        self.tell_plugins_of_join(id);
-    }
-
-    fn refuse_banned<T>(
-        &self,
-        profile: &GameProfile,
-        address: IpAddr,
-        link: &L,
-        key: &str,
-        ban: &Ban<T>,
-    ) {
-        let mut reason =
-            Component::translatable(format!("{key}.reason"), vec![ban.reason_message()]);
-        if let Some(date) = ban
-            .expires
-            .and_then(|expires| format_ban_date(expires, KICK_DATE))
-        {
-            reason = reason.append(Component::translatable(
-                format!("{key}.expiration"),
-                vec![Component::text(date)],
-            ));
-        }
-        tracing::info!(
-            "Disconnecting {} ({address}): {}",
-            profile.name,
-            crate::console::console_text(&reason)
-        );
-        link.disconnect(reason);
+        self.announce_settings(id, &initial);
+        self.send_commands(id);
+        self.ask_join(id);
     }
 
     fn send_join_sequence(&self, player: &mut Player<L>) {
@@ -622,7 +632,6 @@ impl<L: ClientLink> Server<L> {
             entity: player.entity_id,
             level: if player.operator { 4 } else { 0 },
         });
-        link.send(ClientEvent::Commands(self.command_tree(player.operator)));
         link.send(ClientEvent::SpawnPosition {
             dimension: self.world.dimension.key.clone(),
             pos: self.world.spawn.block(),
@@ -673,8 +682,13 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn remove_player(&mut self, id: PlayerId, announce: bool) {
+        if !self.players.contains_key(&id) {
+            return;
+        }
         self.close_open_menu(id, false);
-        self.tell_plugins_of_leave(id);
+        let Some(snapshot) = self.snapshot_of(id) else {
+            return;
+        };
         self.decisions.forget(id);
         self.visibility.forget(id);
         let Some(mut player) = self.players.remove(&id) else {
@@ -690,16 +704,8 @@ impl<L: ClientLink> Server<L> {
             }
         }
         self.push(Audience::All, ClientEvent::PlayerInfoRemove(vec![id]));
-        if announce {
-            let left = Component::translatable(
-                "multiplayer.player.left",
-                vec![Component::text(player.profile.name.clone())],
-            )
-            .color(NamedColor::Yellow);
-            tracing::info!("{}", crate::console::console_text(&left));
-            self.push(Audience::All, ClientEvent::system(left));
-        }
         self.refresh_status();
+        self.leave_event(snapshot, player.kick_leave_message.take(), announce);
     }
 
     fn refresh_status(&self) {
@@ -916,6 +922,20 @@ impl<L: ClientLink> Server<L> {
         );
         self.world.level
     }
+}
+
+fn ban_reason<T>(key: &str, ban: &Ban<T>) -> Component {
+    let mut reason = Component::translatable(format!("{key}.reason"), vec![ban.reason_message()]);
+    if let Some(date) = ban
+        .expires
+        .and_then(|expires| format_ban_date(expires, KICK_DATE))
+    {
+        reason = reason.append(Component::translatable(
+            format!("{key}.expiration"),
+            vec![Component::text(date)],
+        ));
+    }
+    reason
 }
 
 fn queued<T>(inbound: &Receiver<T>) -> impl Iterator<Item = T> {

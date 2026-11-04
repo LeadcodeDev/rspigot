@@ -139,15 +139,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn kick(&mut self, player: PlayerId, reason: Component) {
-        if let Some(p) = self.players.get(&player) {
-            tracing::info!(
-                "Kicked {}: {}",
-                p.profile.name,
-                crate::console::console_text(&reason)
-            );
-            p.link.disconnect(reason);
-        }
-        self.remove_player(player, true);
+        self.disconnect_player(player, reason);
     }
 
     fn set_operator(&mut self, name: &str, operator: bool) -> bool {
@@ -164,15 +156,14 @@ impl<L: ClientLink> CommandContext for Server<L> {
             self.publish_admin();
         }
         if let Some(id) = online {
-            let tree = self.command_tree(operator);
             if let Some(p) = self.players.get_mut(&id) {
                 p.operator = operator;
                 p.link.send(ClientEvent::OperatorLevel {
                     entity: p.entity_id,
                     level: if operator { 4 } else { 0 },
                 });
-                p.link.send(ClientEvent::Commands(tree));
             }
+            self.send_commands(id);
         }
         changed
     }

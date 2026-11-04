@@ -12,6 +12,7 @@ mod player;
 mod registry;
 mod resolve;
 mod server;
+mod session;
 mod steps;
 mod targets;
 mod visibility;
@@ -44,6 +45,7 @@ pub use orders::{
 };
 pub use patch::Verdict;
 pub(crate) use registry::Registry;
+pub(crate) use session::{Arrival, Refusal};
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 
