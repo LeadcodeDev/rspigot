@@ -396,3 +396,24 @@ fn a_tilled_place_carries_the_farmland_state() {
     assert_eq!(placed.placed_state.state.kind, "minecraft:farmland");
     assert_eq!(kind_at(&mut s, FLOOR), "minecraft:dirt");
 }
+
+#[test]
+fn the_roots_of_a_tilled_rooted_dirt_drop_only_when_the_place_applies() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockPlace)], "iron_hoe");
+    s.act(Order::Block {
+        pos: FLOOR,
+        order: BlockOrder::Set("minecraft:rooted_dirt".to_owned()),
+    });
+    use_on(&mut s, &alice, FLOOR, 7);
+    let asked = last_asked(&s.plugin, EventKind::BlockPlace);
+    assert_eq!(s.server.items_on_ground(), 0);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert_eq!(s.server.items_on_ground(), 0);
+    assert_eq!(kind_at(&mut s, FLOOR), "minecraft:rooted_dirt");
+    use_on(&mut s, &alice, FLOOR, 8);
+    let asked = last_asked(&s.plugin, EventKind::BlockPlace);
+    assert_eq!(s.server.items_on_ground(), 0);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert_eq!(kind_at(&mut s, FLOOR), "minecraft:dirt");
+    assert_eq!(s.server.items_on_ground(), 1);
+}

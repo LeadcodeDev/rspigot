@@ -171,9 +171,10 @@ impl<L: ClientLink> Server<L> {
             return false;
         };
         let group = found.group;
-        if let (Some(table), Some(_)) = (group.loot, group.drop_strategy) {
-            self.drop_transformation_loot(held, usage, table);
-        }
+        let loot = match (group.loot, group.drop_strategy) {
+            (Some(table), Some(_)) => self.transformation_loot(held, usage, table),
+            _ => Vec::new(),
+        };
         let build = !self.is_protected(id, usage.pos);
         self.ask_place(PlaceStep {
             using: UseItem {
@@ -195,22 +196,26 @@ impl<L: ClientLink> Server<L> {
                 sound: group.sound,
                 particle: group.particle.and_then(particle_event),
                 damage: i32::from(group.damage),
+                face: usage.face,
             }),
+            loot,
             forced: false,
         });
         true
     }
 
-    fn drop_transformation_loot(&mut self, held: &ItemStack, usage: &ToolUse, table: &str) {
+    fn transformation_loot(
+        &mut self,
+        held: &ItemStack,
+        usage: &ToolUse,
+        table: &str,
+    ) -> Vec<ItemStack> {
         let Some(table) = rspigot_data::loot::table(table) else {
-            return;
+            return Vec::new();
         };
         let player = LootEntity::of(EntityKind::Player);
         let context = LootContext::block(usage.clicked, Some(held), Some(&player));
-        let step = usage.face.offset();
-        for stack in loot::table_drops(table, &context, &mut self.rng) {
-            self.spawn_item_from_face(usage.pos, step, stack);
-        }
+        loot::table_drops(table, &context, &mut self.rng)
     }
 }
 

@@ -6,7 +6,7 @@ use crate::plugins::events::{
     SpawnChange, ThunderChange, TimeSkip, TimeSkipPatch, TimeSkipReason, WeatherChange, WorldInit,
     WorldLoad, WorldSave,
 };
-use crate::plugins::steps::{TimeStep, WeatherStep};
+use crate::plugins::steps::{Sky, TimeStep, WeatherStep};
 use crate::plugins::{Access, EventKind, EventPayload, Location, Phase};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -131,21 +131,40 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn change_weather(&mut self, raining: bool, thundering: bool) {
+        self.fire_deferred(
+            Lane::World,
+            Continuation::SetWeather(Sky {
+                raining,
+                thundering,
+            }),
+        );
+    }
+
+    pub(crate) fn weather_at_head(&mut self, sky: Sky) -> Option<Continuation> {
         let level = &self.world.level;
         let step = WeatherStep {
-            rain: (level.raining != raining).then_some(raining),
-            thunder: (level.thundering != thundering).then_some(thundering),
+            rain: (level.raining != sky.raining).then_some(sky.raining),
+            thunder: (level.thundering != sky.thundering).then_some(sky.thundering),
         };
-        let Some(to) = step.rain else {
-            self.change_thunder(step.thunder);
-            return;
-        };
-        self.fire(Lane::World, Continuation::Weather(step), move |server| {
-            Some(EventPayload::WeatherChange(WeatherChange {
-                to_weather_state: to,
-                world: server.world_name(),
-            }))
-        });
+        if step.rain.is_some() {
+            return Some(Continuation::Weather(step));
+        }
+        step.thunder.map(Continuation::Thunder)
+    }
+
+    pub(crate) fn weather_payload(&self, then: &Continuation) -> Option<EventPayload> {
+        let world = self.world_name();
+        match then {
+            Continuation::Weather(step) => Some(EventPayload::WeatherChange(WeatherChange {
+                to_weather_state: step.rain?,
+                world,
+            })),
+            Continuation::Thunder(to) => Some(EventPayload::ThunderChange(ThunderChange {
+                to_thunder_state: *to,
+                world,
+            })),
+            _ => None,
+        }
     }
 
     pub(crate) fn finish_weather(&mut self, step: WeatherStep, cancelled: bool) {

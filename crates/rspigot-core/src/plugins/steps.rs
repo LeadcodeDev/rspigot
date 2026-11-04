@@ -331,6 +331,7 @@ pub(crate) struct ToolEffects {
     pub(crate) sound: &'static str,
     pub(crate) particle: Option<i32>,
     pub(crate) damage: i32,
+    pub(crate) face: Direction,
 }
 
 #[derive(Debug)]
@@ -360,6 +361,7 @@ pub(crate) struct PlaceStep {
     pub(crate) changes: Vec<Change>,
     pub(crate) build: bool,
     pub(crate) tool: Option<ToolEffects>,
+    pub(crate) loot: Vec<ItemStack>,
     pub(crate) forced: bool,
 }
 
@@ -410,6 +412,12 @@ pub(crate) struct ExplodeStep {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TimeStep {
     pub(crate) skipped: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Sky {
+    pub(crate) raining: bool,
+    pub(crate) thundering: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -472,6 +480,7 @@ pub(crate) enum Continuation {
     Explode(Box<ExplodeStep>),
     ChunkUnload(ChunkPos),
     TimeSkip(TimeStep),
+    SetWeather(Sky),
     Weather(WeatherStep),
     Thunder(bool),
 }
@@ -527,7 +536,7 @@ impl Continuation {
             Self::Explode(_) => EventKind::BlockExplode,
             Self::ChunkUnload(_) => EventKind::ChunkUnload,
             Self::TimeSkip(_) => EventKind::TimeSkip,
-            Self::Weather(_) => EventKind::WeatherChange,
+            Self::SetWeather(_) | Self::Weather(_) => EventKind::WeatherChange,
             Self::Thunder(_) => EventKind::ThunderChange,
         }
     }

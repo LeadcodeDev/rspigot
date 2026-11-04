@@ -268,3 +268,20 @@ fn a_cancelled_rain_keeps_the_sky_and_the_thunder_is_still_asked() {
     assert!(!state.raining);
     assert!(state.thundering);
 }
+
+#[test]
+fn a_weather_command_sent_while_another_waits_reads_the_sky_when_its_turn_comes() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::WeatherChange)]);
+    console(&mut s, "weather thunder");
+    let rain = last_asked(&s.plugin, EventKind::WeatherChange);
+    console(&mut s, "weather clear");
+    assert_eq!(asked_for(&s.plugin, EventKind::WeatherChange).len(), 1);
+    rule_on(&mut s.server, 1, rain.id, false, None);
+    let state = world_state(&mut s);
+    assert!(state.raining && state.thundering);
+    let clear = last_asked(&s.plugin, EventKind::WeatherChange);
+    assert_ne!(clear.id, rain.id);
+    rule_on(&mut s.server, 1, clear.id, false, None);
+    let state = world_state(&mut s);
+    assert!(!state.raining && !state.thundering);
+}

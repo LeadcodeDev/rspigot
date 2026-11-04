@@ -75,6 +75,7 @@ impl<L: ClientLink> Server<L> {
             changes,
             build,
             tool: None,
+            loot: Vec::new(),
             forced: !step.buildable,
         });
     }
@@ -173,6 +174,9 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let pos = using.against;
+        for stack in step.loot {
+            self.spawn_item_from_face(pos, effects.face.offset(), stack);
+        }
         self.play_sound(
             Some(id),
             pos.center(),

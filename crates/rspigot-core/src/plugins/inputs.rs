@@ -41,6 +41,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn at_head(&mut self, then: Continuation) -> Option<Continuation> {
         match then {
+            Continuation::SetWeather(sky) => self.weather_at_head(sky),
             Continuation::Finish(step) => {
                 self.finish_digging(step);
                 None
@@ -90,6 +91,9 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn head_payload(&self, then: &Continuation) -> Option<EventPayload> {
         Some(match then {
             Continuation::Login(key) => return self.login_payload(*key),
+            Continuation::Weather(_) | Continuation::Thunder(_) => {
+                return self.weather_payload(then);
+            }
             Continuation::UseItemOn(step) => return self.use_on_payload(step),
             Continuation::UseItem(step) => return self.use_payload(step),
             Continuation::Drop(step) => return self.drop_payload_of(step),
