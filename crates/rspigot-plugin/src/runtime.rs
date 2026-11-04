@@ -315,7 +315,7 @@ async fn handle<P: Listeners>(
                 };
                 let cancelled = verdict.cancel;
                 verdicts.push(verdict.into_wire(handler));
-                if cancelled {
+                if cancelled && !received.writes_when_cancelled() {
                     break;
                 }
             }

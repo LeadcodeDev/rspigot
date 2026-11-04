@@ -5,16 +5,31 @@ use std::time::Duration;
 
 use fake_host::*;
 use rspigot_plugin::{
-    ClickKind, CustomInventory, Error, InventoryClose, InventoryOwner, InventoryTypeSlotType,
-    ItemStack, Material, Uuid,
+    ClickKind, CustomInventory, Error, InventoryClick, InventoryClose, InventoryOwner,
+    InventoryTypeSlotType, ItemStack, Material, Plugin, Uuid, listeners, run_with,
 };
 use rspigot_plugin_protocol::v1::{
-    self, answer, custom_inventory_order, event, from_plugin, inventory_ref, player_order,
+    self, answer, custom_inventory_order, event, from_plugin, inventory_ref, patch, player_order,
     question, server_order, to_plugin,
 };
 use tonic::Status;
 
 static OLD: Mutex<Option<CustomInventory>> = Mutex::new(None);
+
+#[derive(Plugin)]
+#[plugin(name = "clearer", version = "1.0.0")]
+struct Clearer;
+
+#[listeners]
+impl Clearer {
+    async fn refuse_the_click(&self, event: &mut InventoryClick) {
+        event.cancel();
+    }
+
+    async fn clear_the_slot(&self, event: &mut InventoryClick) {
+        event.set_current_item(None);
+    }
+}
 
 fn creation(body: from_plugin::Body) -> v1::CreateInventory {
     match body {
@@ -441,5 +456,45 @@ async fn an_order_on_an_inventory_from_an_earlier_connection_is_dropped() {
     assert_eq!(
         second.hear().await,
         ordered(player_order::Order::SendMessage("marker".to_owned()))
+    );
+}
+
+#[tokio::test]
+async fn every_deciding_handler_of_a_click_runs_after_a_cancel() {
+    let mut host = Host::start().await;
+    let _plugin = tokio::spawn(run_with(Clearer, host.url.clone(), None));
+    let mut session = host.knock().await.accept();
+
+    let diamond = Some(item("minecraft:diamond", 1));
+    session.say(event(
+        3,
+        &[1, 2],
+        v1::Phase::Decide,
+        false,
+        click(Some(custom(7)), 4, v1::ClickKind::Left, -1, diamond),
+    ));
+    let cleared = v1::InventoryClickPatch {
+        current_item: Some(v1::NullableItem { value: None }),
+        ..v1::InventoryClickPatch::default()
+    };
+    assert_eq!(
+        session.hear().await,
+        from_plugin::Body::Decision(v1::Decision {
+            event: 3,
+            verdicts: vec![
+                v1::Verdict {
+                    handler: 1,
+                    cancel: true,
+                    patch: None,
+                },
+                v1::Verdict {
+                    handler: 2,
+                    cancel: false,
+                    patch: Some(v1::Patch {
+                        change: Some(patch::Change::InventoryClick(cleared)),
+                    }),
+                },
+            ],
+        })
     );
 }

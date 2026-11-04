@@ -1431,6 +1431,14 @@ def emit_sdk(model):
             if handler is not fired:
                 projections.append((fired, handler))
     body("impl Received {")
+    direct = [e for e in events if e.writes_when_cancelled]
+    body("    pub(crate) const fn writes_when_cancelled(&self) -> bool {")
+    if direct:
+        body(f"        matches!(self.payload, {' | '.join(f'event::Payload::{pn(e.name)}(_)' for e in direct)})")
+    else:
+        body("        false")
+    body("    }")
+    body()
     body("    pub(crate) fn call(&self, handler: u32, kind: EventKind, link: &Link) -> Option<Result<Call, Error>> {")
     body("        let meta = self.meta;")
     body("        Some(match (&self.payload, kind) {")
