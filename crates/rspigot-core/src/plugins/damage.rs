@@ -6,7 +6,7 @@ use rspigot_domain::{BlockPos, BlockStateId, EntityId};
 
 use crate::health::DamageSource;
 use crate::plugins::block::snapshot_of;
-use crate::plugins::decisions::Continuation;
+use crate::plugins::decisions::{Continuation, Lane};
 use crate::plugins::events::{
     EntityDamage, EntityDamageByBlock, EntityDamageByEntity, EntityDamageCause, EntityRemoveCause,
 };
@@ -139,6 +139,35 @@ impl<L: ClientLink> Server<L> {
             server.hurt_payload(victim, source, amount)
         });
         self.impacts.last.take().unwrap_or(true)
+    }
+
+    pub(crate) fn strike_behind(
+        &mut self,
+        lane: Lane,
+        victim: Struck,
+        source: DamageSource,
+        amount: f32,
+        then: AfterHurt,
+    ) {
+        let step = HurtStep {
+            kind: damage_kind(&source),
+            victim,
+            source,
+            amount,
+            then,
+        };
+        self.fire_deferred(lane, Continuation::Strike(Box::new(step)));
+    }
+
+    pub(crate) fn strike_at_head(&mut self, step: HurtStep) {
+        let HurtStep {
+            victim,
+            source,
+            amount,
+            then,
+            ..
+        } = step;
+        self.strike(None, victim, &source, amount, then);
     }
 
     fn hurt_payload(

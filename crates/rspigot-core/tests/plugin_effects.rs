@@ -477,3 +477,23 @@ fn a_flaming_arrow_is_asked_while_a_sun_ignition_of_its_target_waits() {
     assert_eq!(burn.entity.id, id);
     assert_eq!(asked_for(&s.plugin, EventKind::EntityCombust).len(), 1);
 }
+
+#[test]
+fn a_bounced_flaming_arrow_leaves_its_target_unburnt_once_the_ignition_settles() {
+    let mut s = waiting_scene(vec![deciding(1, EventKind::EntityCombust)]);
+    stream_chunk_of(&mut s, BlockPos::new(4, 64, 8));
+    console(
+        &mut s,
+        "summon minecraft:cow 4.5 64 8.5 {NoAI:1b,Invulnerable:1b}",
+    );
+    let id = s.server.entities_of(rspigot_entities::EntityKind::Cow)[0].id;
+    let Answer::Entity(details) = s.ask(Question::Entity(id)) else {
+        panic!("expected the cow");
+    };
+    let cow = details.entity;
+    flaming_arrow_at(&mut s, &cow);
+    combust_by_entity(&mut s, 0);
+    let asked = last_asked(&s.plugin, EventKind::EntityCombustByEntity);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert!(fire_ticks(&mut s, &cow) <= 0);
+}

@@ -452,12 +452,18 @@ impl<L: ClientLink> Server<L> {
             living.damage.last_hurt_mob = Some(target);
         }
         let saved_fire = self.fire_ticks_of(target);
+        let holder = self
+            .player_of_entity(target)
+            .map_or(Holder::Mob(target), Holder::Player);
         if on_fire && let Some(arrow) = self.entity_view(id) {
-            let holder = self
-                .player_of_entity(target)
-                .map_or(Holder::Mob(target), Holder::Player);
             self.combust(holder, ARROW_FIRE_SECONDS, Combuster::Entity(arrow));
         }
+        let lane = self.lane_for(None, target);
+        let ignition_waits = on_fire
+            && self.decisions.in_flight(
+                lane,
+                |then| matches!(then, Continuation::Combust(step) if step.target == holder),
+            );
         let source = DamageSource {
             kind: DamageType::Arrow,
             causing,
@@ -474,13 +480,12 @@ impl<L: ClientLink> Server<L> {
             sound_pitch,
         };
         let victim = self.struck(target);
-        self.strike(
-            None,
-            victim,
-            &source,
-            damage as f32,
-            AfterHurt::Arrow(follow),
-        );
+        let then = AfterHurt::Arrow(follow);
+        if ignition_waits {
+            self.strike_behind(lane, victim, source, damage as f32, then);
+        } else {
+            self.strike(None, victim, &source, damage as f32, then);
+        }
     }
 
     pub(crate) fn finish_arrow_hit(&mut self, follow: ArrowFollow, hurt: bool) {

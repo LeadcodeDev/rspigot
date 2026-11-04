@@ -858,6 +858,7 @@ pub(crate) enum Continuation {
     Spawn(Box<SpawnStep>),
     EntityDrop(Box<Entity>),
     Hurt(Box<HurtStep>),
+    Strike(Box<HurtStep>),
     MobDeath(Box<LootStep>),
     Regain(RegainStep),
     Exhaust(ExhaustStep),
@@ -936,7 +937,7 @@ impl Continuation {
             Self::Thunder(_) => EventKind::ThunderChange,
             Self::Spawn(step) => step.kind,
             Self::EntityDrop(_) => EventKind::EntityDropItem,
-            Self::Hurt(step) => step.kind,
+            Self::Hurt(step) | Self::Strike(step) => step.kind,
             Self::MobDeath(_) => EventKind::EntityDeath,
             Self::Regain(_) => EventKind::EntityRegainHealth,
             Self::Exhaust(_) => EventKind::EntityExhaustion,
@@ -984,7 +985,7 @@ impl Continuation {
             Self::Spawn(step) => {
                 matches!(step.birth.then, Spawned::Converted { old, .. } if old == id)
             }
-            Self::Hurt(step) => {
+            Self::Hurt(step) | Self::Strike(step) => {
                 matches!(step.victim, Struck::Mob(victim) | Struck::Item(victim) if victim == id)
             }
             Self::MobDeath(step) => step.victim == id,
