@@ -53,6 +53,13 @@ PlayerShowEntity = "players only, after the effect of the last plugin showing th
 PlayerItemHeld = "the previous slot is read at the head of the lane; a cancel sends it back"
 PlayerAnimation = "ARM_SWING from the punch packet only"
 PlayerSwapHandItems = "the items are those after the swap; an outdated swap is refused and resynced"
+PlayerInteract = "LEFT_CLICK_AIR, LEFT_CLICK_BLOCK, RIGHT_CLICK_AIR and RIGHT_CLICK_BLOCK; the three sites where Spigot ignores the result only notify; no PHYSICAL block exists yet"
+PlayerInteractAtEntity = "one fire per entity click, settled once for both handler types"
+PlayerInteractEntity = "reached through PlayerInteractAtEntity, as Spigot never builds it alone"
+PlayerDropItem = "the item entity is announced by its handle and spawned once settled"
+PlayerItemDamage = "fires with 0 for creative players and unbreakable items; asked only when a deciding handler exists, one per slot at a time"
+PlayerTakeLecternBook = "the book stays on the lectern until the event settles"
+PlayerItemBreak = "after the PlayerItemDamage of the same wear"
 
 [states]
 ready = [
@@ -68,13 +75,11 @@ ready = [
     "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
     "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
-    "PlayerDropItem", "PlayerExpChange", "PlayerExpCooldownChange", "PlayerInteract",
-    "PlayerInteractAtEntity", "PlayerInteractEntity", "PlayerItemBreak", "PlayerItemDamage",
-    "PlayerLevelChange", "PlayerPickupArrow", "PlayerShearEntity", "PlayerTakeLecternBook",
-    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
-    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
-    "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete", "ThunderChange", "TimeSkip",
-    "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
+    "PlayerExpChange", "PlayerExpCooldownChange", "PlayerLevelChange", "PlayerPickupArrow",
+    "PlayerShearEntity", "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing",
+    "ProjectileHit", "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad",
+    "SheepDyeWool", "SheepRegrowWool", "SmithItem", "SpawnChange", "TabComplete", "ThunderChange",
+    "TimeSkip", "WeatherChange", "WorldInit", "WorldLoad", "WorldSave",
 ]
 
 [states.blocked]

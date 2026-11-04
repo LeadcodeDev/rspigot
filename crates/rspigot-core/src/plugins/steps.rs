@@ -1,11 +1,12 @@
 use crossbeam_channel::Sender;
+use rspigot_domain::entity::EntityBase;
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
 use rspigot_domain::text::Component;
-use rspigot_domain::{EntityId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, Rotation, Vec3};
 
 use crate::commands::CommandSender;
-use crate::events::{Hand, InputState, PreLoginVerdict};
+use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::plugins::EventKind;
 use crate::plugins::events::PlayerTeleportCause;
 
@@ -128,6 +129,86 @@ pub(crate) struct SwapStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct UseOnStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) pos: BlockPos,
+    pub(crate) face: Direction,
+    pub(crate) cursor: Vec3,
+    pub(crate) sequence: i32,
+    pub(crate) stack: Option<ItemStack>,
+    pub(crate) clicked: BlockStateId,
+    pub(crate) game_mode: GameMode,
+    pub(crate) block_denied: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct UseStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) sequence: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct DigStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) clicked: BlockStateId,
+    pub(crate) game_mode: GameMode,
+}
+
+#[derive(Debug)]
+pub(crate) struct InteractStep {
+    pub(crate) player: PlayerId,
+    pub(crate) target: EntityId,
+    pub(crate) hand: Hand,
+    pub(crate) stack: Option<ItemStack>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DropSource {
+    Selected { slot: usize },
+    Creative,
+    Released,
+}
+
+#[derive(Debug)]
+pub(crate) struct Launch {
+    pub(crate) base: EntityBase,
+    pub(crate) velocity: Vec3,
+    pub(crate) yaw: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct DropStep {
+    pub(crate) player: PlayerId,
+    pub(crate) stack: ItemStack,
+    pub(crate) source: DropSource,
+    pub(crate) launch: Launch,
+    pub(crate) thrower: bool,
+    pub(crate) predicted: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct WearStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) stack: ItemStack,
+    pub(crate) damage: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct BookStep {
+    pub(crate) player: PlayerId,
+    pub(crate) pos: BlockPos,
+    pub(crate) window: i32,
+    pub(crate) book: ItemStack,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -152,6 +233,13 @@ pub(crate) enum Continuation {
     HeldSlot(HeldStep),
     Swing(SwingStep),
     Swap(Box<SwapStep>),
+    UseItemOn(Box<UseOnStep>),
+    UseItem(UseStep),
+    Dig(DigStep),
+    InteractEntity(Box<InteractStep>),
+    Drop(Box<DropStep>),
+    ItemDamage(Box<WearStep>),
+    TakeBook(Box<BookStep>),
 }
 
 impl Continuation {
@@ -180,6 +268,11 @@ impl Continuation {
             Self::HeldSlot(_) => EventKind::PlayerItemHeld,
             Self::Swing(_) => EventKind::PlayerAnimation,
             Self::Swap(_) => EventKind::PlayerSwapHandItems,
+            Self::UseItemOn(_) | Self::UseItem(_) | Self::Dig(_) => EventKind::PlayerInteract,
+            Self::InteractEntity(_) => EventKind::PlayerInteractAtEntity,
+            Self::Drop(_) => EventKind::PlayerDropItem,
+            Self::ItemDamage(_) => EventKind::PlayerItemDamage,
+            Self::TakeBook(_) => EventKind::PlayerTakeLecternBook,
         }
     }
 
@@ -204,12 +297,15 @@ impl Continuation {
     pub(crate) fn same_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Velocity(one), Self::Velocity(other)) => one.player == other.player,
+            (Self::ItemDamage(one), Self::ItemDamage(other)) => {
+                one.player == other.player && one.slot == other.slot
+            }
             _ => false,
         }
     }
 
     pub(crate) const fn hot(&self) -> bool {
-        matches!(self, Self::Velocity(_))
+        matches!(self, Self::Velocity(_) | Self::ItemDamage(_))
     }
 }
 

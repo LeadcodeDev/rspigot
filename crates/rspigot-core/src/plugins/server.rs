@@ -10,7 +10,8 @@ use crate::player::Player;
 use crate::plugins::decisions::{
     Asked, Continuation, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo, Undone,
 };
-use crate::plugins::events::{PlayerMove, PlayerMovePatch, PlayerTeleportCause};
+use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTeleportCause};
+use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
     Access, Answer, EffectSpec, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Order,
@@ -246,7 +247,8 @@ impl<L: ClientLink> Server<L> {
         {
             return;
         }
-        let deciding = self.plugins.listens(kind, Access::Decide);
+        let deciding =
+            !matches!(then, Continuation::Notice(_)) && self.plugins.listens(kind, Access::Decide);
         if !deciding && !self.decisions.busy(lane) {
             let observed = if self.plugins.listens(kind, Access::Observe) {
                 describe(self)
@@ -506,6 +508,37 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::Swap(step) => {
                 self.finish_swap(*step, patch_of!(patch, PlayerSwapHandItems));
+                Vec::new()
+            }
+            Continuation::UseItemOn(step) => {
+                self.finish_use_item_on(*step, patch_of!(patch, PlayerInteract));
+                Vec::new()
+            }
+            Continuation::UseItem(step) => {
+                let patch = patch_of!(patch, PlayerInteract);
+                let (_, item_ok) = settled_results(EventResult::Deny, &patch);
+                self.finish_use_item(step, item_ok);
+                Vec::new()
+            }
+            Continuation::Dig(step) => {
+                self.finish_dig(step, patch_of!(patch, PlayerInteract));
+                Vec::new()
+            }
+            Continuation::InteractEntity(step) => {
+                self.finish_interact_entity(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::Drop(step) => {
+                self.finish_drop(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::ItemDamage(step) => {
+                self.finish_wear(*step, cancelled, patch_of!(patch, PlayerItemDamage));
+                Vec::new()
+            }
+            Continuation::TakeBook(_) if cancelled => Vec::new(),
+            Continuation::TakeBook(step) => {
+                self.finish_take_book(*step);
                 Vec::new()
             }
             Continuation::CommandSend(id) => {

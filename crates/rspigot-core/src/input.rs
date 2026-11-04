@@ -15,6 +15,7 @@ use crate::events::{
 use crate::loot::{self, LootContext, LootEntity};
 use crate::plugins::Held;
 use crate::plugins::events::PlayerRespawnReason;
+use crate::plugins::steps::UseOnStep;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -56,17 +57,18 @@ impl<L: ClientLink> Server<L> {
                 sequence,
                 ..
             } => self.handle_use_item_on(id, hand, pos, face, cursor, sequence),
-            PlayerInput::UseItem { hand, sequence, .. } => {
-                self.start_using_item(id, hand);
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
-            }
+            PlayerInput::UseItem {
+                hand,
+                sequence,
+                rotation,
+            } => self.use_item(id, hand, sequence, rotation),
             PlayerInput::HeldSlot(slot) => {
                 if slot < 9 {
                     self.select_slot(id, slot);
                 }
             }
             PlayerInput::CreativeSlot { slot, stack } => self.handle_creative_slot(id, slot, stack),
-            PlayerInput::Swing(hand) => self.swing_arm(id, hand),
+            PlayerInput::Swing(hand) => self.punch(id, hand),
             PlayerInput::Movement(action) => match action {
                 MovementAction::StartSprinting => self.toggle_sprint(id, true),
                 MovementAction::StopSprinting => self.toggle_sprint(id, false),
@@ -109,7 +111,8 @@ impl<L: ClientLink> Server<L> {
                 target,
                 hand,
                 sneaking,
-            } => self.handle_interact(id, target, hand, sneaking),
+                location,
+            } => self.handle_interact(id, target, hand, sneaking, location),
             PlayerInput::ContainerClick(click) => self.handle_container_click(id, click),
             PlayerInput::ContainerClose(window) => self.handle_container_close(id, window),
             PlayerInput::ContainerButtonClick { window, button } => {
@@ -274,7 +277,7 @@ impl<L: ClientLink> Server<L> {
         (pos.x - spawn.x).abs() <= radius && (pos.z - spawn.z).abs() <= radius
     }
 
-    fn refuse_block(&mut self, id: PlayerId, pos: BlockPos, sequence: i32) {
+    pub(crate) fn refuse_block(&mut self, id: PlayerId, pos: BlockPos, sequence: i32) {
         if let Some(state) = self.world.chunks.block(pos) {
             self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
         }
@@ -286,38 +289,24 @@ impl<L: ClientLink> Server<L> {
         id: PlayerId,
         action: DigAction,
         pos: BlockPos,
-        _face: Direction,
+        face: Direction,
         sequence: i32,
     ) {
-        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
+        if !self.players.contains_key(&id) {
             return;
-        };
+        }
         match action {
-            DigAction::Start | DigAction::Finish => {
-                let Some(state) = self.world.chunks.block(pos) else {
-                    self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-                    return;
-                };
-                let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
-                let breaks = match (action, mode) {
-                    (DigAction::Start, GameMode::Creative) => true,
-                    (DigAction::Start, GameMode::Survival) => hardness == 0.0,
-                    (DigAction::Finish, GameMode::Survival) => true,
-                    _ => false,
-                };
-                if breaks {
-                    let unbreakable = mode == GameMode::Survival && hardness < 0.0;
-                    if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
-                        self.refuse_block(id, pos, sequence);
-                        return;
-                    }
-                    self.set_block(pos, BlockStateId::AIR);
-                    if mode == GameMode::Survival {
-                        self.drop_block_loot(id, pos, state);
-                        self.wear_tool_for_mining(id, hardness);
-                    }
+            DigAction::Start => self.start_digging(id, pos, face, sequence),
+            DigAction::Finish => {
+                let refused = self
+                    .players
+                    .get_mut(&id)
+                    .and_then(|player| player.dig_refused.take());
+                if refused == Some(pos) {
+                    self.refuse_block(id, pos, sequence);
+                } else {
+                    self.dig_block(id, false, pos, sequence);
                 }
-                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             }
             DigAction::Cancel => {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence))
@@ -328,6 +317,36 @@ impl<L: ClientLink> Server<L> {
             DigAction::ReleaseUseItem => self.release_use_item(id),
             DigAction::Stab => self.send_inventory(id),
         }
+    }
+
+    pub(crate) fn dig_block(&mut self, id: PlayerId, start: bool, pos: BlockPos, sequence: i32) {
+        let Some(mode) = self.players.get(&id).map(|p| p.game_mode) else {
+            return;
+        };
+        let Some(state) = self.world.chunks.block(pos) else {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        };
+        let hardness = state.kind().map_or(0.0, |kind| kind.settings().hardness);
+        let breaks = match (start, mode) {
+            (true, GameMode::Creative) => true,
+            (true, GameMode::Survival) => hardness == 0.0,
+            (false, GameMode::Survival) => true,
+            _ => false,
+        };
+        if breaks {
+            let unbreakable = mode == GameMode::Survival && hardness < 0.0;
+            if unbreakable || !self.within_reach(id, pos) || self.is_protected(id, pos) {
+                self.refuse_block(id, pos, sequence);
+                return;
+            }
+            self.set_block(pos, BlockStateId::AIR);
+            if mode == GameMode::Survival {
+                self.drop_block_loot(id, pos, state);
+                self.wear_tool_for_mining(id, hardness);
+            }
+        }
+        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
     }
 
     fn drop_block_loot(&mut self, id: PlayerId, pos: BlockPos, state: BlockStateId) {
@@ -400,40 +419,80 @@ impl<L: ClientLink> Server<L> {
         cursor: Vec3,
         sequence: i32,
     ) {
+        let Some(slot) = self.hand_slot_of(id, hand) else {
+            return;
+        };
         let Some(player) = self.players.get(&id) else {
             return;
         };
-        let slot = match hand {
-            Hand::Main => HOTBAR_START + usize::from(player.inventory.selected_hotbar),
-            Hand::Off => OFFHAND_SLOT,
-        };
-        let sneaking = player.sneaking;
         let game_mode = player.game_mode;
-        let rotation = player.rotation;
         let stack = player.inventory.get(slot).cloned();
         let Some(clicked) = self.world.chunks.block(pos) else {
             self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         };
-        if !sneaking && self.use_block(pos, clicked, sneaking) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        let block_denied =
+            game_mode == GameMode::Spectator && !crate::containers::opens_menu(clicked);
+        self.ask_use_item_on(UseOnStep {
+            player: id,
+            hand,
+            slot,
+            pos,
+            face,
+            cursor,
+            sequence,
+            stack,
+            clicked,
+            game_mode,
+            block_denied,
+        });
+    }
+
+    pub(crate) fn use_item_on_now(&mut self, step: &UseOnStep, block_ok: bool, item_ok: bool) {
+        let (id, hand, slot, pos, face, cursor, sequence) = (
+            step.player,
+            step.hand,
+            step.slot,
+            step.pos,
+            step.face,
+            step.cursor,
+            step.sequence,
+        );
+        let Some(player) = self.players.get(&id) else {
             return;
+        };
+        let sneaking = player.sneaking;
+        let game_mode = player.game_mode;
+        let rotation = player.rotation;
+        let stack = player.inventory.get(slot).cloned();
+        let clicked = step.clicked;
+        if block_ok {
+            if !sneaking && self.use_block(pos, clicked, sneaking) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            let holding = stack.is_some()
+                || self
+                    .players
+                    .get(&id)
+                    .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
+            if !(sneaking && holding) && self.place_book_on_lectern(id, slot, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+            if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+                return;
+            }
+        } else if let Some(state) = self.world.chunks.block(pos) {
+            self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
         }
-        let holding = stack.is_some()
-            || self
-                .players
-                .get(&id)
-                .is_some_and(|player| player.inventory.get(OFFHAND_SLOT).is_some());
-        if !(sneaking && holding) && self.place_book_on_lectern(id, slot, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        }
-        if !(sneaking && holding) && self.place_food_on_campfire(id, hand, slot, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-            return;
-        }
-        if !(sneaking && holding) && self.open_block_menu(id, pos, clicked) {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        if !item_ok {
+            self.refuse_click(id, pos, face, sequence);
             return;
         }
         let usage = ToolUse {

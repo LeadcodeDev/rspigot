@@ -142,6 +142,7 @@ pub enum PlayerInput {
         target: EntityId,
         hand: Hand,
         sneaking: bool,
+        location: Vec3,
     },
     PickBlock {
         pos: BlockPos,

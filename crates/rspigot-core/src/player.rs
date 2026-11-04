@@ -55,6 +55,8 @@ pub struct Player<L> {
     pub ender_items: Vec<rspigot_domain::item::Slot>,
     pub kick_leave_message: Option<String>,
     pub last_input: crate::events::InputState,
+    pub(crate) dig_refused: Option<rspigot_domain::BlockPos>,
+    pub(crate) use_memo: Option<crate::plugins::UseMemo>,
 }
 
 impl<L> Player<L> {

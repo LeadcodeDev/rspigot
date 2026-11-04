@@ -8,6 +8,7 @@ mod inputs;
 mod inventory;
 mod items;
 mod menus;
+mod objects;
 mod orders;
 mod patch;
 mod player;
@@ -16,7 +17,7 @@ mod registry;
 mod resolve;
 mod server;
 mod session;
-mod steps;
+pub(crate) mod steps;
 mod targets;
 mod visibility;
 mod world;
@@ -43,6 +44,7 @@ pub use items::ItemSpec;
 pub(crate) use items::{spec_of, stack_of};
 pub use menus::MAX_PLUGIN_INVENTORIES;
 pub(crate) use menus::{PluginInventories, PluginMenu};
+pub(crate) use objects::UseMemo;
 pub use orders::{
     BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
     ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,

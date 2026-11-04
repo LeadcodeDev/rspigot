@@ -124,6 +124,10 @@ struct Opening {
     lid: Lid,
 }
 
+pub(crate) fn opens_menu(state: BlockStateId) -> bool {
+    opening_of(state).is_some()
+}
+
 fn opening_of(state: BlockStateId) -> Option<Opening> {
     let block = state.kind()?;
     let storage = |kind, entity: &'static str, title, lid| {

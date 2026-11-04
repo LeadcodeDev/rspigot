@@ -1,0 +1,692 @@
+use rand::Rng;
+use rspigot_blocks::BlockKind;
+use rspigot_domain::entity::item::{THROWN_DROP_BELOW_EYES, thrown_velocity};
+use rspigot_domain::entity::reward::{damage_value, max_damage, set_damage_value};
+use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT, same_item_same_components};
+use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
+use rspigot_entities::EntityKind as Kind;
+
+use crate::events::{Animation, ClientEvent, Direction, EntityStatus, EquipmentSlot, Hand};
+use crate::plugins::decisions::Continuation;
+use crate::plugins::events::{
+    Action, EquipmentSlot as Slot, EventResult, Face, PlayerDropItem, PlayerInteract,
+    PlayerInteractAtEntity, PlayerInteractPatch, PlayerItemBreak, PlayerItemDamage,
+    PlayerItemDamagePatch, PlayerTakeLecternBook,
+};
+use crate::plugins::steps::{
+    BookStep, DigStep, DropSource, DropStep, InteractStep, Launch, UseOnStep, UseStep, WearStep,
+};
+use crate::plugins::targets::{Punched, direction_of};
+use crate::plugins::{EntityView, EventKind, EventPayload, LecternData, spec_of};
+use crate::ports::ClientLink;
+use crate::server::{Audience, Server};
+
+const STANDING_EYES: f32 = 1.62;
+const CROUCHING_EYES: f32 = 1.27;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UseMemo {
+    pub(crate) pos: BlockPos,
+    pub(crate) hand: Hand,
+    pub(crate) item: Option<rspigot_domain::ItemId>,
+    pub(crate) use_item: EventResult,
+}
+
+pub(crate) struct Click {
+    pub(crate) action: Action,
+    pub(crate) hand: Option<Hand>,
+    pub(crate) stack: Option<ItemStack>,
+    pub(crate) block: Option<(BlockPos, Direction)>,
+    pub(crate) clicked_position: Option<Vec3>,
+    pub(crate) use_interacted_block: EventResult,
+}
+
+const fn face_of(direction: Direction) -> Face {
+    match direction {
+        Direction::Down => Face::Down,
+        Direction::Up => Face::Up,
+        Direction::North => Face::North,
+        Direction::South => Face::South,
+        Direction::West => Face::West,
+        Direction::East => Face::East,
+    }
+}
+
+const fn slot_of(hand: Hand) -> Slot {
+    match hand {
+        Hand::Main => Slot::Hand,
+        Hand::Off => Slot::OffHand,
+    }
+}
+
+pub(crate) fn settled_results(initial: EventResult, patch: &PlayerInteractPatch) -> (bool, bool) {
+    let block = patch.use_interacted_block.unwrap_or(initial);
+    let item = patch.use_item_in_hand.unwrap_or(EventResult::Default);
+    (block != EventResult::Deny, item != EventResult::Deny)
+}
+
+fn corner_offset(hit: Vec3, pos: BlockPos) -> Vec3 {
+    hit - Vec3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z))
+}
+
+impl<L: ClientLink> Server<L> {
+    pub(crate) fn hand_slot_of(&self, id: PlayerId, hand: Hand) -> Option<usize> {
+        let player = self.players.get(&id)?;
+        Some(match hand {
+            Hand::Main => HOTBAR_START + usize::from(player.inventory.selected_hotbar),
+            Hand::Off => OFFHAND_SLOT,
+        })
+    }
+
+    fn click_payload(&self, id: PlayerId, click: Click) -> Option<EventPayload> {
+        let player = self.snapshot_of(id)?;
+        let stack = click.stack.as_ref();
+        let (clicked_block, block_face) = match click.block {
+            Some((pos, face)) => (Some(pos), face_of(face)),
+            None => (None, Face::South),
+        };
+        Some(EventPayload::PlayerInteract(PlayerInteract {
+            action: click.action,
+            block: clicked_block.is_some(),
+            block_face,
+            block_in_hand: stack.is_some_and(|stack| BlockKind::from_item(stack.item.0).is_some()),
+            clicked_block,
+            clicked_position: click.clicked_position,
+            hand: click.hand.map(slot_of),
+            has_item: stack.is_some(),
+            item: stack.map(spec_of),
+            material: stack
+                .and_then(|stack| stack.item.kind())
+                .map_or("minecraft:air", |kind| kind.name())
+                .to_owned(),
+            player,
+            use_interacted_block: click.use_interacted_block,
+            use_item_in_hand: EventResult::Default,
+        }))
+    }
+
+    pub(crate) fn notice_click(&mut self, id: PlayerId, click: Click) {
+        let payload = self.click_payload(id, click);
+        self.fire(
+            id,
+            Continuation::Notice(EventKind::PlayerInteract),
+            move |_| payload,
+        );
+    }
+
+    pub(crate) fn ask_use_item_on(&mut self, step: UseOnStep) {
+        let id = step.player;
+        let click = Click {
+            action: Action::RightClickBlock,
+            hand: Some(step.hand),
+            stack: step.stack.clone(),
+            block: Some((step.pos, step.face)),
+            clicked_position: Some(step.cursor),
+            use_interacted_block: if step.block_denied {
+                EventResult::Deny
+            } else {
+                EventResult::Allow
+            },
+        };
+        let payload = self.click_payload(id, click);
+        self.fire(id, Continuation::UseItemOn(Box::new(step)), move |_| {
+            payload
+        });
+    }
+
+    pub(super) fn finish_use_item_on(&mut self, step: UseOnStep, patch: PlayerInteractPatch) {
+        let initial = if step.block_denied {
+            EventResult::Deny
+        } else {
+            EventResult::Allow
+        };
+        let (block_ok, item_ok) = settled_results(initial, &patch);
+        let current = self.players.get(&step.player).map(|player| {
+            (
+                player.vitals.is_dead(),
+                player.game_mode,
+                player.inventory.get(step.slot).cloned(),
+            )
+        });
+        let Some((dead, game_mode, stack)) = current else {
+            return;
+        };
+        let unchanged = !dead
+            && game_mode == step.game_mode
+            && stack == step.stack
+            && self.world.chunks.block(step.pos) == Some(step.clicked);
+        if let Some(player) = self.players.get_mut(&step.player) {
+            player.use_memo = Some(UseMemo {
+                pos: step.pos,
+                hand: step.hand,
+                item: step.stack.as_ref().map(|stack| stack.item),
+                use_item: patch.use_item_in_hand.unwrap_or(EventResult::Default),
+            });
+        }
+        if !unchanged {
+            self.refuse_click(step.player, step.pos, step.face, step.sequence);
+            return;
+        }
+        self.use_item_on_now(&step, block_ok, item_ok);
+    }
+
+    pub(crate) fn refuse_click(
+        &mut self,
+        id: PlayerId,
+        pos: BlockPos,
+        face: Direction,
+        sequence: i32,
+    ) {
+        let (dx, dy, dz) = face.offset();
+        for at in [pos, pos.offset(dx, dy, dz)] {
+            if let Some(state) = self.world.chunks.block(at) {
+                self.push(
+                    Audience::One(id),
+                    ClientEvent::BlockUpdate { pos: at, state },
+                );
+            }
+        }
+        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+        self.send_inventory(id);
+    }
+
+    pub(crate) fn use_item(&mut self, id: PlayerId, hand: Hand, sequence: i32, rotation: Rotation) {
+        let Some(stack) = self
+            .hand_slot_of(id, hand)
+            .and_then(|slot| self.players.get(&id)?.inventory.get(slot).cloned())
+        else {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        };
+        let hit = self.look_block(id, rotation);
+        let memo = self
+            .players
+            .get_mut(&id)
+            .and_then(|player| player.use_memo.take());
+        let step = UseStep {
+            player: id,
+            hand,
+            sequence,
+        };
+        if let (Some(hit), Some(memo)) = (hit, memo)
+            && memo.pos == hit.pos
+            && memo.hand == hand
+            && memo.item == Some(stack.item)
+        {
+            self.finish_use_item(step, memo.use_item != EventResult::Deny);
+            return;
+        }
+        let click = match hit {
+            Some(hit) => Click {
+                action: Action::RightClickBlock,
+                hand: Some(hand),
+                stack: Some(stack),
+                block: Some((hit.pos, direction_of(hit.face))),
+                clicked_position: Some(corner_offset(hit.location, hit.pos)),
+                use_interacted_block: EventResult::Deny,
+            },
+            None => Click {
+                action: Action::RightClickAir,
+                hand: Some(hand),
+                stack: Some(stack),
+                block: None,
+                clicked_position: None,
+                use_interacted_block: EventResult::Deny,
+            },
+        };
+        let payload = self.click_payload(id, click);
+        self.fire(id, Continuation::UseItem(step), move |_| payload);
+    }
+
+    pub(super) fn finish_use_item(&mut self, step: UseStep, item_ok: bool) {
+        if self.players.contains_key(&step.player) {
+            if item_ok {
+                self.start_using_item(step.player, step.hand);
+            } else {
+                self.send_inventory(step.player);
+            }
+        }
+        self.push(
+            Audience::One(step.player),
+            ClientEvent::BlockChangedAck(step.sequence),
+        );
+    }
+
+    pub(crate) fn start_digging(
+        &mut self,
+        id: PlayerId,
+        pos: BlockPos,
+        face: Direction,
+        sequence: i32,
+    ) {
+        let Some(game_mode) = self.players.get(&id).map(|player| player.game_mode) else {
+            return;
+        };
+        let Some(clicked) = self.world.chunks.block(pos) else {
+            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
+            return;
+        };
+        if !self.within_reach(id, pos) {
+            self.refuse_block(id, pos, sequence);
+            return;
+        }
+        let stack = self
+            .hand_slot_of(id, Hand::Main)
+            .and_then(|slot| self.players.get(&id)?.inventory.get(slot).cloned());
+        let click = Click {
+            action: Action::LeftClickBlock,
+            hand: Some(Hand::Main),
+            stack,
+            block: Some((pos, face)),
+            clicked_position: None,
+            use_interacted_block: EventResult::Allow,
+        };
+        if self.is_protected(id, pos) {
+            self.notice_click(id, click);
+            self.refuse_block(id, pos, sequence);
+            return;
+        }
+        let payload = self.click_payload(id, click);
+        let step = DigStep {
+            player: id,
+            pos,
+            sequence,
+            clicked,
+            game_mode,
+        };
+        self.fire(id, Continuation::Dig(step), move |_| payload);
+    }
+
+    pub(super) fn finish_dig(&mut self, step: DigStep, patch: PlayerInteractPatch) {
+        let (block_ok, item_ok) = settled_results(EventResult::Allow, &patch);
+        let Some(player) = self.players.get_mut(&step.player) else {
+            return;
+        };
+        let unchanged = player.game_mode == step.game_mode
+            && self.world.chunks.block(step.pos) == Some(step.clicked);
+        let survival = player.game_mode == GameMode::Survival;
+        if !unchanged || !block_ok || !item_ok && survival {
+            player.dig_refused = Some(step.pos);
+            if block_ok && unchanged {
+                self.push(
+                    Audience::One(step.player),
+                    ClientEvent::BlockChangedAck(step.sequence),
+                );
+            } else {
+                self.refuse_block(step.player, step.pos, step.sequence);
+            }
+            return;
+        }
+        player.dig_refused = None;
+        self.dig_block(step.player, true, step.pos, step.sequence);
+    }
+
+    pub(crate) fn punch(&mut self, id: PlayerId, hand: Hand) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if player.vitals.is_dead() {
+            return;
+        }
+        let game_mode = player.game_mode;
+        let stack = player.inventory.held().cloned();
+        let click = match self.punch_target(id) {
+            Punched::Nothing => Some(Click {
+                action: Action::LeftClickAir,
+                hand: Some(Hand::Main),
+                stack,
+                block: None,
+                clicked_position: None,
+                use_interacted_block: EventResult::Deny,
+            }),
+            Punched::Block(hit) if game_mode == GameMode::Adventure => Some(Click {
+                action: Action::LeftClickBlock,
+                hand: Some(Hand::Main),
+                stack,
+                block: Some((hit.pos, direction_of(hit.face))),
+                clicked_position: Some(corner_offset(hit.location, hit.pos)),
+                use_interacted_block: EventResult::Deny,
+            }),
+            Punched::Block(_) | Punched::Entity => None,
+        };
+        if let Some(click) = click {
+            self.notice_click(id, click);
+        }
+        self.swing_arm(id, hand);
+    }
+
+    pub(crate) fn ask_interact_entity(
+        &mut self,
+        id: PlayerId,
+        target: EntityId,
+        hand: Hand,
+        location: Vec3,
+    ) {
+        let stack = self
+            .hand_slot_of(id, hand)
+            .and_then(|slot| self.players.get(&id)?.inventory.get(slot).cloned());
+        let step = InteractStep {
+            player: id,
+            target,
+            hand,
+            stack,
+        };
+        self.fire(
+            id,
+            Continuation::InteractEntity(Box::new(step)),
+            move |server| {
+                Some(EventPayload::PlayerInteractAtEntity(
+                    PlayerInteractAtEntity {
+                        clicked_position: location,
+                        hand: slot_of(hand),
+                        player: server.snapshot_of(id)?,
+                        right_clicked: server.entity_view(target)?,
+                    },
+                ))
+            },
+        );
+    }
+
+    pub(super) fn finish_interact_entity(&mut self, step: InteractStep, cancelled: bool) {
+        let stack = self
+            .hand_slot_of(step.player, step.hand)
+            .and_then(|slot| self.players.get(&step.player)?.inventory.get(slot).cloned());
+        let same_item =
+            stack.as_ref().map(|stack| stack.item) == step.stack.as_ref().map(|stack| stack.item);
+        if cancelled || !same_item || !self.may_interact_with(step.player, step.target) {
+            self.refresh_hands(step.player);
+            return;
+        }
+        self.interact_now(step.player, step.target, step.hand);
+    }
+
+    pub(crate) fn ask_drop(
+        &mut self,
+        id: PlayerId,
+        stack: ItemStack,
+        source: DropSource,
+        thrower: bool,
+        predicted: bool,
+    ) {
+        let Some(launch) = self.launch_from(id) else {
+            return;
+        };
+        let item_drop = EntityView {
+            id: launch.base.id,
+            uuid: launch.base.uuid,
+            kind: Kind::Item.name().to_owned(),
+            position: launch.base.position,
+        };
+        let step = DropStep {
+            player: id,
+            stack,
+            source,
+            launch,
+            thrower,
+            predicted,
+        };
+        self.fire(id, Continuation::Drop(Box::new(step)), move |server| {
+            Some(EventPayload::PlayerDropItem(PlayerDropItem {
+                item_drop,
+                player: server.snapshot_of(id)?,
+            }))
+        });
+    }
+
+    fn launch_from(&mut self, id: PlayerId) -> Option<Launch> {
+        let player = self.players.get(&id)?;
+        let eyes = if player.sneaking {
+            CROUCHING_EYES
+        } else {
+            STANDING_EYES
+        };
+        let position = Vec3::new(
+            player.position.x,
+            player.position.y + f64::from(eyes) - f64::from(THROWN_DROP_BELOW_EYES),
+            player.position.z,
+        );
+        let rotation = player.rotation;
+        let yaw = self.rng.random::<f32>() * 360.0;
+        let rolls: [f32; 4] = std::array::from_fn(|_| self.rng.random::<f32>());
+        let velocity = thrown_velocity(rotation.yaw, rotation.pitch, rolls);
+        let mut base = self.new_entity_base(Kind::Item);
+        base.position = position;
+        base.old_position = position;
+        Some(Launch {
+            base,
+            velocity,
+            yaw,
+        })
+    }
+
+    pub(super) fn finish_drop(&mut self, step: DropStep, cancelled: bool) {
+        let id = step.player;
+        let Some(player) = self.players.get_mut(&id) else {
+            self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            return;
+        };
+        if cancelled {
+            match step.source {
+                DropSource::Selected { .. } => self.send_inventory(id),
+                DropSource::Creative => {}
+                DropSource::Released => self.give_back(id, step.stack, step.thrower),
+            }
+            return;
+        }
+        if let DropSource::Selected { slot } = step.source {
+            let held = player.inventory.get(slot).cloned();
+            let still = held.as_ref().is_some_and(|held| {
+                same_item_same_components(held, &step.stack) && held.count >= step.stack.count
+            });
+            if !still {
+                self.send_inventory(id);
+                return;
+            }
+            let before = Self::equipment_of(player);
+            let mut left = held;
+            rspigot_domain::item::split(&mut left, u32::from(step.stack.count.get()));
+            player.inventory.set(slot, left.clone());
+            player.menu.set_remote(slot, left);
+            player.vitals.attack_ticker = 0;
+            self.swing_for_drop(id, step.predicted);
+            self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+            self.broadcast_equipment_changes(id, before);
+            return;
+        }
+        self.swing_for_drop(id, step.predicted);
+        self.throw(step.launch, step.stack, step.thrower.then_some(id.0));
+    }
+
+    fn swing_for_drop(&mut self, id: PlayerId, predicted: bool) {
+        let Some(entity) = self.players.get(&id).map(|player| player.entity_id) else {
+            return;
+        };
+        let swing = ClientEvent::EntityAnimation {
+            entity,
+            animation: Animation::SwingMainArm,
+        };
+        if !predicted {
+            self.push(Audience::One(id), swing.clone());
+        }
+        self.push(Audience::Trackers(entity), swing);
+    }
+
+    fn give_back(&mut self, id: PlayerId, stack: ItemStack, thrown: bool) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        let main = HOTBAR_START + usize::from(player.inventory.selected_hotbar);
+        let held = player.inventory.get(main).cloned();
+        match held {
+            None if thrown => {
+                player.inventory.set(main, Some(stack));
+            }
+            Some(mut held)
+                if thrown
+                    && stack.count.get() == 1
+                    && same_item_same_components(&held, &stack)
+                    && u32::from(held.count.get()) < rspigot_domain::item::max_stack(&held) =>
+            {
+                held.count = held.count.saturating_add(1);
+                player.inventory.set(main, Some(held));
+            }
+            _ => {
+                let mut rest = Some(stack);
+                player.inventory.add(&mut rest, false);
+            }
+        }
+        self.sync_inventory(id);
+        self.broadcast_held_item(id);
+    }
+
+    pub(crate) fn wear(&mut self, id: PlayerId, hand: Hand, amount: i32) {
+        let Some(slot) = self.hand_slot_of(id, hand) else {
+            return;
+        };
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        let Some(stack) = player.inventory.get(slot).cloned() else {
+            return;
+        };
+        if stack
+            .item
+            .kind()
+            .and_then(|kind| kind.max_damage())
+            .is_none()
+        {
+            return;
+        }
+        let damage = if player.abilities().instant_build || max_damage(&stack).is_none() {
+            0
+        } else {
+            amount
+        };
+        let item = spec_of(&stack);
+        let step = WearStep {
+            player: id,
+            hand,
+            slot,
+            stack,
+            damage,
+        };
+        self.fire(
+            id,
+            Continuation::ItemDamage(Box::new(step)),
+            move |server| {
+                Some(EventPayload::PlayerItemDamage(PlayerItemDamage {
+                    damage,
+                    item,
+                    player: server.snapshot_of(id)?,
+                }))
+            },
+        );
+    }
+
+    pub(super) fn finish_wear(
+        &mut self,
+        step: WearStep,
+        cancelled: bool,
+        patch: PlayerItemDamagePatch,
+    ) {
+        let id = step.player;
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        if player.inventory.get(step.slot) != Some(&step.stack) {
+            return;
+        }
+        if cancelled {
+            self.send_inventory(id);
+            return;
+        }
+        let damage = patch.damage.unwrap_or(step.damage);
+        if damage == 0 {
+            if damage != step.damage {
+                self.send_inventory(id);
+            }
+            return;
+        }
+        let before = Self::equipment_of(player);
+        let mut stack = step.stack.clone();
+        let worn = damage_value(&stack).saturating_add(damage);
+        set_damage_value(&mut stack, worn);
+        let broken = max_damage(&stack).is_some_and(|max| damage_value(&stack) >= max);
+        let entity = player.entity_id;
+        if broken {
+            let broken_item = spec_of(&stack);
+            self.fire(
+                id,
+                Continuation::Notice(EventKind::PlayerItemBreak),
+                move |server| {
+                    Some(EventPayload::PlayerItemBreak(PlayerItemBreak {
+                        broken_item,
+                        player: server.snapshot_of(id)?,
+                    }))
+                },
+            );
+        }
+        if let Some(player) = self.players.get_mut(&id) {
+            player
+                .inventory
+                .set(step.slot, if broken { None } else { Some(stack) });
+        }
+        if broken {
+            let equipment = match step.hand {
+                Hand::Main => EquipmentSlot::MainHand,
+                Hand::Off => EquipmentSlot::OffHand,
+            };
+            let status = ClientEvent::EntityStatus {
+                entity,
+                status: EntityStatus::EquipmentBreak(equipment),
+            };
+            self.push(Audience::One(id), status.clone());
+            self.push(Audience::Trackers(entity), status);
+        }
+        self.sync_inventory(id);
+        self.broadcast_equipment_changes(id, before);
+        if damage != step.damage {
+            self.send_inventory(id);
+        }
+    }
+
+    pub(crate) fn ask_take_book(
+        &mut self,
+        id: PlayerId,
+        pos: BlockPos,
+        window: i32,
+        book: ItemStack,
+    ) {
+        let page = self.lectern_page(pos);
+        let spec = spec_of(&book);
+        let step = BookStep {
+            player: id,
+            pos,
+            window,
+            book,
+        };
+        self.fire(id, Continuation::TakeBook(Box::new(step)), move |server| {
+            Some(EventPayload::PlayerTakeLecternBook(PlayerTakeLecternBook {
+                book: Some(spec.clone()),
+                lectern: LecternData {
+                    pos,
+                    book: Some(spec),
+                    page,
+                },
+                player: server.snapshot_of(id)?,
+            }))
+        });
+    }
+
+    pub(super) fn finish_take_book(&mut self, step: BookStep) {
+        let open = self
+            .players
+            .get(&step.player)
+            .and_then(|player| player.open_menu.as_ref())
+            .is_some_and(|open| open.window == step.window && open.backing.pos == step.pos);
+        if open && self.lectern_book(step.pos).as_ref() == Some(&step.book) {
+            self.take_book_now(step.player, step.pos, step.book);
+        }
+    }
+}

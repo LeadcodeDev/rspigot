@@ -335,6 +335,7 @@ fn interact(server: &mut Server<Link>, client: &mut Client, target: EntityId) {
             target,
             hand: Hand::Main,
             sneaking: false,
+            location: Vec3::ZERO,
         },
     );
     pump(server, client, 1);
