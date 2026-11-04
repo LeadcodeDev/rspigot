@@ -507,7 +507,8 @@ impl<L: ClientLink> Server<L> {
         let mode_kept = player.game_mode == step.game_mode;
         let result = writes.result.unwrap_or(step.result);
         let mut act = result != EventResult::Deny;
-        let mut full = matches!(kind, EventKind::CraftItem | EventKind::SmithItem);
+        let heard = self.listened(kind);
+        let mut full = heard && matches!(kind, EventKind::CraftItem | EventKind::SmithItem);
         let current = self.window_item(id, window, step.click.slot);
         let cursor = self.window_cursor(id, window);
         let unchanged =
@@ -529,8 +530,10 @@ impl<L: ClientLink> Server<L> {
         if !(act && self.shift_result(id, window, &step.click, full)) {
             self.apply_window_click(id, window, &step.click, act, full);
         }
+        let resent = matches!(window, Window::Plugin(_))
+            || (heard && matches!(window, Window::Container(_)));
         if !act
-            && window != Window::Inventory
+            && resent
             && step.click.input == ClickInput::Swap
             && step.click.button == OFFHAND_BUTTON
         {

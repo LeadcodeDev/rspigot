@@ -913,10 +913,12 @@ fn a_recipe_in_the_crafting_table_shows_its_result_and_crafting_uses_the_ingredi
     );
     world.click(WINDOW, 0, 0, ClickInput::QuickMove);
 
-    let slots = content(&world.alice, WINDOW).expect("a craft resends the whole window");
-    assert_eq!(slots[1], None);
-    assert_eq!(slots[0], None);
-    assert_eq!(slots[45], Some((item("minecraft:oak_planks"), 4)));
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), Some(None));
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 45),
+        Some(Some((item("minecraft:oak_planks"), 4)))
+    );
 }
 
 #[test]
@@ -2919,11 +2921,13 @@ fn a_smithing_table_upgrades_diamond_gear_to_netherite() {
     assert_eq!(last_data(&world.alice, WINDOW, 0), Some(0));
 
     world.click(WINDOW, 3, 0, ClickInput::Pickup);
-    let slots = content(&world.alice, WINDOW).expect("a smithing resends the whole window");
-    assert_eq!(slots[0], None);
-    assert_eq!(slots[1], None);
-    assert_eq!(slots[2], Some((item("minecraft:netherite_ingot"), 1)));
-    assert_eq!(slots[3], None);
+    assert_eq!(slot_update(&world.alice, WINDOW, 0), Some(None));
+    assert_eq!(slot_update(&world.alice, WINDOW, 1), Some(None));
+    assert_eq!(
+        slot_update(&world.alice, WINDOW, 2),
+        Some(Some((item("minecraft:netherite_ingot"), 1)))
+    );
+    assert_eq!(slot_update(&world.alice, WINDOW, 3), Some(None));
     assert_eq!(
         sounds_heard(&world.alice, "minecraft:block.smithing_table.use"),
         1
