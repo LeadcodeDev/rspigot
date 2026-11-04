@@ -2,7 +2,7 @@ use std::num::NonZeroU8;
 
 use rspigot_items::CookingKind;
 
-use crate::furnace::recipe_for;
+use crate::furnace::{CookingRecipe, recipe_for};
 use crate::item::{ItemStack, Slot};
 
 pub const SLOTS: usize = 4;
@@ -20,38 +20,54 @@ impl Campfire {
         recipe_for(CookingKind::Campfire, stack).is_some()
     }
 
-    pub fn place(&mut self, stack: &ItemStack) -> bool {
-        let Some(recipe) = recipe_for(CookingKind::Campfire, stack) else {
-            return false;
-        };
-        let Some(slot) = self.items.iter().position(Option::is_none) else {
-            return false;
-        };
-        self.total[slot] = i32::from(recipe.cooking_time);
+    pub fn recipe(stack: &ItemStack) -> Option<CookingRecipe> {
+        recipe_for(CookingKind::Campfire, stack)
+    }
+
+    pub fn free_slot(&self) -> Option<usize> {
+        self.items.iter().position(Option::is_none)
+    }
+
+    pub fn put(&mut self, slot: usize, stack: &ItemStack, total: i32) {
+        self.total[slot] = total;
         self.progress[slot] = 0;
         self.items[slot] = Some(ItemStack {
             count: NonZeroU8::MIN,
             ..stack.clone()
         });
+    }
+
+    pub fn place(&mut self, stack: &ItemStack) -> bool {
+        let Some(recipe) = Self::recipe(stack) else {
+            return false;
+        };
+        let Some(slot) = self.free_slot() else {
+            return false;
+        };
+        self.put(slot, stack, i32::from(recipe.cooking_time));
         true
+    }
+
+    pub fn advance(&mut self, slot: usize) -> Option<(ItemStack, ItemStack)> {
+        let stack = self.items[slot].as_ref()?;
+        self.progress[slot] += 1;
+        if self.progress[slot] < self.total[slot] {
+            return None;
+        }
+        let result = Self::recipe(stack).map_or_else(
+            || stack.clone(),
+            |recipe| ItemStack::new(recipe.result.id(), NonZeroU8::MIN),
+        );
+        Some((stack.clone(), result))
     }
 
     pub fn cook(&mut self) -> Vec<ItemStack> {
         let mut done = Vec::new();
         for slot in 0..SLOTS {
-            let Some(stack) = &self.items[slot] else {
-                continue;
-            };
-            self.progress[slot] += 1;
-            if self.progress[slot] < self.total[slot] {
-                continue;
+            if let Some((_, result)) = self.advance(slot) {
+                done.push(result);
+                self.items[slot] = None;
             }
-            let result = recipe_for(CookingKind::Campfire, stack).map_or_else(
-                || stack.clone(),
-                |recipe| ItemStack::new(recipe.result.id(), NonZeroU8::MIN),
-            );
-            done.push(result);
-            self.items[slot] = None;
         }
         done
     }

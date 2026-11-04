@@ -138,8 +138,7 @@ impl<L: ClientLink> Server<L> {
         self.world.chunks.block(pos).unwrap_or(BlockStateId::AIR)
     }
 
-    pub(crate) fn notify_neighbours(&mut self, pos: BlockPos) {
-        self.on_place(pos);
+    pub(crate) fn update_neighbour_shapes(&mut self, pos: BlockPos) {
         for face in Face::ALL {
             self.update_shape(step(pos, face), face.opposite());
         }
@@ -189,7 +188,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn on_place(&mut self, pos: BlockPos) {
+    pub(crate) fn on_place(&mut self, pos: BlockPos) {
         let Some(kind) = self.block_or_air(pos).kind() else {
             return;
         };

@@ -673,13 +673,29 @@ impl<L: ClientLink> Server<L> {
                 self.finish_place(*step, cancelled, build);
                 Vec::new()
             }
+            Continuation::Physics(step) => {
+                if !cancelled {
+                    self.finish_physics(step);
+                }
+                Vec::new()
+            }
+            Continuation::Cook(step) => {
+                if !cancelled {
+                    self.finish_cook(*step, patch_of!(patch, BlockCook));
+                }
+                Vec::new()
+            }
+            Continuation::CampfireStart(step) => {
+                self.finish_campfire_start(*step, patch_of!(patch, CampfireStart));
+                Vec::new()
+            }
         }
     }
 
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_), Undo::SendBack(_)) => {}
+            (Lane::Login(_) | Lane::Block(_), Undo::SendBack(_)) => {}
         }
     }
 

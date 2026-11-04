@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
-use rspigot_domain::Vec3;
 use rspigot_domain::player::PlayerId;
+use rspigot_domain::{BlockPos, Vec3};
 use rustc_hash::FxHashMap;
 
 pub(crate) use crate::plugins::steps::{Continuation, Held, MoveStep, Undo};
@@ -11,6 +11,7 @@ use crate::plugins::{EventKind, EventPatch, EventPayload, Verdict};
 pub(crate) enum Lane {
     Player(PlayerId),
     Login(u64),
+    Block(BlockPos),
 }
 
 impl From<PlayerId> for Lane {

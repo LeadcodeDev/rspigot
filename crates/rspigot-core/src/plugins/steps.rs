@@ -362,6 +362,33 @@ pub(crate) struct PlaceStep {
     pub(crate) forced: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PhysicsStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) state: BlockStateId,
+}
+
+#[derive(Debug)]
+pub(crate) struct CookStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) slot: usize,
+    pub(crate) source: ItemStack,
+    pub(crate) result: ItemStack,
+}
+
+#[derive(Debug)]
+pub(crate) struct CampfireStep {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) pos: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) held: ItemStack,
+    pub(crate) game_mode: GameMode,
+    pub(crate) cooking_slot: usize,
+    pub(crate) total: i32,
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -409,6 +436,9 @@ pub(crate) enum Continuation {
     CanBuild(Box<BuildStep>),
     Place(Box<PlaceStep>),
     MultiPlace(Box<PlaceStep>),
+    Physics(PhysicsStep),
+    Cook(Box<CookStep>),
+    CampfireStart(Box<CampfireStep>),
 }
 
 impl Continuation {
@@ -455,6 +485,9 @@ impl Continuation {
             Self::CanBuild(_) => EventKind::BlockCanBuild,
             Self::Place(_) => EventKind::BlockPlace,
             Self::MultiPlace(_) => EventKind::BlockMultiPlace,
+            Self::Physics(_) => EventKind::BlockPhysics,
+            Self::Cook(_) => EventKind::BlockCook,
+            Self::CampfireStart(_) => EventKind::CampfireStart,
         }
     }
 
@@ -482,12 +515,16 @@ impl Continuation {
             (Self::PickupArrow(one), Self::PickupArrow(other)) => {
                 one.player == other.player && one.arrow == other.arrow
             }
+            (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos,
             _ => false,
         }
     }
 
     pub(crate) const fn may_skip(&self) -> bool {
-        matches!(self, Self::Velocity(_) | Self::PickupArrow(_))
+        matches!(
+            self,
+            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_)
+        )
     }
 }
 
