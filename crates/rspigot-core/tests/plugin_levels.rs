@@ -68,15 +68,16 @@ fn skip(amount: i64, reason: TimeSkipReason) -> EventPayload {
 }
 
 #[test]
-fn time_add_fires_a_command_skip_after_the_time_moved_and_its_amount_is_patched() {
+fn time_add_with_a_decider_moves_the_time_once_by_the_settled_amount() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::TimeSkip)]);
     let alice = s.players[0].clone();
     let before = day_time(&mut s);
+    alice.link.take();
     console(&mut s, "time add 100");
     let asked = last_asked(&s.plugin, EventKind::TimeSkip);
     assert_eq!(asked.payload, skip(100, TimeSkipReason::Command));
-    assert_eq!(day_time(&mut s), before + 100);
-    assert_eq!(time_packets(&alice), [before + 100]);
+    assert_eq!(day_time(&mut s), before);
+    assert!(time_packets(&alice).is_empty());
     rule_on(
         &mut s.server,
         1,
@@ -91,13 +92,25 @@ fn time_add_fires_a_command_skip_after_the_time_moved_and_its_amount_is_patched(
 }
 
 #[test]
-fn a_cancelled_time_skip_undoes_nothing_as_in_spigot() {
+fn a_cancelled_time_skip_keeps_the_time() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::TimeSkip)]);
+    let alice = s.players[0].clone();
     let before = day_time(&mut s);
+    alice.link.take();
     console(&mut s, "time add 500");
     let asked = last_asked(&s.plugin, EventKind::TimeSkip);
     rule_on(&mut s.server, 1, asked.id, true, None);
-    assert_eq!(day_time(&mut s), before + 500);
+    assert_eq!(day_time(&mut s), before);
+    assert!(time_packets(&alice).is_empty());
+}
+
+#[test]
+fn time_add_without_a_decider_moves_the_time_at_once() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::TimeSkip)]);
+    let before = day_time(&mut s);
+    console(&mut s, "time add 100");
+    assert_eq!(day_time(&mut s), before + 100);
+    assert_eq!(settled_for(&s.plugin, EventKind::TimeSkip).len(), 1);
 }
 
 #[test]

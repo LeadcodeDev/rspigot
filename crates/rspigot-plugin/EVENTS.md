@@ -239,7 +239,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `TNTPrimeEvent` | `TNTPrime` | yes | - | - | not fired yet: needs redstone (#55) |
 | `TabCompleteEvent` | `TabComplete` | yes | `set_completions` | - | not fired yet: its fire point comes with its domain |
 | `ThunderChangeEvent` | `ThunderChange` | yes | - | - | fired: from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own |
-| `TimeSkipEvent` | `TimeSkip` | yes | `set_skip_amount` | - | fired: COMMAND for /time add and CUSTOM for the plugin time order, after the time moved; a cancel undoes nothing as in Spigot 26.3, a patched amount moves the time by the difference; /time set fires nothing |
+| `TimeSkipEvent` | `TimeSkip` | yes | `set_skip_amount` | - | fired: COMMAND for /time add and CUSTOM for the plugin time order; with a deciding handler the time moves once the event settles, by the settled amount, and a cancel keeps it, a documented deviation from Spigot 26.3 which moves it before firing; /time set fires nothing |
 | `TradeSelectEvent` | `TradeSelect` | yes | `set_result` | - | not fired yet: needs villagers and trading (#48) |
 | `TrialSpawnerSpawnEvent` | `TrialSpawnerSpawn` | yes | - | - | not fired yet: needs the mobs or objects involved |
 | `VaultDisplayItemEvent` | `VaultDisplayItem` | yes | `set_display_item` | - | not fired yet: needs redstone (#55) |

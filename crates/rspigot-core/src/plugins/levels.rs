@@ -61,15 +61,17 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn change_day_time(&mut self, time: i64, reason: Option<TimeSkipReason>) {
         let skipped = time.wrapping_sub(self.world.level.day_time);
-        self.world.level.day_time = time;
-        let update = self.time_event();
-        self.push(Audience::All, update);
         let Some(reason) = reason.filter(|_| skipped != 0) else {
+            self.move_day_time(skipped);
             return;
         };
+        let applied = !self.plugins.listens(EventKind::TimeSkip, Access::Decide);
+        if applied {
+            self.move_day_time(skipped);
+        }
         self.fire(
             Lane::World,
-            Continuation::TimeSkip(TimeStep { skipped }),
+            Continuation::TimeSkip(TimeStep { skipped, applied }),
             move |server| {
                 Some(EventPayload::TimeSkip(TimeSkip {
                     skip_amount: skipped,
@@ -80,16 +82,17 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn finish_time_skip(&mut self, step: TimeStep, patch: TimeSkipPatch) {
-        let Some(amount) = patch.skip_amount.filter(|amount| *amount != step.skipped) else {
-            return;
-        };
+    fn move_day_time(&mut self, amount: i64) {
         let level = &mut self.world.level;
-        level.day_time = level
-            .day_time
-            .wrapping_add(amount.wrapping_sub(step.skipped));
+        level.day_time = level.day_time.wrapping_add(amount);
         let update = self.time_event();
         self.push(Audience::All, update);
+    }
+
+    pub(crate) fn finish_time_skip(&mut self, step: TimeStep, patch: TimeSkipPatch) {
+        if !step.applied {
+            self.move_day_time(patch.skip_amount.unwrap_or(step.skipped));
+        }
     }
 
     pub(crate) fn change_spawn(&mut self, pos: BlockPos) {

@@ -412,6 +412,7 @@ pub(crate) struct ExplodeStep {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TimeStep {
     pub(crate) skipped: i64,
+    pub(crate) applied: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
