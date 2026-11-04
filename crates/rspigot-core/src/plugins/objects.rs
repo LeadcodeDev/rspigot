@@ -113,12 +113,11 @@ impl<L: ClientLink> Server<L> {
         }))
     }
 
-    pub(crate) fn notice_click(&mut self, id: PlayerId, click: Click) {
-        let payload = self.click_payload(id, click);
+    pub(crate) fn notice_click(&mut self, id: PlayerId, click: impl FnOnce(&Self) -> Click) {
         self.fire(
             id,
             Continuation::Notice(EventKind::PlayerInteract),
-            move |_| payload,
+            move |server| server.click_payload(id, click(server)),
         );
     }
 
@@ -343,23 +342,19 @@ impl<L: ClientLink> Server<L> {
             self.refuse_block(id, pos, sequence);
             return;
         }
-        let stack = self
-            .hand_slot_of(id, Hand::Main)
-            .and_then(|slot| self.players.get(&id)?.inventory.get(slot).cloned());
-        let click = Click {
+        let left_click = move |server: &Self| Click {
             action: Action::LeftClickBlock,
             hand: Some(Hand::Main),
-            stack,
+            stack: server.held_in(id, Hand::Main),
             block: Some((pos, face)),
             clicked_position: None,
             use_interacted_block: EventResult::Allow,
         };
         if self.is_protected(id, pos) {
-            self.notice_click(id, click);
+            self.notice_click(id, left_click);
             self.refuse_block(id, pos, sequence);
             return;
         }
-        let payload = self.click_payload(id, click);
         let step = DigStep {
             player: id,
             pos,
@@ -367,7 +362,9 @@ impl<L: ClientLink> Server<L> {
             clicked,
             game_mode,
         };
-        self.fire(id, Continuation::Dig(step), move |_| payload);
+        self.fire(id, Continuation::Dig(step), move |server| {
+            server.click_payload(id, left_click(server))
+        });
     }
 
     pub(crate) fn finish_digging(&mut self, step: FinishStep) {
@@ -421,28 +418,24 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let game_mode = player.game_mode;
-        let stack = player.inventory.held().cloned();
-        let click = match self.punch_target(id) {
-            Punched::Nothing => Some(Click {
-                action: Action::LeftClickAir,
-                hand: Some(Hand::Main),
-                stack,
-                block: None,
-                clicked_position: None,
-                use_interacted_block: EventResult::Deny,
-            }),
-            Punched::Block(hit) if game_mode == GameMode::Adventure => Some(Click {
-                action: Action::LeftClickBlock,
-                hand: Some(Hand::Main),
-                stack,
-                block: Some((hit.pos, direction_of(hit.face))),
-                clicked_position: Some(corner_offset(hit.location, hit.pos)),
-                use_interacted_block: EventResult::Deny,
-            }),
+        let punched = match self.punch_target(id) {
+            Punched::Nothing => Some((Action::LeftClickAir, None, None)),
+            Punched::Block(hit) if game_mode == GameMode::Adventure => Some((
+                Action::LeftClickBlock,
+                Some((hit.pos, direction_of(hit.face))),
+                Some(corner_offset(hit.location, hit.pos)),
+            )),
             Punched::Block(_) | Punched::Entity => None,
         };
-        if let Some(click) = click {
-            self.notice_click(id, click);
+        if let Some((action, block, clicked_position)) = punched {
+            self.notice_click(id, move |server| Click {
+                action,
+                hand: Some(Hand::Main),
+                stack: server.held_in(id, Hand::Main),
+                block,
+                clicked_position,
+                use_interacted_block: EventResult::Deny,
+            });
         }
         self.swing_arm(id, hand);
     }
@@ -773,8 +766,6 @@ impl<L: ClientLink> Server<L> {
         window: i32,
         book: ItemStack,
     ) {
-        let page = self.lectern_page(pos);
-        let spec = spec_of(&book);
         let step = BookStep {
             player: id,
             pos,
@@ -782,12 +773,13 @@ impl<L: ClientLink> Server<L> {
             book,
         };
         self.fire(id, Continuation::TakeBook(Box::new(step)), move |server| {
+            let book = server.lectern_book(pos).as_ref().map(spec_of);
             Some(EventPayload::PlayerTakeLecternBook(PlayerTakeLecternBook {
-                book: Some(spec.clone()),
+                book: book.clone(),
                 lectern: LecternData {
                     pos,
-                    book: Some(spec),
-                    page,
+                    book,
+                    page: server.lectern_page(pos),
                 },
                 player: server.snapshot_of(id)?,
             }))
