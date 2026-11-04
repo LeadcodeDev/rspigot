@@ -1142,6 +1142,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_spawn_that_cannot_be_placed_forgets_its_initial_target() {
+        let mut server = quiet_server();
+        let zombie = rspigot_entities::EntityKind::Zombie;
+        let first = crate::mob_actions::new_mob(server.new_entity_base(zombie));
+        let uuid = first.base.uuid;
+        assert!(server.place_entity(first).is_ok());
+        let mut base = server.new_entity_base(zombie);
+        base.uuid = uuid;
+        let twin = crate::mob_actions::new_mob(base);
+        let id = twin.base.id;
+        server
+            .entities
+            .mobs
+            .initial_targets
+            .insert(id, rspigot_domain::EntityId(99));
+        let step = crate::plugins::steps::SpawnStep {
+            kind: EventKind::CreatureSpawn,
+            entity: twin,
+            loaded: false,
+            birth: crate::plugins::steps::Birth::of(
+                crate::plugins::events::CreatureSpawnReason::Custom,
+            ),
+        };
+        server.finish_spawn(step, false);
+        assert!(!server.entities.mobs.initial_targets.contains_key(&id));
+    }
+
     fn quiet_server() -> Server<Quiet> {
         let config = GameConfig {
             chunk_workers: 1,

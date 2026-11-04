@@ -189,6 +189,9 @@ impl<L: ClientLink> Server<L> {
             }
             placed = self.place_entity(entity).ok().map(|id| (id, name));
             self.entities.mobs.spawn_randoms.remove(&id);
+            if placed.is_none() {
+                self.entities.mobs.initial_targets.remove(&id);
+            }
         }
         self.after_spawn(birth.then, placed);
     }
