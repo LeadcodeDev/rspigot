@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -9,11 +10,37 @@ pub struct PlayerSample {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PingHook {
+    #[default]
+    Off,
+    Notify,
+    Ask,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StatusSnapshot {
     pub online: u32,
     pub max_players: u32,
     pub sample: Vec<PlayerSample>,
+    pub ping: PingHook,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusPing {
+    pub address: IpAddr,
+    pub hostname: String,
+    pub motd: String,
+    pub legacy: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusReply {
+    pub motd: String,
+    pub max_players: i32,
+    pub online: i32,
+    pub sample: Vec<PlayerSample>,
+    pub icon: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Default)]

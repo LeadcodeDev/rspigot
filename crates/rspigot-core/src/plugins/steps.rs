@@ -18,6 +18,7 @@ use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 use crate::plugins::furnaces::{ExtractStep, FurnaceStep};
 use crate::plugins::prepare::PrepareStep;
 use crate::plugins::windows::{ButtonPacket, ClosePacket, OpenStep, PluginOpenStep};
+use crate::status::StatusReply;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Held {
@@ -790,6 +791,22 @@ pub(crate) struct LootStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct PingStep {
+    pub(crate) motd: String,
+    pub(crate) legacy: bool,
+    pub(crate) reply: Option<Sender<StatusReply>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SuggestStep {
+    pub(crate) player: PlayerId,
+    pub(crate) request: i32,
+    pub(crate) start: i32,
+    pub(crate) length: i32,
+    pub(crate) matches: Vec<String>,
+}
+
+#[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
     Notice(EventKind),
@@ -882,6 +899,10 @@ pub(crate) enum Continuation {
     Button(ButtonPacket),
     CreativeSlot(Box<CreativePacket>),
     Creative(Box<CreativeStep>),
+    Ping(Box<PingStep>),
+    ServerCommand(String),
+    TabComplete(Box<SuggestStep>),
+    Broadcast(String),
 }
 
 impl Continuation {
@@ -971,6 +992,10 @@ impl Continuation {
             Self::Close(_) => EventKind::InventoryClose,
             Self::Button(_) => EventKind::InventoryClick,
             Self::CreativeSlot(_) | Self::Creative(_) => EventKind::InventoryCreative,
+            Self::Ping(_) => EventKind::ServerListPing,
+            Self::ServerCommand(_) => EventKind::ServerCommand,
+            Self::TabComplete(_) => EventKind::TabComplete,
+            Self::Broadcast(_) => EventKind::BroadcastMessage,
         }
     }
 

@@ -57,7 +57,7 @@ mod tests {
         let snapshot = StatusSnapshot {
             online: 1,
             max_players: 20,
-            sample: Vec::new(),
+            ..StatusSnapshot::default()
         };
         let parsed: Value = serde_json::from_str(&status_json(&config, &snapshot)).unwrap();
         assert_eq!(parsed["version"]["protocol"], 777);

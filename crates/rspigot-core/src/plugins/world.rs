@@ -26,9 +26,7 @@ impl<L: ClientLink> Server<L> {
 
     fn server_order(&mut self, connection: u64, order: ServerOrder) -> Result<(), String> {
         match order {
-            ServerOrder::Broadcast(message) => {
-                CommandContext::broadcast(self, resolve::text(&message));
-            }
+            ServerOrder::Broadcast(message) => self.broadcast_order(connection, message),
             ServerOrder::DispatchCommand(line) => {
                 commands::execute(self, CommandSender::Console, &line);
             }

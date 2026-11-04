@@ -52,6 +52,29 @@ impl<L: ClientLink> Server<L> {
         let listeners =
             self.plugins
                 .listeners(payload.kind(), Access::Observe, &self.config.plugins);
+        self.send_notice(id, listeners, payload, cancelled, phase);
+    }
+
+    pub(crate) fn notify_others(&mut self, concerned: u64, payload: &EventPayload) {
+        let mut listeners =
+            self.plugins
+                .listeners(payload.kind(), Access::Observe, &self.config.plugins);
+        listeners.retain(|(connection, _)| *connection != concerned);
+        if listeners.is_empty() {
+            return;
+        }
+        let id = self.next_event_id();
+        self.send_notice(id, listeners, payload, false, Phase::Settled);
+    }
+
+    fn send_notice(
+        &self,
+        id: u64,
+        listeners: Vec<(u64, HandlerSpec)>,
+        payload: &EventPayload,
+        cancelled: bool,
+        phase: Phase,
+    ) {
         let (cancelled, heard) = audience(listeners, payload, cancelled, phase);
         for (connection, handlers) in heard {
             self.plugins.send(
@@ -366,8 +389,12 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn plugin_disconnected(&mut self, connection: u64) {
-        self.plugins.disconnect(connection);
+        let departed = self.plugins.disconnect(connection);
         self.forget_plugin_inventories(connection);
+        if let Some(plugin) = departed {
+            self.refresh_ping_hook();
+            self.plugin_disabled(connection, plugin);
+        }
         self.release_departed_plugins();
     }
 
@@ -859,6 +886,23 @@ impl<L: ClientLink> Server<L> {
                 self.finish_creative(*step, Writes::of(patch));
                 Vec::new()
             }
+            Continuation::Ping(step) => {
+                self.finish_ping(*step, patch_of!(patch, ServerListPing));
+                Vec::new()
+            }
+            Continuation::ServerCommand(_) | Continuation::Broadcast(_) if cancelled => Vec::new(),
+            Continuation::ServerCommand(line) => {
+                self.finish_server_command(line, patch_of!(patch, ServerCommand));
+                Vec::new()
+            }
+            Continuation::TabComplete(step) => {
+                self.finish_tab_complete(*step, cancelled, patch_of!(patch, TabComplete));
+                Vec::new()
+            }
+            Continuation::Broadcast(message) => {
+                self.finish_broadcast(&message, patch_of!(patch, BroadcastMessage));
+                Vec::new()
+            }
         }
     }
 
@@ -873,7 +917,14 @@ impl<L: ClientLink> Server<L> {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
             (
-                Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::Entity(_) | Lane::World,
+                Lane::Login(_)
+                | Lane::Block(_)
+                | Lane::Chunk(_)
+                | Lane::Entity(_)
+                | Lane::World
+                | Lane::Console
+                | Lane::Broadcast
+                | Lane::Ping,
                 Undo::SendBack(_),
             ) => {}
         }

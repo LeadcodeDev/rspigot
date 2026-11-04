@@ -15,7 +15,7 @@ use crate::events::{
 use crate::loot::{self, LootContext};
 use crate::plugins::events::PlayerRespawnReason;
 use crate::plugins::steps::{AbortStep, BuildStep, ClickStep, FinishStep, UseItem, UseOnStep};
-use crate::plugins::{Continuation, Held};
+use crate::plugins::{Continuation, Held, SuggestStep};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -657,15 +657,14 @@ impl<L: ClientLink> Server<L> {
             .filter(|c| c.to_ascii_lowercase().starts_with(&lower))
             .collect();
         matches.sort();
-        self.push(
-            Audience::One(id),
-            ClientEvent::CommandSuggestions {
-                id: request,
-                start,
-                length: prefix.len() as i32,
-                matches,
-            },
-        );
+        let step = SuggestStep {
+            player: id,
+            request,
+            start,
+            length: prefix.len() as i32,
+            matches,
+        };
+        self.ask_tab_complete(text, step);
     }
 
     pub(crate) fn send_inventory(&mut self, id: PlayerId) {
