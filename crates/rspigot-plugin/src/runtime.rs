@@ -295,7 +295,11 @@ async fn decide<P: Listeners>(
             Outcome::Decided(verdict) => verdict,
             Outcome::Observed => Verdict::default(),
         };
+        let cancelled = verdict.cancel;
         verdicts.push(verdict.into_wire(handler));
+        if cancelled {
+            break;
+        }
     }
     verdicts
 }
