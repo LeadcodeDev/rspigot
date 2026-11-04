@@ -226,7 +226,7 @@ fn an_arrow_waits_on_its_hit_and_a_cancel_lets_it_fly_on() {
 }
 
 #[test]
-fn a_block_hit_is_only_announced() {
+fn a_block_hit_asks_its_deciders_and_drops_their_verdicts() {
     let mut s = scene_with(
         &["Alice"],
         vec![
@@ -244,9 +244,9 @@ fn a_block_hit_is_only_announced() {
     }
     shoot(&mut s);
     s.tick(10);
-    assert!(asked_for(&s.plugin, EventKind::ProjectileHit).is_empty());
-    let settled = settled_for(&s.plugin, EventKind::ProjectileHit);
-    let EventPayload::ProjectileHit(hit) = &settled.first().expect("a block hit").payload else {
+    let asked = asked_for(&s.plugin, EventKind::ProjectileHit);
+    assert_eq!(asked.len(), 1);
+    let EventPayload::ProjectileHit(hit) = &asked[0].payload else {
         panic!("a projectile hit");
     };
     assert_eq!(hit.hit_entity, None);
@@ -254,6 +254,18 @@ fn a_block_hit_is_only_announced() {
     assert_eq!(
         hit.hit_block_face,
         Some(rspigot_core::plugins::events::Face::North)
+    );
+    let settled = settled_for(&s.plugin, EventKind::ProjectileHit);
+    assert_eq!(settled.len(), 1);
+    assert_eq!(settled[0].id, asked[0].id);
+    let stuck = s.server.entities_of(Kind::Arrow)[0];
+    rule_on(&mut s.server, 1, asked[0].id, true, None);
+    s.tick(3);
+    assert!(s.warnings().is_empty());
+    assert_eq!(settled_for(&s.plugin, EventKind::ProjectileHit).len(), 1);
+    assert_eq!(
+        s.server.entities_of(Kind::Arrow)[0].position,
+        stuck.position
     );
 }
 
