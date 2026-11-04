@@ -938,8 +938,8 @@ impl<L: ClientLink> Server<L> {
             }
             self.remove_player(id, false);
         }
-        self.outbox.clear();
         self.world_saving_at_shutdown();
+        self.outbox.clear();
         tracing::info!(
             "Saving chunks for level '{}'/{}",
             self.world.level.name,
