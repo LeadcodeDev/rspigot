@@ -207,8 +207,8 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PlayerToggleSprintEvent` | `PlayerToggleSprint` | yes | - | - | fired: on every start and stop sprinting packet of a loaded client |
 | `PlayerUnleashEntityEvent` | `PlayerUnleashEntity` | yes | - | - | not fired yet: needs mounts, leads and taming |
 | `PlayerVelocityEvent` | `PlayerVelocity` | yes | `set_velocity` | - | fired: at the velocity sync and when a player hits a player; asked only when a deciding handler exists, one at a time |
-| `PluginDisableEvent` | `PluginDisable` | no | - | - | fired: when a plugin disconnects, for the plugins left, and at shutdown for every plugin in reverse connection order, heard by all the others before the connections close; never for the plugin itself |
-| `PluginEnableEvent` | `PluginEnable` | no | - | - | fired: when a plugin connects, for the other plugins and never for the plugin itself; a plugin reconnecting under its name fires PluginDisable for its old connection first |
+| `PluginDisableEvent` | `PluginDisable` | no | - | - | fired: when a plugin disconnects, for the plugins left; at shutdown for every plugin in reverse connection order before the connections close, and every plugin hears the disable of every other one, unlike Spigot which unregisters a disabled plugin's listeners; never for the plugin itself |
+| `PluginEnableEvent` | `PluginEnable` | no | - | - | fired: when a plugin connects, for the other plugins and never for the plugin itself; a plugin never hears the activations made before it connected; a plugin reconnecting under its name fires PluginDisable for its old connection first |
 | `PortalCreateEvent` | `PortalCreate` | yes | - | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
 | `PotionSplashEvent` | `PotionSplash` | yes | `set_intensity` | - | not fired yet: needs thrown bottles and potions |
 | `PrepareAnvilEvent` | `PrepareAnvil` | no | `set_result` | - | not fired yet: needs anvil logic |
@@ -237,7 +237,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `StriderTemperatureChangeEvent` | `StriderTemperatureChange` | yes | - | - | not fired yet: needs lightning and Nether mobs |
 | `StructureGrowEvent` | `StructureGrow` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `TNTPrimeEvent` | `TNTPrime` | yes | - | - | not fired yet: needs redstone (#55) |
-| `TabCompleteEvent` | `TabComplete` | yes | `set_completions` | - | fired: players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; a cancel or an empty list sends no suggestions; there is no console completion |
+| `TabCompleteEvent` | `TabComplete` | yes | `set_completions` | - | fired: players only, for every command and its player name arguments, a superset of Spigot which fires it for Bukkit commands only; an empty or cancelled completion sends no packet, as Spigot; there is no console completion |
 | `ThunderChangeEvent` | `ThunderChange` | yes | - | - | fired: from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own |
 | `TimeSkipEvent` | `TimeSkip` | yes | `set_skip_amount` | - | fired: COMMAND for /time add and CUSTOM for the plugin time order; with a deciding handler the time moves once the event settles, by the settled amount, and a cancel keeps it, a documented deviation from Spigot 26.3 which moves it before firing; /time set fires nothing |
 | `TradeSelectEvent` | `TradeSelect` | yes | `set_result` | - | not fired yet: needs villagers and trading (#48) |
