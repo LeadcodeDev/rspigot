@@ -411,6 +411,22 @@ pub(crate) struct ExplodeStep {
     pub(crate) blocks: Vec<BlockPos>,
     pub(crate) knocked: Vec<(PlayerId, Vec3)>,
     pub(crate) explosion_yield: f32,
+    pub(crate) fire: bool,
+    pub(crate) discard: Option<EntityId>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PrimeStep {
+    pub(crate) creeper: EntityId,
+    pub(crate) radius: f32,
+    pub(crate) fire: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RelocateStep {
+    pub(crate) entity: EntityId,
+    pub(crate) to: Vec3,
+    pub(crate) command: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -778,6 +794,9 @@ pub(crate) enum Continuation {
     ChangeBlock(Box<ChangeStep>),
     Regrow(EntityId),
     EggBreak { mob: EntityId, pos: BlockPos },
+    EntityExplode(Box<ExplodeStep>),
+    Prime(PrimeStep),
+    Relocate(RelocateStep),
 }
 
 impl Continuation {
@@ -848,6 +867,9 @@ impl Continuation {
             Self::ChangeBlock(_) => EventKind::EntityChangeBlock,
             Self::Regrow(_) => EventKind::SheepRegrowWool,
             Self::EggBreak { .. } => EventKind::EntityInteract,
+            Self::EntityExplode(_) => EventKind::EntityExplode,
+            Self::Prime(_) => EventKind::ExplosionPrime,
+            Self::Relocate(_) => EventKind::EntityTeleport,
         }
     }
 
@@ -886,6 +908,7 @@ impl Continuation {
                 }
             }
             (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
+            (Self::Prime(one), Self::Prime(other)) => one.creeper == other.creeper,
             (Self::PickupItem(one), Self::PickupItem(other)) => {
                 one.player == other.player && one.item == other.item
             }
@@ -906,7 +929,7 @@ impl Continuation {
             Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
             Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
             Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
-            Self::EggBreak { .. } => true,
+            Self::EggBreak { .. } | Self::Prime(_) => true,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)

@@ -726,9 +726,7 @@ impl<L: ClientLink> Server<L> {
                 Vec::new()
             }
             Continuation::Explode(step) => {
-                if !cancelled {
-                    self.finish_explosion(*step, patch_of!(patch, BlockExplode));
-                }
+                self.finish_explosion(*step, cancelled, patch_of!(patch, BlockExplode));
                 Vec::new()
             }
             Continuation::ChunkUnload(pos) => {
@@ -811,6 +809,18 @@ impl<L: ClientLink> Server<L> {
                 if !cancelled {
                     self.break_turtle_egg(mob, pos);
                 }
+                Vec::new()
+            }
+            Continuation::EntityExplode(step) => {
+                self.finish_entity_explosion(*step, cancelled, patch_of!(patch, EntityExplode));
+                Vec::new()
+            }
+            Continuation::Prime(step) => {
+                self.finish_prime(step, cancelled, patch_of!(patch, ExplosionPrime));
+                Vec::new()
+            }
+            Continuation::Relocate(step) => {
+                self.finish_relocate(step, cancelled, patch_of!(patch, EntityTeleport));
                 Vec::new()
             }
         }

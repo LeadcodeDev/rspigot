@@ -34,7 +34,7 @@ impl<L: ClientLink> Server<L> {
         match order {
             EntityOrder::Teleport(position) => {
                 let position = resolve::position_of(position)?;
-                CommandContext::teleport_target(self, target, position);
+                self.relocate(id, position, false);
             }
             EntityOrder::Remove => {
                 self.remove_entity(

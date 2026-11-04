@@ -113,15 +113,18 @@ EntityPickupItem = "players touching an item they can hold, with what does not f
 EntityChangeBlock = "a falling block leaving its place (before the block turns to air and the entity spawns) and landing (a cancel removes it without placing or dropping), and a grazing sheep (to air also for grass that turns to dirt); without mobGriefing the grazing is born cancelled and asks nobody"
 EntityInteract = "a zombie breaking a turtle egg, before the egg goes; there are no pressure plates, farmland or tripwires yet"
 SheepRegrowWool = "after the grazing of a sheep settled, also when it was cancelled; a cancel keeps the sheep sheared"
+EntityTeleport = "/tp of a non-player entity asks twice, the command then Entity.teleport, and only the second destination counts, as in Spigot; the plugin teleport order asks once; there are no portals, pearls, endermen or shulkers yet"
+ExplosionPrime = "creepers once their fuse ends, one ask per creeper while it waits; a cancel resets the fuse and the creeper lives; the settled radius and fire are the explosion's, a fire flag now sets fire to the crater"
+EntityExplode = "explosions with a source or causing entity, after the entities were hurt and pushed; a cancel breaks and sends nothing but keeps the hurts, the push and the fire; the creeper leaves with EXPLODE once it settled"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
     "EntityBreed",
-    "EntityEnterLoveMode", "EntityExplode",
+    "EntityEnterLoveMode",
     "EntityPoseChange",
     "EntityShootBow",
-    "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
+    "EntityTarget", "EntityTargetLivingEntity",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
