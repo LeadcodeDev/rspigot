@@ -4,6 +4,26 @@ use rspigot_entities::SoundSource;
 
 use crate::world::Hand;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetReason {
+    ClosestPlayer,
+    ClosestEntity,
+    TargetAttackedEntity,
+    TargetAttackedNearbyEntity,
+    ReinforcementTarget,
+    ForgotTarget,
+    Tempt,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetRequest {
+    pub from: Option<EntityId>,
+    pub to: Option<EntityId>,
+    pub reason: TargetReason,
+    pub tempt: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MobAction {
     Swing(Hand),

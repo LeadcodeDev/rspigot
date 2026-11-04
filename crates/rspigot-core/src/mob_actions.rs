@@ -1,5 +1,5 @@
 use rand::Rng;
-use rspigot_ai::{Hand, MobAction, is_edible_for_sheep};
+use rspigot_ai::{Hand, MobAction, TargetReason, is_edible_for_sheep};
 use rspigot_blocks::BlockKind;
 use rspigot_domain::entity::ageable::{self, PARENT_AGE_AFTER_BREEDING, SHEEP_REGROWTH_SECONDS};
 use rspigot_domain::entity::living::{self, LivingState};
@@ -52,10 +52,14 @@ impl<L: ClientLink> Server<L> {
             ),
             MobAction::EatGrass => self.eat_grass(id),
             MobAction::Alert { mob, target } => {
-                if let Some(entry) = self.entities.mobs.entries.get_mut(&mob)
-                    && entry.ai.target().is_none()
-                {
-                    entry.ai.set_target(Some(target));
+                let idle = self
+                    .entities
+                    .mobs
+                    .entries
+                    .get(&mob)
+                    .is_some_and(|entry| entry.ai.target().is_none());
+                if idle && let Some(view) = self.entity_view(mob) {
+                    self.request_target(view, target, TargetReason::TargetAttackedNearbyEntity);
                 }
             }
             MobAction::Particle(particle) => {

@@ -118,6 +118,8 @@ ExplosionPrime = "creepers once their fuse ends, one ask per creeper while it wa
 EntityExplode = "explosions with a source or causing entity, after the entities were hurt and pushed; a cancel breaks and sends nothing but keeps the hurts, the push and the fire; the creeper leaves with EXPLODE once it settled"
 ProjectileHit = "arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit is only announced, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers"
 EntityShootBow = "the drawn bow of a player, whose arrow is spent before the event as in Spigot, and skeletons; a cancel discards the arrow, the player still hears the shot, the skeleton does not; set_projectile to another entity launches nothing; there is no crossbow, Infinity or bow wear"
+EntityTarget = "reached through EntityTargetLivingEntity, as Spigot builds the exact class only for the allay, which rspigot lacks"
+EntityTargetLivingEntity = "CLOSEST_PLAYER, CLOSEST_ENTITY, FORGOT_TARGET, TARGET_DIED, TARGET_ATTACKED_ENTITY, TARGET_ATTACKED_NEARBY_ENTITY, REINFORCEMENT_TARGET and TEMPT from the AI goals, alerts, reinforcements and experience orbs, only when the target changes; with a deciding handler the change lands one AI pass later, one ask per mob while it waits; the settled target is not revalidated, as in Spigot"
 
 [states]
 ready = [
@@ -125,7 +127,6 @@ ready = [
     "EntityBreed",
     "EntityEnterLoveMode",
     "EntityPoseChange",
-    "EntityTarget", "EntityTargetLivingEntity",
     "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
     "InventoryCreative", "InventoryDrag", "InventoryOpen",
     "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing",

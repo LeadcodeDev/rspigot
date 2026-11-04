@@ -1,3 +1,4 @@
+mod aims;
 mod block;
 mod blocks;
 mod burning;

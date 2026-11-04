@@ -416,6 +416,22 @@ pub(crate) struct ExplodeStep {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Seeker {
+    Mob,
+    Tempt,
+    Orb,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AimStep {
+    pub(crate) mob: EntityId,
+    pub(crate) from: Option<EntityId>,
+    pub(crate) to: Option<EntityId>,
+    pub(crate) seeker: Seeker,
+    pub(crate) deferred: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Shooter {
     Player(PlayerId),
     Mob(EntityId),
@@ -820,6 +836,7 @@ pub(crate) enum Continuation {
     Relocate(RelocateStep),
     Shoot(Box<ShotStep>),
     ProjectileHit { arrow: EntityId, target: EntityId },
+    Aim(AimStep),
 }
 
 impl Continuation {
@@ -895,6 +912,7 @@ impl Continuation {
             Self::Relocate(_) => EventKind::EntityTeleport,
             Self::Shoot(_) => EventKind::EntityShootBow,
             Self::ProjectileHit { .. } => EventKind::ProjectileHit,
+            Self::Aim(_) => EventKind::EntityTargetLivingEntity,
         }
     }
 
@@ -934,6 +952,9 @@ impl Continuation {
             }
             (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
             (Self::Prime(one), Self::Prime(other)) => one.creeper == other.creeper,
+            (Self::Aim(one), Self::Aim(other)) => {
+                one.deferred && one.mob == other.mob && one.seeker == other.seeker
+            }
             (
                 Self::ProjectileHit { arrow, target },
                 Self::ProjectileHit {
@@ -962,6 +983,7 @@ impl Continuation {
             Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
             Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
             Self::EggBreak { .. } | Self::Prime(_) | Self::ProjectileHit { .. } => true,
+            Self::Aim(step) => step.deferred,
             _ => matches!(
                 self,
                 Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)

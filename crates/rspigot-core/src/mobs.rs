@@ -719,10 +719,13 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let mut body = MobBody::of(&mob);
+        let deferred = self.defers_targets();
+        entry.ai.defer_targets(deferred);
         {
             let world = self.mob_world(sky_darken);
             entry.ai.think(&mob, &world, &mut body);
         }
+        let requests = entry.ai.take_target_requests();
         if let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -736,6 +739,7 @@ impl<L: ClientLink> Server<L> {
         }
         let actions = entry.ai.take_actions();
         self.entities.mobs.entries.insert(id, entry);
+        self.mob_target_requests(id, requests, deferred);
         for action in actions {
             self.apply_mob_action(id, action);
         }

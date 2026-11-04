@@ -11,10 +11,11 @@ use crate::plugins::events::{
     CreatureSpawnReason, EntityRemoveCause, PlayerExpChange, PlayerExpChangePatch,
     PlayerExpCooldownChange, PlayerExpCooldownChangePatch, PlayerExpCooldownChangeReason,
 };
-use crate::plugins::steps::{CooldownStep, OrbStep};
+use crate::plugins::steps::{CooldownStep, OrbStep, Seeker};
 use crate::plugins::{Continuation, EventPayload, Lane};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
+use rspigot_ai::{TargetReason, TargetRequest};
 
 const BELOW_WORLD: i32 = 64;
 const PICKUP_INFLATE_X: f64 = 1.0;
@@ -203,6 +204,25 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn settle_orb(
+        &mut self,
+        orb: EntityId,
+        from: Option<EntityId>,
+        target: Option<EntityId>,
+    ) {
+        let player_of =
+            |entity: Option<EntityId>| entity.and_then(|entity| self.player_of_entity(entity));
+        let (from, target) = (player_of(from), player_of(target));
+        if let Some(Entity {
+            state: EntityState::Orb(state),
+            ..
+        }) = self.entities.store.get_mut(orb)
+            && state.following == from
+        {
+            state.following = target;
+        }
+    }
+
     fn follow_nearby_player(&mut self, id: EntityId) -> bool {
         let Some(Entity {
             base,
@@ -238,6 +258,31 @@ impl<L: ClientLink> Server<L> {
                 .min_by(|a, b| a.1.total_cmp(&b.1))
                 .filter(|(_, _, dead)| !dead)
                 .map(|(player, _, _)| player);
+        }
+        let before = state.following;
+        if following != before {
+            let deferred = self.defers_targets();
+            let entity_of = |player: Option<PlayerId>| {
+                player
+                    .and_then(|player| self.players.get(&player))
+                    .map(|p| p.entity_id)
+            };
+            let request = TargetRequest {
+                from: entity_of(before),
+                to: entity_of(following),
+                reason: if following.is_some() {
+                    TargetReason::ClosestPlayer
+                } else {
+                    TargetReason::ForgotTarget
+                },
+                tempt: false,
+            };
+            if let Some(orb) = self.entity_view(id) {
+                self.target_event(orb, request, Seeker::Orb, deferred);
+            }
+            if deferred {
+                return false;
+            }
         }
         let target = following
             .and_then(|player| self.players.get(&player))

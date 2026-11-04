@@ -726,10 +726,11 @@ impl<L: ClientLink> Server<L> {
                 },
             );
         }
-        self.entities
-            .mobs
-            .initial_targets
-            .insert(zombie.base.id, target);
+        self.request_target(
+            crate::plugins::view_of_entity(&zombie),
+            target,
+            rspigot_ai::TargetReason::ReinforcementTarget,
+        );
         self.spawn_entity(
             zombie,
             Birth::of(CreatureSpawnReason::Reinforcements).with_random(own),

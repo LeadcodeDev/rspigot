@@ -7,6 +7,7 @@ use rspigot_domain::{Rotation, Vec3};
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
+use crate::plugins::aims::settled_target;
 use crate::plugins::burning::settled_duration;
 use crate::plugins::damage::settled_damage;
 use crate::plugins::decisions::{
@@ -829,6 +830,10 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::ProjectileHit { arrow, target } => {
                 self.finish_projectile_hit(arrow, target, cancelled);
+                Vec::new()
+            }
+            Continuation::Aim(step) => {
+                self.finish_aim(step, cancelled, settled_target(patch));
                 Vec::new()
             }
         }

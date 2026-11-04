@@ -3,7 +3,7 @@ use rspigot_entities::EntityKind;
 use rspigot_items::ItemKind;
 
 use crate::Path;
-use crate::action::MobAction;
+use crate::action::{MobAction, TargetReason};
 use crate::brain::AiContext;
 use crate::goal::{adjusted_tick_delay, reduced_tick_delay};
 use crate::random::RandomSource;
@@ -149,7 +149,7 @@ impl MeleeAttackGoal {
             && context.mob.light >= SPIDER_LIGHT_LIMIT
             && context.brain.random.next_int(SPIDER_FORGET_CHANCE) == 0
         {
-            context.set_target(None);
+            context.set_target(None, TargetReason::Unknown);
             return false;
         }
         let Some(target) = context.target() else {
@@ -544,7 +544,7 @@ impl TargetMemory {
                 }
             }
         }
-        context.set_target(Some(target));
+        context.set_target(Some(target), TargetReason::ClosestEntity);
         true
     }
 
@@ -553,7 +553,7 @@ impl TargetMemory {
     }
 
     pub(crate) fn stop<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
-        context.set_target(None);
+        context.set_target(None, TargetReason::ForgotTarget);
         self.target_mob = None;
     }
 }
@@ -618,7 +618,7 @@ impl HurtByTargetGoal {
             .mob
             .last_hurt_by_mob
             .and_then(|id| context.world.living(id));
-        context.set_target(attacker);
+        context.set_target(attacker, TargetReason::TargetAttackedEntity);
         self.memory.target_mob = context.target().map(|target| target.id);
         self.timestamp = context.mob.last_hurt_by_mob_at;
         self.memory.unseen_memory_ticks = HURT_BY_MEMORY;
