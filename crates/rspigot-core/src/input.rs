@@ -25,7 +25,11 @@ const MAX_MOVE_SQUARED: f64 = 100.0 * 100.0;
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn handle_input(&mut self, id: PlayerId, input: PlayerInput) {
-        if !self.players.contains_key(&id) {
+        let Some(player) = self.players.get(&id) else {
+            return;
+        };
+        if player.vitals.dying && acts(&input) {
+            self.refuse_while_dying(id, &input);
             return;
         }
         match input {
@@ -126,6 +130,22 @@ impl<L: ClientLink> Server<L> {
                     player.latency = player.latency.wrapping_mul(3).wrapping_add(millis) / 4;
                 }
             }
+        }
+    }
+
+    fn refuse_while_dying(&mut self, id: PlayerId, input: &PlayerInput) {
+        match input {
+            PlayerInput::Dig { pos, sequence, .. }
+            | PlayerInput::UseItemOn { pos, sequence, .. } => {
+                self.refuse_block(id, *pos, *sequence);
+            }
+            PlayerInput::UseItem { sequence, .. } => {
+                self.push(Audience::One(id), ClientEvent::BlockChangedAck(*sequence));
+            }
+            PlayerInput::ContainerClick(_) | PlayerInput::CreativeSlot { .. } => {
+                self.send_inventory(id);
+            }
+            _ => {}
         }
     }
 
@@ -759,6 +779,23 @@ impl<L: ClientLink> Server<L> {
             },
         );
     }
+}
+
+const fn acts(input: &PlayerInput) -> bool {
+    matches!(
+        input,
+        PlayerInput::Dig { .. }
+            | PlayerInput::UseItemOn { .. }
+            | PlayerInput::UseItem { .. }
+            | PlayerInput::CreativeSlot { .. }
+            | PlayerInput::PickBlock { .. }
+            | PlayerInput::Attack(_)
+            | PlayerInput::Interact { .. }
+            | PlayerInput::ContainerClick(_)
+            | PlayerInput::ContainerClose(_)
+            | PlayerInput::ContainerButtonClick { .. }
+            | PlayerInput::SetBeacon { .. }
+    )
 }
 
 fn to_pitch(rotation: Option<Rotation>) -> f32 {

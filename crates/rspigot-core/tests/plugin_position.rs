@@ -576,3 +576,124 @@ fn moves_sent_while_a_changed_destination_waits_are_dropped_when_the_teleport_ap
     s.tick(3);
     assert_eq!(s.server.player_location(alice.id), Some(at(8.5, 0.5)));
 }
+
+fn held_items(s: &mut Scene, player: &Player) -> Vec<ItemSpec> {
+    match s.ask(rspigot_core::plugins::Question::Inventory(player.id)) {
+        rspigot_core::plugins::Answer::Inventory(inventory) => {
+            inventory.slots.into_iter().flatten().collect()
+        }
+        other => panic!("expected the inventory, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_items_of_a_dying_player_stay_in_the_inventory_until_the_death_settles() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+    let alice = s.players[0].clone();
+    give(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    assert_eq!(
+        held_items(&mut s, &alice),
+        [ItemSpec::of("minecraft:diamond", 5)]
+    );
+    let (event, _) = death_of(&s);
+    rule_on(&mut s.server, 1, event, false, None);
+    assert!(held_items(&mut s, &alice).is_empty());
+    assert_eq!(s.server.items_on_ground(), 1);
+}
+
+#[test]
+fn a_slot_filled_while_the_death_waits_loses_nothing() {
+    for keep in [true, false] {
+        let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+        let alice = s.players[0].clone();
+        give(&mut s, "give Alice diamond 5");
+        kill(&mut s, &alice);
+        give(&mut s, "give Alice gold_ingot 2");
+        let (event, _) = death_of(&s);
+        let patch = keep.then(|| {
+            EventPatch::PlayerDeath(PlayerDeathPatch {
+                keep_inventory: Some(true),
+                drops: Some(Vec::new()),
+                ..PlayerDeathPatch::default()
+            })
+        });
+        rule_on(&mut s.server, 1, event, false, patch);
+        let expected = if keep {
+            vec![
+                ItemSpec::of("minecraft:diamond", 5),
+                ItemSpec::of("minecraft:gold_ingot", 2),
+            ]
+        } else {
+            vec![ItemSpec::of("minecraft:gold_ingot", 2)]
+        };
+        assert_eq!(held_items(&mut s, &alice), expected, "keep {keep}");
+        assert_eq!(
+            s.server.items_on_ground(),
+            usize::from(!keep),
+            "keep {keep}"
+        );
+    }
+}
+
+#[test]
+fn a_dying_player_cannot_drop_while_the_death_waits() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PlayerDeath),
+            observe(2, EventKind::PlayerDropItem),
+        ],
+    );
+    let alice = s.players[0].clone();
+    give(&mut s, "give Alice diamond 5");
+    kill(&mut s, &alice);
+    s.act(to(&alice, PlayerOrder::SetHealth(20.0)));
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Dig {
+            action: rspigot_core::events::DigAction::DropStack,
+            pos: rspigot_domain::BlockPos::new(0, 0, 0),
+            face: rspigot_core::events::Direction::Up,
+            sequence: 0,
+        },
+    );
+    assert!(settled_for(&s.plugin, EventKind::PlayerDropItem).is_empty());
+    assert_eq!(s.server.items_on_ground(), 0);
+    let (event, _) = death_of(&s);
+    rule_on(&mut s.server, 1, event, false, None);
+    assert_eq!(s.server.items_on_ground(), 1);
+}
+
+#[test]
+fn a_plugin_inventory_closes_after_the_death_of_its_viewer_settles() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::PlayerDeath),
+            observe(2, EventKind::PlayerDeath),
+            observe(3, EventKind::InventoryClose),
+        ],
+    );
+    let alice = s.players[0].clone();
+    s.act(rspigot_core::plugins::Order::Server(
+        rspigot_core::plugins::ServerOrder::CreateInventory {
+            id: 7,
+            rows: 1,
+            title: "Menu".to_owned(),
+            locked: true,
+        },
+    ));
+    s.act(to(&alice, PlayerOrder::OpenInventory(7)));
+    kill(&mut s, &alice);
+    assert!(settled_for(&s.plugin, EventKind::InventoryClose).is_empty());
+    let (event, _) = death_of(&s);
+    rule_on(&mut s.server, 1, event, false, None);
+    let settled: Vec<EventKind> = fired(&s.plugin)
+        .into_iter()
+        .filter(|fired| fired.phase == rspigot_core::plugins::Phase::Settled)
+        .map(|fired| fired.payload.kind())
+        .collect();
+    assert_eq!(settled, [EventKind::PlayerDeath, EventKind::InventoryClose]);
+}

@@ -77,14 +77,11 @@ pub(crate) struct RespawnStep {
 #[derive(Debug)]
 pub(crate) struct DeathStep {
     pub(crate) player: PlayerId,
-    pub(crate) entity: EntityId,
     pub(crate) message: Component,
     pub(crate) text: String,
     pub(crate) show: bool,
     pub(crate) keep: bool,
-    pub(crate) taken: Vec<(usize, ItemStack)>,
-    pub(crate) origin: Vec3,
-    pub(crate) feet: Vec3,
+    pub(crate) inventory: Vec<(usize, ItemStack)>,
     pub(crate) experience: i32,
 }
 
