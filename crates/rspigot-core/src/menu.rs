@@ -144,7 +144,11 @@ impl<L: ClientLink> Server<L> {
                     predicted,
                 } => self.drop_from_player(id, stack, thrower, predicted),
                 MenuEffect::ResultUpdated => {
-                    if let Some(player) = self.players.get_mut(&id) {
+                    if let Some(player) = self
+                        .players
+                        .get_mut(&id)
+                        .filter(|player| !player.menu.result_held())
+                    {
                         let result = player.inventory.get(RESULT_SLOT).cloned();
                         player.menu.set_remote(RESULT_SLOT, result.clone());
                         Self::send_slot(player, RESULT_SLOT, result);

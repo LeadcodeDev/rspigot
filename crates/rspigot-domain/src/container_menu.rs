@@ -9,7 +9,7 @@ use crate::item::{
     same_item_same_components, split, stacks_match, with_count,
 };
 use crate::menu::{
-    ClickInput, Clicker, HashedSlot, MenuEffect, OUTSIDE, RemoteUpdate, place_back_or_drop,
+    ClickInput, Clicker, HashedSlot, Hold, MenuEffect, OUTSIDE, RemoteUpdate, place_back_or_drop,
 };
 use crate::recipes;
 use crate::smithing;
@@ -361,6 +361,7 @@ pub struct ContainerMenu {
     remote: Vec<RemoteSlot>,
     remote_carried: RemoteSlot,
     cutter: Cutter,
+    held: Option<Hold>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1091,6 +1092,7 @@ impl ContainerMenu {
             remote: vec![RemoteSlot::Known(None); kind.slot_count()],
             remote_carried: RemoteSlot::Known(None),
             cutter: Cutter::default(),
+            held: None,
         }
     }
 
@@ -1253,6 +1255,18 @@ impl ContainerMenu {
         (moved, session.effects)
     }
 
+    pub fn hold(&mut self, slot: usize, container: &[Slot], player: &Inventory) {
+        let shown = match self.remote.get(slot) {
+            Some(RemoteSlot::Known(shown)) => shown.clone(),
+            _ => self.view(slot, container, player),
+        };
+        Hold::take(&mut self.held, slot, shown);
+    }
+
+    pub fn release(&mut self) {
+        Hold::release(&mut self.held);
+    }
+
     pub fn set_remote(&mut self, slot: usize, stack: Slot) {
         if let Some(remote) = self.remote.get_mut(slot) {
             *remote = RemoteSlot::Known(stack);
@@ -1362,7 +1376,11 @@ impl ContainerMenu {
 
     pub fn changes(&mut self, container: &[Slot], player: &Inventory) -> Vec<RemoteUpdate> {
         let mut updates = Vec::new();
+        let held = self.held.as_ref().map(|hold| hold.slot);
         for slot in 0..self.remote.len() {
+            if held == Some(slot) {
+                continue;
+            }
             let stack = self.view(slot, container, player);
             if !self.remote[slot].matches(&stack) {
                 self.remote[slot] = RemoteSlot::Known(stack.clone());
@@ -1377,9 +1395,14 @@ impl ContainerMenu {
     }
 
     pub fn sync_all(&mut self, container: &[Slot], player: &Inventory) -> (Vec<Slot>, Slot) {
-        let slots: Vec<Slot> = (0..self.remote.len())
+        let mut slots: Vec<Slot> = (0..self.remote.len())
             .map(|slot| self.view(slot, container, player))
             .collect();
+        if let Some(hold) = &self.held
+            && let Some(slot) = slots.get_mut(hold.slot)
+        {
+            slot.clone_from(&hold.shown);
+        }
         for (remote, stack) in self.remote.iter_mut().zip(&slots) {
             *remote = RemoteSlot::Known(stack.clone());
         }

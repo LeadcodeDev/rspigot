@@ -213,9 +213,9 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PotionSplashEvent` | `PotionSplash` | yes | `set_intensity` | - | not fired yet: needs thrown bottles and potions |
 | `PrepareAnvilEvent` | `PrepareAnvil` | no | `set_result` | - | not fired yet: needs anvil logic |
 | `PrepareGrindstoneEvent` | `PrepareGrindstone` | no | `set_result` | - | not fired yet: needs grindstone logic |
-| `PrepareItemCraftEvent` | `PrepareItemCraft` | no | `set_result` | - | fired: once per click that changes the player grid or a crafting table grid; a patched result is written once the event settles, and a shift-click on the result asks it again between two crafts |
+| `PrepareItemCraftEvent` | `PrepareItemCraft` | no | `set_result` | - | fired: once per click that changes the player grid or a crafting table grid; the client sees no result until the event settles when a decider answers, and a shift-click on the result asks it again between two crafts |
 | `PrepareItemEnchantEvent` | `PrepareItemEnchant` | yes | - | - | not fired yet: needs enchanting (#47) |
-| `PrepareSmithingEvent` | `PrepareSmithing` | no | `set_result` | - | fired: once per click that changes the inputs into a smithing recipe; a patched result is written once the event settles |
+| `PrepareSmithingEvent` | `PrepareSmithing` | no | `set_result` | - | fired: once per click that changes the inputs into a smithing recipe; the client sees no result until the event settles when a decider answers |
 | `ProjectileHitEvent` | `ProjectileHit` | yes | - | - | fired: arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit asks its deciders without waiting and drops their verdicts, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers |
 | `ProjectileLaunchEvent` | `ProjectileLaunch` | yes | - | - | fired: arrows shot by players and skeletons; a cancel discards the arrow |
 | `RaidFinishEvent` | `RaidFinish` | no | - | - | not fired yet: needs raids |

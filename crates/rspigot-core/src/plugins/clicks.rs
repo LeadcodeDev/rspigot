@@ -13,6 +13,7 @@ use crate::plugins::events::{
     ClickKind, CraftItem, DragType, EventResult, InventoryAction, InventoryClick, InventoryDrag,
     InventoryTypeSlotType, SmithItem,
 };
+use crate::plugins::prepare::Inputs;
 use crate::plugins::views::{Described, Window};
 use crate::plugins::{EventKind, EventPatch, EventPayload, ItemSpec, spec_of, stack_of};
 use crate::ports::ClientLink;
@@ -560,7 +561,7 @@ impl<L: ClientLink> Server<L> {
         act: bool,
         full: bool,
     ) {
-        let grid = self.crafting_inputs(id, window);
+        let grid = self.inputs_before(id, window);
         let act = act.then_some(Move::Click);
         self.apply_window_move(id, window, click, act, full);
         self.inputs_changed(id, window, grid);
@@ -591,7 +592,7 @@ impl<L: ClientLink> Server<L> {
         slot: usize,
         stack: Slot,
     ) {
-        let grid = self.crafting_inputs(id, window);
+        let grid = self.inputs_before(id, window);
         match window {
             Window::Inventory => {
                 let Some(player) = self.players.get_mut(&id) else {
@@ -715,7 +716,7 @@ impl<L: ClientLink> Server<L> {
                     .unwrap_or_else(|| step.drag.remaining.clone()),
             )
         };
-        let grid = self.crafting_inputs(id, window);
+        let grid = self.inputs_before(id, window);
         self.end_drag(id, window, &step.drag, cursor);
         self.apply_window_click(id, window, &step.click, false, true);
         self.inputs_changed(id, window, grid);
@@ -813,25 +814,24 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn inputs_changed(
-        &mut self,
-        id: PlayerId,
-        window: Window,
-        before: Option<Vec<Slot>>,
-    ) {
-        let Some(before) = before else {
-            return;
+    pub(crate) fn inputs_changed(&mut self, id: PlayerId, window: Window, before: Inputs) {
+        let after = self.crafting_inputs(id, window);
+        let changed = match (&before.grid, &after) {
+            (Some(old), Some(new)) => {
+                old.len() != new.len()
+                    || old
+                        .iter()
+                        .zip(new)
+                        .any(|(old, new)| !stacks_match(old, new))
+            }
+            _ => false,
         };
-        let Some(after) = self.crafting_inputs(id, window) else {
-            return;
+        let carried = match after {
+            Some(after) if changed => self.fire_prepare(id, window, after, None, before.held),
+            _ => false,
         };
-        let same = before.len() == after.len()
-            && before
-                .iter()
-                .zip(&after)
-                .all(|(old, new)| stacks_match(old, new));
-        if !same {
-            self.prepare_result(id, window, after);
+        if before.held && !carried {
+            self.release_result(id, window);
         }
     }
 }
@@ -918,7 +918,7 @@ impl<L: ClientLink> Server<L> {
         let Some(index) = menu_index(slot) else {
             return;
         };
-        let grid = self.crafting_inputs(id, Window::Inventory);
+        let grid = self.inputs_before(id, Window::Inventory);
         self.set_slot_by_player(id, index, stack);
         self.inputs_changed(id, Window::Inventory, grid);
     }

@@ -931,3 +931,104 @@ fn vanilla_inventories_carry_a_runtime_id_per_opening() {
     assert_ne!(grid.inventory.id, grid.view.bottom.id);
     assert_eq!(grid.view.bottom.id, ender_open.view.bottom.id);
 }
+
+fn result_packets(events: &[ClientEvent], window: i32) -> Vec<Option<(&'static str, u8)>> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::InventorySlot { slot: 0, stack, .. } if window == 0 => Some(shown(stack)),
+            ClientEvent::ContainerSlot {
+                window: at,
+                slot: 0,
+                stack,
+                ..
+            } if *at == window => Some(shown(stack)),
+            ClientEvent::InventoryContent { slots, .. } if window == 0 => Some(shown(&slots[0])),
+            ClientEvent::ContainerContent {
+                window: at, slots, ..
+            } if *at == window => Some(shown(&slots[0])),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_vanilla_result_stays_hidden_while_a_prepare_decider_answers() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PrepareItemCraft)]);
+    let alice = s.players[0].clone();
+    give(&mut s, &alice, 9, LOG, 1);
+    set_block(&mut s, TABLE, "minecraft:crafting_table");
+    give(&mut s, &alice, 0, LOG, 1);
+    let mut own = View::inventory();
+    refresh(&alice, &mut own);
+    carry(&mut s, &alice, &mut own, 9, (LOG, 1));
+    let put = predict(
+        &mut own,
+        press(1, 0, ClickInput::Pickup),
+        &[(1, stack(LOG, 1))],
+        None,
+    );
+    s.server.handle(rspigot_core::events::Inbound::Input {
+        player: alice.id,
+        input: PlayerInput::ContainerClick(rspigot_core::events::ContainerClick {
+            container: 0,
+            state_id: own.state,
+            ..put
+        }),
+    });
+    s.server.deliver();
+    s.tick(1);
+    let mut seen = alice.link.take();
+    let asked = last_asked(&s.plugin, EventKind::PrepareItemCraft);
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::PrepareItemCraft(PrepareItemCraftPatch {
+            result: Some(Some(spec("minecraft:diamond", 2))),
+        })),
+    );
+    seen.extend(alice.link.take());
+    assert!(!result_packets(&seen, 0).contains(&Some(("minecraft:oak_planks", 4))));
+    assert_eq!(
+        result_packets(&seen, 0).last(),
+        Some(&Some(("minecraft:diamond", 2)))
+    );
+    let mut own = View::inventory();
+    close_window(&mut s, &alice, &mut own);
+    alice.link.take();
+
+    let mut table = open_block(&mut s, &alice, TABLE);
+    carry(&mut s, &alice, &mut table, 37, (LOG, 2));
+    let put = predict(
+        &mut table,
+        press(1, 0, ClickInput::Pickup),
+        &[(1, stack(LOG, 2))],
+        None,
+    );
+    s.server.handle(rspigot_core::events::Inbound::Input {
+        player: alice.id,
+        input: PlayerInput::ContainerClick(rspigot_core::events::ContainerClick {
+            container: table.window,
+            state_id: table.state,
+            ..put
+        }),
+    });
+    s.server.deliver();
+    s.tick(1);
+    let mut seen = alice.link.take();
+    let asked = last_asked(&s.plugin, EventKind::PrepareItemCraft);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    seen.extend(alice.link.take());
+    let shown_results = result_packets(&seen, table.window);
+    assert_eq!(
+        shown_results.iter().filter(|shown| shown.is_some()).count(),
+        1,
+        "{shown_results:?}"
+    );
+    assert_eq!(
+        shown_results.last(),
+        Some(&Some(("minecraft:oak_planks", 4)))
+    );
+}

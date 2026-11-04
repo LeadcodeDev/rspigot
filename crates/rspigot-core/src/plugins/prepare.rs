@@ -32,6 +32,12 @@ pub(crate) struct PrepareStep {
     pub(crate) inputs: Vec<Slot>,
     pub(crate) vanilla: Slot,
     pub(crate) then: Option<ResultLoop>,
+    pub(crate) held: bool,
+}
+
+pub(crate) struct Inputs {
+    pub(crate) grid: Option<Vec<Slot>>,
+    pub(crate) held: bool,
 }
 
 pub(crate) fn settled_result(patch: Option<EventPatch>) -> Option<Option<ItemSpec>> {
@@ -94,29 +100,76 @@ impl<L: ClientLink> Server<L> {
         !inputs.is_empty() && self.plugins.listens(kind, Access::Decide)
     }
 
-    pub(crate) fn prepare_result(&mut self, id: PlayerId, window: Window, inputs: Vec<Slot>) {
-        self.fire_prepare(id, window, inputs, None);
+    pub(crate) fn inputs_before(&mut self, id: PlayerId, window: Window) -> Inputs {
+        let grid = self.crafting_inputs(id, window);
+        let held = grid.is_some() && self.prepare_decided(id, window);
+        if held {
+            self.hold_result(id, window);
+        }
+        Inputs { grid, held }
     }
 
-    fn fire_prepare(
+    fn hold_result(&mut self, id: PlayerId, window: Window) {
+        let Some(slot) = self.result_slot(id, window) else {
+            return;
+        };
+        let items = match window {
+            Window::Container(_) => self.open_menu_items(id),
+            _ => None,
+        };
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        match window {
+            Window::Inventory => player.menu.hold_result(&player.inventory),
+            Window::Container(_) => {
+                if let (Some(open), Some(items)) = (player.open_menu.as_mut(), items) {
+                    open.menu.hold(slot, &items, &player.inventory);
+                }
+            }
+            Window::Plugin(_) => {}
+        }
+    }
+
+    pub(crate) fn release_result(&mut self, id: PlayerId, window: Window) {
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
+        match window {
+            Window::Inventory => player.menu.release_result(),
+            Window::Container(shown) => {
+                if let Some(open) = player
+                    .open_menu
+                    .as_mut()
+                    .filter(|open| open.window == shown)
+                {
+                    open.menu.release();
+                }
+            }
+            Window::Plugin(_) => {}
+        }
+    }
+
+    pub(crate) fn fire_prepare(
         &mut self,
         id: PlayerId,
         window: Window,
         inputs: Vec<Slot>,
         then: Option<ResultLoop>,
-    ) {
-        let Some(kind) = self.prepare_kind(id, window, &inputs) else {
+        held: bool,
+    ) -> bool {
+        let kind = self
+            .prepare_kind(id, window, &inputs)
+            .filter(|kind| self.listened(*kind));
+        let Some(kind) = kind else {
+            if held {
+                self.release_result(id, window);
+            }
             if let Some(next) = then {
                 self.continue_result(id, window, next);
             }
-            return;
+            return held;
         };
-        if !self.listened(kind) {
-            if let Some(next) = then {
-                self.continue_result(id, window, next);
-            }
-            return;
-        }
         let vanilla = self.result_of(id, window);
         let recipe = (kind == EventKind::PrepareItemCraft)
             .then(|| self.crafting_recipe(id, window))
@@ -128,6 +181,7 @@ impl<L: ClientLink> Server<L> {
             inputs,
             vanilla,
             then,
+            held,
         };
         self.fire(
             Lane::Player(id),
@@ -153,6 +207,7 @@ impl<L: ClientLink> Server<L> {
                 })
             },
         );
+        held
     }
 
     pub(crate) fn finish_prepare(&mut self, step: PrepareStep, result: Option<Option<ItemSpec>>) {
@@ -162,7 +217,11 @@ impl<L: ClientLink> Server<L> {
             inputs,
             vanilla,
             then,
+            held,
         } = step;
+        if held {
+            self.release_result(id, window);
+        }
         if self.window_of(id) != Some(window) {
             return;
         }
@@ -178,9 +237,7 @@ impl<L: ClientLink> Server<L> {
             return;
         }
         let settled = result.and_then(written).unwrap_or(vanilla);
-        if !stacks_match(&settled, &self.result_of(id, window)) {
-            self.put_result(id, window, settled);
-        }
+        self.put_result(id, window, settled);
         if let Some(next) = then {
             self.continue_result(id, window, next);
         }
@@ -230,7 +287,7 @@ impl<L: ClientLink> Server<L> {
         if !on_result || !self.prepare_decided(id, window) {
             return false;
         }
-        let grid = self.crafting_inputs(id, window);
+        let grid = self.inputs_before(id, window);
         let moved = self.apply_window_move(id, window, click, Some(Move::Once(slot)), full);
         self.after_result_move(id, window, grid, slot, moved, click);
         true
@@ -246,7 +303,7 @@ impl<L: ClientLink> Server<L> {
         {
             return;
         }
-        let grid = self.crafting_inputs(id, window);
+        let grid = self.inputs_before(id, window);
         let click = ContainerClick {
             changed: Vec::new(),
             ..next.click
@@ -259,7 +316,7 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         id: PlayerId,
         window: Window,
-        grid: Option<Vec<Slot>>,
+        grid: Inputs,
         slot: usize,
         moved: Slot,
         click: &ContainerClick,
@@ -270,7 +327,7 @@ impl<L: ClientLink> Server<L> {
             click: click.clone(),
         });
         let after = self.crafting_inputs(id, window);
-        let changed = match (&grid, &after) {
+        let changed = match (&grid.grid, &after) {
             (Some(before), Some(after)) => {
                 before.len() != after.len()
                     || before
@@ -281,8 +338,13 @@ impl<L: ClientLink> Server<L> {
             _ => false,
         };
         match after {
-            Some(after) if changed => self.fire_prepare(id, window, after, then),
+            Some(after) if changed => {
+                self.fire_prepare(id, window, after, then, grid.held);
+            }
             _ => {
+                if grid.held {
+                    self.release_result(id, window);
+                }
                 if let Some(next) = then {
                     self.continue_result(id, window, next);
                 }

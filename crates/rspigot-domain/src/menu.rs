@@ -133,6 +133,38 @@ pub struct InventoryMenu {
     remote: Vec<RemoteSlot>,
     remote_carried: RemoteSlot,
     suppressed: bool,
+    held: Option<Hold>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Hold {
+    pub(crate) slot: usize,
+    pub(crate) shown: Slot,
+    pub(crate) count: u32,
+}
+
+impl Hold {
+    pub(crate) fn take(held: &mut Option<Self>, slot: usize, shown: Slot) {
+        match held {
+            Some(hold) if hold.slot == slot => hold.count += 1,
+            _ => {
+                *held = Some(Self {
+                    slot,
+                    shown,
+                    count: 1,
+                });
+            }
+        }
+    }
+
+    pub(crate) fn release(held: &mut Option<Self>) {
+        if let Some(hold) = held {
+            hold.count = hold.count.saturating_sub(1);
+            if hold.count == 0 {
+                *held = None;
+            }
+        }
+    }
 }
 
 impl Default for InventoryMenu {
@@ -143,6 +175,7 @@ impl Default for InventoryMenu {
             remote: vec![RemoteSlot::Known(None); PLAYER_INVENTORY_SIZE],
             remote_carried: RemoteSlot::Known(None),
             suppressed: false,
+            held: None,
         }
     }
 }
@@ -896,6 +929,22 @@ impl InventoryMenu {
         self.remote_carried = RemoteSlot::Known(stack);
     }
 
+    pub fn hold_result(&mut self, inventory: &Inventory) {
+        let shown = match self.remote.get(RESULT_SLOT) {
+            Some(RemoteSlot::Known(shown)) => shown.clone(),
+            _ => inventory.get(RESULT_SLOT).cloned(),
+        };
+        Hold::take(&mut self.held, RESULT_SLOT, shown);
+    }
+
+    pub fn release_result(&mut self) {
+        Hold::release(&mut self.held);
+    }
+
+    pub fn result_held(&self) -> bool {
+        self.held.is_some()
+    }
+
     pub fn crafting_grid(inventory: &Inventory) -> [Slot; 4] {
         std::array::from_fn(|offset| inventory.get(GRID.start() + offset).cloned())
     }
@@ -967,7 +1016,11 @@ impl InventoryMenu {
             return Vec::new();
         }
         let mut updates = Vec::new();
+        let held = self.held.as_ref().map(|hold| hold.slot);
         for (slot, remote) in self.remote.iter_mut().enumerate() {
+            if held == Some(slot) {
+                continue;
+            }
             let stack = inventory.get(slot).cloned();
             if !remote.matches(&stack) {
                 *remote = RemoteSlot::Known(stack.clone());
@@ -982,7 +1035,12 @@ impl InventoryMenu {
     }
 
     pub fn sync_all(&mut self, inventory: &Inventory) -> (Vec<Slot>, Slot) {
-        let slots = inventory.slots().to_vec();
+        let mut slots = inventory.slots().to_vec();
+        if let Some(hold) = &self.held
+            && let Some(slot) = slots.get_mut(hold.slot)
+        {
+            slot.clone_from(&hold.shown);
+        }
         for (remote, stack) in self.remote.iter_mut().zip(&slots) {
             *remote = RemoteSlot::Known(stack.clone());
         }
