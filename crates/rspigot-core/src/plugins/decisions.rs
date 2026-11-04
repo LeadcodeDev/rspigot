@@ -140,7 +140,7 @@ impl Pending {
         self.waiting.swap_remove(index);
         let kind = self.payload.kind();
         let admitted = admit(&self.asked, connection, event, verdicts, warnings);
-        let cancelled = admitted.iter().any(|(_, verdict)| verdict.cancel);
+        let cancelled = kind.cancellable() && admitted.iter().any(|(_, verdict)| verdict.cancel);
         for (slot, verdict) in admitted {
             let taken_as = self.asked[slot].kind;
             let mut patch = match verdict.patch {
@@ -159,6 +159,13 @@ impl Pending {
                 patch = None;
             }
             let mut cancel = verdict.cancel;
+            if cancel && !kind.cancellable() {
+                warnings.push(format!(
+                    "event {event} cannot be cancelled, the cancel of handler {} is ignored",
+                    verdict.handler
+                ));
+                cancel = false;
+            }
             if cancel && let Some(denial) = EventPatch::denial(kind) {
                 patch = Some(match patch {
                     Some(own) => own.then(denial),
@@ -1051,6 +1058,29 @@ mod tests {
             (
                 Settlement::Cancelled(Some(result(EventResult::Deny))),
                 Vec::new()
+            )
+        );
+    }
+
+    #[test]
+    fn a_cancel_on_an_event_that_cannot_be_cancelled_is_ignored_with_a_warning() {
+        let alice = PlayerId::offline("Alice");
+        let at = Vec3::new(0.0, 64.0, 0.0);
+        let respawning = EventPayload::PlayerRespawn(PlayerRespawn {
+            anchor_spawn: false,
+            bed_spawn: false,
+            player: snapshot(alice, at),
+            respawn_location: location(at),
+            respawn_reason: PlayerRespawnReason::Death,
+        });
+        let elsewhere = EventPatch::PlayerRespawn(PlayerRespawnPatch {
+            respawn_location: Some(location(Vec3::new(10.0, 64.0, 0.0))),
+        });
+        assert_eq!(
+            settled(respawning, vec![ruling(true, Some(elsewhere.clone()))]),
+            (
+                Settlement::Applied(Some(elsewhere)),
+                vec!["event 1 cannot be cancelled, the cancel of handler 1 is ignored".to_owned()]
             )
         );
     }
