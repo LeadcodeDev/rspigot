@@ -395,7 +395,7 @@ revive = ["setCursor"]
 applies_when_cancelled = ["setCurrentItem", "setCursor"]
 
 [events.InventoryCreative]
-applies_when_cancelled = ["setCurrentItem", "setCursor"]
+applies_when_cancelled = ["setCurrentItem"]
 
 [events.PrepareItemCraft]
 extra = [

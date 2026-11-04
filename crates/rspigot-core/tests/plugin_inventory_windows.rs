@@ -1032,3 +1032,43 @@ fn the_vanilla_result_stays_hidden_while_a_prepare_decider_answers() {
         Some(&Some(("minecraft:oak_planks", 4)))
     );
 }
+
+#[test]
+fn a_cancelled_creative_slot_keeps_its_current_item_write_and_drops_its_cursor() {
+    let mut s = scene_with(
+        &["Alice"],
+        vec![
+            deciding(1, EventKind::InventoryCreative),
+            observe(2, EventKind::InventoryCreative),
+        ],
+    );
+    let alice = s.players[0].clone();
+    s.act(to(&alice, PlayerOrder::SetGameMode(GameMode::Creative)));
+    give(&mut s, &alice, 0, STONE, 3);
+    alice.link.take();
+    send_input(
+        &mut s.server,
+        &alice,
+        creative(36, Some(("minecraft:diamond", 1))),
+    );
+    rule_on(
+        &mut s.server,
+        1,
+        last_asked(&s.plugin, EventKind::InventoryCreative).id,
+        true,
+        Some(EventPatch::InventoryCreative(InventoryCreativePatch {
+            current_item: Some(Some(spec("minecraft:gold_ingot", 2))),
+            cursor: Some(Some(spec("minecraft:emerald", 1))),
+            ..InventoryCreativePatch::default()
+        })),
+    );
+    let settled = settled_for(&s.plugin, EventKind::InventoryCreative);
+    let event = creative_of(&settled[0]);
+    assert!(settled[0].cancelled);
+    assert_eq!(event.cursor, Some(spec("minecraft:diamond", 1)));
+    assert_eq!(event.current_item, Some(spec("minecraft:gold_ingot", 2)));
+    assert_eq!(
+        held(&mut s, &alice, 0),
+        Some(("minecraft:gold_ingot".to_owned(), 2))
+    );
+}
