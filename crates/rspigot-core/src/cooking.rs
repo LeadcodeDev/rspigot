@@ -4,11 +4,12 @@ use rspigot_domain::chunk::BlockEntity;
 use rspigot_domain::furnace::{self, Furnace};
 use rspigot_domain::item::Slot;
 use rspigot_domain::player::PlayerId;
-use rspigot_domain::{BlockPos, BlockStateId, Identifier, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, Identifier};
 use rspigot_items::CookingKind;
 use rspigot_nbt::{Compound, Tag};
 
 use crate::containers::{read_items, write_items};
+use crate::plugins::steps::ExpStep;
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -198,13 +199,12 @@ impl<L: ClientLink> Server<L> {
             return Vec::new();
         };
         let rng = &mut self.rng;
-        furnace.experience(&mut || rng.random::<f32>())
+        furnace.owed(&mut || rng.random::<f32>())
     }
 
     pub(crate) fn pop_furnace_experience(&mut self, pos: BlockPos, amounts: Vec<i32>) {
-        let centre: Vec3 = pos.center();
         for amount in amounts {
-            self.award_experience(centre, amount);
+            self.ask_block_exp(ExpStep { pos, amount });
         }
     }
 }

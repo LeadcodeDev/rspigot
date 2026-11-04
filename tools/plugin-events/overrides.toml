@@ -75,10 +75,11 @@ BlockMultiPlace = "doors and tall plants, in Spigot capture order with the upper
 BlockPhysics = "the notifyAndUpdatePhysics site only, once per block change; a cancel keeps the neighbour shape updates; source_block is the block itself, as in Spigot"
 BlockCook = "campfires; a cancel keeps the food and the campfire asks again on its next tick, one ask per campfire at a time"
 CampfireStart = "when food goes on a campfire; the recipe is its key and the patched cook time is written without a check, as in Spigot"
+BlockExplode = "explosions without a source entity or a causing entity, today the plugin explosion order; the block list patch replaces the blocks to destroy"
+BlockExp = "the experience a furnace kept when its block entity goes, one event per recipe used, also for 0"
 
 [states]
 ready = [
-    "BlockExp", "BlockExplode",
     "BroadcastMessage", "ChunkLoad", "ChunkPopulate", "ChunkUnload", "CraftItem",
     "CreatureSpawn", "EntitiesLoad", "EntitiesUnload", "EntityBreed", "EntityChangeBlock",
     "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity", "EntityDamage",

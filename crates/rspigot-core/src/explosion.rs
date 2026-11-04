@@ -12,6 +12,7 @@ use crate::events::ClientEvent;
 use crate::health::DamageSource;
 use crate::loot::{self, LootContext, LootEntity};
 use crate::mobs::ServerRandom;
+use crate::plugins::steps::ExplodeStep;
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -82,10 +83,10 @@ impl<L: ClientLink> Server<L> {
         center: Vec3,
         radius: f32,
         interaction: BlockInteraction,
-    ) -> i32 {
+    ) {
         let radius = radius.max(0.0);
         if radius < MIN_RADIUS {
-            return 0;
+            return;
         }
         let height = self.world.dimension.height;
         let positions = {
@@ -105,6 +106,37 @@ impl<L: ClientLink> Server<L> {
                     .is_some_and(|state| !state.is_air())
             })
             .collect();
+        let explosion_yield = if interaction == BlockInteraction::DestroyWithDecay {
+            1.0 / radius
+        } else {
+            1.0
+        };
+        let step = ExplodeStep {
+            center,
+            radius,
+            interaction,
+            source,
+            blocks,
+            knocked,
+            explosion_yield,
+        };
+        if source.is_none() && damage.causing.is_none() {
+            self.ask_explosion(step);
+        } else {
+            self.blast(step);
+        }
+    }
+
+    pub(crate) fn blast(&mut self, step: ExplodeStep) {
+        let ExplodeStep {
+            center,
+            radius,
+            interaction,
+            source,
+            blocks,
+            knocked,
+            explosion_yield,
+        } = step;
         let silent = source
             .and_then(|id| self.entities.store.get(id))
             .is_some_and(|e| e.base.is_silent());
@@ -133,10 +165,9 @@ impl<L: ClientLink> Server<L> {
             );
         }
         if interaction != BlockInteraction::Keep {
-            let decay = (interaction == BlockInteraction::DestroyWithDecay).then_some(radius);
+            let decay = (explosion_yield < 1.0).then(|| 1.0 / explosion_yield);
             self.blow_up_blocks(&blocks, source, decay);
         }
-        blocks.len() as i32
     }
 
     fn explosion_targets(&self, source: Option<EntityId>, area: &Aabb) -> Vec<HitEntity> {

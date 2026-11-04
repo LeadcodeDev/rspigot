@@ -689,6 +689,16 @@ impl<L: ClientLink> Server<L> {
                 self.finish_campfire_start(*step, patch_of!(patch, CampfireStart));
                 Vec::new()
             }
+            Continuation::Exp(step) => {
+                self.finish_block_exp(step, patch_of!(patch, BlockExp));
+                Vec::new()
+            }
+            Continuation::Explode(step) => {
+                if !cancelled {
+                    self.finish_explosion(*step, patch_of!(patch, BlockExplode));
+                }
+                Vec::new()
+            }
         }
     }
 

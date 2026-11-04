@@ -1,3 +1,5 @@
+mod common;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -8,6 +10,10 @@ use rspigot_core::config::{GameConfig, GameRules, LevelData};
 use rspigot_core::events::{
     ClickInput, ClientEvent, ContainerClick, DigAction, Direction, Hand, HashedSlot, Inbound,
     InputState, PlayerInput,
+};
+use rspigot_core::plugins::events::{BlockExp, BlockExpPatch};
+use rspigot_core::plugins::{
+    EventKind, EventPatch, EventPayload, FromPlugin, PluginIntro, Verdict,
 };
 use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, StoreError};
 use rspigot_core::server::Server;
@@ -2954,4 +2960,65 @@ fn the_smithing_slots_refuse_what_no_recipe_uses() {
     for slot in 0..3 {
         assert_eq!(slot_update(&world.alice, WINDOW, slot), None, "{slot}");
     }
+}
+
+#[test]
+fn breaking_a_furnace_asks_block_exp_after_the_break_and_pays_the_settled_amount() {
+    let mut world = world();
+    let mailbox = common::Mailbox::default();
+    world.server.handle(Inbound::PluginConnected {
+        connection: 1,
+        intro: PluginIntro {
+            name: "tester".to_owned(),
+            version: "1.0.0".to_owned(),
+            handlers: vec![common::deciding(1, EventKind::BlockExp)],
+        },
+        outbox: Box::new(mailbox.clone()),
+    });
+    world.open_and_fill_furnace("blast_furnace", "raw_gold", "coal");
+    world.wait(110);
+    world.close(WINDOW);
+    let before = experience_of_everyone(&world);
+    for action in [DigAction::Start, DigAction::Finish] {
+        world.server.handle(Inbound::Input {
+            player: world.alice.id,
+            input: PlayerInput::Dig {
+                action,
+                pos: CHEST,
+                face: Direction::Up,
+                sequence: 4,
+            },
+        });
+    }
+    let broken = common::last_asked(&mailbox, EventKind::BlockBreak);
+    world.server.handle(Inbound::PluginMessage {
+        connection: 1,
+        message: FromPlugin::Decision {
+            event: broken.id,
+            verdicts: Vec::new(),
+        },
+    });
+    let asked = common::last_asked(&mailbox, EventKind::BlockExp);
+    assert_eq!(
+        asked.payload,
+        EventPayload::BlockExp(BlockExp {
+            block: CHEST,
+            exp_to_drop: 1,
+        })
+    );
+    world.server.handle(Inbound::PluginMessage {
+        connection: 1,
+        message: FromPlugin::Decision {
+            event: asked.id,
+            verdicts: vec![Verdict {
+                handler: 1,
+                cancel: false,
+                patch: Some(EventPatch::BlockExp(BlockExpPatch {
+                    exp_to_drop: Some(5),
+                })),
+            }],
+        },
+    });
+    world.wait(40);
+    assert_eq!(experience_of_everyone(&world) - before, 5);
 }

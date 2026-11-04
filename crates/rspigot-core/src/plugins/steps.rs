@@ -7,6 +7,7 @@ use rspigot_domain::{BlockPos, BlockStateId, EntityId, Rotation, Vec3};
 
 use crate::commands::CommandSender;
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
+use crate::explosion::BlockInteraction;
 use crate::plugins::EventKind;
 use crate::plugins::events::PlayerTeleportCause;
 
@@ -389,6 +390,23 @@ pub(crate) struct CampfireStep {
     pub(crate) total: i32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExpStep {
+    pub(crate) pos: BlockPos,
+    pub(crate) amount: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct ExplodeStep {
+    pub(crate) center: Vec3,
+    pub(crate) radius: f32,
+    pub(crate) interaction: BlockInteraction,
+    pub(crate) source: Option<EntityId>,
+    pub(crate) blocks: Vec<BlockPos>,
+    pub(crate) knocked: Vec<(PlayerId, Vec3)>,
+    pub(crate) explosion_yield: f32,
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -439,6 +457,8 @@ pub(crate) enum Continuation {
     Physics(PhysicsStep),
     Cook(Box<CookStep>),
     CampfireStart(Box<CampfireStep>),
+    Exp(ExpStep),
+    Explode(Box<ExplodeStep>),
 }
 
 impl Continuation {
@@ -488,6 +508,8 @@ impl Continuation {
             Self::Physics(_) => EventKind::BlockPhysics,
             Self::Cook(_) => EventKind::BlockCook,
             Self::CampfireStart(_) => EventKind::CampfireStart,
+            Self::Exp(_) => EventKind::BlockExp,
+            Self::Explode(_) => EventKind::BlockExplode,
         }
     }
 

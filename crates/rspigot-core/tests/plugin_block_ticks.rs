@@ -3,14 +3,16 @@ mod common;
 use common::*;
 use rspigot_core::events::{ClientEvent, Direction, Hand, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
-    BlockCook, BlockCookPatch, BlockPhysics, CampfireStart, CampfireStartPatch,
+    BlockCook, BlockCookPatch, BlockExplode, BlockExplodePatch, BlockPhysics, CampfireStart,
+    CampfireStartPatch, ExplosionResult,
 };
 use rspigot_core::plugins::{
-    Answer, BlockOrder, EventKind, EventPatch, EventPayload, ItemSpec, Order, Question,
+    Answer, BlockOrder, EventKind, EventPatch, EventPayload, ItemSpec, Order, Question, WorldOrder,
 };
 use rspigot_domain::{BlockPos, Vec3};
 use rspigot_items::ItemKind;
 
+const FLOOR: BlockPos = BlockPos::new(2, 63, 0);
 const ABOVE: BlockPos = BlockPos::new(2, 64, 0);
 const TOP: BlockPos = BlockPos::new(2, 65, 0);
 const ASIDE: BlockPos = BlockPos::new(3, 64, 0);
@@ -332,4 +334,107 @@ fn an_air_result_removes_the_food_without_a_drop() {
     s.tick(2);
     assert!(ground_keys(&s).is_empty());
     assert!(asked_for(&s.plugin, EventKind::BlockCook).len() == 1);
+}
+
+fn explode(s: &mut Scene, at: Vec3, breaks_blocks: bool) {
+    s.act(Order::World(WorldOrder::Explode {
+        position: at,
+        power: 4.0,
+        breaks_blocks,
+    }));
+}
+
+fn explosions(player: &Player) -> Vec<i32> {
+    player
+        .link
+        .take()
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::Explode { block_count, .. } => Some(*block_count),
+            _ => None,
+        })
+        .collect()
+}
+
+fn explode_of(fired: &Fired) -> BlockExplode {
+    match &fired.payload {
+        EventPayload::BlockExplode(event) => event.clone(),
+        other => panic!("expected a block explode, got {other:?}"),
+    }
+}
+
+const BLAST: Vec3 = Vec3::new(2.5, 64.5, 0.5);
+
+#[test]
+fn a_plugin_explosion_asks_block_explode_before_anything_breaks() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BlockExplode)]);
+    let alice = s.players[0].clone();
+    stream_chunk_of(&mut s, ABOVE);
+    explode(&mut s, BLAST, true);
+    let asked = last_asked(&s.plugin, EventKind::BlockExplode);
+    let blast = explode_of(&asked);
+    assert_eq!(blast.block, ABOVE);
+    assert_eq!(blast.exploded_block_state.pos, ABOVE);
+    assert_eq!(blast.exploded_block_state.state.kind, "minecraft:air");
+    assert_eq!(blast.explosion_result, ExplosionResult::Destroy);
+    assert_eq!(blast.explosion_yield, 1.0);
+    assert!(blast.block_list.len() > 1);
+    assert!(explosions(&alice).is_empty());
+    for pos in &blast.block_list {
+        assert_eq!(kind_at(&mut s, *pos), "minecraft:stone");
+    }
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    assert!(explosions(&alice).is_empty());
+    for pos in &blast.block_list {
+        assert_ne!(kind_at(&mut s, *pos), "minecraft:air");
+    }
+}
+
+#[test]
+fn the_settled_block_list_is_what_the_explosion_destroys() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::BlockExplode)]);
+    let alice = s.players[0].clone();
+    stream_chunk_of(&mut s, ABOVE);
+    explode(&mut s, BLAST, true);
+    let asked = last_asked(&s.plugin, EventKind::BlockExplode);
+    let blast = explode_of(&asked);
+    let kept = blast.block_list[0];
+    let spared: Vec<BlockPos> = blast
+        .block_list
+        .iter()
+        .copied()
+        .filter(|pos| *pos != kept)
+        .collect();
+    assert!(!spared.is_empty());
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::BlockExplode(BlockExplodePatch {
+            block_list: Some(vec![kept]),
+            explosion_yield: None,
+        })),
+    );
+    assert_eq!(explosions(&alice), [1]);
+    assert_eq!(kind_at(&mut s, kept), "minecraft:air");
+    for pos in spared {
+        assert_ne!(kind_at(&mut s, pos), "minecraft:air");
+    }
+}
+
+#[test]
+fn an_explosion_that_keeps_blocks_still_fires_with_its_result() {
+    let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::BlockExplode)]);
+    let alice = s.players[0].clone();
+    stream_chunk_of(&mut s, ABOVE);
+    explode(&mut s, BLAST, false);
+    let heard = settled_for(&s.plugin, EventKind::BlockExplode);
+    assert_eq!(heard.len(), 1);
+    assert_eq!(
+        explode_of(&heard[0]).explosion_result,
+        ExplosionResult::Keep
+    );
+    assert_eq!(explosions(&alice).len(), 1);
+    assert_eq!(kind_at(&mut s, FLOOR), "minecraft:stone");
 }
