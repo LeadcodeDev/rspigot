@@ -114,7 +114,12 @@ class Generator(unittest.TestCase):
         catalog["retired"] = [{"java": "org.example.GoneEvent", "name": "Gone", "number": 900, "fields": {}}]
         self.write_catalog(catalog)
         overrides = self.root / INPUTS[1]
-        overrides.write_text(overrides.read_text().replace('"SheepRegrowWool", ', ""))
+        stateless = [
+            line
+            for line in overrides.read_text().replace('"SheepRegrowWool", ', "").splitlines(keepends=True)
+            if not line.startswith("SheepRegrowWool = ")
+        ]
+        overrides.write_text("".join(stateless))
         self.assertEqual(generator(self.root).returncode, 0)
         proto = (self.root / OUTPUTS[0]).read_text()
         number = sheared["number"]
