@@ -659,6 +659,20 @@ impl<L: ClientLink> Server<L> {
                 self.finish_drop_items(*step, cancelled, patch_of!(patch, BlockDropItem));
                 Vec::new()
             }
+            Continuation::CanBuild(step) => {
+                self.finish_can_build(*step, patch_of!(patch, BlockCanBuild));
+                Vec::new()
+            }
+            Continuation::Place(step) => {
+                let build = patch_of!(patch, BlockPlace).build;
+                self.finish_place(*step, cancelled, build);
+                Vec::new()
+            }
+            Continuation::MultiPlace(step) => {
+                let build = patch_of!(patch, BlockMultiPlace).build;
+                self.finish_place(*step, cancelled, build);
+                Vec::new()
+            }
         }
     }
 

@@ -12,6 +12,7 @@ mod menus;
 mod objects;
 mod orders;
 mod patch;
+mod placing;
 mod player;
 mod position;
 mod registry;

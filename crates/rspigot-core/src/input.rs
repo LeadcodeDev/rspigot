@@ -14,7 +14,7 @@ use crate::events::{
 };
 use crate::loot::{self, LootContext};
 use crate::plugins::events::PlayerRespawnReason;
-use crate::plugins::steps::{AbortStep, ClickStep, FinishStep, UseOnStep};
+use crate::plugins::steps::{AbortStep, BuildStep, ClickStep, FinishStep, UseItem, UseOnStep};
 use crate::plugins::{Continuation, Held};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -464,9 +464,8 @@ impl<L: ClientLink> Server<L> {
             game_mode,
         };
         if let Some(held) = &stack
-            && self.use_tool_on_block(id, held, &usage)
+            && self.use_tool_on_block(id, held, &usage, slot, sequence)
         {
-            self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
             return;
         }
         let kind = stack.as_ref().and_then(|s| BlockKind::from_item(s.item.0));
@@ -486,11 +485,11 @@ impl<L: ClientLink> Server<L> {
         };
         let target_ok = self.world.chunks.block(target).is_some_and(is_replaceable)
             && self.world.dimension.height.contains(target.y);
-        if !target_ok
-            || !self.within_reach(id, target)
-            || self.is_protected(id, target)
-            || self.intersects_player(target)
-        {
+        let Some(old) = self.world.chunks.block(target).filter(|_| target_ok) else {
+            self.refuse_block(id, target, sequence);
+            return;
+        };
+        if !self.within_reach(id, target) || self.is_protected(id, target) {
             self.refuse_block(id, target, sequence);
             return;
         }
@@ -513,17 +512,26 @@ impl<L: ClientLink> Server<L> {
         };
         let chunks = &self.world.chunks;
         let state = chests::placed_state(state, target, face, sneaking, |at| chunks.block(at));
-        self.set_block(target, state);
-        if let Some(linked) = placement.linked {
-            let other = target.offset(0, i32::from(linked.dy), 0);
-            if self.world.chunks.block(other).is_some_and(is_replaceable) {
-                self.set_block(other, linked.state);
-            }
-        }
-        self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
-        if game_mode == GameMode::Survival {
-            self.consume_one(id, slot, stack);
-        }
+        let linked = placement
+            .linked
+            .map(|linked| (target.offset(0, i32::from(linked.dy), 0), linked.state));
+        let buildable = !self.intersects_player(target);
+        self.ask_can_build(BuildStep {
+            using: UseItem {
+                player: id,
+                hand,
+                slot,
+                stack,
+                against: pos,
+                sequence,
+                game_mode,
+            },
+            target,
+            old,
+            state,
+            linked,
+            buildable,
+        });
     }
 
     fn resync_denied_block(
@@ -574,7 +582,7 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    fn intersects_player(&self, pos: BlockPos) -> bool {
+    pub(crate) fn intersects_player(&self, pos: BlockPos) -> bool {
         self.players.values().any(|p| {
             p.game_mode != GameMode::Spectator && {
                 let feet = p.position.block();
@@ -791,7 +799,7 @@ fn places_two_blocks(stack: &ItemStack) -> bool {
     })
 }
 
-fn is_replaceable(state: BlockStateId) -> bool {
+pub(crate) fn is_replaceable(state: BlockStateId) -> bool {
     state.flags().contains(StateFlags::REPLACEABLE)
 }
 

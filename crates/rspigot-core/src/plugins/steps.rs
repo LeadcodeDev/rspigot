@@ -318,6 +318,50 @@ pub(crate) struct DropItemsStep {
     pub(crate) exp: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Change {
+    pub(crate) pos: BlockPos,
+    pub(crate) old: BlockStateId,
+    pub(crate) new: BlockStateId,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ToolEffects {
+    pub(crate) sound: &'static str,
+    pub(crate) particle: Option<i32>,
+    pub(crate) damage: i32,
+}
+
+#[derive(Debug)]
+pub(crate) struct UseItem {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) stack: ItemStack,
+    pub(crate) against: BlockPos,
+    pub(crate) sequence: i32,
+    pub(crate) game_mode: GameMode,
+}
+
+#[derive(Debug)]
+pub(crate) struct BuildStep {
+    pub(crate) using: UseItem,
+    pub(crate) target: BlockPos,
+    pub(crate) old: BlockStateId,
+    pub(crate) state: BlockStateId,
+    pub(crate) linked: Option<(BlockPos, BlockStateId)>,
+    pub(crate) buildable: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct PlaceStep {
+    pub(crate) using: UseItem,
+    pub(crate) changes: Vec<Change>,
+    pub(crate) build: bool,
+    pub(crate) tool: Option<ToolEffects>,
+    pub(crate) forced: bool,
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -362,6 +406,9 @@ pub(crate) enum Continuation {
     Finish(FinishStep),
     Abort(AbortStep),
     DropItems(Box<DropItemsStep>),
+    CanBuild(Box<BuildStep>),
+    Place(Box<PlaceStep>),
+    MultiPlace(Box<PlaceStep>),
 }
 
 impl Continuation {
@@ -405,6 +452,9 @@ impl Continuation {
             Self::Break(_) | Self::Finish(_) => EventKind::BlockBreak,
             Self::Abort(_) => EventKind::BlockDamageAbort,
             Self::DropItems(_) => EventKind::BlockDropItem,
+            Self::CanBuild(_) => EventKind::BlockCanBuild,
+            Self::Place(_) => EventKind::BlockPlace,
+            Self::MultiPlace(_) => EventKind::BlockMultiPlace,
         }
     }
 

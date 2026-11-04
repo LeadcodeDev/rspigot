@@ -53,7 +53,7 @@ const fn face_of(direction: Direction) -> Face {
     }
 }
 
-const fn slot_of(hand: Hand) -> Slot {
+pub(crate) const fn slot_of(hand: Hand) -> Slot {
     match hand {
         Hand::Main => Slot::Hand,
         Hand::Off => Slot::OffHand,
