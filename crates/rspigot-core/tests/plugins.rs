@@ -601,6 +601,33 @@ fn a_cancel_after_the_window_only_warns() {
 }
 
 #[test]
+fn a_patch_after_the_window_on_a_cancelled_move_is_ignored_silently() {
+    let mut server = server(PluginSettings {
+        decision_ticks: 10,
+        late_cancel_ticks: 2,
+        ..PluginSettings::default()
+    });
+    let alice = join(&mut server, "Alice");
+    let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
+    let judge = connect_with(&mut server, 2, "judge", vec![decide(1)]);
+    alice.link.take();
+    step(&mut server, &alice, east(1));
+    let event = asked(&guard)[0];
+    answer(&mut server, 1, event, true);
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    ticks(&mut server, 5);
+    rule(
+        &mut server,
+        2,
+        event,
+        vec![verdict(1, false, Some(south(3)))],
+    );
+    assert_eq!(server.player_location(alice.id), Some(SPAWN));
+    assert!(warnings(&guard).is_empty());
+    assert!(warnings(&judge).is_empty());
+}
+
+#[test]
 fn ignore_cancelled_observers_only_hear_moves_that_happened() {
     let mut server = server(PluginSettings::default());
     let alice = join(&mut server, "Alice");
@@ -1093,14 +1120,18 @@ fn a_rollback_reports_the_answered_moves_it_undoes() {
     assert_eq!(server.player_location(alice.id), Some(east(2)));
 
     answer(&mut server, 1, events[1], true);
+    let answered_twice = [format!(
+        "event {} was already answered by this plugin",
+        events[1]
+    )];
     assert!(teleported_to(&alice).is_empty());
-    assert!(warnings(&guard).is_empty());
+    assert_eq!(warnings(&guard), answered_twice);
     assert_eq!(server.player_location(alice.id), Some(east(2)));
 
     answer(&mut server, 1, events[0], true);
     assert_eq!(teleported_to(&alice), [SPAWN]);
     assert_eq!(server.player_location(alice.id), Some(SPAWN));
-    assert!(warnings(&guard).is_empty());
+    assert_eq!(warnings(&guard), answered_twice);
     assert_eq!(
         moves(&watch),
         [

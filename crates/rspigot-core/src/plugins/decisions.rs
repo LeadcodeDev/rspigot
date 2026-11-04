@@ -171,16 +171,17 @@ impl Pending {
     }
 
     fn record(&self) -> Record {
+        let (silent, answered) = self
+            .asked
+            .iter()
+            .partition(|ask| self.waiting.contains(&ask.connection));
         Record {
             lane: self.lane,
             undo: self.then.undo(),
-            silent: self
-                .asked
-                .iter()
-                .filter(|ask| self.waiting.contains(&ask.connection))
-                .copied()
-                .collect(),
+            silent,
+            answered,
             until: self.until,
+            deadline: self.deadline,
             applied: None,
         }
     }
@@ -257,13 +258,23 @@ pub(crate) struct Record {
     lane: PlayerId,
     undo: Option<Undo>,
     silent: Vec<Asked>,
+    answered: Vec<Asked>,
     until: u64,
+    deadline: u64,
     pub(crate) applied: Option<EventPayload>,
 }
 
 impl Record {
     fn silent_from(&self, connection: u64) -> bool {
         self.silent.iter().any(|ask| ask.connection == connection)
+    }
+
+    fn answered_by(&self, connection: u64) -> bool {
+        self.answered.iter().any(|ask| ask.connection == connection)
+    }
+
+    fn kept(&self, tick: u64) -> bool {
+        tick <= self.until.max(self.deadline)
     }
 }
 
@@ -344,11 +355,7 @@ impl Decisions {
         tick: u64,
         warnings: &mut Vec<String>,
     ) -> Taken {
-        let Some(record) = self
-            .settled
-            .get(&event)
-            .filter(|record| tick <= record.until)
-        else {
+        let Some(record) = self.settled.get(&event).filter(|record| record.kept(tick)) else {
             return if verdicts.iter().any(|verdict| verdict.cancel) {
                 Taken::TooLate("cancel")
             } else if verdicts.iter().any(|verdict| verdict.patch.is_some()) {
@@ -357,14 +364,17 @@ impl Decisions {
                 Taken::Ignored
             };
         };
-        if !record.silent_from(connection) {
-            return Taken::Ignored;
-        }
-        let admitted = admit(&record.silent, connection, event, verdicts, warnings);
         if record.applied.is_none() {
             return Taken::Ignored;
         }
-        let (lane, undo) = (record.lane, record.undo);
+        if !record.silent_from(connection) {
+            if record.answered_by(connection) {
+                warnings.push(answered_twice(event));
+            }
+            return Taken::Ignored;
+        }
+        let admitted = admit(&record.silent, connection, event, verdicts, warnings);
+        let (lane, undo) = (record.lane, record.undo.filter(|_| tick <= record.until));
         let cancel = admitted.iter().any(|(_, verdict)| verdict.cancel);
         let patched = admitted.iter().any(|(_, verdict)| verdict.patch.is_some());
         match (cancel, undo) {
@@ -408,13 +418,11 @@ impl Decisions {
     }
 
     pub(crate) fn remember(&mut self, event: u64, record: Record) {
-        if record.applied.is_some() || !record.silent.is_empty() {
-            self.settled.insert(event, record);
-        }
+        self.settled.insert(event, record);
     }
 
     pub(crate) fn expire(&mut self, tick: u64) {
-        self.settled.retain(|_, record| tick <= record.until);
+        self.settled.retain(|_, record| record.kept(tick));
     }
 
     pub(crate) fn drop_pending(&mut self, lane: PlayerId) -> Undone {
@@ -512,7 +520,9 @@ mod tests {
             lane: player,
             undo: Some(Undo::SendBack(from)),
             silent: handlers(&silent),
+            answered: Vec::new(),
             until,
+            deadline: 5,
             applied: Some(payload(player, from, from)),
         }
     }
@@ -675,7 +685,7 @@ mod tests {
         ));
         assert!(matches!(
             taken(&mut decisions, 1, 7, cancel(true), 0),
-            Taken::TooLate("cancel")
+            Taken::Ignored
         ));
         assert_eq!(decisions.reference(alice), None);
         assert!(decisions.reference(bob).is_some());
@@ -804,6 +814,79 @@ mod tests {
         assert!(matches!(stranger, Taken::Ignored));
         assert!(warnings.is_empty());
         assert!(decisions.next_settled(0).is_none());
+    }
+
+    #[test]
+    fn a_late_verdict_on_an_event_that_did_not_go_through_is_ignored_silently() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        let mut called_off = record(alice, &[1], 20);
+        called_off.answered = handlers(&[(2, 1)]);
+        called_off.applied = None;
+        decisions.remember(1, called_off);
+        for (connection, verdicts) in [
+            (1, vec![verdict(1, true, Some(4.0))]),
+            (1, vec![verdict(7, false, None)]),
+            (2, cancel(true)),
+            (3, vec![verdict(1, false, Some(4.0))]),
+        ] {
+            let (taken, warnings) = decisions.decide(connection, 1, verdicts, 20);
+            assert!(matches!(taken, Taken::Ignored));
+            assert!(warnings.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_second_decision_on_an_applied_event_warns_the_plugin_that_answered() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        let mut applied = record(alice, &[1], 20);
+        applied.answered = handlers(&[(2, 1)]);
+        decisions.remember(1, applied);
+        let (again, warnings) = decisions.decide(2, 1, cancel(true), 3);
+        assert!(matches!(again, Taken::Ignored));
+        assert_eq!(warnings, ["event 1 was already answered by this plugin"]);
+        let (stranger, warnings) = decisions.decide(3, 1, cancel(true), 3);
+        assert!(matches!(stranger, Taken::Ignored));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn a_settled_event_is_kept_until_its_deadline_but_rolls_back_only_within_its_window() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        let mut short = record(alice, &[1], 2);
+        short.deadline = 5;
+        decisions.remember(1, short);
+        decisions.expire(5);
+        assert!(matches!(
+            taken(&mut decisions, 1, 1, cancel(true), 4),
+            Taken::TooLate("cancel")
+        ));
+        assert!(matches!(
+            taken(&mut decisions, 1, 1, vec![verdict(1, false, Some(4.0))], 4),
+            Taken::TooLate("patch")
+        ));
+        assert_eq!(
+            rolled_back(taken(&mut decisions, 1, 1, cancel(true), 2)),
+            (vec![1], vec![])
+        );
+        let mut settled = Decisions::default();
+        settled.queue(2, asking(alice, 1.0, &[(1, 1)]));
+        let ready = settled.next_settled(9).expect("the deadline has passed");
+        let mut applied = ready.record;
+        applied.applied = Some(ready.payload);
+        settled.remember(ready.event, applied);
+        settled.expire(20);
+        assert!(matches!(
+            taken(&mut settled, 1, 2, cancel(true), 20),
+            Taken::RolledBack(_)
+        ));
+        settled.expire(21);
+        assert!(matches!(
+            taken(&mut settled, 1, 2, cancel(true), 21),
+            Taken::TooLate("cancel")
+        ));
     }
 
     #[test]
