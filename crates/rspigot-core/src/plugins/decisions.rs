@@ -130,11 +130,16 @@ impl Pending {
             .iter()
             .position(|waiting| *waiting == connection)
         else {
+            if self.asked.iter().any(|ask| ask.connection == connection) {
+                warnings.push(answered_twice(event));
+            }
             return Taken::Ignored;
         };
         self.waiting.swap_remove(index);
         let kind = self.payload.kind();
-        for (slot, verdict) in admit(&self.asked, connection, event, verdicts, warnings) {
+        let admitted = admit(&self.asked, connection, event, verdicts, warnings);
+        let cancelled = admitted.iter().any(|(_, verdict)| verdict.cancel);
+        for (slot, verdict) in admitted {
             let mut patch = verdict.patch;
             if let Some(misfit) = patch.filter(|patch| patch.kind() != kind) {
                 warnings.push(format!(
@@ -151,6 +156,16 @@ impl Pending {
                 cancel: verdict.cancel,
                 patch,
             });
+        }
+        if !cancelled {
+            for (ask, answer) in self.asked.iter().zip(&self.answers) {
+                if ask.connection == connection && answer.is_none() {
+                    warnings.push(format!(
+                        "handler {} of event {event} gave no verdict",
+                        ask.handler
+                    ));
+                }
+            }
         }
         Taken::Counted
     }
@@ -181,6 +196,10 @@ impl Pending {
             record,
         }
     }
+}
+
+fn answered_twice(event: u64) -> String {
+    format!("event {event} was already answered by this plugin")
 }
 
 fn admit(
@@ -737,6 +756,54 @@ mod tests {
         );
         let ready = decisions.next_settled(0).expect("the event settles");
         assert_eq!(ready.settlement, Settlement::Applied(None));
+    }
+
+    #[test]
+    fn a_decision_without_a_cancel_warns_for_each_handler_left_without_a_verdict() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, asking(alice, 1.0, &[(1, 1), (2, 1), (1, 2), (1, 3)]));
+        let (taken, warnings) = decisions.decide(1, 1, vec![verdict(2, false, None)], 0);
+        assert!(matches!(taken, Taken::Counted));
+        assert_eq!(
+            warnings,
+            [
+                "handler 1 of event 1 gave no verdict",
+                "handler 3 of event 1 gave no verdict",
+            ]
+        );
+        let (_, warnings) = decisions.decide(2, 1, Vec::new(), 0);
+        assert_eq!(warnings, ["handler 1 of event 1 gave no verdict"]);
+    }
+
+    #[test]
+    fn a_decision_with_a_cancel_leaves_its_other_handlers_without_a_warning() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, asking(alice, 1.0, &[(1, 1), (1, 2), (1, 3)]));
+        let (taken, warnings) = decisions.decide(1, 1, vec![verdict(2, true, None)], 0);
+        assert!(matches!(taken, Taken::Counted));
+        assert!(warnings.is_empty());
+        let ready = decisions.next_settled(0).expect("the event settles");
+        assert_eq!(ready.settlement, Settlement::Cancelled);
+    }
+
+    #[test]
+    fn a_second_decision_from_a_plugin_is_ignored_with_a_warning() {
+        let alice = PlayerId::offline("Alice");
+        let mut decisions = Decisions::default();
+        decisions.queue(1, pending(alice, 1.0, &[1, 2]));
+        assert!(matches!(
+            taken(&mut decisions, 1, 1, cancel(false), 0),
+            Taken::Counted
+        ));
+        let (again, warnings) = decisions.decide(1, 1, cancel(true), 0);
+        assert!(matches!(again, Taken::Ignored));
+        assert_eq!(warnings, ["event 1 was already answered by this plugin"]);
+        let (stranger, warnings) = decisions.decide(3, 1, cancel(true), 0);
+        assert!(matches!(stranger, Taken::Ignored));
+        assert!(warnings.is_empty());
+        assert!(decisions.next_settled(0).is_none());
     }
 
     #[test]
