@@ -486,8 +486,8 @@ impl<L: ClientLink> Server<L> {
                 self.push(Audience::One(id), ClientEvent::BlockChangedAck(sequence));
                 return;
             }
-        } else if let Some(state) = self.world.chunks.block(pos) {
-            self.push(Audience::One(id), ClientEvent::BlockUpdate { pos, state });
+        } else {
+            self.resync_denied_block(id, pos, face, clicked, stack.as_ref());
         }
         if !item_ok {
             self.refuse_click(id, pos, face, sequence);
@@ -562,6 +562,34 @@ impl<L: ClientLink> Server<L> {
         if game_mode == GameMode::Survival {
             self.consume_one(id, slot, stack);
         }
+    }
+
+    fn resync_denied_block(
+        &mut self,
+        id: PlayerId,
+        pos: BlockPos,
+        face: Direction,
+        clicked: BlockStateId,
+        stack: Option<&ItemStack>,
+    ) {
+        let (dx, dy, dz) = face.offset();
+        let halves: Vec<BlockPos> = match clicked.property("half") {
+            Some("lower") if is_door(clicked) => vec![pos.offset(0, 1, 0)],
+            Some("upper") if is_door(clicked) => vec![pos.offset(0, -1, 0)],
+            _ if stack.is_some_and(places_two_blocks) => {
+                vec![pos.offset(dx, dy + 1, dz), pos.offset(0, 1, 0)]
+            }
+            _ => Vec::new(),
+        };
+        for at in std::iter::once(pos).chain(halves) {
+            if let Some(state) = self.world.chunks.block(at) {
+                self.push(
+                    Audience::One(id),
+                    ClientEvent::BlockUpdate { pos: at, state },
+                );
+            }
+        }
+        self.send_inventory(id);
     }
 
     fn use_block(&mut self, pos: BlockPos, state: BlockStateId, sneaking: bool) -> bool {
@@ -778,6 +806,27 @@ const fn acts(input: &PlayerInput) -> bool {
 
 fn to_pitch(rotation: Option<Rotation>) -> f32 {
     rotation.map_or(0.0, |r| r.pitch.clamp(-90.0, 90.0))
+}
+
+fn is_door(state: BlockStateId) -> bool {
+    state
+        .kind()
+        .is_some_and(|kind| kind.name().ends_with("_door"))
+}
+
+fn places_two_blocks(stack: &ItemStack) -> bool {
+    BlockKind::from_item(stack.item.0).is_some_and(|kind| {
+        let context = PlaceContext {
+            default_state: kind.default_state(),
+            wall_variant: None,
+            face: Face::Up,
+            yaw: 0.0,
+            pitch: 0.0,
+            cursor_y: 0.0,
+        };
+        kind.place(&context)
+            .is_some_and(|placement| placement.linked.is_some())
+    })
 }
 
 fn is_replaceable(state: BlockStateId) -> bool {

@@ -784,3 +784,71 @@ fn a_right_click_on_the_protected_spawn_is_refused_before_the_event() {
     refused_before_the_event(&mut s, &alice, FLOOR);
     assert!(block_is_air(&mut s, ABOVE));
 }
+
+fn updated(events: &[ClientEvent]) -> Vec<BlockPos> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::BlockUpdate { pos, .. } => Some(*pos),
+            _ => None,
+        })
+        .collect()
+}
+
+fn resent_inventory(events: &[ClientEvent]) -> bool {
+    events
+        .iter()
+        .any(|event| matches!(event, ClientEvent::InventoryContent { .. }))
+}
+
+#[test]
+fn a_denied_door_resends_its_other_half_and_the_inventory() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerInteract)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice oak_door 1");
+    use_on(&mut s, &alice, FLOOR, 1);
+    let placed = last_asked(&s.plugin, EventKind::PlayerInteract);
+    rule_on(&mut s.server, 1, placed.id, false, None);
+    let upper = BlockPos::new(2, 65, 0);
+    assert!(!block_is_air(&mut s, upper));
+    alice.link.take();
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::UseItemOn {
+            hand: Hand::Main,
+            pos: ABOVE,
+            face: Direction::West,
+            cursor: Vec3::new(0.0, 0.5, 0.5),
+            inside_block: false,
+            sequence: 2,
+        },
+    );
+    let clicked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    rule_on(
+        &mut s.server,
+        1,
+        clicked.id,
+        false,
+        results(EventResult::Deny, EventResult::Default),
+    );
+    let events = alice.link.take();
+    assert!(updated(&events).contains(&upper), "{:?}", updated(&events));
+    assert!(resent_inventory(&events));
+}
+
+#[test]
+fn a_denied_click_with_a_door_in_hand_resends_the_two_blocks_it_would_fill() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerInteract)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice oak_door 1");
+    alice.link.take();
+    use_on(&mut s, &alice, FLOOR, 1);
+    let asked = last_asked(&s.plugin, EventKind::PlayerInteract);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    let events = alice.link.take();
+    let updates = updated(&events);
+    assert!(updates.contains(&BlockPos::new(2, 65, 0)), "{updates:?}");
+    assert!(updates.contains(&ABOVE), "{updates:?}");
+    assert!(block_is_air(&mut s, ABOVE));
+}
