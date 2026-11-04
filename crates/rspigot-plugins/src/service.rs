@@ -229,10 +229,7 @@ impl<L: ClientLink> Session<L> {
     async fn step(&mut self) -> Ending {
         tokio::select! {
             received = self.incoming.message() => match received {
-                Ok(Some(message)) => {
-                    self.forward(message);
-                    ControlFlow::Continue(())
-                }
+                Ok(Some(message)) => self.forward(message),
                 Ok(None) => ControlFlow::Break(None),
                 Err(status) => {
                     tracing::debug!(plugin = %self.name, %status, "plugin stream failed");
@@ -248,8 +245,9 @@ impl<L: ClientLink> Session<L> {
         }
     }
 
-    fn forward(&self, message: v1::FromPlugin) {
-        match convert::from_plugin(message) {
+    fn forward(&self, message: v1::FromPlugin) -> Ending {
+        let mut warnings = Vec::new();
+        match convert::from_plugin(message, &mut warnings) {
             Ok(message) => {
                 let _ = self.inbound.send(Inbound::PluginMessage {
                     connection: self.connection,
@@ -258,6 +256,10 @@ impl<L: ClientLink> Session<L> {
             }
             Err(error) => tracing::warn!("Dropped a message from plugin {}: {error}", self.name),
         }
+        for warning in warnings {
+            self.reply(ToPlugin::Warning(warning))?;
+        }
+        ControlFlow::Continue(())
     }
 
     fn reply(&self, message: ToPlugin) -> Ending {

@@ -427,12 +427,15 @@ mod tests {
     }
 
     fn ask(asked: question::Question) -> Result<FromPlugin, Malformed> {
-        from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Question(v1::Question {
-                request: 5,
-                question: Some(asked),
-            })),
-        })
+        from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Question(v1::Question {
+                    request: 5,
+                    question: Some(asked),
+                })),
+            },
+            &mut Vec::new(),
+        )
     }
 
     fn answered(answer: Answer) -> Option<answer::Body> {

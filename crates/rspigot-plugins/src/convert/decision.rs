@@ -1,30 +1,39 @@
 use rspigot_core::plugins::{FromPlugin, Verdict};
 use rspigot_plugin_protocol::v1;
 
-use super::Malformed;
 use super::events::change;
 
-pub(super) fn decision(decision: v1::Decision) -> Result<FromPlugin, Malformed> {
-    Ok(FromPlugin::Decision {
-        event: decision.event,
+pub(super) fn decision(decision: v1::Decision, warnings: &mut Vec<String>) -> FromPlugin {
+    let event = decision.event;
+    FromPlugin::Decision {
+        event,
         verdicts: decision
             .verdicts
             .into_iter()
-            .map(verdict)
-            .collect::<Result<_, _>>()?,
-    })
+            .map(|verdict| convert(event, verdict, warnings))
+            .collect(),
+    }
 }
 
-fn verdict(verdict: v1::Verdict) -> Result<Verdict, Malformed> {
-    Ok(Verdict {
-        handler: verdict.handler,
+fn convert(event: u64, verdict: v1::Verdict, warnings: &mut Vec<String>) -> Verdict {
+    let handler = verdict.handler;
+    let patch = verdict
+        .patch
+        .and_then(|patch| patch.change)
+        .and_then(|patched| match change(patched) {
+            Ok(patch) => Some(patch),
+            Err(error) => {
+                warnings.push(format!(
+                    "patch of handler {handler} for event {event} was dropped: {error}"
+                ));
+                None
+            }
+        });
+    Verdict {
+        handler,
         cancel: verdict.cancel,
-        patch: verdict
-            .patch
-            .and_then(|patch| patch.change)
-            .map(change)
-            .transpose()?,
-    })
+        patch,
+    }
 }
 
 #[cfg(test)]
@@ -52,13 +61,17 @@ mod tests {
         })
     }
 
-    fn decide(verdicts: Vec<v1::Verdict>) -> Result<FromPlugin, Malformed> {
-        convert::from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Decision(v1::Decision {
-                event: 7,
-                verdicts,
-            })),
-        })
+    fn decide(verdicts: Vec<v1::Verdict>, warnings: &mut Vec<String>) -> FromPlugin {
+        convert::from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Decision(v1::Decision {
+                    event: 7,
+                    verdicts,
+                })),
+            },
+            warnings,
+        )
+        .expect("a decision always converts")
     }
 
     fn zombie() -> v1::EntitySnapshot {
@@ -109,8 +122,9 @@ mod tests {
                 patch: Some(v1::Patch { change: None }),
             },
         ];
+        let mut warnings = Vec::new();
         assert_eq!(
-            decide(verdicts).unwrap(),
+            decide(verdicts, &mut warnings),
             FromPlugin::Decision {
                 event: 7,
                 verdicts: vec![
@@ -143,16 +157,20 @@ mod tests {
                 ],
             }
         );
+        assert!(warnings.is_empty());
     }
 
     #[test]
     fn a_nullable_patch_tells_a_cleared_value_from_an_untouched_one() {
         let target = |patch| {
-            let Ok(FromPlugin::Decision { verdicts, .. }) = decide(vec![v1::Verdict {
-                handler: 1,
-                cancel: false,
-                patch,
-            }]) else {
+            let FromPlugin::Decision { verdicts, .. } = decide(
+                vec![v1::Verdict {
+                    handler: 1,
+                    cancel: false,
+                    patch,
+                }],
+                &mut Vec::new(),
+            ) else {
                 panic!("expected a decision");
             };
             verdicts[0].patch.clone()
@@ -183,16 +201,48 @@ mod tests {
     }
 
     #[test]
-    fn a_malformed_patch_drops_the_whole_decision() {
+    fn a_malformed_patch_drops_only_that_patch() {
         let mut stranger = zombie();
         stranger.uuid = "nobody".to_owned();
-        let refused = decide(vec![v1::Verdict {
-            handler: 1,
-            cancel: true,
-            patch: targeting(Some(v1::NullableEntitySnapshot {
-                value: Some(stranger),
-            })),
-        }]);
-        assert!(matches!(refused, Err(Malformed::Entity(uuid)) if uuid == "nobody"));
+        let mut warnings = Vec::new();
+        let decided = decide(
+            vec![
+                v1::Verdict {
+                    handler: 1,
+                    cancel: true,
+                    patch: targeting(Some(v1::NullableEntitySnapshot {
+                        value: Some(stranger),
+                    })),
+                },
+                v1::Verdict {
+                    handler: 2,
+                    cancel: false,
+                    patch: targeting(None),
+                },
+            ],
+            &mut warnings,
+        );
+        assert_eq!(
+            decided,
+            FromPlugin::Decision {
+                event: 7,
+                verdicts: vec![
+                    Verdict {
+                        handler: 1,
+                        cancel: true,
+                        patch: None,
+                    },
+                    Verdict {
+                        handler: 2,
+                        cancel: false,
+                        patch: Some(EventPatch::EntityTarget(EntityTargetPatch { target: None })),
+                    },
+                ],
+            }
+        );
+        assert_eq!(
+            warnings,
+            ["patch of handler 1 for event 7 was dropped: `nobody` is not an entity UUID"]
+        );
     }
 }

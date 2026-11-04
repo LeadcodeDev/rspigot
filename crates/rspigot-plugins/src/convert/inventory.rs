@@ -48,12 +48,15 @@ mod tests {
     const STEVE: &str = "00000000-0000-0000-0000-000000000001";
 
     fn convert(order: inventory_order::Order) -> Result<InventoryOrder, Malformed> {
-        let converted = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Inventory(v1::InventoryOrder {
-                player: STEVE.into(),
-                order: Some(order),
-            })),
-        })?;
+        let converted = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Inventory(v1::InventoryOrder {
+                    player: STEVE.into(),
+                    order: Some(order),
+                })),
+            },
+            &mut Vec::new(),
+        )?;
         let FromPlugin::Order(Order::Inventory { player, order }) = converted else {
             panic!("expected an inventory order");
         };
@@ -132,12 +135,15 @@ mod tests {
             convert(inventory_order::Order::SetHeldSlot(3)).unwrap(),
             InventoryOrder::SetHeldSlot(3)
         );
-        let empty = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Inventory(v1::InventoryOrder {
-                player: STEVE.into(),
-                order: None,
-            })),
-        });
+        let empty = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Inventory(v1::InventoryOrder {
+                    player: STEVE.into(),
+                    order: None,
+                })),
+            },
+            &mut Vec::new(),
+        );
         assert!(matches!(empty, Err(Malformed::Empty)));
 
         let mut slots = vec![None; 41];
@@ -172,12 +178,15 @@ mod tests {
 
     #[test]
     fn the_inventory_question_and_answer_keep_their_shape() {
-        let asked = from_plugin(v1::FromPlugin {
-            body: Some(from_plugin::Body::Question(v1::Question {
-                request: 9,
-                question: Some(question::Question::Inventory(STEVE.into())),
-            })),
-        });
+        let asked = from_plugin(
+            v1::FromPlugin {
+                body: Some(from_plugin::Body::Question(v1::Question {
+                    request: 9,
+                    question: Some(question::Question::Inventory(STEVE.into())),
+                })),
+            },
+            &mut Vec::new(),
+        );
         assert_eq!(
             asked.unwrap(),
             FromPlugin::Question {

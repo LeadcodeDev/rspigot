@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rspigot_core::events::{ClientEvent, Inbound};
-use rspigot_core::plugins::events::PlayerMove;
+use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMove};
 use rspigot_core::plugins::{
-    Access, EventKind, EventPayload, FromPlugin, HandlerSpec, Location, Phase, PlayerSnapshot,
-    PluginIntro, Priority, ToPlugin, Verdict,
+    Access, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Phase,
+    PlayerSnapshot, PluginIntro, Priority, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{ClientLink, PluginOutbox};
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -16,7 +16,7 @@ use rspigot_domain::text::Component;
 use rspigot_domain::{Rotation, Vec3};
 use rspigot_plugin_protocol::PROTOCOL_VERSION;
 use rspigot_plugin_protocol::v1::plugin_host_client::PluginHostClient;
-use rspigot_plugin_protocol::v1::{self, event, from_plugin, player_order, to_plugin};
+use rspigot_plugin_protocol::v1::{self, event, from_plugin, patch, player_order, to_plugin};
 use rspigot_plugins::{PluginHostConfig, PluginHostError, run, serve};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
@@ -380,6 +380,85 @@ async fn a_plugin_that_introduces_itself_is_accepted() {
                 patch: None
             }]
         }
+    );
+}
+
+fn targeting(uuid: Option<&str>) -> Option<v1::Patch> {
+    Some(v1::Patch {
+        change: Some(patch::Change::EntityTarget(v1::EntityTargetPatch {
+            target: Some(v1::NullableEntitySnapshot {
+                value: uuid.map(|uuid| v1::EntitySnapshot {
+                    entity_id: 4,
+                    uuid: uuid.to_owned(),
+                    kind: "minecraft:zombie".to_owned(),
+                    position: Some(v1::Vec3 {
+                        x: 0.0,
+                        y: 64.0,
+                        z: 0.0,
+                    }),
+                }),
+            }),
+        })),
+    })
+}
+
+#[tokio::test]
+async fn a_malformed_patch_is_dropped_alone_and_the_plugin_is_warned() {
+    let mut host = Host::start(None).await;
+    let mut plugin = Plugin::accepted(host.address, hello("welcome")).await;
+    let Seen::Connected { connection, .. } = host.next().await else {
+        panic!("expected a connection");
+    };
+
+    plugin.say(from_plugin::Body::Decision(v1::Decision {
+        event: 7,
+        verdicts: vec![
+            v1::Verdict {
+                handler: 2,
+                cancel: true,
+                patch: targeting(Some("nobody")),
+            },
+            v1::Verdict {
+                handler: 3,
+                cancel: false,
+                patch: targeting(None),
+            },
+        ],
+    }));
+    let Seen::Message {
+        connection: from,
+        message,
+    } = host.next().await
+    else {
+        panic!("expected a message");
+    };
+    assert_eq!(from, connection);
+    assert_eq!(
+        message,
+        FromPlugin::Decision {
+            event: 7,
+            verdicts: vec![
+                Verdict {
+                    handler: 2,
+                    cancel: true,
+                    patch: None,
+                },
+                Verdict {
+                    handler: 3,
+                    cancel: false,
+                    patch: Some(EventPatch::EntityTarget(EntityTargetPatch {
+                        target: Some(None)
+                    })),
+                },
+            ],
+        }
+    );
+    assert_eq!(
+        plugin.hear().await,
+        Some(to_plugin::Body::Warning(v1::Warning {
+            message: "patch of handler 2 for event 7 was dropped: `nobody` is not an entity UUID"
+                .to_owned(),
+        }))
     );
 }
 

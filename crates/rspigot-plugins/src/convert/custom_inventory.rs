@@ -68,7 +68,8 @@ mod tests {
     }
 
     fn convert(body: from_plugin::Body) -> FromPlugin {
-        from_plugin(v1::FromPlugin { body: Some(body) }).expect("the message converts")
+        from_plugin(v1::FromPlugin { body: Some(body) }, &mut Vec::new())
+            .expect("the message converts")
     }
 
     fn payload(payload: EventPayload) -> event::Payload {
@@ -266,14 +267,17 @@ mod tests {
             on_three(CustomInventoryOrder::Discard)
         );
         assert!(
-            from_plugin(v1::FromPlugin {
-                body: Some(from_plugin::Body::CustomInventory(
-                    v1::CustomInventoryOrder {
-                        inventory: 3,
-                        order: None,
-                    }
-                )),
-            })
+            from_plugin(
+                v1::FromPlugin {
+                    body: Some(from_plugin::Body::CustomInventory(
+                        v1::CustomInventoryOrder {
+                            inventory: 3,
+                            order: None,
+                        }
+                    )),
+                },
+                &mut Vec::new()
+            )
             .is_err()
         );
 
