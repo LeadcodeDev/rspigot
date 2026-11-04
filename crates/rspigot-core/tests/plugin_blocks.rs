@@ -496,3 +496,34 @@ fn a_drop_patch_may_replace_the_stack_of_a_kept_item() {
         .collect();
     assert_eq!(thrown, ["minecraft:diamond 3"]);
 }
+
+#[test]
+fn a_cancelled_break_of_a_campfire_resends_its_block_entity_between_two_acks() {
+    let (mut s, alice) = dirt_scene(vec![deciding(1, EventKind::BlockBreak)]);
+    set(&mut s, DIRT, "minecraft:campfire");
+    console(&mut s, "gamemode creative Alice");
+    alice.link.take();
+    dig(&mut s, &alice, DigAction::Start, DIRT, 6);
+    let asked = last_asked(&s.plugin, EventKind::BlockBreak);
+    alice.link.take();
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    let order: Vec<String> = alice
+        .link
+        .take()
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::BlockUpdate { pos, .. } => {
+                Some(format!("update {} {} {}", pos.x, pos.y, pos.z))
+            }
+            ClientEvent::BlockChangedAck(sequence) => Some(format!("ack {sequence}")),
+            ClientEvent::BlockEntityUpdate { pos, .. } => {
+                Some(format!("entity {} {} {}", pos.x, pos.y, pos.z))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(order.len(), 10, "{order:?}");
+    assert_eq!(order[0], "update 2 63 0");
+    assert_eq!(order[7..], ["ack 6", "entity 2 63 0", "ack 6"]);
+    assert_eq!(kind_at(&mut s, DIRT), "minecraft:campfire");
+}

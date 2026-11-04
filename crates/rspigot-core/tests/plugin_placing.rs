@@ -3,7 +3,8 @@ mod common;
 use common::*;
 use rspigot_core::events::{ClientEvent, Direction, Hand, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{
-    BlockCanBuild, BlockCanBuildPatch, BlockMultiPlace, BlockPlace, BlockPlacePatch, EquipmentSlot,
+    BlockCanBuild, BlockCanBuildPatch, BlockMultiPlace, BlockMultiPlacePatch, BlockPlace,
+    BlockPlacePatch, EquipmentSlot,
 };
 use rspigot_core::plugins::{
     Answer, BlockOrder, EventKind, EventPatch, EventPayload, ItemSpec, Order, Question,
@@ -463,4 +464,55 @@ fn spawn_protection_tests_the_clicked_block_not_the_placed_one() {
     assert_eq!(placed.block, outside);
     assert!(!placed.build);
     assert_eq!(kind_at(&mut s, outside), "minecraft:air");
+}
+
+#[test]
+fn a_tool_use_resends_the_inventory_and_block_before_its_ack_and_acks_after_an_accepted_change() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockPlace)], "iron_hoe");
+    s.act(Order::Block {
+        pos: FLOOR,
+        order: BlockOrder::Set("minecraft:dirt".to_owned()),
+    });
+    alice.link.take();
+    use_on(&mut s, &alice, FLOOR, 7);
+    let asked = last_asked(&s.plugin, EventKind::BlockPlace);
+    assert!(packets(&alice.link.take()).is_empty());
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    let refused = packets(&alice.link.take());
+    assert_eq!(refused[..2], ["inventory", "update 2 63 0 block"]);
+    assert_eq!(refused.last().map(String::as_str), Some("ack 7"));
+    use_on(&mut s, &alice, FLOOR, 8);
+    let asked = last_asked(&s.plugin, EventKind::BlockPlace);
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    let accepted = packets(&alice.link.take());
+    assert_eq!(accepted, ["update 2 63 0 block", "ack 8"]);
+}
+
+#[test]
+fn clearing_build_on_a_multi_place_refuses_both_halves() {
+    let (mut s, alice) = placing(vec![deciding(1, EventKind::BlockMultiPlace)], "oak_door 1");
+    use_on(&mut s, &alice, FLOOR, 5);
+    let asked = last_asked(&s.plugin, EventKind::BlockMultiPlace);
+    alice.link.take();
+    rule_on(
+        &mut s.server,
+        1,
+        asked.id,
+        false,
+        Some(EventPatch::BlockMultiPlace(BlockMultiPlacePatch {
+            build: Some(false),
+        })),
+    );
+    assert_eq!(kind_at(&mut s, ABOVE), "minecraft:air");
+    assert_eq!(kind_at(&mut s, TOP), "minecraft:air");
+    let resent = packets(&alice.link.take());
+    assert_eq!(
+        resent[..3],
+        ["inventory", "update 2 65 0 air", "update 2 64 0 air"]
+    );
+    assert_eq!(resent.last().map(String::as_str), Some("ack 5"));
+    assert_eq!(
+        held(&mut s, &alice),
+        Some(ItemSpec::of("minecraft:oak_door", 1))
+    );
 }

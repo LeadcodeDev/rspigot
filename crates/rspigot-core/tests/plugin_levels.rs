@@ -354,3 +354,17 @@ fn a_shutdown_settles_the_pending_events_of_the_keyed_lanes_before_saving() {
     let level = server.run(&inbound);
     assert_eq!(level.day_time, before + 10);
 }
+
+#[test]
+fn a_cancelled_thunder_change_alone_keeps_the_rain_and_the_clear_sky_above_it() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::ThunderChange)]);
+    console(&mut s, "weather rain");
+    let state = world_state(&mut s);
+    assert!(state.raining && !state.thundering);
+    console(&mut s, "weather thunder");
+    assert!(asked_for(&s.plugin, EventKind::WeatherChange).is_empty());
+    let asked = last_asked(&s.plugin, EventKind::ThunderChange);
+    rule_on(&mut s.server, 1, asked.id, true, None);
+    let state = world_state(&mut s);
+    assert!(state.raining && !state.thundering);
+}
