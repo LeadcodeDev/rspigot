@@ -280,18 +280,18 @@ Accessors that have no field, with the reason.
 | `AsyncStructureGenerate` | `removeEntityTransformer(NamespacedKey)` | transformers are Java callbacks |
 | `AsyncStructureGenerate` | `setBlockTransformer(NamespacedKey, BlockTransformer)` | a Java callback cannot cross the process boundary |
 | `AsyncStructureGenerate` | `setEntityTransformer(NamespacedKey, EntityTransformer)` | a Java callback cannot cross the process boundary |
-| `EntityDamage` | `getDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamage` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamage` | `isApplicable(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamage` | `setDamage(EntityDamageEvent$DamageModifier, double)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByBlock` | `getDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByBlock` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByBlock` | `isApplicable(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByBlock` | `setDamage(EntityDamageEvent$DamageModifier, double)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByEntity` | `getDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByEntity` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByEntity` | `isApplicable(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
-| `EntityDamageByEntity` | `setDamage(EntityDamageEvent$DamageModifier, double)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
+| `EntityDamage` | `getDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamage` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamage` | `isApplicable(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamage` | `setDamage(EntityDamageEvent$DamageModifier, double)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByBlock` | `getDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByBlock` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByBlock` | `isApplicable(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByBlock` | `setDamage(EntityDamageEvent$DamageModifier, double)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByEntity` | `getDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByEntity` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByEntity` | `isApplicable(EntityDamageEvent$DamageModifier)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
+| `EntityDamageByEntity` | `setDamage(EntityDamageEvent$DamageModifier, double)` | deprecated in Bukkit: the DamageModifier it takes is deprecated, like the rest of the per-modifier damage |
 | `EntityPortal` | `setFrom` | Spigot never reads it back: the portal search reads getTo(), the radii and getCanCreatePortal() only |
 | `EntityPortalExit` | `setFrom` | Spigot never reads it back: Spigot 26.3 never fires this event |
 | `EntityTeleport` | `setFrom` | Spigot never reads it back: no caller reads getFrom() after the event |
