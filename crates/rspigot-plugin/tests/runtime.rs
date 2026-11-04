@@ -90,6 +90,9 @@ impl Guard {
             event: event.id(),
             height: event.to().y,
         });
+        if event.to().y > 100.0 {
+            std::future::pending::<()>().await;
+        }
     }
 }
 
@@ -280,7 +283,7 @@ async fn a_deciding_handler_answers_its_event() {
     ));
     assert_eq!(
         session.hear().await,
-        decision(7, vec![verdict(2, true, None), verdict(4, false, None)])
+        decision(7, vec![verdict(2, true, None)])
     );
     session.say(event(8, &[2, 4], v1::Phase::Decide, false, moving_to(65.0)));
     assert_eq!(
@@ -314,7 +317,6 @@ async fn a_deciding_handler_answers_its_event() {
         plugin.marks(),
         [
             decided(2, 7, 200.0),
-            decided(4, 7, 200.0),
             decided(2, 8, 65.0),
             decided(4, 8, 65.0),
         ]
