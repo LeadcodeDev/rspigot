@@ -32,7 +32,7 @@ impl<L: ClientLink> Server<L> {
         if refused {
             self.fire_refused(lane, then, describe);
         } else {
-            self.fire_heard(lane, then, describe);
+            self.fire(lane, then, describe);
         }
     }
 

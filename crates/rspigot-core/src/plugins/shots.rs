@@ -45,7 +45,7 @@ impl<L: ClientLink> Server<L> {
             force,
             arrow,
         };
-        self.fire_heard(lane, Continuation::Shoot(Box::new(step)), move |server| {
+        self.fire(lane, Continuation::Shoot(Box::new(step)), move |server| {
             let entity = server.subject_view(entity)?;
             Some(EventPayload::EntityShootBow(EntityShootBow {
                 bow: weapon.as_ref().map(spec_of),
@@ -104,7 +104,7 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn ask_projectile_hit(&mut self, arrow: EntityId, target: EntityId) {
         let lane = self.lane_for(None, target);
-        self.fire_heard(
+        self.fire(
             lane,
             Continuation::ProjectileHit { arrow, target },
             move |server| {
@@ -127,7 +127,7 @@ impl<L: ClientLink> Server<L> {
         face: rspigot_blocks::Face,
     ) {
         let lane = self.lane_for(None, arrow);
-        self.fire_heard(
+        self.fire(
             lane,
             Continuation::Notice(crate::plugins::EventKind::ProjectileHit),
             move |server| {

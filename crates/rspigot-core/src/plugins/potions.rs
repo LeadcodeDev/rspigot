@@ -92,7 +92,7 @@ impl<L: ClientLink> Server<L> {
             overrides,
             respawned: false,
         };
-        self.fire_heard(lane, Continuation::Potion(step), move |server| {
+        self.fire(lane, Continuation::Potion(step), move |server| {
             let entity = server.subject_view(entity)?;
             Some(EventPayload::EntityPotionEffect(EntityPotionEffect {
                 action,
@@ -120,7 +120,7 @@ impl<L: ClientLink> Server<L> {
                 overrides: true,
                 respawned: true,
             };
-            self.fire_heard(lane, Continuation::Potion(step), move |server| {
+            self.fire(lane, Continuation::Potion(step), move |server| {
                 let entity = server.subject_view(entity)?;
                 Some(EventPayload::EntityPotionEffect(EntityPotionEffect {
                     action: EntityPotionEffectAction::Cleared,

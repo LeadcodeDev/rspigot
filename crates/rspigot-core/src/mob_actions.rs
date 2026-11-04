@@ -129,7 +129,7 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let lane = self.lane_for(None, id);
-        self.fire_heard(lane, Continuation::EggBreak { mob: id, pos }, move |_| {
+        self.fire(lane, Continuation::EggBreak { mob: id, pos }, move |_| {
             Some(EventPayload::EntityInteract(EntityInteract {
                 block: pos,
                 entity_type: mob.kind.clone(),
@@ -222,7 +222,7 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let lane = self.lane_for(None, id);
-        self.fire_heard(lane, Continuation::Regrow(id), move |_| {
+        self.fire(lane, Continuation::Regrow(id), move |_| {
             Some(EventPayload::SheepRegrowWool(SheepRegrowWool {
                 entity_type: sheep.kind.clone(),
                 entity: sheep,
@@ -328,7 +328,7 @@ impl<L: ClientLink> Server<L> {
             experience,
             position,
         };
-        self.fire_heard(lane, Continuation::Breed(Box::new(step)), move |server| {
+        self.fire(lane, Continuation::Breed(Box::new(step)), move |server| {
             let breeder = match breeder {
                 Some(entity) => Some(server.subject_view(entity)?),
                 None => None,

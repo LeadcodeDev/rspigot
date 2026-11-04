@@ -192,7 +192,7 @@ impl<L: ClientLink> Server<L> {
 
     fn ask_item_despawn(&mut self, id: EntityId) {
         let lane = self.lane_for(None, id);
-        self.fire_heard(lane, Continuation::ItemDespawn(id), move |server| {
+        self.fire(lane, Continuation::ItemDespawn(id), move |server| {
             let entity = server.entities.store.get(id)?;
             let location = server.location_of(
                 entity.base.position,
@@ -279,7 +279,7 @@ impl<L: ClientLink> Server<L> {
             stack,
         };
         let lane = self.lane_for(Some(player_id), collector);
-        self.fire_heard(
+        self.fire(
             lane,
             Continuation::PickupItem(Box::new(step)),
             move |server| {

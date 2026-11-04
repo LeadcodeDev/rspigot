@@ -602,7 +602,7 @@ impl<L: ClientLink> Server<L> {
             to: position,
             command,
         };
-        self.fire_heard(lane, Continuation::Relocate(step), move |server| {
+        self.fire(lane, Continuation::Relocate(step), move |server| {
             let entity = server.entity_view(id)?;
             Some(EventPayload::EntityTeleport(EntityTeleport {
                 entity_type: entity.kind.clone(),

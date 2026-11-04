@@ -71,7 +71,7 @@ impl<L: ClientLink> Server<L> {
             radius,
             fire: false,
         };
-        self.fire_heard(lane, Continuation::Prime(step), move |_| {
+        self.fire(lane, Continuation::Prime(step), move |_| {
             Some(EventPayload::ExplosionPrime(ExplosionPrime {
                 entity_type: view.kind.clone(),
                 entity: view,
@@ -218,7 +218,7 @@ impl<L: ClientLink> Server<L> {
         };
         let explosion_yield = step.explosion_yield;
         let lane = self.lane_for(None, entity);
-        self.fire_heard(
+        self.fire(
             lane,
             Continuation::EntityExplode(Box::new(step)),
             move |server| {

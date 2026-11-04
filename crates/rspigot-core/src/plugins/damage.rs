@@ -133,7 +133,7 @@ impl<L: ClientLink> Server<L> {
             amount,
             then,
         };
-        self.fire_heard(lane, Continuation::Hurt(Box::new(step)), move |server| {
+        self.fire(lane, Continuation::Hurt(Box::new(step)), move |server| {
             server.hurt_payload(victim, &described, amount)
         });
         self.impacts.last.take().unwrap_or(true)

@@ -785,13 +785,7 @@ impl<L: ClientLink> Server<L> {
         }
         let death_location = player.vitals.death_location;
         let kept = player.vitals.experience;
-        let heard_effects = self.plugins.listens(
-            EventKind::EntityPotionEffect,
-            crate::plugins::Access::Observe,
-        ) || self.plugins.listens(
-            EventKind::EntityPotionEffect,
-            crate::plugins::Access::Decide,
-        );
+        let heard_effects = self.listened(EventKind::EntityPotionEffect);
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };

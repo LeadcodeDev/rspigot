@@ -44,7 +44,7 @@ impl<L: ClientLink> Server<L> {
             target,
             seconds,
         };
-        self.fire_heard(lane, Continuation::Combust(step), move |server| {
+        self.fire(lane, Continuation::Combust(step), move |server| {
             let entity = server.subject_view(entity)?;
             let entity_type = entity.kind.clone();
             Some(match combuster {

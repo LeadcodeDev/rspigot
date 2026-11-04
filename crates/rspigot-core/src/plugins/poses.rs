@@ -3,7 +3,7 @@ use rspigot_domain::entity::Pose as Stance;
 
 use crate::plugins::decisions::Continuation;
 use crate::plugins::events::{EntityPoseChange, Pose};
-use crate::plugins::{Access, EntityView, EventKind, EventPayload};
+use crate::plugins::{EntityView, EventKind, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -22,10 +22,7 @@ const fn pose_of(stance: Stance) -> Pose {
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn notify_poses(&mut self) {
-        if !self
-            .plugins
-            .listens(EventKind::EntityPoseChange, Access::Observe)
-        {
+        if !self.listened(EventKind::EntityPoseChange) {
             self.entities.poses.clear();
             return;
         }

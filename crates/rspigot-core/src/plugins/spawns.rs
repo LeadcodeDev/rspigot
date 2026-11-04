@@ -115,7 +115,7 @@ impl<L: ClientLink> Server<L> {
             loaded,
             birth,
         };
-        self.fire_heard(lane, Continuation::Spawn(Box::new(step)), move |server| {
+        self.fire(lane, Continuation::Spawn(Box::new(step)), move |server| {
             Some(server.spawn_payload(kind, newborn, reason))
         });
     }
@@ -217,7 +217,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn drop_from(&mut self, dropper: EntityView, item: Entity) {
         let lane = self.lane_for(None, dropper.id);
         let drop = Newborn::of(&item);
-        self.fire_heard(lane, Continuation::EntityDrop(Box::new(item)), move |_| {
+        self.fire(lane, Continuation::EntityDrop(Box::new(item)), move |_| {
             Some(EventPayload::EntityDropItem(EntityDropItem {
                 entity_type: dropper.kind.clone(),
                 entity: dropper,
@@ -233,20 +233,12 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn notify_removal(&mut self, id: EntityId, cause: EntityRemoveCause) {
-        if !self
-            .plugins
-            .listens(EventKind::EntityRemove, crate::plugins::Access::Observe)
-        {
-            return;
-        }
-        let Some(entity) = self.entity_view(id) else {
-            return;
-        };
         let lane = self.lane_for(None, id);
         self.fire(
             lane,
             Continuation::Notice(EventKind::EntityRemove),
-            move |_| {
+            move |server| {
+                let entity = server.entity_view(id)?;
                 Some(EventPayload::EntityRemove(EntityRemove {
                     cause,
                     entity_type: entity.kind.clone(),

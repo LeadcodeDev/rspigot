@@ -212,22 +212,6 @@ impl<L: ClientLink> Server<L> {
         self.fire_as(lane.into(), None, then, describe);
     }
 
-    pub(crate) fn fire_heard(
-        &mut self,
-        lane: Lane,
-        then: Continuation,
-        describe: impl FnOnce(&Self) -> Option<EventPayload>,
-    ) {
-        let kind = then.kind();
-        if self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
-        {
-            self.fire_as(lane, None, then, describe);
-            return;
-        }
-        let dropped = self.conclude(then, false, None, Vec::new());
-        self.notify_undone(dropped, Phase::Settled);
-    }
-
     pub(crate) fn fire_deferred(&mut self, lane: impl Into<Lane>, then: Continuation) {
         let lane = lane.into();
         if self.decisions.busy(lane) {

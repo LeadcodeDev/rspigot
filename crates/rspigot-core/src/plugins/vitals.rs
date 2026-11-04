@@ -38,7 +38,7 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let step = RegainStep { player: id, amount };
-        self.fire_heard(lane, Continuation::Regain(step), move |server| {
+        self.fire(lane, Continuation::Regain(step), move |server| {
             let entity = server.subject_view(server.players.get(&id)?.entity_id)?;
             Some(EventPayload::EntityRegainHealth(EntityRegainHealth {
                 amount: f64::from(amount),
@@ -81,7 +81,7 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let step = ExhaustStep { player: id, amount };
-        self.fire_heard(lane, Continuation::Exhaust(step), move |server| {
+        self.fire(lane, Continuation::Exhaust(step), move |server| {
             Some(EventPayload::EntityExhaustion(EntityExhaustion {
                 entity: server.snapshot_of(id)?,
                 entity_type: Kind::Player.name().to_owned(),
@@ -119,7 +119,7 @@ impl<L: ClientLink> Server<L> {
             level,
             from,
         };
-        self.fire_heard(lane, Continuation::Food(step), move |server| {
+        self.fire(lane, Continuation::Food(step), move |server| {
             Some(EventPayload::FoodLevelChange(FoodLevelChange {
                 entity: server.snapshot_of(id)?,
                 entity_type: Kind::Player.name().to_owned(),

@@ -1320,7 +1320,7 @@ impl<L: ClientLink> Server<L> {
         let lane = self.lane_for(None, id);
         let described = step.drops.iter().map(spec_of).collect::<Vec<_>>();
         let damage_source = self.damage_view(source);
-        self.fire_heard(
+        self.fire(
             lane,
             Continuation::MobDeath(Box::new(step)),
             move |server| {

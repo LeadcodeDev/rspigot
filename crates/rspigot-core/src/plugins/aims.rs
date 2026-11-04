@@ -62,7 +62,7 @@ impl<L: ClientLink> Server<L> {
             deferred,
         };
         let to = request.to;
-        self.fire_heard(lane, Continuation::Aim(step), move |server| {
+        self.fire(lane, Continuation::Aim(step), move |server| {
             let target = match to {
                 Some(target) => Some(server.subject_view(target)?),
                 None => None,

@@ -118,7 +118,7 @@ impl<L: ClientLink> Server<L> {
         };
         let lane = self.lane_for(None, entity);
         let step = KnockStep { kind, target, push };
-        self.fire_heard(lane, Continuation::Knock(step), move |server| {
+        self.fire(lane, Continuation::Knock(step), move |server| {
             let entity = server.subject_view(entity)?;
             let entity_type = entity.kind.clone();
             Some(match source {
