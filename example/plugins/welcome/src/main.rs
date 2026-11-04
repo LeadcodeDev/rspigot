@@ -69,10 +69,9 @@ impl Welcome {
     }
 
     async fn on_inventory_click(&self, event: &InventoryClick) {
-        let in_menu = matches!(
-            event.clicked_inventory().map(|inventory| &inventory.owner),
-            Some(InventoryOwner::Custom(_))
-        );
+        let menu = self.menu();
+        let in_menu = menu.is_some()
+            && event.clicked_inventory().and_then(InventoryRef::custom) == menu.as_ref();
         if in_menu && event.slot() == i32::from(LEAVE_SLOT) {
             let player = event.who_clicked();
             player.close_inventory();

@@ -19,7 +19,7 @@ message BlockState { string block = 1; repeated Property properties = 2; }
 
 message Location { string world = 1; Vec3 position = 2; Rotation rotation = 3; }
 message BlockSnapshot { BlockPos pos = 1; BlockState state = 2; }
-message InventoryRef { oneof owner { uint64 custom = 1; string player = 2; BlockPos block = 3; int32 entity = 4; Empty detached = 5; } int32 size = 6; string kind = 7; }
+message InventoryRef { oneof owner { uint64 custom = 1; string player = 2; BlockPos block = 3; int32 entity = 4; Empty detached = 5; } int32 size = 6; string kind = 7; string plugin = 8; }
 message InventoryView { InventoryRef top = 1; InventoryRef bottom = 2; string title = 3; PlayerSnapshot player = 4; }
 message ChunkRef { string world = 1; int32 x = 2; int32 z = 3; }
 message DamageSource { string kind = 1; EntitySnapshot causing = 2; EntitySnapshot direct = 3; Vec3 location = 4; }

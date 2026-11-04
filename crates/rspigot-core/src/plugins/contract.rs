@@ -17,9 +17,9 @@ pub struct BlockSnapshot {
     pub state: BlockState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryOwner {
-    Custom(u64),
+    Custom { plugin: String, id: u64 },
     Player(PlayerId),
     Block(BlockPos),
     Entity(EntityId),

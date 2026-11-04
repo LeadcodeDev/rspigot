@@ -178,8 +178,8 @@ fn a_click_in_each_window_reaches_the_plugins_with_its_view_and_slot() {
     assert_eq!(
         took.clicked_inventory
             .as_ref()
-            .map(|inventory| inventory.owner),
-        Some(InventoryOwner::Player(alice.id))
+            .map(|inventory| &inventory.owner),
+        Some(&InventoryOwner::Player(alice.id))
     );
     assert_eq!(took.current_item, Some(spec("minecraft:diamond", 1)));
     close_window(&mut s, &alice, &mut chest);
@@ -284,7 +284,13 @@ fn a_click_in_each_window_reaches_the_plugins_with_its_view_and_slot() {
     send_click(&mut s, &alice, &mut menu, put);
     let custom = last_click(&s);
     assert_eq!(custom.inventory.kind, "CHEST");
-    assert_eq!(custom.inventory.owner, InventoryOwner::Custom(MENU));
+    assert_eq!(
+        custom.inventory.owner,
+        InventoryOwner::Custom {
+            plugin: "tester".to_owned(),
+            id: MENU
+        }
+    );
     assert_eq!(custom.view.title, "Box");
     assert_eq!(custom.action, InventoryAction::PlaceAll);
     assert!(s.warnings().is_empty());

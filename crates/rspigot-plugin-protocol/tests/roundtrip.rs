@@ -76,6 +76,7 @@ fn custom(id: u64) -> InventoryRef {
         owner: Some(inventory_ref::Owner::Custom(id)),
         size: 27,
         kind: "CHEST".to_owned(),
+        plugin: "shop".to_owned(),
     }
 }
 
@@ -140,6 +141,7 @@ fn every_kind_of_field_survives_encoding() {
                 owner: Some(inventory_ref::Owner::Player(steve().uuid)),
                 size: 41,
                 kind: "PLAYER".to_owned(),
+                plugin: String::new(),
             }),
             current_item: Some(diamond(3)),
             cursor: None,
@@ -158,6 +160,7 @@ fn every_kind_of_field_survives_encoding() {
                     owner: Some(inventory_ref::Owner::Block(block)),
                     size: 9,
                     kind: "DISPENSER".to_owned(),
+                    plugin: String::new(),
                 }),
                 title: "§6Menu".to_owned(),
                 player: Some(steve()),
@@ -318,6 +321,7 @@ fn every_contract_type_survives_encoding() {
             owner: Some(owner),
             size: 27,
             kind: "CHEST".to_owned(),
+            plugin: "shop".to_owned(),
         });
     }
     round_trips(&InventoryView {

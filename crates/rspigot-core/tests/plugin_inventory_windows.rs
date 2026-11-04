@@ -474,12 +474,24 @@ fn opening_and_closing_every_window_fires_its_events_in_spigot_order() {
     s.act(to(&alice, PlayerOrder::OpenInventory(MENU)));
     let mut menu = opened_view(&alice).expect("the plugin menu opens");
     let shop = opens(&s).pop().expect("a plugin menu open");
-    assert_eq!(shop.inventory.owner, InventoryOwner::Custom(MENU));
+    assert_eq!(
+        shop.inventory.owner,
+        InventoryOwner::Custom {
+            plugin: "tester".to_owned(),
+            id: MENU
+        }
+    );
     assert_eq!(shop.view.title, "Shop");
     assert_eq!(shop.viewers.len(), 1);
     close_window(&mut s, &alice, &mut menu);
     let close = closes(&s).pop().expect("a plugin menu close");
-    assert_eq!(close.inventory.owner, InventoryOwner::Custom(MENU));
+    assert_eq!(
+        close.inventory.owner,
+        InventoryOwner::Custom {
+            plugin: "tester".to_owned(),
+            id: MENU
+        }
+    );
     assert!(close.by_player);
     assert!(s.warnings().is_empty());
 }

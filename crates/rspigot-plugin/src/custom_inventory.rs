@@ -41,9 +41,18 @@ impl CustomInventoryState {
 #[derive(Debug, Clone)]
 pub struct CustomInventory {
     id: u64,
+    plugin: String,
     generation: u64,
     link: Link,
 }
+
+impl PartialEq for CustomInventory {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.plugin == other.plugin && self.generation == other.generation
+    }
+}
+
+impl Eq for CustomInventory {}
 
 impl CustomInventory {
     pub(crate) fn create(link: &Link, rows: u8, title: String, locked: bool) -> Self {
@@ -63,8 +72,13 @@ impl CustomInventory {
     }
 
     pub(crate) fn new(id: u64, link: &Link) -> Self {
+        Self::owned_by(id, link.name(), link)
+    }
+
+    pub(crate) fn owned_by(id: u64, plugin: String, link: &Link) -> Self {
         Self {
             id,
+            plugin,
             generation: link.generation(),
             link: link.clone(),
         }
@@ -72,6 +86,14 @@ impl CustomInventory {
 
     pub const fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn plugin(&self) -> &str {
+        &self.plugin
+    }
+
+    pub fn is_mine(&self) -> bool {
+        self.plugin == self.link.name()
     }
 
     pub(crate) const fn generation(&self) -> u64 {
@@ -98,7 +120,7 @@ impl CustomInventory {
     }
 
     pub async fn resolve(&self) -> Result<CustomInventoryState, Error> {
-        if self.link.generation() != self.generation {
+        if self.link.generation() != self.generation || !self.is_mine() {
             return Err(Error::NotFound);
         }
         let state = self
@@ -116,6 +138,14 @@ impl CustomInventory {
     }
 
     fn order(&self, order: custom_inventory_order::Order) {
+        if !self.is_mine() {
+            tracing::warn!(
+                "Dropped an order on inventory {} of plugin {}",
+                self.id,
+                self.plugin
+            );
+            return;
+        }
         self.link.order_from(
             self.generation,
             from_plugin::Body::CustomInventory(v1::CustomInventoryOrder {

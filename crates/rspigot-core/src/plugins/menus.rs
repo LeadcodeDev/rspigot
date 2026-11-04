@@ -254,7 +254,10 @@ impl<L: ClientLink> Server<L> {
     ) -> (InventoryRef, InventoryView, Vec<PlayerSnapshot>) {
         let held = self.plugin_inventories.held.get(&key);
         let top = InventoryRef {
-            owner: InventoryOwner::Custom(key.1),
+            owner: InventoryOwner::Custom {
+                plugin: self.plugin_name(key.0),
+                id: key.1,
+            },
             size: held.map_or(0, |held| {
                 i32::try_from(held.items.len()).unwrap_or(i32::MAX)
             }),

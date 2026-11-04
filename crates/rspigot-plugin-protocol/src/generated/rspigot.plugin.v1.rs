@@ -149,6 +149,8 @@ pub struct InventoryRef {
     pub size: i32,
     #[prost(string, tag = "7")]
     pub kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub plugin: ::prost::alloc::string::String,
     #[prost(oneof = "inventory_ref::Owner", tags = "1, 2, 3, 4, 5")]
     pub owner: ::core::option::Option<inventory_ref::Owner>,
 }

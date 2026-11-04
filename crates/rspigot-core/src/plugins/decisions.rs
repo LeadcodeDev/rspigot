@@ -1237,7 +1237,10 @@ mod tests {
     fn clicking(player: PlayerId) -> EventPayload {
         let at = Vec3::new(0.0, 64.0, 0.0);
         let menu = InventoryRef {
-            owner: InventoryOwner::Custom(7),
+            owner: InventoryOwner::Custom {
+                plugin: "shop".to_owned(),
+                id: 7,
+            },
             size: 27,
             kind: "CHEST".to_owned(),
         };
