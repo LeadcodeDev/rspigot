@@ -404,7 +404,11 @@ impl<L: ClientLink> Server<L> {
         {
             return None;
         }
-        let amount = if source.scales_with_difficulty() {
+        let scaled = source.scales_with_difficulty();
+        if scaled && self.world.difficulty == Difficulty::Peaceful {
+            return None;
+        }
+        let amount = if scaled {
             damage::scaled_for_difficulty(amount, self.world.difficulty)
         } else {
             amount

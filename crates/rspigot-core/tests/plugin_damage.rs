@@ -8,8 +8,9 @@ use rspigot_core::plugins::events::{
 };
 use rspigot_core::plugins::{
     Answer, BlockOrder, EntityOrder, EntityView, EventKind, EventPatch, EventPayload, HandlerSpec,
-    Order, Question, ToPlugin,
+    Order, Question, ToPlugin, WorldOrder,
 };
+use rspigot_domain::world::Difficulty;
 use rspigot_domain::{BlockPos, EntityId, Vec3};
 
 fn waiting_scene(names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
@@ -326,4 +327,32 @@ fn without_a_decider_a_hit_lands_at_once() {
     attack(&mut s, &alice, cow.id);
     assert!(asked_for(&s.plugin, EventKind::EntityDamageByEntity).is_empty());
     assert!(health(&mut s, cow.id).is_some_and(|health| health < 10.0));
+}
+
+#[test]
+fn a_difficulty_scaled_damage_never_asks_for_a_player_in_peaceful() {
+    let mut s = waiting_scene(&["Alice"], vec![deciding(1, EventKind::EntityDamage)]);
+    let alice = EntityId(alice_entity(&mut s));
+    s.act(Order::World(WorldOrder::SetDifficulty(
+        Difficulty::Peaceful,
+    )));
+    s.act(Order::World(WorldOrder::Explode {
+        position: Vec3::new(1.5, 64.0, 0.5),
+        power: 2.0,
+        breaks_blocks: false,
+    }));
+    let asked: Vec<Fired> = fired(&s.plugin)
+        .into_iter()
+        .filter(|event| match &event.payload {
+            EventPayload::EntityDamage(damage) => damage.entity.id == alice,
+            EventPayload::EntityDamageByBlock(damage) => damage.entity.id == alice,
+            EventPayload::EntityDamageByEntity(damage) => damage.entity.id == alice,
+            _ => false,
+        })
+        .collect();
+    assert!(asked.is_empty(), "{asked:?}");
+    let Answer::Player(state) = s.ask(Question::Player(s.players[0].id)) else {
+        panic!("expected Alice");
+    };
+    assert_eq!(state.health, 20.0);
 }
