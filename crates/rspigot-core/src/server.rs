@@ -242,6 +242,11 @@ impl<L: ClientLink> Server<L> {
         self
     }
 
+    pub fn with_rng_seed(mut self, seed: u64) -> Self {
+        self.rng = StdRng::seed_from_u64(seed);
+        self
+    }
+
     pub(crate) fn now(&self) -> SystemTime {
         (self.clock)()
     }

@@ -824,6 +824,7 @@ fn thrown_item_keeps_its_thrower_when_saved() {
     server.handle(Inbound::Console("tp Alice 2000 64 2000".to_owned()));
     pump(&mut server, &mut [&mut alice], 40);
     assert_eq!(server.items_on_ground(), 0);
+    server.wait_for_entity_saves();
     let saved = store.stored(chunk).expect("item chunk saved on unload");
     let mut bytes = saved.as_slice();
     let (_, root) = read_named(&mut bytes).unwrap();

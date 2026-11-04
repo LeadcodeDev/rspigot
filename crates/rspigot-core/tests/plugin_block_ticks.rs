@@ -17,6 +17,7 @@ const FLOOR: BlockPos = BlockPos::new(2, 63, 0);
 const ABOVE: BlockPos = BlockPos::new(2, 64, 0);
 const TOP: BlockPos = BlockPos::new(2, 65, 0);
 const ASIDE: BlockPos = BlockPos::new(3, 64, 0);
+const CAMPFIRE: BlockPos = BlockPos::new(4, 64, 0);
 
 fn console(s: &mut Scene, line: &str) {
     s.server.handle(Inbound::Console(line.to_owned()));
@@ -164,9 +165,9 @@ fn physics_events_on_different_positions_do_not_wait_for_each_other() {
 fn campfire_scene(handlers: Vec<rspigot_core::plugins::HandlerSpec>) -> (Scene, Player) {
     let mut s = scene_with(&["Alice"], handlers);
     let alice = s.players[0].clone();
-    set(&mut s, ABOVE, "minecraft:campfire");
+    set(&mut s, CAMPFIRE, "minecraft:campfire");
     console(&mut s, "give Alice beef 3");
-    stream_chunk_of(&mut s, ABOVE);
+    stream_chunk_of(&mut s, CAMPFIRE);
     alice.link.take();
     (s, alice)
 }
@@ -199,11 +200,11 @@ fn start_of(fired: &Fired) -> CampfireStart {
 #[test]
 fn putting_food_on_a_campfire_fires_start_and_its_cook_time_is_patched() {
     let (mut s, alice) = campfire_scene(vec![deciding(1, EventKind::CampfireStart)]);
-    use_on(&mut s, &alice, ABOVE, 4);
+    use_on(&mut s, &alice, CAMPFIRE, 4);
     assert!(acks(&alice.link.take()).is_empty());
     let asked = last_asked(&s.plugin, EventKind::CampfireStart);
     let start = start_of(&asked);
-    assert_eq!(start.block, ABOVE);
+    assert_eq!(start.block, CAMPFIRE);
     assert_eq!(start.source, ItemSpec::of("minecraft:beef", 3));
     assert_eq!(start.total_cook_time, 600);
     assert_eq!(start.recipe, "minecraft:cooked_beef_from_campfire_cooking");
@@ -227,7 +228,7 @@ fn a_cook_is_asked_once_in_flight_and_its_result_is_patched() {
         deciding(1, EventKind::CampfireStart),
         deciding(2, EventKind::BlockCook),
     ]);
-    use_on(&mut s, &alice, ABOVE, 4);
+    use_on(&mut s, &alice, CAMPFIRE, 4);
     let asked = last_asked(&s.plugin, EventKind::CampfireStart);
     judge(
         &mut s.server,
@@ -250,7 +251,7 @@ fn a_cook_is_asked_once_in_flight_and_its_result_is_patched() {
     else {
         panic!("expected a cook");
     };
-    assert_eq!(*block, ABOVE);
+    assert_eq!(*block, CAMPFIRE);
     assert_eq!(*source, ItemSpec::of("minecraft:beef", 1));
     assert_eq!(*result, ItemSpec::of("minecraft:cooked_beef", 1));
     judge(
@@ -272,7 +273,7 @@ fn a_cancelled_cook_keeps_the_food_and_is_asked_again() {
         deciding(1, EventKind::CampfireStart),
         deciding(2, EventKind::BlockCook),
     ]);
-    use_on(&mut s, &alice, ABOVE, 4);
+    use_on(&mut s, &alice, CAMPFIRE, 4);
     let asked = last_asked(&s.plugin, EventKind::CampfireStart);
     judge(
         &mut s.server,
@@ -308,7 +309,7 @@ fn an_air_result_removes_the_food_without_a_drop() {
         deciding(1, EventKind::CampfireStart),
         deciding(2, EventKind::BlockCook),
     ]);
-    use_on(&mut s, &alice, ABOVE, 4);
+    use_on(&mut s, &alice, CAMPFIRE, 4);
     let asked = last_asked(&s.plugin, EventKind::CampfireStart);
     judge(
         &mut s.server,
@@ -533,11 +534,11 @@ fn a_slot_whose_cook_waits_does_not_stop_the_other_slots() {
         ],
     );
     let alice = s.players[0].clone();
-    set(&mut s, ABOVE, "minecraft:campfire");
+    set(&mut s, CAMPFIRE, "minecraft:campfire");
     console(&mut s, "give Alice beef 3");
-    stream_chunk_of(&mut s, ABOVE);
+    stream_chunk_of(&mut s, CAMPFIRE);
     for (sequence, total) in [(4, 2), (5, 5)] {
-        use_on(&mut s, &alice, ABOVE, sequence);
+        use_on(&mut s, &alice, CAMPFIRE, sequence);
         let asked = last_asked(&s.plugin, EventKind::CampfireStart);
         judge(
             &mut s.server,

@@ -435,6 +435,7 @@ fn unloaded_cow_comes_back_with_the_same_uuid_and_position() {
     server.handle(Inbound::Console("tp Alice 2000 64 2000".to_owned()));
     pump(&mut server, &mut [&mut alice], 40);
     assert!(cows(&server).is_empty());
+    server.wait_for_entity_saves();
     let saved = store.stored(chunk).expect("cow chunk saved on unload");
     let mut input = saved.as_slice();
     let (_, root) = read_named(&mut input).unwrap();

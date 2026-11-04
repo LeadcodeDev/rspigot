@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rspigot_blocks::BlockKind;
 use rspigot_core::admin::{AdminLists, ListEntry};
@@ -174,7 +174,6 @@ fn join(server: &mut Server<Link>, name: &str) -> Player {
 }
 
 fn run_ticks(server: &mut Server<Link>, players: &mut [&mut Player], ticks: usize) {
-    let deadline = Instant::now() + Duration::from_secs(20);
     for _ in 0..ticks {
         server.wait_for_spawn(Duration::from_millis(20));
         server.tick();
@@ -193,9 +192,6 @@ fn run_ticks(server: &mut Server<Link>, players: &mut [&mut Player], ticks: usiz
                 });
             }
             player.log.extend(events);
-        }
-        if Instant::now() > deadline {
-            break;
         }
     }
 }

@@ -24,6 +24,7 @@ use uuid::Uuid;
 const ANIMALS: [Kind; 4] = [Kind::Cow, Kind::Pig, Kind::Sheep, Kind::Chicken];
 const MONSTERS: [Kind; 4] = [Kind::Zombie, Kind::Skeleton, Kind::Creeper, Kind::Spider];
 const POCKET: std::ops::RangeInclusive<i32> = 30..=32;
+const CAVE: std::ops::Range<i32> = -48..64;
 
 #[derive(Clone, Default)]
 struct Link {
@@ -151,8 +152,9 @@ impl World {
                 set(chunk, 63, GrassBlock::DEFAULT_STATE);
             }
             Terrain::Caves => {
+                let open = CAVE.contains(&x) && CAVE.contains(&z);
                 for y in 20..=63 {
-                    if !POCKET.contains(&y) {
+                    if !(open && POCKET.contains(&y)) {
                         set(chunk, y, Stone::DEFAULT_STATE);
                     }
                 }
@@ -361,6 +363,21 @@ fn added_kinds(client: &Client) -> HashSet<u16> {
         .collect()
 }
 
+fn animals_added_at(client: &Client) -> Vec<Vec3> {
+    client
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::SpawnEntity {
+                kind: EntityKind::Other(id),
+                position,
+                ..
+            } if ANIMALS.iter().any(|kind| kind.id().0 == *id) => Some(*position),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn lit_grass_spawns_farm_animals_that_clients_see() {
     let mut server = Setup::new(Terrain::Grass).start(Arc::default());
@@ -371,15 +388,20 @@ fn lit_grass_spawns_farm_animals_that_clients_see() {
     assert!(of_kinds(&server, &MONSTERS).is_empty());
     for animal in &animals {
         assert_eq!(animal.position.y, 64.0);
-        let dx = animal.position.x - 8.5;
-        let dz = animal.position.z - 8.5;
-        assert!(dx * dx + dz * dz > 24.0 * 24.0);
     }
-    let seen = added_kinds(&client);
+    let added = animals_added_at(&client);
     assert!(
-        ANIMALS.iter().any(|kind| seen.contains(&kind.id().0)),
+        !added.is_empty(),
         "the client never received add_entity for a natural animal"
     );
+    for position in added {
+        let dx = position.x - 8.5;
+        let dz = position.z - 8.5;
+        assert!(
+            dx * dx + dz * dz > 24.0 * 24.0,
+            "an animal spawned at {position:?}"
+        );
+    }
 }
 
 #[test]
