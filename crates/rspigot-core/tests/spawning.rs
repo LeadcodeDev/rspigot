@@ -24,6 +24,7 @@ use uuid::Uuid;
 const ANIMALS: [Kind; 4] = [Kind::Cow, Kind::Pig, Kind::Sheep, Kind::Chicken];
 const MONSTERS: [Kind; 4] = [Kind::Zombie, Kind::Skeleton, Kind::Creeper, Kind::Spider];
 const POCKET: std::ops::RangeInclusive<i32> = 30..=32;
+const CAVE: std::ops::Range<i32> = -48..64;
 
 #[derive(Clone, Default)]
 struct Link {
@@ -151,8 +152,9 @@ impl World {
                 set(chunk, 63, GrassBlock::DEFAULT_STATE);
             }
             Terrain::Caves => {
+                let open = CAVE.contains(&x) && CAVE.contains(&z);
                 for y in 20..=63 {
-                    if !POCKET.contains(&y) {
+                    if !(open && POCKET.contains(&y)) {
                         set(chunk, y, Stone::DEFAULT_STATE);
                     }
                 }
