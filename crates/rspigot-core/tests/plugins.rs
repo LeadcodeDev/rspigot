@@ -1647,7 +1647,7 @@ fn a_destination_set_to_where_the_player_was_going_is_a_plain_move() {
 }
 
 #[test]
-fn a_destination_outside_the_world_is_refused_and_cancels_the_move() {
+fn a_destination_outside_the_world_is_dropped_and_the_move_applies() {
     let mut server = server(PluginSettings::default());
     let alice = join(&mut server, "Alice");
     let guard = connect_with(&mut server, 1, "guard", vec![decide(1)]);
@@ -1667,12 +1667,12 @@ fn a_destination_outside_the_world_is_refused_and_cancels_the_move() {
         event,
         vec![verdict(1, false, Some(nowhere))],
     );
-    assert_eq!(server.player_location(alice.id), Some(SPAWN));
-    assert_eq!(teleported_to(&alice), [SPAWN]);
+    assert_eq!(server.player_location(alice.id), Some(east(1)));
+    assert!(teleported_to(&alice).is_empty());
     assert_eq!(
         warnings(&guard),
         [format!(
-            "patch of event {event} was refused, the event is cancelled: position NaN 64 0.5 is outside the world"
+            "patch of event {event} was refused: position NaN 64 0.5 is outside the world"
         )]
     );
     assert_eq!(
@@ -1681,11 +1681,67 @@ fn a_destination_outside_the_world_is_refused_and_cancels_the_move() {
             event,
             &[1],
             Phase::Settled,
-            true,
+            false,
             SPAWN,
             east(1)
         )]
     );
+}
+
+#[test]
+fn a_refused_destination_leaves_the_last_valid_one_to_win() {
+    for refused_first in [true, false] {
+        let mut server = server(PluginSettings::default());
+        let alice = join(&mut server, "Alice");
+        let lowest = connect_with(&mut server, 1, "lowest", vec![decider(1, Priority::Lowest)]);
+        let highest = connect_with(
+            &mut server,
+            2,
+            "highest",
+            vec![decider(1, Priority::Highest)],
+        );
+        let watch = connect_with(
+            &mut server,
+            3,
+            "watch",
+            vec![observe(1, EventKind::PlayerMove)],
+        );
+        alice.link.take();
+        step(&mut server, &alice, east(1));
+        let event = asked(&lowest)[0];
+        let nowhere = Vec3::new(f64::NAN, 64.0, 0.0);
+        let elsewhere = Vec3::new(10.0, 64.0, 0.0);
+        let mut rulings = vec![
+            (1, verdict(1, false, Some(nowhere))),
+            (2, verdict(1, false, Some(elsewhere))),
+        ];
+        if !refused_first {
+            rulings.reverse();
+        }
+        for (connection, ruling) in rulings {
+            rule(&mut server, connection, event, vec![ruling]);
+        }
+        assert_eq!(server.player_location(alice.id), Some(elsewhere));
+        assert_eq!(teleported_to(&alice), [elsewhere]);
+        assert_eq!(
+            warnings(&lowest),
+            [format!(
+                "patch of event {event} was refused: position NaN 64 0 is outside the world"
+            )]
+        );
+        assert!(warnings(&highest).is_empty());
+        assert_eq!(
+            moves(&watch),
+            [heard_move(
+                event,
+                &[1],
+                Phase::Settled,
+                false,
+                SPAWN,
+                elsewhere
+            )]
+        );
+    }
 }
 
 #[test]

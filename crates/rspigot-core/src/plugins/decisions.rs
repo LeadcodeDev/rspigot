@@ -143,20 +143,13 @@ impl Pending {
                 ));
                 patch = None;
             }
-            self.answers[slot] = Some(match patch.and_then(|patch| patch.refusal()) {
-                Some(reason) => {
-                    warnings.push(format!(
-                        "patch of event {event} was refused, the event is cancelled: {reason}"
-                    ));
-                    Answer {
-                        cancel: true,
-                        patch: None,
-                    }
-                }
-                None => Answer {
-                    cancel: verdict.cancel,
-                    patch,
-                },
+            if let Some(reason) = patch.and_then(|patch| patch.refusal()) {
+                warnings.push(format!("patch of event {event} was refused: {reason}"));
+                patch = None;
+            }
+            self.answers[slot] = Some(Answer {
+                cancel: verdict.cancel,
+                patch,
             });
         }
         Taken::Counted
