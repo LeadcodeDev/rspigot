@@ -58,7 +58,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `ChunkUnloadEvent` | `ChunkUnload` | no | `set_save_chunk` | - | fired: when a chunk without tickets reaches its unload delay; save_chunk false drops its changes, and a chunk that got a ticket back while asked stays loaded and is not notified |
 | `CraftItemEvent` | `CraftItem` | yes | `set_current_item` (applies even when cancelled), `set_cursor` (applies even when cancelled), `set_result` | - | not fired yet: its fire point comes with its domain |
 | `CrafterCraftEvent` | `CrafterCraft` | yes | `set_result` | - | not fired yet: needs redstone (#55) |
-| `CreatureSpawnEvent` | `CreatureSpawn` | yes | - | - | fired: every creature added to the world: NATURAL, COMMAND, CUSTOM, SPAWNER_EGG, BREEDING, REINFORCEMENTS, DROWNED and FROZEN; a waiting natural spawn holds its slot and a cancel frees it; chunk-loaded entities and players fire nothing |
+| `CreatureSpawnEvent` | `CreatureSpawn` | yes | - | - | fired: every creature added to the world: NATURAL, COMMAND, CUSTOM, SPAWNER_EGG, BREEDING, REINFORCEMENTS, DROWNED and FROZEN; a waiting natural spawn holds its slot and a cancel frees it; a plugin spawn question is answered once its spawn settles, refused when cancelled; chunk-loaded entities and players fire nothing |
 | `CreeperPowerEvent` | `CreeperPower` | yes | - | - | not fired yet: needs lightning and Nether mobs |
 | `CubeMobSplitEvent` | `CubeMobSplit` | yes | `set_count` | - | not fired yet: needs the mobs or objects involved |
 | `EnchantItemEvent` | `EnchantItem` | yes | `set_exp_level_cost` | - | not fired yet: needs enchanting (#47) |
@@ -133,7 +133,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `InventoryPickupItemEvent` | `InventoryPickupItem` | yes | - | - | not fired yet: needs redstone (#55) |
 | `ItemDespawnEvent` | `ItemDespawn` | yes | - | - | fired: an item entity that reaches item-despawn-rate while it ticks; one ask per item while it waits, a cancel resets its age; items do not age while inactive, unlike Spigot |
 | `ItemMergeEvent` | `ItemMerge` | yes | - | - | not fired yet: needs item merging on the ground (#50) |
-| `ItemSpawnEvent` | `ItemSpawn` | yes | - | - | fired: every item entity added to the world; a cancel discards it without EntityRemove |
+| `ItemSpawnEvent` | `ItemSpawn` | yes | - | - | fired: every item entity added to the world; a cancel discards it without EntityRemove; a plugin drop question is answered once its spawn settles, refused when cancelled |
 | `LeavesDecayEvent` | `LeavesDecay` | yes | - | - | not fired yet: needs random ticks, fire and growth (#21) |
 | `LightningStrikeEvent` | `LightningStrike` | yes | - | - | not fired yet: needs lightning and Nether mobs |
 | `LingeringPotionSplashEvent` | `LingeringPotionSplash` | yes | - | - | not fired yet: needs thrown bottles and potions |

@@ -526,6 +526,10 @@ pub(crate) enum Spawned {
         old: EntityId,
         event: i32,
     },
+    Answered {
+        connection: u64,
+        request: u64,
+    },
 }
 
 #[derive(Debug)]

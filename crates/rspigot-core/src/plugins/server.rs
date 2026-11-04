@@ -101,9 +101,10 @@ impl<L: ClientLink> Server<L> {
             }
             FromPlugin::Order(order) => self.apply_order(connection, order),
             FromPlugin::Question { request, question } => {
-                let answer = self.answer_question(connection, question);
-                self.plugins
-                    .send(connection, ToPlugin::Answer { request, answer });
+                if let Some(answer) = self.answer_question(connection, request, question) {
+                    self.plugins
+                        .send(connection, ToPlugin::Answer { request, answer });
+                }
             }
         }
     }
@@ -135,8 +136,13 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn answer_question(&mut self, connection: u64, question: Question) -> Answer {
-        match question {
+    fn answer_question(
+        &mut self,
+        connection: u64,
+        request: u64,
+        question: Question,
+    ) -> Option<Answer> {
+        Some(match question {
             Question::Player(id) => self.state_of(id).map_or(Answer::NotFound, Answer::Player),
             Question::Players => Answer::Players(self.online_snapshots()),
             Question::PlayerNamed(name) => Answer::Players(
@@ -171,16 +177,22 @@ impl<L: ClientLink> Server<L> {
             Question::Entity(id) => self
                 .entity_details(id)
                 .map_or(Answer::NotFound, Answer::Entity),
-            Question::Spawn { kind, position } => self
-                .spawn_for_plugin(&kind, position)
-                .map_or_else(Answer::Refused, Answer::Spawned),
-            Question::DropItem { position, item } => self
-                .drop_for_plugin(position, &item)
-                .map_or_else(Answer::Refused, Answer::Spawned),
+            Question::Spawn { kind, position } => {
+                return self
+                    .spawn_for_plugin(connection, request, &kind, position)
+                    .err()
+                    .map(Answer::Refused);
+            }
+            Question::DropItem { position, item } => {
+                return self
+                    .drop_for_plugin(connection, request, position, &item)
+                    .err()
+                    .map(Answer::Refused);
+            }
             Question::CustomInventory(inventory) => self
                 .custom_inventory_state(connection, inventory)
                 .map_or(Answer::NotFound, Answer::CustomInventory),
-        }
+        })
     }
 
     pub(crate) fn decide_move(

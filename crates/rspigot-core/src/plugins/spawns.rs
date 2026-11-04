@@ -6,14 +6,16 @@ use rspigot_entities::EntityKind as Kind;
 use uuid::Uuid;
 
 use crate::commands::CommandContext;
+use crate::context::SUMMON_DUPLICATE_UUID;
 use crate::entities::entity_translation_key;
 use crate::plugins::decisions::{Continuation, Lane};
+use crate::plugins::entity::refusal;
 use crate::plugins::events::{
     CreatureSpawn, CreatureSpawnReason, EntityDropItem, EntityRemove, EntityRemoveCause,
     EntitySpawn, ItemSpawn, ProjectileLaunch,
 };
 use crate::plugins::steps::{Birth, SpawnStep, Spawned};
-use crate::plugins::{EntityView, EventKind, EventPayload};
+use crate::plugins::{Answer, EntityView, EventKind, EventPayload, ToPlugin};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -201,7 +203,7 @@ impl<L: ClientLink> Server<L> {
                 None => CommandContext::reply(
                     self,
                     sender,
-                    Component::translatable(crate::context::SUMMON_DUPLICATE_UUID, Vec::new())
+                    Component::translatable(SUMMON_DUPLICATE_UUID, Vec::new())
                         .color(rspigot_domain::text::NamedColor::Red),
                 ),
             },
@@ -211,6 +213,17 @@ impl<L: ClientLink> Server<L> {
                 }
             }
             Spawned::Converted { old, event } => self.finish_conversion(old, event),
+            Spawned::Answered {
+                connection,
+                request,
+            } => {
+                let answer = placed.and_then(|(id, _)| self.entity_view(id)).map_or_else(
+                    || Answer::Refused(refusal(SUMMON_DUPLICATE_UUID)),
+                    Answer::Spawned,
+                );
+                self.plugins
+                    .send(connection, ToPlugin::Answer { request, answer });
+            }
         }
     }
 

@@ -9,7 +9,8 @@ use rspigot_core::config::{GameConfig, LevelData, PluginSettings, SpawningConfig
 use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
 use rspigot_core::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
 use rspigot_core::plugins::{
-    Answer, EntityOrder, EntityView, EventKind, EventPayload, ItemSpec, Order, Phase, Question,
+    Answer, EntityOrder, EntityView, EventKind, EventPayload, FromPlugin, ItemSpec, Order, Phase,
+    Question, ToPlugin,
 };
 use rspigot_core::ports::ChunkGenerator;
 use rspigot_core::server::Server;
@@ -42,6 +43,27 @@ fn drop_item(s: &mut Scene, position: Vec3) -> EntityView {
         panic!("expected the dropped stick");
     };
     view
+}
+
+fn question(s: &mut Scene, request: u64, question: Question) {
+    s.server.handle(Inbound::PluginMessage {
+        connection: 1,
+        message: FromPlugin::Question { request, question },
+    });
+    s.server.deliver();
+}
+
+fn answer(s: &Scene, request: u64) -> Option<Answer> {
+    s.plugin
+        .received()
+        .into_iter()
+        .find_map(|message| match message {
+            ToPlugin::Answer {
+                request: answered,
+                answer,
+            } if answered == request => Some(answer),
+            _ => None,
+        })
 }
 
 fn exists(s: &mut Scene, id: EntityId) -> bool {
@@ -138,22 +160,46 @@ fn a_cancelled_creature_spawn_never_enters_the_world_nor_fires_a_removal() {
     let alice = s.players[0].clone();
     let at = Vec3::new(4.5, 64.0, 4.5);
     stream_chunk_of(&mut s, at.block());
-    let zombie = spawn(&mut s, "minecraft:zombie", at);
-    assert!(!exists(&mut s, zombie.id));
+    question(
+        &mut s,
+        9_001,
+        Question::Spawn {
+            kind: "minecraft:zombie".into(),
+            position: at,
+        },
+    );
+    assert_eq!(answer(&s, 9_001), None);
     let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
+    let EventPayload::CreatureSpawn(spawn) = &asked.payload else {
+        panic!("a creature spawn");
+    };
+    let zombie = spawn.entity.id;
+    assert!(!exists(&mut s, zombie));
     rule_on(&mut s.server, 1, asked.id, true, None);
     s.tick(2);
-    assert!(!exists(&mut s, zombie.id));
-    assert!(!spawned_to(&alice, zombie.id));
+    assert!(matches!(answer(&s, 9_001), Some(Answer::Refused(_))));
+    assert!(!exists(&mut s, zombie));
+    assert!(!spawned_to(&alice, zombie));
     assert!(removals(&s).is_empty());
     let settled = settled_for(&s.plugin, EventKind::CreatureSpawn);
     assert_eq!(settled.len(), 1);
     assert!(settled[0].cancelled);
 
-    let cow = spawn(&mut s, "minecraft:cow", at);
+    question(
+        &mut s,
+        9_002,
+        Question::Spawn {
+            kind: "minecraft:cow".into(),
+            position: at,
+        },
+    );
+    assert_eq!(answer(&s, 9_002), None);
     let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
     rule_on(&mut s.server, 1, asked.id, false, None);
     s.tick(1);
+    let Some(Answer::Spawned(cow)) = answer(&s, 9_002) else {
+        panic!("expected the spawned cow");
+    };
     assert!(exists(&mut s, cow.id));
     assert!(spawned_to(&alice, cow.id));
 }
@@ -162,18 +208,27 @@ fn a_cancelled_creature_spawn_never_enters_the_world_nor_fires_a_removal() {
 fn an_entity_spawn_decider_decides_the_items_of_its_family() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::EntitySpawn)]);
     let at = Vec3::new(2.5, 64.0, 2.5);
-    let stick = drop_item(&mut s, at);
+    let stick = || Question::DropItem {
+        position: at,
+        item: ItemSpec::of("minecraft:stick", 1),
+    };
+    question(&mut s, 9_003, stick());
+    assert_eq!(answer(&s, 9_003), None);
     let asked = last_asked(&s.plugin, EventKind::ItemSpawn);
     let EventPayload::ItemSpawn(spawn) = &asked.payload else {
         panic!("an item spawn");
     };
-    assert_eq!(spawn.entity, stick);
-    assert!(!exists(&mut s, stick.id));
+    let dropped = spawn.entity.id;
+    assert!(!exists(&mut s, dropped));
     rule_on(&mut s.server, 1, asked.id, true, None);
-    assert!(!exists(&mut s, stick.id));
-    let kept = drop_item(&mut s, at);
+    assert!(matches!(answer(&s, 9_003), Some(Answer::Refused(_))));
+    assert!(!exists(&mut s, dropped));
+    question(&mut s, 9_004, stick());
     let asked = last_asked(&s.plugin, EventKind::ItemSpawn);
     rule_on(&mut s.server, 1, asked.id, false, None);
+    let Some(Answer::Spawned(kept)) = answer(&s, 9_004) else {
+        panic!("expected the dropped stick");
+    };
     assert!(exists(&mut s, kept.id));
 }
 
@@ -465,9 +520,19 @@ fn a_spawn_egg_is_spent_only_when_its_baby_enters_the_world() {
     let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::CreatureSpawn)]);
     let alice = s.players[0].clone();
     console(&mut s, "give Alice minecraft:cow_spawn_egg 2");
-    let cow = spawn(&mut s, "minecraft:cow", Vec3::new(1.5, 64.0, 1.5));
+    question(
+        &mut s,
+        9_005,
+        Question::Spawn {
+            kind: "minecraft:cow".into(),
+            position: Vec3::new(1.5, 64.0, 1.5),
+        },
+    );
     let asked = last_asked(&s.plugin, EventKind::CreatureSpawn);
     rule_on(&mut s.server, 1, asked.id, false, None);
+    let Some(Answer::Spawned(cow)) = answer(&s, 9_005) else {
+        panic!("expected the spawned cow");
+    };
     let use_egg = |s: &mut Scene| {
         send_input(
             &mut s.server,
