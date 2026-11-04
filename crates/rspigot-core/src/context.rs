@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use rspigot_domain::effect::{EffectId, EffectInstance};
 use rspigot_domain::entity::spawn;
-use rspigot_domain::entity::{Aabb, EntityState, living, save};
+use rspigot_domain::entity::{Aabb, Entity, EntityState, living, save};
 use rspigot_domain::item::PLAYER_INVENTORY_SIZE;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::random::LegacyRandom;
@@ -21,7 +21,11 @@ use crate::commands::selector::{self, Selector, SelectorBase, Sort, TypeMatch};
 use crate::commands::{CommandContext, CommandSender, Target, Weather};
 use crate::events::ClientEvent;
 use crate::mobs::ServerRandom;
-use crate::plugins::events::{PlayerTeleportCause, TimeSkipReason};
+use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause, TimeSkipReason};
+use crate::plugins::events::{EntityPotionEffectCause, EntityTeleport, EntityTeleportPatch};
+use crate::plugins::steps::RelocateStep;
+use crate::plugins::{Birth, Holder, Potion, Spawned, name_of_entity};
+use crate::plugins::{Continuation, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -387,11 +391,11 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn give_effect(&mut self, player: PlayerId, effect: EffectInstance) -> bool {
-        self.apply_effect(player, effect)
+        self.apply_effect(player, effect, Some(EntityPotionEffectCause::Command))
     }
 
     fn clear_effect(&mut self, player: PlayerId, effect: Option<EffectId>) -> bool {
-        self.remove_effects(player, effect)
+        self.remove_effects(player, effect, EntityPotionEffectCause::Command)
     }
 
     fn kill(&mut self, player: PlayerId) -> bool {
@@ -484,20 +488,7 @@ impl<L: ClientLink> CommandContext for Server<L> {
     fn teleport_target(&mut self, target: Target, position: Vec3) {
         match target {
             Target::Player(id) => CommandContext::teleport(self, id, position),
-            Target::Entity(id) => {
-                if let Some(entity) = self.entities.store.get_mut(id) {
-                    let base = &mut entity.base;
-                    base.position = position;
-                    base.old_position = position;
-                    let living = matches!(&entity.state, EntityState::Living(l) if l.fall_flying);
-                    if !living {
-                        base.velocity = base.velocity.multiply(1.0, 0.0, 1.0);
-                        base.on_ground = true;
-                    }
-                    base.needs_sync = true;
-                }
-                self.entities.store.reindex(id);
-            }
+            Target::Entity(id) => self.relocate(id, position, true),
         }
     }
 
@@ -509,29 +500,39 @@ impl<L: ClientLink> CommandContext for Server<L> {
     }
 
     fn give_effect_to(&mut self, target: Target, effect: EffectInstance) -> bool {
+        let cause = EntityPotionEffectCause::Command;
         match target {
-            Target::Player(id) => self.apply_effect(id, effect),
-            Target::Entity(id) => self.apply_entity_effect(id, effect),
+            Target::Player(id) => self.apply_effect(id, effect, Some(cause)),
+            Target::Entity(id) => self.apply_entity_effect(id, effect, cause),
         }
     }
 
     fn clear_effect_of(&mut self, target: Target, effect: Option<EffectId>) -> bool {
+        let cause = EntityPotionEffectCause::Command;
         match target {
-            Target::Player(id) => self.remove_effects(id, effect),
-            Target::Entity(id) => self.remove_entity_effects(id, effect),
+            Target::Player(id) => self.remove_effects(id, effect, cause),
+            Target::Entity(id) => self.remove_entity_effects(id, effect, cause),
         }
     }
 
     fn summon(
         &mut self,
-        _sender: CommandSender,
+        sender: CommandSender,
         kind: Kind,
         position: Vec3,
         nbt: Option<Compound>,
-    ) -> Result<Component, Component> {
+    ) -> Result<(), Component> {
         let failed = |key: &str| Component::translatable(key, Vec::new());
-        let id = self.summon_entity(kind, position, nbt).map_err(failed)?;
-        self.entity_name(id).ok_or_else(|| failed(SUMMON_FAILED))
+        let (entity, random) = self.summon_entity(kind, position, nbt).map_err(failed)?;
+        let name = name_of_entity(&entity);
+        let mut birth = Birth::of(CreatureSpawnReason::Command)
+            .with_random(random)
+            .then(Spawned::Summoned { sender, name });
+        if let CommandSender::Player(player) = sender {
+            birth = birth.by(player);
+        }
+        self.spawn_entity(entity, birth);
+        Ok(())
     }
 }
 
@@ -589,12 +590,71 @@ fn selection_box(selector: &Selector, origin: Vec3) -> Option<Aabb> {
 }
 
 impl<L: ClientLink> Server<L> {
+    pub(crate) fn relocate(&mut self, id: EntityId, position: Vec3, command: bool) {
+        let Some(entity) = self.entities.store.get(id) else {
+            return;
+        };
+        let rotation = Rotation::new(entity.base.yaw, entity.base.pitch);
+        let from_position = entity.base.position;
+        let lane = self.lane_for(None, id);
+        let step = RelocateStep {
+            entity: id,
+            to: position,
+            command,
+        };
+        self.fire(lane, Continuation::Relocate(step), move |server| {
+            let entity = server.entity_view(id)?;
+            Some(EventPayload::EntityTeleport(EntityTeleport {
+                entity_type: entity.kind.clone(),
+                entity,
+                from: server.location_of(from_position, rotation),
+                to: Some(server.location_of(position, rotation)),
+            }))
+        });
+    }
+
+    pub(crate) fn finish_relocate(
+        &mut self,
+        step: RelocateStep,
+        cancelled: bool,
+        patch: EntityTeleportPatch,
+    ) {
+        if cancelled || self.entities.store.get(step.entity).is_none() {
+            return;
+        }
+        if step.command {
+            self.relocate(step.entity, step.to, false);
+            return;
+        }
+        let (position, rotation) = match patch.to {
+            None => (step.to, None),
+            Some(None) => return,
+            Some(Some(to)) => (to.position, Some(to.rotation)),
+        };
+        let id = step.entity;
+        if let Some(entity) = self.entities.store.get_mut(id) {
+            let base = &mut entity.base;
+            base.position = position;
+            base.old_position = position;
+            if let Some(rotation) = rotation {
+                base.set_rotation(rotation.yaw, rotation.pitch);
+            }
+            let living = matches!(&entity.state, EntityState::Living(l) if l.fall_flying);
+            if !living {
+                base.velocity = base.velocity.multiply(1.0, 0.0, 1.0);
+                base.on_ground = true;
+            }
+            base.needs_sync = true;
+        }
+        self.entities.store.reindex(id);
+    }
+
     pub(crate) fn summon_entity(
         &mut self,
         kind: Kind,
         position: Vec3,
         nbt: Option<Compound>,
-    ) -> Result<EntityId, &'static str> {
+    ) -> Result<(Entity, LegacyRandom), &'static str> {
         let block = position.block();
         if !(-20_000_000..20_000_000).contains(&block.y)
             || !(-30_000_000..30_000_000).contains(&block.x)
@@ -628,8 +688,7 @@ impl<L: ClientLink> Server<L> {
                 &mut own,
             );
         }
-        self.add_mob_entity(entity, own)
-            .map_err(|_| SUMMON_DUPLICATE_UUID)
+        Ok((entity, own))
     }
 
     pub(crate) fn teleport_player(&mut self, player: PlayerId, position: Vec3) {
@@ -802,7 +861,25 @@ impl<L: ClientLink> Server<L> {
         found.into_iter().map(|c| c.target).collect()
     }
 
-    fn apply_entity_effect(&mut self, id: EntityId, effect: EffectInstance) -> bool {
+    pub(crate) fn apply_entity_effect(
+        &mut self,
+        id: EntityId,
+        effect: EffectInstance,
+        cause: EntityPotionEffectCause,
+    ) -> bool {
+        if self
+            .entities
+            .store
+            .get(id)
+            .and_then(|e| e.living())
+            .is_none()
+        {
+            return false;
+        }
+        self.potion(Holder::Mob(id), Potion::Add(effect), cause)
+    }
+
+    pub(crate) fn apply_entity_effect_now(&mut self, id: EntityId, effect: EffectInstance) -> bool {
         let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
             return false;
         };
@@ -813,27 +890,40 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    fn remove_entity_effects(&mut self, id: EntityId, effect: Option<EffectId>) -> bool {
+    pub(crate) fn remove_entity_effects(
+        &mut self,
+        id: EntityId,
+        effect: Option<EffectId>,
+        cause: EntityPotionEffectCause,
+    ) -> bool {
+        let Some(state) = self.entities.store.get(id).and_then(|e| e.living()) else {
+            return false;
+        };
+        let targets: Vec<Potion> = match effect {
+            Some(effect) => state
+                .effects
+                .get(effect)
+                .copied()
+                .map(Potion::Remove)
+                .into_iter()
+                .collect(),
+            None => state.effects.iter().copied().map(Potion::Clear).collect(),
+        };
+        let found = !targets.is_empty();
+        for potion in targets {
+            self.potion(Holder::Mob(id), potion, cause);
+        }
+        found
+    }
+
+    pub(crate) fn remove_entity_effect_now(&mut self, id: EntityId, effect: EffectId) -> bool {
         let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
             return false;
         };
-        let removed: Vec<EffectId> = match effect {
-            Some(effect) => state
-                .effects
-                .remove(effect)
-                .map(|e| e.effect)
-                .into_iter()
-                .collect(),
-            None => state
-                .effects
-                .clear()
-                .into_iter()
-                .map(|e| e.effect)
-                .collect(),
-        };
-        for effect in &removed {
-            living::mark_effect_attributes(state, *effect);
+        let removed = state.effects.remove(effect).is_some();
+        if removed {
+            living::mark_effect_attributes(state, effect);
         }
-        !removed.is_empty()
+        removed
     }
 }

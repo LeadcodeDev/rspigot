@@ -15,19 +15,19 @@ use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
-use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, ItemId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
 use rspigot_items::EquipmentSlot as ItemSlot;
 
 use crate::events::{ClientEvent, EntityStatus, GameEvent, MetadataEntry, MetadataValue};
 use crate::player::Player;
 use crate::plugins::events::{
-    PlayerDeath, PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch,
-    PlayerRespawnReason,
+    EntityExhaustionReason, EntityKnockbackCause, EntityRegainHealthRegainReason, PlayerDeath,
+    PlayerDeathPatch, PlayerLevelChange, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason,
 };
 use crate::plugins::{
-    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, spec_of,
-    stack_of,
+    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, Holder, ItemSpec, Phase,
+    RespawnStep, Struck, spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -73,6 +73,7 @@ pub struct DamageSource {
     pub direct: Option<SourceEntity>,
     pub position: Option<Vec3>,
     pub knockback: Option<(f64, f64)>,
+    pub direct_block: Option<(BlockPos, BlockStateId)>,
 }
 
 impl DamageSource {
@@ -83,6 +84,7 @@ impl DamageSource {
             direct: None,
             position: None,
             knockback: None,
+            direct_block: None,
         }
     }
 
@@ -93,6 +95,14 @@ impl DamageSource {
             direct: Some(source),
             position: None,
             knockback: None,
+            direct_block: None,
+        }
+    }
+
+    pub fn from_block(kind: DamageType, block: Option<(BlockPos, BlockStateId)>) -> Self {
+        Self {
+            direct_block: block,
+            ..Self::new(kind)
         }
     }
 
@@ -119,6 +129,14 @@ impl DamageSource {
     pub(crate) fn source_position(&self) -> Option<Vec3> {
         self.position
             .or_else(|| self.direct.as_ref().map(|d| d.position))
+    }
+
+    pub(crate) fn knock_cause(&self) -> EntityKnockbackCause {
+        if self.direct.is_some() {
+            EntityKnockbackCause::EntityAttack
+        } else {
+            EntityKnockbackCause::Damage
+        }
     }
 
     pub(crate) fn knockback_from(&self, victim: Vec3) -> (f64, f64) {
@@ -284,21 +302,12 @@ fn invulnerable_to<L>(player: &Player<L>, kind: DamageType, fall_damage: bool) -
     (kind.is(DamageTag::IsFall) && !fall_damage) || !player.vitals.client_loaded()
 }
 
-fn heal<L>(player: &mut Player<L>, amount: f32) {
-    let max = max_health(player);
-    let vitals = &mut player.vitals;
-    if vitals.health > 0.0 {
-        vitals.health = java_clamp(vitals.health + amount, 0.0, max);
-    }
-}
-
-fn actually_hurt<L>(
+fn absorb_hurt<L>(
     player: &mut Player<L>,
     source: &DamageSource,
     amount: f32,
     attributes: &Attributes,
-    now: u64,
-) {
+) -> f32 {
     let kind = source.kind;
     let mut amount = amount;
     if !kind.is(DamageTag::BypassesArmor) {
@@ -318,7 +327,6 @@ fn actually_hurt<L>(
             amount = 0.0;
         }
     }
-    let invulnerable = player.abilities().invulnerable;
     let vitals = &mut player.vitals;
     let absorbed = damage::absorb(amount, vitals.absorption);
     vitals.absorption = java_clamp(
@@ -326,13 +334,18 @@ fn actually_hurt<L>(
         0.0,
         attributes.get(MAX_ABSORPTION) as f32,
     );
-    let amount = absorbed.damage;
-    if amount == 0.0 {
-        return;
-    }
-    if !invulnerable {
-        vitals.food.add_exhaustion(kind.exhaustion());
-    }
+    absorbed.damage
+}
+
+fn commit_hurt<L>(
+    player: &mut Player<L>,
+    source: &DamageSource,
+    amount: f32,
+    attributes: &Attributes,
+    now: u64,
+) {
+    let kind = source.kind;
+    let vitals = &mut player.vitals;
     let alive = vitals.health > 0.0;
     vitals.combat.record(
         CombatEntry {
@@ -367,38 +380,90 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt(&mut self, id: PlayerId, source: &DamageSource, amount: f32) -> bool {
-        let pvp = self.config.pvp;
+        self.strike(
+            None,
+            Struck::Player(id),
+            source.clone(),
+            amount,
+            AfterHurt::Nothing,
+        )
+    }
+
+    pub(crate) fn ask_hurt_player(
+        &self,
+        id: PlayerId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> Option<f32> {
+        let kind = source.kind;
+        let player = self.players.get(&id)?;
+        if invulnerable_to(player, kind, self.config.rules.fall_damage)
+            || (source.attacker().is_some() && !self.config.pvp)
+            || (player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability))
+            || player.vitals.is_dead()
+        {
+            return None;
+        }
+        let amount = if source.scales_with_difficulty() {
+            damage::scaled_for_difficulty(amount, self.world.difficulty)
+        } else {
+            amount
+        };
+        if kind.is(DamageTag::IsFire) && player.effects.has("minecraft:fire_resistance") {
+            return None;
+        }
+        Some(if amount < 0.0 { 0.0 } else { amount })
+    }
+
+    pub(crate) fn player_final_damage(&self, id: PlayerId, kind: DamageType, amount: f32) -> f32 {
+        let Some(player) = self.players.get(&id) else {
+            return 0.0;
+        };
+        let mut amount = if amount < 0.0 { 0.0 } else { amount };
+        if kind.is(DamageTag::DamagesHelmet) && player.inventory.get(HEAD_SLOT).is_some() {
+            amount *= HELMET_FACTOR;
+        }
+        let attributes = attributes(player);
+        if !kind.is(DamageTag::BypassesArmor) {
+            amount = damage::after_armor(
+                amount,
+                attributes.get(ARMOR).floor() as f32,
+                attributes.get(ARMOR_TOUGHNESS) as f32,
+            );
+        }
+        if !kind.is(DamageTag::BypassesEffects) {
+            if let Some(level) = amplifier(player, "minecraft:resistance")
+                && !kind.is(DamageTag::BypassesResistance)
+            {
+                amount = damage::after_resistance(amount, level);
+            }
+            if amount <= 0.0 {
+                amount = 0.0;
+            }
+        }
+        damage::absorb(amount, player.vitals.absorption).damage
+    }
+
+    pub(crate) fn apply_hurt_player(
+        &mut self,
+        id: PlayerId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> bool {
         let fall_damage = self.config.rules.fall_damage;
-        let difficulty = self.world.difficulty;
         let now = self.current_tick();
         let kind = source.kind;
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
-        if invulnerable_to(player, kind, fall_damage) {
+        if invulnerable_to(player, kind, fall_damage)
+            || (player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability))
+            || player.vitals.is_dead()
+            || amount == 0.0
+        {
             return false;
         }
-        if source.attacker().is_some() && !pvp {
-            return false;
-        }
-        if player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability) {
-            return false;
-        }
-        if player.vitals.is_dead() {
-            return false;
-        }
-        let amount = if source.scales_with_difficulty() {
-            damage::scaled_for_difficulty(amount, difficulty)
-        } else {
-            amount
-        };
-        if amount == 0.0 {
-            return false;
-        }
-        if kind.is(DamageTag::IsFire) && player.effects.has("minecraft:fire_resistance") {
-            return false;
-        }
-        let mut amount = if amount < 0.0 { 0.0 } else { amount };
+        let mut amount = amount;
         if kind.is(DamageTag::DamagesHelmet) && player.inventory.get(HEAD_SLOT).is_some() {
             amount *= HELMET_FACTOR;
         }
@@ -406,22 +471,31 @@ impl<L: ClientLink> Server<L> {
             amount = f32::MAX;
         }
         let attributes = attributes(player);
-        let full = if player.vitals.damage_cooldown > COOLDOWN_THRESHOLD
+        let (full, dealt) = if player.vitals.damage_cooldown > COOLDOWN_THRESHOLD
             && !kind.is(DamageTag::BypassesCooldown)
         {
             if amount <= player.vitals.last_hurt {
                 return false;
             }
             let extra = amount - player.vitals.last_hurt;
-            actually_hurt(player, source, extra, &attributes, now);
+            let dealt = absorb_hurt(player, source, extra, &attributes);
             player.vitals.last_hurt = amount;
-            false
+            (false, dealt)
         } else {
             player.vitals.last_hurt = amount;
             player.vitals.damage_cooldown = DAMAGE_COOLDOWN;
-            actually_hurt(player, source, amount, &attributes, now);
+            let dealt = absorb_hurt(player, source, amount, &attributes);
             player.vitals.hurt_time = HURT_DURATION;
-            true
+            (true, dealt)
+        };
+        if dealt != 0.0 {
+            self.exhaust(id, kind.exhaustion(), EntityExhaustionReason::Damaged);
+            if let Some(player) = self.players.get_mut(&id) {
+                commit_hurt(player, source, dealt, &attributes, now);
+            }
+        }
+        let Some(player) = self.players.get_mut(&id) else {
+            return false;
         };
         if let Some(cause) = &source.causing
             && let Some(attacker) = cause.player
@@ -461,7 +535,13 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::Trackers(entity), event);
             if !kind.is(DamageTag::NoKnockback) {
                 let (dx, dz) = source.knockback_from(position);
-                self.knockback(id, crate::combat::DEFAULT_KNOCKBACK, dx, dz);
+                self.knock(
+                    Holder::Player(id),
+                    crate::combat::DEFAULT_KNOCKBACK,
+                    (dx, dz),
+                    source.knock_cause(),
+                    source.direct.as_ref().map(|direct| direct.entity),
+                );
                 self.indicate_damage(id, dx, dz);
             }
         }
@@ -490,20 +570,6 @@ impl<L: ClientLink> Server<L> {
         let pitch = self.voice_pitch(sounds.pitch, false);
         let volume = sounds.volume.get(false, 1);
         self.play_sound(Some(id), position, sound, sounds.source, volume, pitch);
-    }
-
-    pub(crate) fn heal_player(&mut self, id: PlayerId, amount: f32) {
-        if let Some(player) = self.players.get_mut(&id) {
-            heal(player, amount);
-        }
-    }
-
-    pub(crate) fn exhaust(&mut self, id: PlayerId, amount: f32) {
-        if let Some(player) = self.players.get_mut(&id)
-            && !player.abilities().invulnerable
-        {
-            player.vitals.food.add_exhaustion(amount);
-        }
     }
 
     pub(crate) fn kill(&mut self, id: PlayerId) -> bool {
@@ -719,6 +785,10 @@ impl<L: ClientLink> Server<L> {
         }
         let death_location = player.vitals.death_location;
         let kept = player.vitals.experience;
+        let heard_effects = self.listened(EventKind::EntityPotionEffect);
+        let Some(player) = self.players.get_mut(&id) else {
+            return;
+        };
         let mut experience = PlayerExperience::default();
         let mut points = 0;
         match player.vitals.death_experience.take() {
@@ -746,7 +816,12 @@ impl<L: ClientLink> Server<L> {
             experience,
             ..Vitals::default()
         };
-        let _ = player.effects.clear();
+        let cleared: Vec<_> = if heard_effects {
+            player.effects.iter().copied().collect()
+        } else {
+            let _ = player.effects.clear();
+            Vec::new()
+        };
         player.sneaking = false;
         player.sprinting = false;
         player.loaded = false;
@@ -814,6 +889,7 @@ impl<L: ClientLink> Server<L> {
         });
         player.menu = InventoryMenu::synced(&player.inventory);
         self.send_commands(id);
+        self.clear_at_respawn(id, cleared);
         if hardcore {
             self.change_game_mode(id, GameMode::Spectator, Vec::new());
         }
@@ -900,14 +976,22 @@ impl<L: ClientLink> Server<L> {
             if resets_fall {
                 vitals.fall_distance = 0.0;
             }
-            if difficulty == Difficulty::Peaceful && regeneration {
-                if vitals.tick_count.is_multiple_of(PEACEFUL_HEAL_INTERVAL) {
-                    if vitals.health < max {
-                        vitals.health = java_clamp(vitals.health + 1.0, 0.0, max);
-                    }
-                    if vitals.food.saturation < rspigot_domain::food::MAX_SATURATION {
-                        vitals.food.saturation += 1.0;
-                    }
+            let peaceful = difficulty == Difficulty::Peaceful && regeneration;
+            let regen = peaceful
+                && vitals.tick_count.is_multiple_of(PEACEFUL_HEAL_INTERVAL)
+                && vitals.health < max;
+            if regen {
+                self.heal_player(id, 1.0, EntityRegainHealthRegainReason::Regen);
+            }
+            let Some(player) = self.players.get_mut(&id) else {
+                continue;
+            };
+            let vitals = &mut player.vitals;
+            if peaceful {
+                if vitals.tick_count.is_multiple_of(PEACEFUL_HEAL_INTERVAL)
+                    && vitals.food.saturation < rspigot_domain::food::MAX_SATURATION
+                {
+                    vitals.food.saturation += 1.0;
                 }
                 if vitals.tick_count.is_multiple_of(PEACEFUL_FOOD_INTERVAL)
                     && vitals.food.needs_food()
@@ -920,14 +1004,22 @@ impl<L: ClientLink> Server<L> {
                 vitals.attack_ticker = 0;
                 vitals.held_item = held;
             }
+            if let Some(level) = vitals.food.tick_exhaustion(difficulty) {
+                self.change_food(id, level, None);
+            }
+            let Some(player) = self.players.get_mut(&id) else {
+                continue;
+            };
+            let max = max_health(player);
+            let vitals = &mut player.vitals;
             match vitals
                 .food
-                .tick(difficulty, regeneration, vitals.health, max)
+                .tick_regeneration(difficulty, regeneration, vitals.health, max)
             {
                 FoodEffect::None => {}
                 FoodEffect::Heal { amount, exhaustion } => {
-                    heal(player, amount);
-                    self.exhaust(id, exhaustion);
+                    self.heal_player(id, amount, EntityRegainHealthRegainReason::Satiated);
+                    self.exhaust(id, exhaustion, EntityExhaustionReason::Regen);
                 }
                 FoodEffect::Starve => {
                     self.hurt(id, &DamageSource::new(DamageType::Starve), 1.0);

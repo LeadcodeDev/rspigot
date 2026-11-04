@@ -102,19 +102,48 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    pub(crate) fn finish_explosion(&mut self, step: ExplodeStep, patch: BlockExplodePatch) {
+    pub(crate) fn finish_explosion(
+        &mut self,
+        step: ExplodeStep,
+        cancelled: bool,
+        patch: BlockExplodePatch,
+    ) {
+        self.settle_explosion(step, cancelled, patch.block_list, patch.explosion_yield);
+    }
+
+    pub(crate) fn settle_explosion(
+        &mut self,
+        step: ExplodeStep,
+        cancelled: bool,
+        block_list: Option<Vec<BlockPos>>,
+        explosion_yield: Option<f32>,
+    ) {
         let chunks = &self.world.chunks;
-        let blocks = patch
-            .block_list
+        let blocks: Vec<BlockPos> = block_list
             .unwrap_or(step.blocks)
             .into_iter()
             .filter(|pos| chunks.block(*pos).is_some_and(|state| !state.is_air()))
             .collect();
-        let explosion_yield = patch.explosion_yield.unwrap_or(step.explosion_yield);
-        self.blast(ExplodeStep {
-            blocks,
-            explosion_yield,
-            ..step
-        });
+        let explosion_yield = explosion_yield.unwrap_or(step.explosion_yield);
+        let fire = step.fire;
+        let discard = step.discard;
+        let burning = if fire { blocks.clone() } else { Vec::new() };
+        if !cancelled {
+            self.blast(ExplodeStep {
+                blocks,
+                explosion_yield,
+                ..step
+            });
+        }
+        if fire {
+            self.create_fire(&burning);
+        }
+        if let Some(source) = discard {
+            self.remove_entity(
+                source,
+                rspigot_domain::entity::RemovalReason::Discarded,
+                Some(crate::plugins::events::EntityRemoveCause::Explode),
+            );
+        }
     }
 }

@@ -27,7 +27,7 @@ use crate::player::Player;
 use crate::player_io::PlayerIo;
 use crate::plugins::events::PlayerLoginResult;
 use crate::plugins::{
-    Arrival, Decisions, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
+    Arrival, Decisions, Impacts, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
     Visibility,
 };
 use crate::ports::{
@@ -111,6 +111,7 @@ pub struct Server<L> {
     pub(crate) decisions: Decisions,
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
+    pub(crate) impacts: Impacts,
     arrivals: FxHashMap<u64, Arrival<L>>,
     startup: Option<Receiver<Inbound<L>>>,
     arrival_counter: u64,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             decisions: Decisions::default(),
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
+            impacts: Impacts::default(),
             arrivals: FxHashMap::default(),
             startup: None,
             arrival_counter: 0,
@@ -819,6 +821,7 @@ impl<L: ClientLink> Server<L> {
         self.tick_open_menus();
         self.tick_falling_blocks();
         self.update_tracking();
+        self.notify_poses();
         self.sync_vitals();
         if self.tick.is_multiple_of(20) {
             let time = self.time_event();
@@ -844,7 +847,7 @@ impl<L: ClientLink> Server<L> {
             },
             MetadataEntry {
                 index: 6,
-                value: MetadataValue::Pose(if player.sneaking {
+                value: MetadataValue::Pose(if player.sneaking && !player.flying {
                     Pose::Crouching
                 } else {
                     Pose::Standing

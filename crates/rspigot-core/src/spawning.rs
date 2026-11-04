@@ -36,6 +36,8 @@ use crate::environment::{is_halloween, today};
 use crate::lighting::light_level;
 use crate::mob_actions::new_mob;
 use crate::mobs::{ServerRandom, sky_darken};
+use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
+use crate::plugins::{Birth, Continuation};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -282,7 +284,12 @@ impl<L: ClientLink> NaturalSpawnHost for Server<L> {
             &mut ServerRandom(&mut self.rng),
             &mut own,
         );
-        (self.add_mob_entity(entity, own).is_ok(), group)
+        let id = entity.base.id;
+        self.spawn_entity(
+            entity,
+            Birth::of(CreatureSpawnReason::Natural).with_random(own),
+        );
+        (self.spawning_now(id), group)
     }
 }
 
@@ -380,6 +387,25 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn count_existing(&mut self, state: &mut SpawnState) {
+        let reserved: Vec<(EntityKind, BlockPos)> = self
+            .decisions
+            .waiting()
+            .filter_map(|then| match then {
+                Continuation::Spawn(step) if step.birth.reason == CreatureSpawnReason::Natural => {
+                    Some((step.entity.base.kind, step.entity.base.position.block()))
+                }
+                _ => None,
+            })
+            .collect();
+        for (kind, pos) in reserved {
+            let id = kind.id().0;
+            let charge = if rspigot_data::spawns::has_spawn_cost(id) {
+                self.spawns_at(pos).cost(id).map(|cost| cost.charge)
+            } else {
+                None
+            };
+            state.add_existing(kind, pos, charge, true);
+        }
         for entity in self.entities.store.iter() {
             let kind = entity.base.kind;
             if kind.category() == MobCategory::Misc
@@ -478,7 +504,11 @@ impl<L: ClientLink> Server<L> {
             ),
         };
         if outcome.discard {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Despawn),
+            );
             return true;
         }
         if outcome.reset_no_action_time

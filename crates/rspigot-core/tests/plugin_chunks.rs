@@ -12,7 +12,8 @@ use rspigot_core::plugins::events::{
     ChunkLoad, ChunkPopulate, ChunkUnload, ChunkUnloadPatch, EntitiesLoad, EntitiesUnload,
 };
 use rspigot_core::plugins::{
-    Answer, ChunkRef, EventKind, EventPatch, EventPayload, HandlerSpec, ItemSpec, Question,
+    Answer, ChunkRef, EffectSpec, EntityOrder, EventKind, EventPatch, EventPayload, HandlerSpec,
+    ItemSpec, Order, Phase, Question,
 };
 use rspigot_core::ports::{ChunkStore, EntityStore, StoreError};
 use rspigot_core::server::Server;
@@ -112,6 +113,10 @@ fn world(handlers: Vec<HandlerSpec>) -> World {
 }
 
 fn world_saving_every(handlers: Vec<HandlerSpec>, autosave: u64) -> World {
+    world_deciding_for(handlers, autosave, if autosave > 0 { 20 } else { 1 })
+}
+
+fn world_deciding_for(handlers: Vec<HandlerSpec>, autosave: u64, decision_ticks: u64) -> World {
     let config = GameConfig {
         view_distance: 2,
         chunk_workers: 2,
@@ -121,7 +126,7 @@ fn world_saving_every(handlers: Vec<HandlerSpec>, autosave: u64) -> World {
             autosave_interval_ticks: autosave,
         },
         plugins: PluginSettings {
-            decision_ticks: if autosave > 0 { 20 } else { 1 },
+            decision_ticks,
             ..PluginSettings::default()
         },
         ..GameConfig::default()
@@ -391,4 +396,75 @@ fn the_autosave_skips_a_chunk_whose_unload_waits() {
     world.s.tick(4);
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(world.disk.saves(FAR), before);
+}
+
+#[test]
+fn an_unloading_chunk_settles_the_waiting_events_of_its_entities_before_saving_them() {
+    let mut world = world_deciding_for(
+        vec![
+            deciding(1, EventKind::EntityPotionEffect),
+            observe(2, EventKind::EntityPotionEffect),
+            observe(3, EventKind::EntitiesUnload),
+        ],
+        0,
+        1_000,
+    );
+    world.go_far();
+    let cow = match world.s.ask(Question::Spawn {
+        kind: "minecraft:cow".into(),
+        position: Vec3::new(200.5, 64.0, 200.5),
+    }) {
+        Answer::Spawned(view) => view,
+        other => panic!("expected a cow, got {other:?}"),
+    };
+    world.s.act(Order::Entity {
+        entity: cow.id,
+        order: EntityOrder::AddEffect(EffectSpec {
+            key: "minecraft:slowness".into(),
+            duration: 2_000,
+            amplifier: 0,
+            ambient: false,
+            particles: true,
+            icon: true,
+        }),
+    });
+    assert_eq!(
+        asked_for(&world.s.plugin, EventKind::EntityPotionEffect).len(),
+        1
+    );
+    world.go_home();
+    world.wait_unload();
+    let settled: Vec<EventKind> = fired(&world.s.plugin)
+        .into_iter()
+        .filter(|event| event.phase == Phase::Settled)
+        .filter(|event| match &event.payload {
+            EventPayload::EntityPotionEffect(_) => true,
+            payload => chunk_of(payload).is_some_and(|chunk| chunk.x == FAR.x && chunk.z == FAR.z),
+        })
+        .map(|event| event.payload.kind())
+        .collect();
+    let effect = settled
+        .iter()
+        .position(|kind| *kind == EventKind::EntityPotionEffect)
+        .expect("the effect settled");
+    let unload = settled
+        .iter()
+        .position(|kind| *kind == EventKind::EntitiesUnload)
+        .expect("the entities unloaded");
+    assert!(effect < unload);
+    assert!(world.disk.saved_soon(FAR));
+    let stored = world
+        .disk
+        .entities
+        .lock()
+        .map(|entities| entities.get(&FAR).cloned().unwrap_or_default())
+        .unwrap_or_default();
+    let saved = stored
+        .iter()
+        .find(|nbt| nbt.get_list("active_effects").is_some())
+        .expect("the cow saved with its effect");
+    assert_eq!(
+        saved.get_list("active_effects").map(|list| list.len()),
+        Some(1)
+    );
 }

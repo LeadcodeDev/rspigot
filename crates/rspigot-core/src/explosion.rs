@@ -1,10 +1,11 @@
 use rand::Rng;
+use rspigot_blocks::{BlockKind, StateFlags};
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::entity::species::{self, Species};
-use rspigot_domain::entity::{Aabb, EntityState, RemovalReason, item};
+use rspigot_domain::entity::{Aabb, EntityState, RemovalReason, item, living};
 use rspigot_domain::explosion::{self, MIN_RADIUS, PACKET_RANGE_SQR};
 use rspigot_domain::item::{ItemStack, same_item_same_components};
-use rspigot_domain::player::{GameMode, PlayerId};
+use rspigot_domain::player::PlayerId;
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
@@ -12,13 +13,20 @@ use crate::events::ClientEvent;
 use crate::health::DamageSource;
 use crate::loot::{self, LootContext, LootEntity};
 use crate::mobs::ServerRandom;
-use crate::plugins::steps::ExplodeStep;
+use crate::plugins::events::{
+    EntityExplode, EntityExplodePatch, EntityRemoveCause, ExplosionPrime, ExplosionPrimePatch,
+    ExplosionResult,
+};
+use crate::plugins::steps::{ExplodeStep, PrimeStep};
+use crate::plugins::{AfterHurt, BlastFollow, Holder, Struck};
+use crate::plugins::{Continuation, EventPayload};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
 const MAX_MERGED_STACK: u32 = 16;
 const EXPLOSION_KNOCKBACK_RESISTANCE: &str = "minecraft:explosion_knockback_resistance";
 const POP_SPREAD: f64 = 0.25;
+const SOUL_FIRE_BASE: &str = "minecraft:soul_fire_base_blocks";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BlockInteraction {
@@ -38,8 +46,8 @@ struct HitEntity {
 
 impl<L: ClientLink> Server<L> {
     pub(crate) fn explode_creeper(&mut self, id: EntityId) -> bool {
-        let Some(entity) = self.entities.store.get_mut(id) else {
-            return false;
+        let Some(entity) = self.entities.store.get(id) else {
+            return true;
         };
         let Some(Species::Creeper(creeper)) = entity
             .living()
@@ -54,12 +62,62 @@ impl<L: ClientLink> Server<L> {
             1.0
         };
         let radius = creeper.explosion_radius as f32 * multiplier;
+        let Some(view) = self.entity_view(id) else {
+            return false;
+        };
+        let lane = self.lane_for(None, id);
+        let step = PrimeStep {
+            creeper: id,
+            radius,
+            fire: false,
+        };
+        self.fire(lane, Continuation::Prime(step), move |_| {
+            Some(EventPayload::ExplosionPrime(ExplosionPrime {
+                entity_type: view.kind.clone(),
+                entity: view,
+                fire: false,
+                radius,
+            }))
+        });
+        self.entities
+            .store
+            .get(id)
+            .is_none_or(|entity| entity.living().is_some_and(|living| living.dead))
+    }
+
+    pub(crate) fn finish_prime(
+        &mut self,
+        step: PrimeStep,
+        cancelled: bool,
+        patch: ExplosionPrimePatch,
+    ) {
+        let id = step.creeper;
+        let Some(entity) = self.entities.store.get_mut(id) else {
+            return;
+        };
+        let alive = !entity.base.is_removed()
+            && entity
+                .living()
+                .is_some_and(|living| !living::is_dead_or_dying(&entity.base, living));
+        if !alive {
+            return;
+        }
+        if cancelled {
+            if let Some(Species::Creeper(creeper)) = entity
+                .living_mut()
+                .and_then(|living| living.mob.as_mut())
+                .map(|mob| &mut mob.species)
+            {
+                creeper.swell = 0;
+            }
+            return;
+        }
         let center = entity.base.position;
         if let Some(living) = entity.living_mut() {
             living.dead = true;
         }
         let Some(source) = self.mob_source(id) else {
-            return false;
+            return;
         };
         let damage = DamageSource::by(DamageType::PlayerExplosion, source);
         let interaction = if self.config.rules.mob_griefing {
@@ -71,11 +129,20 @@ impl<L: ClientLink> Server<L> {
         } else {
             BlockInteraction::Keep
         };
-        self.explode(Some(id), &damage, center, radius, interaction);
-        self.remove_entity(id, RemovalReason::Discarded);
-        true
+        let radius = patch.radius.unwrap_or(step.radius);
+        let fire = patch.fire.unwrap_or(step.fire);
+        self.explode(
+            Some(id),
+            &damage,
+            center,
+            radius,
+            interaction,
+            fire,
+            Some(id),
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn explode(
         &mut self,
         source: Option<EntityId>,
@@ -83,9 +150,18 @@ impl<L: ClientLink> Server<L> {
         center: Vec3,
         radius: f32,
         interaction: BlockInteraction,
+        fire: bool,
+        discard: Option<EntityId>,
     ) {
         let radius = radius.max(0.0);
         if radius < MIN_RADIUS {
+            if let Some(source) = discard {
+                self.remove_entity(
+                    source,
+                    RemovalReason::Discarded,
+                    Some(EntityRemoveCause::Explode),
+                );
+            }
             return;
         }
         let height = self.world.dimension.height;
@@ -119,11 +195,80 @@ impl<L: ClientLink> Server<L> {
             blocks,
             knocked,
             explosion_yield,
+            fire,
+            discard,
         };
-        if source.is_none() && damage.causing.is_none() {
-            self.ask_explosion(step);
-        } else {
-            self.blast(step);
+        let blamed = source.or_else(|| damage.causing.as_ref().map(|causing| causing.entity));
+        match blamed {
+            Some(entity) => self.ask_entity_explosion(entity, step),
+            None => self.ask_explosion(step),
+        }
+    }
+
+    fn ask_entity_explosion(&mut self, entity: EntityId, step: ExplodeStep) {
+        let Some(view) = self.subject_view(entity) else {
+            self.settle_explosion(step, false, None, None);
+            return;
+        };
+        let block_list = step.blocks.clone();
+        let explosion_result = match step.interaction {
+            BlockInteraction::Keep => ExplosionResult::Keep,
+            BlockInteraction::Destroy => ExplosionResult::Destroy,
+            BlockInteraction::DestroyWithDecay => ExplosionResult::DestroyWithDecay,
+        };
+        let explosion_yield = step.explosion_yield;
+        let lane = self.lane_for(None, entity);
+        self.fire(
+            lane,
+            Continuation::EntityExplode(Box::new(step)),
+            move |server| {
+                let location =
+                    server.location_of(view.position, rspigot_domain::Rotation::default());
+                Some(EventPayload::EntityExplode(EntityExplode {
+                    block_list,
+                    entity_type: view.kind.clone(),
+                    entity: view,
+                    explosion_result,
+                    location,
+                    explosion_yield,
+                }))
+            },
+        );
+    }
+
+    pub(crate) fn finish_entity_explosion(
+        &mut self,
+        step: ExplodeStep,
+        cancelled: bool,
+        patch: EntityExplodePatch,
+    ) {
+        self.settle_explosion(step, cancelled, patch.block_list, patch.explosion_yield);
+    }
+
+    pub(crate) fn create_fire(&mut self, blocks: &[BlockPos]) {
+        for pos in blocks {
+            if self.rng.random_range(0..3) != 0 {
+                continue;
+            }
+            let here = self.world.chunks.block(*pos).unwrap_or(BlockStateId::AIR);
+            let below = self
+                .world
+                .chunks
+                .block(pos.offset(0, -1, 0))
+                .unwrap_or(BlockStateId::AIR);
+            if !here.is_air() || !below.flags().contains(StateFlags::SOLID_RENDER) {
+                continue;
+            }
+            let soul = below.kind().is_some_and(|kind| {
+                rspigot_data::tags::tag("minecraft:block", SOUL_FIRE_BASE)
+                    .is_some_and(|ids| ids.binary_search(&u32::from(kind.id().0)).is_ok())
+            });
+            let fire = if soul {
+                BlockKind::SoulFire.default_state()
+            } else {
+                BlockKind::Fire.default_state()
+            };
+            self.set_block(*pos, fire);
         }
     }
 
@@ -136,6 +281,7 @@ impl<L: ClientLink> Server<L> {
             blocks,
             knocked,
             explosion_yield,
+            ..
         } = step;
         let silent = source
             .and_then(|id| self.entities.store.get(id))
@@ -213,10 +359,10 @@ impl<L: ClientLink> Server<L> {
         center: Vec3,
         radius: f32,
     ) -> Vec<(PlayerId, Vec3)> {
-        let mut knocked = Vec::new();
         if radius < 1.0e-5 {
-            return knocked;
+            return Vec::new();
         }
+        let outer = self.impacts.knocked.replace(Vec::new());
         let area = explosion::hurt_area(center, radius);
         for target in self.explosion_targets(source, &area) {
             let distance =
@@ -226,12 +372,14 @@ impl<L: ClientLink> Server<L> {
             }
             let exposure = explosion::seen_percent(&self.world.chunks, center, &target.bounds);
             let amount = explosion::entity_damage(radius, center, target.position, exposure);
-            if let Some(player) = target.player {
-                self.hurt(player, damage, amount);
-            } else if target.living {
-                self.hurt_mob(target.id, damage, amount);
-            } else {
-                self.damage_inert(target.id, amount);
+            let orb = target.player.is_none()
+                && self
+                    .entities
+                    .store
+                    .get(target.id)
+                    .is_some_and(|e| matches!(e.state, EntityState::Orb(_)));
+            if orb {
+                self.damage_orb(target.id, amount);
             }
             let resistance = self
                 .entities
@@ -241,48 +389,63 @@ impl<L: ClientLink> Server<L> {
                 .map_or(0.0, |living| {
                     living.attribute(EXPLOSION_KNOCKBACK_RESISTANCE)
                 });
-            let Some(knockback) = explosion::knockback(
+            let knockback = explosion::knockback(
                 radius,
                 center,
                 target.position,
                 target.eye,
                 exposure,
                 resistance,
-            ) else {
+            );
+            let then = knockback.map_or(AfterHurt::Nothing, |knockback| {
+                AfterHurt::Blast(BlastFollow {
+                    target: target.id,
+                    player: target.player,
+                    knockback,
+                    source,
+                })
+            });
+            if orb {
+                if let AfterHurt::Blast(follow) = then {
+                    self.blast_knockback(follow);
+                }
                 continue;
-            };
-            match target.player {
-                Some(player) => {
-                    let Some(p) = self.players.get_mut(&player) else {
-                        continue;
-                    };
-                    p.vitals.velocity = p.vitals.velocity + knockback;
-                    let flying_creative = p.game_mode == GameMode::Creative && p.flying;
-                    if p.game_mode != GameMode::Spectator && !flying_creative {
-                        knocked.push((player, knockback));
-                    }
-                }
-                None => {
-                    if let Some(entity) = self.entities.store.get_mut(target.id) {
-                        entity.base.velocity = entity.base.velocity + knockback;
-                        entity.base.needs_sync = true;
-                    }
-                }
             }
+            let victim = match target.player {
+                Some(player) => Struck::Player(player),
+                None if target.living => Struck::Mob(target.id),
+                None => Struck::Item(target.id),
+            };
+            self.strike(None, victim, damage.clone(), amount, then);
         }
-        knocked
+        std::mem::replace(&mut self.impacts.knocked, outer).unwrap_or_default()
     }
 
-    fn damage_inert(&mut self, id: EntityId, amount: f32) {
-        let griefing = self.config.rules.mob_griefing;
+    pub(crate) fn blast_knockback(&mut self, follow: BlastFollow) {
+        let living = follow.player.is_some()
+            || self
+                .entities
+                .store
+                .get(follow.target)
+                .is_some_and(|entity| entity.living().is_some());
+        if living {
+            let holder = follow
+                .player
+                .map_or(Holder::Mob(follow.target), Holder::Player);
+            self.blast_push(holder, follow.knockback, follow.source);
+            return;
+        }
+        if let Some(entity) = self.entities.store.get_mut(follow.target) {
+            entity.base.velocity = entity.base.velocity + follow.knockback;
+            entity.base.needs_sync = true;
+        }
+    }
+
+    fn damage_orb(&mut self, id: EntityId, amount: f32) {
         let Some(entity) = self.entities.store.get_mut(id) else {
             return;
         };
         let destroyed = match &mut entity.state {
-            EntityState::Item(state) if griefing => {
-                state.health -= amount.ceil() as i32;
-                state.health <= 0
-            }
             EntityState::Orb(state) => {
                 state.health -= amount.ceil() as i32;
                 state.health <= 0
@@ -290,7 +453,7 @@ impl<L: ClientLink> Server<L> {
             _ => false,
         };
         if destroyed {
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Death));
         }
     }
 

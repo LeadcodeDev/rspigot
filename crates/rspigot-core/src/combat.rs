@@ -1,7 +1,4 @@
-use rand::Rng;
-use rspigot_domain::attribute::{
-    ATTACK_DAMAGE, ATTACK_KNOCKBACK, ATTACK_SPEED, KNOCKBACK_RESISTANCE,
-};
+use rspigot_domain::attribute::{ATTACK_DAMAGE, ATTACK_KNOCKBACK, ATTACK_SPEED};
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::entity::physics::has_tag;
 use rspigot_domain::entity::{Aabb, EntityState};
@@ -14,13 +11,13 @@ use rspigot_entities::SoundSource;
 use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, Hand};
 use crate::health::{DamageSource, attributes};
-use crate::mobs::{MIN_KNOCKBACK_DIRECTION, knockback_velocity};
+use crate::plugins::events::{EntityExhaustionReason, EntityKnockbackCause};
+use crate::plugins::{AfterHurt, AttackFollow, Holder, Struck, SweepFollow};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
 pub const DEFAULT_KNOCKBACK: f64 = crate::mobs::DEFAULT_KNOCKBACK;
 const SPRINT_KNOCKBACK: f32 = 0.5;
-const RANDOM_DIRECTION_SCALE: f64 = 0.01;
 const ATTACK_PARTIAL_TICK: f32 = 0.5;
 const FULL_STRENGTH: f32 = 0.9;
 const CRITICAL_MULTIPLIER: f32 = 1.5;
@@ -98,40 +95,16 @@ fn is_sword(item: rspigot_domain::ItemId) -> bool {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Sweep {
-    damage: f32,
-    direction: (f64, f64),
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Victim {
-    target: Target,
-    entity: EntityId,
-    bounds: Aabb,
-    living: bool,
-    attackable: bool,
-    velocity: Vec3,
+pub(crate) struct Victim {
+    pub(crate) target: Target,
+    pub(crate) entity: EntityId,
+    pub(crate) bounds: Aabb,
+    pub(crate) living: bool,
+    pub(crate) attackable: bool,
+    pub(crate) velocity: Vec3,
 }
 
 impl<L: ClientLink> Server<L> {
-    pub(crate) fn knockback(&mut self, id: PlayerId, strength: f64, dx: f64, dz: f64) {
-        let Some(player) = self.players.get(&id) else {
-            return;
-        };
-        let strength = strength * (1.0 - attributes(player).get(KNOCKBACK_RESISTANCE));
-        let (mut dx, mut dz) = (dx, dz);
-        while dx * dx + dz * dz < MIN_KNOCKBACK_DIRECTION {
-            dx = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-            dz = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-        }
-        let Some(player) = self.players.get_mut(&id) else {
-            return;
-        };
-        player.vitals.velocity =
-            knockback_velocity(player.vitals.velocity, strength, dx, dz, player.on_ground);
-        player.vitals.sync_velocity = true;
-    }
-
     pub(crate) fn indicate_damage(&mut self, id: PlayerId, dx: f64, dz: f64) {
         let Some(player) = self.players.get_mut(&id) else {
             return;
@@ -234,18 +207,26 @@ impl<L: ClientLink> Server<L> {
         self.attack(id, victim);
     }
 
-    fn hurt_target(&mut self, target: Target, source: &DamageSource, amount: f32) -> bool {
+    fn struck_target(target: Target) -> Struck {
         match target {
-            Target::Player(player) => self.hurt(player, source, amount),
-            Target::Entity(entity) => self.hurt_mob(entity, source, amount),
+            Target::Player(player) => Struck::Player(player),
+            Target::Entity(entity) => Struck::Mob(entity),
         }
     }
 
-    fn knockback_target(&mut self, target: Target, strength: f64, dx: f64, dz: f64) {
-        match target {
-            Target::Player(player) => self.knockback(player, strength, dx, dz),
-            Target::Entity(entity) => self.mob_knockback(entity, strength, dx, dz),
-        }
+    pub(crate) fn knockback_target(
+        &mut self,
+        target: Target,
+        strength: f64,
+        direction: (f64, f64),
+        cause: EntityKnockbackCause,
+        source: EntityId,
+    ) {
+        let holder = match target {
+            Target::Player(player) => Holder::Player(player),
+            Target::Entity(entity) => Holder::Mob(entity),
+        };
+        self.knock(holder, strength, direction, cause, Some(source));
     }
 
     fn attacker_sound(&mut self, id: PlayerId, sound: &'static str) {
@@ -314,7 +295,37 @@ impl<L: ClientLink> Server<L> {
             self.attacker_sound(id, SOUND_KNOCKBACK);
         }
         let source = DamageSource::by(DamageType::PlayerAttack, source);
-        if !self.hurt_target(victim.target, &source, strike.damage) {
+        let follow = AttackFollow {
+            attacker: id,
+            attacker_entity,
+            victim,
+            strike,
+            full,
+            knockback,
+            yaw,
+            sweep: sweep.then_some((1.0 + sweep_ratio * strike.damage) * scale),
+        };
+        self.strike(
+            Some(id),
+            Self::struck_target(victim.target),
+            source,
+            strike.damage,
+            AfterHurt::Attack(Box::new(follow)),
+        );
+    }
+
+    pub(crate) fn finish_attack(&mut self, follow: AttackFollow, hurt: bool) {
+        let AttackFollow {
+            attacker: id,
+            attacker_entity,
+            victim,
+            strike,
+            full,
+            knockback,
+            yaw,
+            sweep,
+        } = follow;
+        if !hurt {
             self.attacker_sound(id, SOUND_NO_DAMAGE);
             self.send_inventory(id);
             return;
@@ -322,7 +333,13 @@ impl<L: ClientLink> Server<L> {
         let (dx, dz) = mth::yaw_direction(yaw);
         if knockback > 0.0 {
             if victim.living {
-                self.knockback_target(victim.target, f64::from(knockback), dx, dz);
+                self.knockback_target(
+                    victim.target,
+                    f64::from(knockback),
+                    (dx, dz),
+                    EntityKnockbackCause::EntityAttack,
+                    attacker_entity,
+                );
             } else if let Some(entity) = self.entities.store.get_mut(victim.entity) {
                 let push = Vec3::new(
                     -dx * f64::from(knockback),
@@ -357,12 +374,11 @@ impl<L: ClientLink> Server<L> {
         {
             self.knock_velocity(victim_id, victim.velocity);
         }
-        if sweep {
-            let sweep = Sweep {
-                damage: (1.0 + sweep_ratio * strike.damage) * scale,
-                direction: (dx, dz),
-            };
-            self.sweep_attack(id, victim, &source, sweep);
+        if let Some(damage) = sweep
+            && let Some(source) = self.source_of(id)
+        {
+            let source = DamageSource::by(DamageType::PlayerAttack, source);
+            self.sweep_attack(id, victim, source, damage, (dx, dz));
         }
         if strike.critical {
             self.attacker_sound(id, SOUND_CRIT);
@@ -373,7 +389,7 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), event.clone());
             self.push(Audience::Trackers(attacker_entity), event);
         }
-        if !strike.critical && !sweep {
+        if !strike.critical && sweep.is_none() {
             self.attacker_sound(id, if full { SOUND_STRONG } else { SOUND_WEAK });
         }
         if let Some(attacker) = self.players.get_mut(&id) {
@@ -382,17 +398,23 @@ impl<L: ClientLink> Server<L> {
         if victim.living {
             self.damage_weapon(id);
         }
-        self.exhaust(id, ATTACK_EXHAUSTION);
+        self.exhaust(id, ATTACK_EXHAUSTION, EntityExhaustionReason::Unknown);
     }
 
-    fn sweep_attack(&mut self, id: PlayerId, victim: Victim, source: &DamageSource, sweep: Sweep) {
+    fn sweep_attack(
+        &mut self,
+        id: PlayerId,
+        victim: Victim,
+        source: DamageSource,
+        damage: f32,
+        direction: (f64, f64),
+    ) {
         self.attacker_sound(id, SOUND_SWEEP);
         let Some(attacker) = self.players.get(&id) else {
             return;
         };
         let origin = attacker.position;
         let attacker_entity = attacker.entity_id;
-        let (dx, dz) = sweep.direction;
         let b = victim.bounds;
         let area = Aabb::new(
             b.min_x - SWEEP_INFLATE_XZ,
@@ -423,9 +445,31 @@ impl<L: ClientLink> Server<L> {
                 .map(|p| Target::Player(p.id)),
         );
         for target in targets {
-            if self.hurt_target(target, source, sweep.damage) {
-                self.knockback_target(target, SWEEP_KNOCKBACK, dx, dz);
-            }
+            let follow = SweepFollow {
+                attacker: id,
+                target,
+                direction,
+            };
+            self.strike(
+                Some(id),
+                Self::struck_target(target),
+                source.clone(),
+                damage,
+                AfterHurt::Sweep(follow),
+            );
+        }
+    }
+
+    pub(crate) fn finish_sweep(&mut self, follow: SweepFollow, hurt: bool) {
+        let attacker = self.players.get(&follow.attacker).map(|p| p.entity_id);
+        if hurt && let Some(attacker) = attacker {
+            self.knockback_target(
+                follow.target,
+                SWEEP_KNOCKBACK,
+                follow.direction,
+                EntityKnockbackCause::SweepAttack,
+                attacker,
+            );
         }
     }
 
@@ -446,6 +490,7 @@ impl<L: ClientLink> Server<L> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mobs::knockback_velocity;
 
     #[test]
     fn fist_cooldown_is_five_ticks_and_sword_cooldown_twelve_and_a_half() {

@@ -8,13 +8,14 @@ use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::events::ClientEvent;
 use crate::plugins::events::{
-    PlayerExpChange, PlayerExpChangePatch, PlayerExpCooldownChange, PlayerExpCooldownChangePatch,
-    PlayerExpCooldownChangeReason,
+    CreatureSpawnReason, EntityRemoveCause, PlayerExpChange, PlayerExpChangePatch,
+    PlayerExpCooldownChange, PlayerExpCooldownChangePatch, PlayerExpCooldownChangeReason,
 };
-use crate::plugins::steps::{CooldownStep, OrbStep};
+use crate::plugins::steps::{CooldownStep, OrbStep, Seeker};
 use crate::plugins::{Continuation, EventPayload, Lane};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
+use rspigot_ai::{TargetReason, TargetRequest};
 
 const BELOW_WORLD: i32 = 64;
 const PICKUP_INFLATE_X: f64 = 1.0;
@@ -97,7 +98,10 @@ impl<L: ClientLink> Server<L> {
         let mut next_double = || rng.random::<f64>();
         base.velocity = orb::spawn_velocity(&mut next_double);
         let state = OrbState::new(&mut base, value);
-        let _ = self.add_entity(Entity::new(base, EntityState::Orb(state)));
+        self.add_entity(
+            Entity::new(base, EntityState::Orb(state)),
+            CreatureSpawnReason::Default,
+        );
     }
 
     pub(crate) fn tick_orb(&mut self, id: EntityId) {
@@ -115,7 +119,11 @@ impl<L: ClientLink> Server<L> {
             _ => return,
         };
         if below {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::OutOfWorld),
+            );
             return;
         }
         let chunks = &self.world.chunks;
@@ -144,7 +152,11 @@ impl<L: ClientLink> Server<L> {
         let mut next_float = || rng.random::<f32>();
         let expired = orb::after_follow(base, state, chunks, following, stuck, &mut next_float);
         if expired {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Despawn),
+            );
         }
     }
 
@@ -184,7 +196,30 @@ impl<L: ClientLink> Server<L> {
                 state.count += absorbed.count;
                 state.age = state.age.min(absorbed.age);
             }
-            self.remove_entity(other, RemovalReason::Discarded);
+            self.remove_entity(
+                other,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Merge),
+            );
+        }
+    }
+
+    pub(crate) fn settle_orb(
+        &mut self,
+        orb: EntityId,
+        from: Option<EntityId>,
+        target: Option<EntityId>,
+    ) {
+        let player_of =
+            |entity: Option<EntityId>| entity.and_then(|entity| self.player_of_entity(entity));
+        let (from, target) = (player_of(from), player_of(target));
+        if let Some(Entity {
+            state: EntityState::Orb(state),
+            ..
+        }) = self.entities.store.get_mut(orb)
+            && state.following == from
+        {
+            state.following = target;
         }
     }
 
@@ -223,6 +258,31 @@ impl<L: ClientLink> Server<L> {
                 .min_by(|a, b| a.1.total_cmp(&b.1))
                 .filter(|(_, _, dead)| !dead)
                 .map(|(player, _, _)| player);
+        }
+        let before = state.following;
+        if following != before {
+            let deferred = self.defers_targets();
+            let entity_of = |player: Option<PlayerId>| {
+                player
+                    .and_then(|player| self.players.get(&player))
+                    .map(|p| p.entity_id)
+            };
+            let request = TargetRequest {
+                from: entity_of(before),
+                to: entity_of(following),
+                reason: if following.is_some() {
+                    TargetReason::ClosestPlayer
+                } else {
+                    TargetReason::ForgotTarget
+                },
+                tempt: false,
+            };
+            if let Some(orb) = self.entity_view(id) {
+                self.target_event(orb, request, Seeker::Orb, deferred);
+            }
+            if deferred {
+                return false;
+            }
         }
         let target = following
             .and_then(|player| self.players.get(&player))
@@ -392,7 +452,11 @@ impl<L: ClientLink> Server<L> {
             _ => false,
         };
         if emptied {
-            self.remove_entity(id, RemovalReason::Discarded);
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Pickup),
+            );
         }
     }
 

@@ -19,7 +19,8 @@ use crate::events::{
     ClientEvent, EntityKind, EntityStatus, EquipmentSlot, MetadataEntry, MetadataValue,
 };
 use crate::player::Player;
-use crate::plugins::{Continuation, Lane};
+use crate::plugins::events::{EntityPotionEffectCause, EntityRemoveCause};
+use crate::plugins::{Continuation, Holder, Lane, Potion};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -35,6 +36,7 @@ pub(crate) struct EntityWorld {
     pub store: Entities,
     pub tracked: FxHashMap<EntityId, TrackedEntity>,
     pub mobs: crate::mobs::MobTable,
+    pub poses: FxHashMap<EntityId, rspigot_domain::entity::Pose>,
     pending_saves: FxHashMap<ChunkPos, (u64, Arc<Vec<Compound>>)>,
     stored_empty: FxHashSet<ChunkPos>,
     generation: u64,
@@ -174,7 +176,7 @@ impl<L: ClientLink> Server<L> {
         EntityBase::new(id, uuid, kind)
     }
 
-    pub(crate) fn add_entity(&mut self, entity: Entity) -> Result<EntityId, Box<Entity>> {
+    pub(crate) fn place_entity(&mut self, entity: Entity) -> Result<EntityId, Box<Entity>> {
         let simulated = entity.is_simulated();
         let kind = entity.base.kind;
         let section = section_of(entity.base.position);
@@ -199,8 +201,16 @@ impl<L: ClientLink> Server<L> {
         Ok(id)
     }
 
-    pub(crate) fn remove_entity(&mut self, id: EntityId, reason: RemovalReason) -> Option<Entity> {
+    pub(crate) fn remove_entity(
+        &mut self,
+        id: EntityId,
+        reason: RemovalReason,
+        cause: Option<EntityRemoveCause>,
+    ) -> Option<Entity> {
         self.deliver();
+        if let Some(cause) = cause {
+            self.notify_removal(id, cause);
+        }
         let mut entity = self.entities.store.remove(id)?;
         entity.base.removal = Some(reason);
         self.entities.tracked.remove(&id);
@@ -368,6 +378,14 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let outcome = living::base_tick(base, state);
+        let spent = state.effects.countdown();
+        for effect in spent {
+            self.potion(
+                Holder::Mob(id),
+                Potion::Expire(effect),
+                EntityPotionEffectCause::Expiration,
+            );
+        }
         if outcome.burn {
             self.burn_damage(id);
         }
@@ -379,7 +397,7 @@ impl<L: ClientLink> Server<L> {
                     status: EntityStatus::Poof,
                 },
             );
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Death));
             return;
         }
         self.mob_ambient_tick(id);
@@ -427,18 +445,6 @@ impl<L: ClientLink> Server<L> {
         {
             rspigot_domain::entity::ageable::inactive_tick(base, ageable);
         }
-    }
-
-    pub(crate) fn add_mob_entity(
-        &mut self,
-        entity: Entity,
-        random: rspigot_domain::random::LegacyRandom,
-    ) -> Result<EntityId, Box<Entity>> {
-        let id = entity.base.id;
-        self.entities.mobs.spawn_randoms.insert(id, random);
-        let added = self.add_entity(entity);
-        self.entities.mobs.spawn_randoms.remove(&id);
-        added
     }
 
     pub(crate) fn handle_chunk_events(&mut self) {
@@ -497,7 +503,7 @@ impl<L: ClientLink> Server<L> {
                         tracing::warn!("UUID of added entity already exists: {uuid}");
                         continue;
                     }
-                    let _ = self.add_entity(entity);
+                    let _ = self.place_entity(entity);
                 }
                 Err(error) => {
                     tracing::warn!(?pos, %error, "Skipping entity that failed to load");
@@ -507,6 +513,11 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn save_chunk_entities(&mut self, pos: ChunkPos, unload: bool) {
+        if unload {
+            for id in self.entities.store.in_chunk(pos).to_vec() {
+                self.settle_lane(Lane::Entity(id), false);
+            }
+        }
         let world_uuid = self.world.level.uuid;
         let ids = self.entities.store.in_chunk(pos).to_vec();
         let (kept, saved): (Vec<EntityId>, Vec<Compound>) = ids
@@ -518,7 +529,11 @@ impl<L: ClientLink> Server<L> {
         if unload {
             self.entities_unloading(pos, &kept);
             for id in ids {
-                self.remove_entity(id, RemovalReason::UnloadedToChunk);
+                self.remove_entity(
+                    id,
+                    RemovalReason::UnloadedToChunk,
+                    Some(EntityRemoveCause::Unload),
+                );
             }
         }
         if saved.is_empty() {

@@ -117,6 +117,18 @@ pub fn equipment_drops(
     killed_by_player: bool,
     random: &mut impl RandomSource,
 ) -> Vec<(EquipmentSlot, ItemStack)> {
+    let drops = planned_equipment_drops(living, killed_by_player, random);
+    for (slot, _) in &drops {
+        living.equipment[slot_index(*slot)] = None;
+    }
+    drops
+}
+
+pub fn planned_equipment_drops(
+    living: &LivingState,
+    killed_by_player: bool,
+    random: &mut impl RandomSource,
+) -> Vec<(EquipmentSlot, ItemStack)> {
     let Some(chances) = living.mob.as_ref().map(|mob| mob.drop_chances) else {
         return Vec::new();
     };
@@ -136,7 +148,7 @@ pub fn equipment_drops(
         if random.next_float() >= chance {
             continue;
         }
-        let Some(mut stack) = living.equipment[slot_index(slot)].take() else {
+        let Some(mut stack) = living.equipment[slot_index(slot)].clone() else {
             continue;
         };
         if !preserved && let Some(max) = max_damage(&stack) {

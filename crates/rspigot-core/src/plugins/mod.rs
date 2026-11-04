@@ -1,8 +1,12 @@
+mod aims;
 mod block;
 mod blocks;
+mod burning;
+mod changes;
 mod chat;
 mod chunks;
 mod contract;
+mod damage;
 mod decisions;
 mod digging;
 mod entity;
@@ -10,6 +14,7 @@ pub mod events;
 mod inputs;
 mod inventory;
 mod items;
+mod knockback;
 mod levels;
 mod menus;
 mod objects;
@@ -17,14 +22,19 @@ mod orders;
 mod patch;
 mod placing;
 mod player;
+mod poses;
 mod position;
+mod potions;
 mod registry;
 mod resolve;
 mod server;
 mod session;
+mod shots;
+mod spawns;
 pub(crate) mod steps;
 mod targets;
 mod visibility;
+mod vitals;
 mod world;
 
 use std::net::IpAddr;
@@ -38,12 +48,14 @@ use uuid::Uuid;
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
+pub(crate) use burning::Combuster;
 pub use contract::{
     BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
     HolderRef, Input, InventoryOwner, InventoryRef, InventoryView, LecternData, Location,
     LootContext, MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade,
     TrialSpawnerData,
 };
+pub(crate) use damage::Impacts;
 pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
 pub(crate) use digging::Mining;
 pub use events::{EventKind, EventPatch, EventPayload};
@@ -59,7 +71,11 @@ pub use orders::{
 pub use patch::Verdict;
 pub(crate) use registry::Registry;
 pub(crate) use session::{Arrival, Refusal};
-pub(crate) use steps::{DeathStep, RespawnStep};
+pub(crate) use spawns::{name_of_entity, view_of_entity};
+pub(crate) use steps::{
+    AfterHurt, ArrowFollow, AttackFollow, Birth, BlastFollow, BurnFollow, DeathStep, Holder,
+    MobAttackFollow, Potion, RespawnStep, Spawned, Struck, SweepFollow,
+};
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 
@@ -421,6 +437,56 @@ mod tests {
             EventKind::CraftItem.receivers(),
             [EventKind::CraftItem, EventKind::InventoryClick]
         );
+    }
+
+    #[test]
+    fn the_entity_families_follow_the_bukkit_handler_lists() {
+        assert_eq!(
+            EventKind::CreatureSpawn.receivers(),
+            [EventKind::CreatureSpawn, EventKind::EntitySpawn]
+        );
+        assert!(
+            EventKind::ItemSpawn
+                .receivers()
+                .contains(&EventKind::EntitySpawn)
+        );
+        assert!(
+            EventKind::ProjectileLaunch
+                .receivers()
+                .contains(&EventKind::EntitySpawn)
+        );
+        assert!(
+            EventKind::EntityDamageByBlock
+                .receivers()
+                .contains(&EventKind::EntityDamage)
+        );
+        assert!(
+            EventKind::EntityCombustByEntity
+                .receivers()
+                .contains(&EventKind::EntityCombust)
+        );
+        assert!(
+            EventKind::EntityCombustByBlock
+                .receivers()
+                .contains(&EventKind::EntityCombust)
+        );
+        assert!(
+            EventKind::EntityKnockbackByEntity
+                .receivers()
+                .contains(&EventKind::EntityKnockback)
+        );
+        assert!(
+            EventKind::EntityTargetLivingEntity
+                .receivers()
+                .contains(&EventKind::EntityTarget)
+        );
+        for blocked in [
+            EventKind::PotionSplash,
+            EventKind::LingeringPotionSplash,
+            EventKind::ExpBottle,
+        ] {
+            assert!(!blocked.receivers().contains(&EventKind::ProjectileHit));
+        }
     }
 
     #[test]

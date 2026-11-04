@@ -12,11 +12,15 @@ use rspigot_domain::{EntityId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 use rspigot_items::{EquipmentSlot, ItemKind};
 
+use crate::events::Hand;
 use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
-use crate::plugins::events::PlayerPickupArrow;
+use crate::plugins::events::{EntityRemoveCause, PlayerPickupArrow};
 use crate::plugins::steps::ArrowStep;
-use crate::plugins::{Continuation, EventPayload, spec_of};
+use crate::plugins::steps::{Draw, Shooter};
+use crate::plugins::{
+    AfterHurt, ArrowFollow, Combuster, Continuation, EventPayload, Holder, spec_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -31,6 +35,8 @@ const PICKUP_INFLATE_Y: f64 = 0.5;
 const PLAYER_WIDTH: f64 = 0.6;
 const STOP_SQR: f64 = 1.0e-7;
 const DEFLECT_SCALE: f64 = 0.2;
+const ARROW_FIRE_SECONDS: f32 = 5.0;
+const SKELETON_FORCE: f32 = 0.8;
 
 #[derive(Debug, Clone, Copy)]
 struct ArrowHit {
@@ -78,6 +84,7 @@ impl<L: ClientLink> Server<L> {
             .flatten()
             .cloned();
         let projectile = held.unwrap_or_else(arrow::default_item);
+        let weapon_view = weapon.clone();
         let origin = entity.base.position;
         let eye = entity.base.eye_y();
         let owner_uuid = entity.base.uuid;
@@ -106,7 +113,17 @@ impl<L: ClientLink> Server<L> {
             MOB_ARROW_SPEED,
             uncertainty,
         );
-        let _ = self.add_entity(Entity::new(base, EntityState::Arrow(Box::new(state))));
+        let arrow = Entity::new(base, EntityState::Arrow(Box::new(state)));
+        let draw = Draw {
+            weapon: weapon_view,
+            ammo: None,
+            hand: Hand::Main,
+            force: SKELETON_FORCE,
+        };
+        self.shoot_bow(Shooter::Mob(shooter), draw, arrow);
+    }
+
+    pub(crate) fn skeleton_sound(&mut self, shooter: EntityId) {
         let mut random = self.mob_random(shooter);
         let pitch = 1.0 / (random.next_float() * 0.4 + 0.8);
         self.store_mob_random(shooter, random);
@@ -257,6 +274,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn tick_arrow(&mut self, id: EntityId) {
+        if self.arrow_waits(id) {
+            return;
+        }
         let despawn = self.config.mobs.arrow_despawn_rate;
         let in_rain = self
             .entities
@@ -282,7 +302,11 @@ impl<L: ClientLink> Server<L> {
         }
         if ground.grounded {
             if ground.despawn {
-                self.remove_entity(id, RemovalReason::Discarded);
+                self.remove_entity(
+                    id,
+                    RemovalReason::Discarded,
+                    Some(EntityRemoveCause::Despawn),
+                );
                 return;
             }
             self.apply_fire_inside(id);
@@ -357,7 +381,10 @@ impl<L: ClientLink> Server<L> {
                 if self.entities.store.get(id).is_none() {
                     return;
                 }
-                self.arrow_hit_entity(id, hit.target);
+                self.ask_projectile_hit(id, hit.target);
+                if self.arrow_waits(id) {
+                    return;
+                }
             }
             if let Some(entity) = self.entities.store.get_mut(id) {
                 entity.base.needs_sync = true;
@@ -370,6 +397,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn arrow_hit_block(&mut self, id: EntityId, hit: raycast::BlockHit) {
+        self.notice_block_hit(id, hit.pos, hit.face);
         let state_at = self.world.chunks.block(hit.pos).unwrap_or_default();
         if state_at.is_air() {
             return;
@@ -391,7 +419,7 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn arrow_hit_entity(&mut self, id: EntityId, target: EntityId) {
+    pub(crate) fn arrow_hit_entity(&mut self, id: EntityId, target: EntityId) {
         let Some(Entity {
             base,
             state: EntityState::Arrow(state),
@@ -424,8 +452,11 @@ impl<L: ClientLink> Server<L> {
             living.damage.last_hurt_mob = Some(target);
         }
         let saved_fire = self.fire_ticks_of(target);
-        if on_fire {
-            self.ignite_any(target, 5.0);
+        if on_fire && let Some(arrow) = self.entity_view(id) {
+            let holder = self
+                .player_of_entity(target)
+                .map_or(Holder::Mob(target), Holder::Player);
+            self.combust(holder, ARROW_FIRE_SECONDS, Combuster::Entity(arrow));
         }
         let source = DamageSource {
             kind: DamageType::Arrow,
@@ -433,13 +464,34 @@ impl<L: ClientLink> Server<L> {
             direct: Some(direct),
             position: None,
             knockback: Some((-velocity.x, -velocity.z)),
+            direct_block: None,
         };
-        let hurt = self.hurt_entity(target, &source, damage as f32);
-        let target_player = self
-            .players
-            .values()
-            .find(|p| p.entity_id == target)
-            .map(|p| p.id);
+        let follow = ArrowFollow {
+            arrow: id,
+            target,
+            owner: owner_id,
+            saved_fire,
+            sound_pitch,
+        };
+        let victim = self.struck(target);
+        self.strike(
+            None,
+            victim,
+            source,
+            damage as f32,
+            AfterHurt::Arrow(follow),
+        );
+    }
+
+    pub(crate) fn finish_arrow_hit(&mut self, follow: ArrowFollow, hurt: bool) {
+        let ArrowFollow {
+            arrow: id,
+            target,
+            owner: owner_id,
+            saved_fire,
+            sound_pitch,
+        } = follow;
+        let target_player = self.player_of_entity(target);
         if hurt {
             if let Some(Entity {
                 base,
@@ -453,11 +505,7 @@ impl<L: ClientLink> Server<L> {
                 self.add_player_arrow(player);
             }
             if let (Some(_), Some(owner)) = (target_player, owner_id)
-                && let Some(shooter) = self
-                    .players
-                    .values()
-                    .find(|p| p.entity_id == owner)
-                    .map(|p| p.id)
+                && let Some(shooter) = self.player_of_entity(owner)
                 && Some(shooter) != target_player
             {
                 self.push(
@@ -475,7 +523,7 @@ impl<L: ClientLink> Server<L> {
                     sound_pitch,
                 );
             }
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Hit));
         } else {
             self.restore_fire_ticks(target, saved_fire);
             let Some(Entity {
@@ -494,11 +542,10 @@ impl<L: ClientLink> Server<L> {
             if base.velocity.length_sqr() < STOP_SQR {
                 let pickup = state.pickup == Pickup::Allowed;
                 let item = state.item.clone();
-                let position = base.position;
-                self.remove_entity(id, RemovalReason::Killed);
                 if pickup {
-                    self.spawn_at_location(position, 0.1, item);
+                    self.drop_at_location(id, 0.1, item, Vec3::ZERO);
                 }
+                self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Hit));
             }
         }
     }
@@ -528,19 +575,6 @@ impl<L: ClientLink> Server<L> {
         if let Some(entity) = self.entities.store.get_mut(id) {
             entity.base.remaining_fire_ticks = ticks;
         }
-    }
-
-    pub(crate) fn ignite_any(&mut self, id: EntityId, seconds: f32) {
-        if let Some(player) = self
-            .players
-            .values()
-            .find(|p| p.entity_id == id)
-            .map(|p| p.id)
-        {
-            self.ignite_player(player, seconds);
-            return;
-        }
-        self.ignite_entity(id, seconds);
     }
 
     fn add_player_arrow(&mut self, player: PlayerId) {
@@ -700,7 +734,11 @@ impl<L: ClientLink> Server<L> {
             self.sync_inventory(player_id);
             self.broadcast_held_item(player_id);
         }
-        self.remove_entity(id, RemovalReason::Discarded);
+        self.remove_entity(
+            id,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Pickup),
+        );
     }
 
     pub fn arrows(&self) -> Vec<(EntityId, Vec3, bool)> {

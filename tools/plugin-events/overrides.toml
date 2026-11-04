@@ -89,22 +89,50 @@ WorldSave = "before /save-all, the plugin save orders and the autosave write, an
 SpawnChange = "from /setworldspawn and the plugin spawn order, after the change and only when the spawn moves"
 WeatherChange = "from /weather and the plugin weather order when the rain flag changes, before ThunderChange; a cancel keeps the sky and sends nothing, as there is no natural weather cycle or timer"
 ThunderChange = "from /weather and the plugin weather order when the thunder flag changes, after WeatherChange settled, each cancellable on its own"
+CreatureSpawn = "every creature added to the world: NATURAL, COMMAND, CUSTOM, SPAWNER_EGG, BREEDING, REINFORCEMENTS, DROWNED and FROZEN; a waiting natural spawn holds its slot and a cancel frees it; chunk-loaded entities and players fire nothing"
+EntitySpawn = "experience orbs and falling blocks, the entities that are neither creatures, items nor projectiles; its handlers also hear CreatureSpawn, ItemSpawn and ProjectileLaunch"
+ItemSpawn = "every item entity added to the world; a cancel discards it without EntityRemove"
+ProjectileLaunch = "arrows shot by players and skeletons; a cancel discards the arrow"
+EntityRemove = "every removal of an entity in the world, before it leaves, with DEATH, DESPAWN, DROP, EXPLODE, HIT, MERGE, OUT_OF_WORLD, PICKUP, PLUGIN, TRANSFORMATION or UNLOAD; never for players or a cancelled spawn"
+EntityDropItem = "chicken eggs, sheared wool and saddles, the item of a stopped arrow and of a falling block that cannot land; a cancel keeps the rest of the action"
+EntityDamage = "every hurt of a player, a mob or an item entity, asked before the invulnerability window and with a damage of 0; set_damage reruns the armor, resistance and absorption chain; FREEZING, BLOCKING and MAGIC do not exist; a cancel leaves the hit without effect and the attacker hears NODAMAGE"
+EntityDamageByEntity = "player and mob melee, sweeps, arrows (the damager is the arrow), creeper explosions and falling blocks; ENTITY_SWEEP_ATTACK never comes out, as in Spigot 26.3"
+EntityDamageByBlock = "lava with its block, the void with no block and stalagmites with their tip; a plugin explosion without a source is BLOCK_EXPLOSION with no block; lava and void are asked once per victim while one waits"
+EntityDeath = "mob deaths, also when the loot is empty; asked on a snapshot of the loot, the equipment drops and the experience while the mob lies dying, the death applies when the event settles: the settled drops spawn as items, each firing ItemSpawn, then the orbs fire EntitySpawn; PlayerDeath also reaches its handlers"
+EntityRegainHealth = "players only: SATIATED from food, REGEN in peaceful, MAGIC from instant health and MAGIC_REGEN from regeneration; mobs never heal yet; a cancelled satiated heal still costs its exhaustion, as in Spigot"
+EntityExhaustion = "players who are not invulnerable: DAMAGED, UNKNOWN for an attack, HUNGER_EFFECT, REGEN and BLOCK_MINED; there is no movement or jump exhaustion yet; every exhaustion is asked in turn"
+FoodLevelChange = "hunger from exhaustion and the saturation effect; eating and cakes do not exist yet; a cancel keeps the food and resends the health packet"
+EntityCombust = "undead burning in daylight; its handlers also hear EntityCombustByBlock and EntityCombustByEntity; a combustion is asked once per entity while one waits"
+EntityCombustByBlock = "fire blocks once the fire counter reaches 0 and lava for a living entity that is not burning, with the lava block it touched; burning or non-living entities catch fire from lava without the event, as in Spigot"
+EntityCombustByEntity = "a burning arrow before its hit; the combuster is the arrow"
+EntityPotionEffect = "COMMAND, PLUGIN, EXPIRATION (also when an effect stops ticking) and DEATH at respawn, for players and mobs; restored effects fire nothing; a cancelled expiration keeps the spent effect and asks again each tick"
+EntityKnockback = "the hurt knockback (ENTITY_ATTACK with a direct entity, DAMAGE otherwise, which no damage type of rspigot without a direct entity produces yet), the extra knockback of player and mob attacks (ENTITY_ATTACK), sweeps (SWEEP_ATTACK) and explosions (EXPLOSION); a player hit fires two, a swept target two; the settled final knockback is the new velocity; there is no shield, goat or mace knockback"
+EntityKnockbackByEntity = "every knockback whose source is an entity: the direct entity of the hurt, the attacker or the explosion source; reaches EntityKnockback handlers"
+ItemDespawn = "an item entity that reaches item-despawn-rate while it ticks; one ask per item while it waits, a cancel resets its age; items do not age while inactive, unlike Spigot"
+EntityPickupItem = "players touching an item they can hold, with what does not fit as remaining; one ask per player and item while it waits; mobs never pick up items yet"
+EntityChangeBlock = "a falling block leaving its place (before the block turns to air and the entity spawns) and landing (a cancel removes it without placing or dropping), and a grazing sheep (to air also for grass that turns to dirt); without mobGriefing the grazing is born cancelled and asks nobody"
+EntityInteract = "a zombie breaking a turtle egg, before the egg goes; there are no pressure plates, farmland or tripwires yet"
+SheepRegrowWool = "after the grazing of a sheep settled, also when it was cancelled; a cancel keeps the sheep sheared"
+EntityTeleport = "/tp of a non-player entity asks twice, the command then Entity.teleport, and only the second destination counts, as in Spigot; the plugin teleport order asks once; there are no portals, pearls, endermen or shulkers yet"
+ExplosionPrime = "creepers once their fuse ends, one ask per creeper while it waits; a cancel resets the fuse and the creeper lives; the settled radius and fire are the explosion's, a fire flag now sets fire to the crater"
+EntityExplode = "explosions with a source or causing entity, after the entities were hurt and pushed; a cancel breaks and sends nothing but keeps the hurts, the push and the fire; the creeper leaves with EXPLODE once it settled"
+ProjectileHit = "arrows of players and skeletons: an entity hit is asked and the arrow waits in place, a cancel lets it fly on without damage; a block hit asks its deciders without waiting and drops their verdicts, since its cancel would only skip block reactions that do not exist yet; ExpBottle, PotionSplash and LingeringPotionSplash never reach its handlers"
+EntityShootBow = "the drawn bow of a player, whose arrow is spent before the event as in Spigot, and skeletons; a cancel discards the arrow, the player still hears the shot, the skeleton does not; set_projectile to another entity launches nothing; there is no crossbow, Infinity or bow wear"
+EntityTarget = "reached through EntityTargetLivingEntity, as Spigot builds the exact class only for the allay, which rspigot lacks"
+EntityTargetLivingEntity = "CLOSEST_PLAYER, CLOSEST_ENTITY, FORGOT_TARGET, TARGET_DIED, TARGET_ATTACKED_ENTITY, TARGET_ATTACKED_NEARBY_ENTITY, REINFORCEMENT_TARGET and TEMPT from the AI goals, alerts, reinforcements and experience orbs, only when the target changes; with a deciding handler the change lands one AI pass later, one ask per mob while it waits; the settled target is not revalidated, as in Spigot"
+EntityBreed = "cows, pigs, sheep and chickens breeding through their goal, one ask per couple while it waits; the breeder is the online player who fed the mother, then the father; bred_with is the stack left in the hand after feeding, not saved; a cancel leaves both parents in love"
+EntityEnterLoveMode = "feeding an adult cow, pig, sheep or chicken; the food is spent before the event as in Spigot, the settled ticks are written as they are"
+SheepDyeWool = "a dye used on a sheep of another colour; the sheep, its colour and the dye change once settled, a cancel resends the hands"
+EntityPoseChange = "observer only, once per tick from the pose of each living entity and player that changed since the last tick: DYING of mobs, STANDING and SNEAKING of players (sneaking only when not flying, now also in the pose sent to clients); there is no sleeping, swimming, gliding or mob-specific pose yet"
 
 [states]
 ready = [
     "BroadcastMessage", "CraftItem",
-    "CreatureSpawn", "EntityBreed", "EntityChangeBlock",
-    "EntityCombust", "EntityCombustByBlock", "EntityCombustByEntity", "EntityDamage",
-    "EntityDamageByBlock", "EntityDamageByEntity", "EntityDeath", "EntityDropItem",
-    "EntityEnterLoveMode", "EntityExhaustion", "EntityExplode", "EntityInteract",
-    "EntityKnockback", "EntityKnockbackByEntity", "EntityPickupItem", "EntityPoseChange",
-    "EntityPotionEffect", "EntityRegainHealth", "EntityRemove", "EntityShootBow", "EntitySpawn",
-    "EntityTarget", "EntityTargetLivingEntity", "EntityTeleport", "ExplosionPrime",
-    "FoodLevelChange", "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
-    "InventoryCreative", "InventoryDrag", "InventoryOpen", "ItemDespawn", "ItemSpawn",
-    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing", "ProjectileHit",
-    "ProjectileLaunch", "ServerCommand", "ServerListPing", "ServerLoad", "SheepDyeWool",
-    "SheepRegrowWool", "SmithItem", "TabComplete",
+    "FurnaceBurn", "FurnaceExtract", "FurnaceSmelt", "FurnaceStartSmelt",
+    "InventoryCreative", "InventoryDrag", "InventoryOpen",
+    "PluginDisable", "PluginEnable", "PrepareItemCraft", "PrepareSmithing",
+    "ServerCommand", "ServerListPing", "ServerLoad",
+    "SmithItem", "TabComplete",
 ]
 
 [states.blocked]

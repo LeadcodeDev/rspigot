@@ -7,6 +7,10 @@ use rspigot_domain::player::PlayerId;
 
 use crate::events::ClientEvent;
 use crate::health::DamageSource;
+use crate::plugins::events::{
+    EntityExhaustionReason, EntityPotionEffectCause, EntityRegainHealthRegainReason,
+};
+use crate::plugins::{Holder, Potion};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -23,7 +27,19 @@ fn changes_flags(effects: &[EffectId]) -> bool {
 }
 
 impl<L: ClientLink> Server<L> {
-    pub(crate) fn apply_effect(&mut self, id: PlayerId, instance: EffectInstance) -> bool {
+    pub(crate) fn apply_effect(
+        &mut self,
+        id: PlayerId,
+        instance: EffectInstance,
+        cause: Option<EntityPotionEffectCause>,
+    ) -> bool {
+        match cause {
+            Some(cause) => self.potion(Holder::Player(id), Potion::Add(instance), cause),
+            None => self.apply_effect_now(id, instance),
+        }
+    }
+
+    pub(crate) fn apply_effect_now(&mut self, id: PlayerId, instance: EffectInstance) -> bool {
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
@@ -69,7 +85,7 @@ impl<L: ClientLink> Server<L> {
         );
     }
 
-    fn start_effect(&mut self, id: PlayerId, instance: EffectInstance) {
+    pub(crate) fn start_effect(&mut self, id: PlayerId, instance: EffectInstance) {
         if instance.effect.kind() == Some(EffectKind::Absorption) {
             self.start_absorption(id, instance.amplifier);
         }
@@ -84,7 +100,7 @@ impl<L: ClientLink> Server<L> {
                     .get(&id)
                     .is_some_and(|p| p.vitals.health < crate::health::max_health(p));
                 if hurt {
-                    self.heal_player(id, 1.0);
+                    self.heal_player(id, 1.0, EntityRegainHealthRegainReason::MagicRegen);
                 }
             }
             EffectKind::Poison => {
@@ -96,18 +112,26 @@ impl<L: ClientLink> Server<L> {
                 self.hurt(id, &DamageSource::new(DamageType::Wither), 1.0);
             }
             EffectKind::InstantHealth => {
-                self.heal_player(id, HEAL_BASE.wrapping_shl(shift).max(0) as f32);
+                self.heal_player(
+                    id,
+                    HEAL_BASE.wrapping_shl(shift).max(0) as f32,
+                    EntityRegainHealthRegainReason::Magic,
+                );
             }
             EffectKind::InstantDamage => {
                 let amount = HARM_BASE.wrapping_shl(shift) as f32;
                 self.hurt(id, &DamageSource::new(DamageType::Magic), amount);
             }
             EffectKind::Hunger => {
-                self.exhaust(id, HUNGER_EXHAUSTION * (f32::from(amplifier) + 1.0));
+                self.exhaust(
+                    id,
+                    HUNGER_EXHAUSTION * (f32::from(amplifier) + 1.0),
+                    EntityExhaustionReason::HungerEffect,
+                );
             }
             EffectKind::Saturation => {
-                if let Some(player) = self.players.get_mut(&id) {
-                    player.vitals.food.eat(i32::from(amplifier) + 1, 1.0);
+                if let Some(old) = self.players.get(&id).map(|p| p.vitals.food.food) {
+                    self.change_food(id, old + i32::from(amplifier) + 1, Some(old));
                 }
             }
             EffectKind::Absorption => {
@@ -118,24 +142,42 @@ impl<L: ClientLink> Server<L> {
         true
     }
 
-    pub(crate) fn remove_effects(&mut self, id: PlayerId, effect: Option<EffectId>) -> bool {
+    pub(crate) fn remove_effects(
+        &mut self,
+        id: PlayerId,
+        effect: Option<EffectId>,
+        cause: EntityPotionEffectCause,
+    ) -> bool {
+        let Some(player) = self.players.get(&id) else {
+            return false;
+        };
+        let targets: Vec<Potion> = match effect {
+            Some(effect) => player
+                .effects
+                .get(effect)
+                .copied()
+                .map(Potion::Remove)
+                .into_iter()
+                .collect(),
+            None => player.effects.iter().copied().map(Potion::Clear).collect(),
+        };
+        let found = !targets.is_empty();
+        for potion in targets {
+            self.potion(Holder::Player(id), potion, cause);
+        }
+        found
+    }
+
+    pub(crate) fn remove_effect_now(&mut self, id: PlayerId, effect: EffectId) -> bool {
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
-        let removed: Vec<EffectId> = match effect {
-            Some(effect) => player
-                .effects
-                .remove(effect)
-                .map(|e| e.effect)
-                .into_iter()
-                .collect(),
-            None => player
-                .effects
-                .clear()
-                .into_iter()
-                .map(|e| e.effect)
-                .collect(),
-        };
+        let removed: Vec<EffectId> = player
+            .effects
+            .remove(effect)
+            .map(|e| e.effect)
+            .into_iter()
+            .collect();
         if removed.is_empty() {
             return false;
         }
@@ -162,6 +204,7 @@ impl<L: ClientLink> Server<L> {
             let due: Vec<(EffectId, EffectKind, u8)> = player
                 .effects
                 .iter()
+                .filter(|effect| effect.duration != EffectDuration::Ticks(0))
                 .filter_map(|effect| {
                     let kind = effect.effect.kind()?;
                     let check = match effect.duration {
@@ -177,7 +220,7 @@ impl<L: ClientLink> Server<L> {
                 .collect();
             for (effect, kind, amplifier) in due {
                 if !self.effect_tick(id, kind, amplifier) {
-                    self.remove_effects(id, Some(effect));
+                    self.remove_effects(id, Some(effect), EntityPotionEffectCause::Expiration);
                 }
             }
         }
@@ -186,20 +229,19 @@ impl<L: ClientLink> Server<L> {
             if player.vitals.is_dead() {
                 continue;
             }
-            let ended = player.effects.tick();
-            if ended.is_empty() {
-                continue;
+            let spent = player.effects.countdown();
+            if !spent.is_empty() {
+                expired.push((player.id, spent));
             }
-            for effect in &ended {
-                player.link.send(ClientEvent::EffectRemoved {
-                    entity: player.entity_id,
-                    effect: *effect,
-                });
-            }
-            expired.push((player.id, ended));
         }
-        for (id, ended) in expired {
-            self.sync_effect_state(id, &ended);
+        for (id, spent) in expired {
+            for effect in spent {
+                self.potion(
+                    Holder::Player(id),
+                    Potion::Expire(effect),
+                    EntityPotionEffectCause::Expiration,
+                );
+            }
         }
     }
 

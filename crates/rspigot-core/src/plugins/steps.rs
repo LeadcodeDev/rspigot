@@ -1,15 +1,19 @@
 use crossbeam_channel::Sender;
-use rspigot_domain::entity::EntityBase;
+use rspigot_domain::effect::EffectInstance;
+use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
+use rspigot_domain::random::LegacyRandom;
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
-use crate::commands::CommandSender;
+use crate::combat::{Strike, Victim};
+use crate::commands::{CommandSender, Target};
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::explosion::BlockInteraction;
+use crate::health::DamageSource;
 use crate::plugins::EventKind;
-use crate::plugins::events::PlayerTeleportCause;
+use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Held {
@@ -407,6 +411,85 @@ pub(crate) struct ExplodeStep {
     pub(crate) blocks: Vec<BlockPos>,
     pub(crate) knocked: Vec<(PlayerId, Vec3)>,
     pub(crate) explosion_yield: f32,
+    pub(crate) fire: bool,
+    pub(crate) discard: Option<EntityId>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BreedStep {
+    pub(crate) parent: EntityId,
+    pub(crate) partner: EntityId,
+    pub(crate) child: Entity,
+    pub(crate) experience: i32,
+    pub(crate) position: Vec3,
+}
+
+#[derive(Debug)]
+pub(crate) struct LoveStep {
+    pub(crate) target: EntityId,
+    pub(crate) cause: Option<uuid::Uuid>,
+    pub(crate) item: Option<ItemStack>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DyeStep {
+    pub(crate) player: PlayerId,
+    pub(crate) target: EntityId,
+    pub(crate) hand: Hand,
+    pub(crate) color: u8,
+    pub(crate) stack: ItemStack,
+    pub(crate) parked: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Seeker {
+    Mob,
+    Tempt,
+    Orb,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AimStep {
+    pub(crate) mob: EntityId,
+    pub(crate) from: Option<EntityId>,
+    pub(crate) to: Option<EntityId>,
+    pub(crate) seeker: Seeker,
+    pub(crate) deferred: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shooter {
+    Player(PlayerId),
+    Mob(EntityId),
+}
+
+#[derive(Debug)]
+pub(crate) struct Draw {
+    pub(crate) weapon: Option<ItemStack>,
+    pub(crate) ammo: Option<ItemStack>,
+    pub(crate) hand: Hand,
+    pub(crate) force: f32,
+}
+
+#[derive(Debug)]
+pub(crate) struct ShotStep {
+    pub(crate) shooter: Shooter,
+    pub(crate) force: f32,
+    pub(crate) arrow: Entity,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PrimeStep {
+    pub(crate) creeper: EntityId,
+    pub(crate) radius: f32,
+    pub(crate) fire: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RelocateStep {
+    pub(crate) entity: EntityId,
+    pub(crate) to: Vec3,
+    pub(crate) command: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -425,6 +508,280 @@ pub(crate) struct Sky {
 pub(crate) struct WeatherStep {
     pub(crate) rain: Option<bool>,
     pub(crate) thunder: Option<bool>,
+}
+
+#[derive(Debug)]
+pub(crate) enum Spawned {
+    Nothing,
+    Summoned {
+        sender: CommandSender,
+        name: Component,
+    },
+    Hatched {
+        player: PlayerId,
+        hand: Hand,
+    },
+    Converted {
+        old: EntityId,
+        event: i32,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct Birth {
+    pub(crate) reason: CreatureSpawnReason,
+    pub(crate) random: Option<LegacyRandom>,
+    pub(crate) cause: Option<PlayerId>,
+    pub(crate) then: Spawned,
+}
+
+impl Birth {
+    pub(crate) const fn of(reason: CreatureSpawnReason) -> Self {
+        Self {
+            reason,
+            random: None,
+            cause: None,
+            then: Spawned::Nothing,
+        }
+    }
+
+    pub(crate) fn with_random(self, random: LegacyRandom) -> Self {
+        Self {
+            random: Some(random),
+            ..self
+        }
+    }
+
+    pub(crate) fn by(self, cause: PlayerId) -> Self {
+        Self {
+            cause: Some(cause),
+            ..self
+        }
+    }
+
+    pub(crate) fn then(self, then: Spawned) -> Self {
+        Self { then, ..self }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SpawnStep {
+    pub(crate) kind: EventKind,
+    pub(crate) entity: Entity,
+    pub(crate) loaded: bool,
+    pub(crate) birth: Birth,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Struck {
+    Player(PlayerId),
+    Mob(EntityId),
+    Item(EntityId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    Hurt,
+    Missed,
+    Cancelled,
+}
+
+impl Outcome {
+    pub(crate) const fn hurt(self) -> bool {
+        matches!(self, Self::Hurt)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AttackFollow {
+    pub(crate) attacker: PlayerId,
+    pub(crate) attacker_entity: EntityId,
+    pub(crate) victim: Victim,
+    pub(crate) strike: Strike,
+    pub(crate) full: bool,
+    pub(crate) knockback: f32,
+    pub(crate) yaw: f32,
+    pub(crate) sweep: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SweepFollow {
+    pub(crate) attacker: PlayerId,
+    pub(crate) target: Target,
+    pub(crate) direction: (f64, f64),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MobAttackFollow {
+    pub(crate) attacker: EntityId,
+    pub(crate) target: Target,
+    pub(crate) knockback: f32,
+    pub(crate) yaw: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArrowFollow {
+    pub(crate) arrow: EntityId,
+    pub(crate) target: EntityId,
+    pub(crate) owner: Option<EntityId>,
+    pub(crate) saved_fire: i32,
+    pub(crate) sound_pitch: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BurnFollow {
+    pub(crate) position: Vec3,
+    pub(crate) player: bool,
+    pub(crate) entity: EntityId,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BlastFollow {
+    pub(crate) target: EntityId,
+    pub(crate) player: Option<PlayerId>,
+    pub(crate) knockback: Vec3,
+    pub(crate) source: Option<EntityId>,
+}
+
+#[derive(Debug)]
+pub(crate) enum AfterHurt {
+    Nothing,
+    Attack(Box<AttackFollow>),
+    Sweep(SweepFollow),
+    MobAttack(MobAttackFollow),
+    Arrow(ArrowFollow),
+    Burn(BurnFollow),
+    Blast(BlastFollow),
+}
+
+#[derive(Debug)]
+pub(crate) struct HurtStep {
+    pub(crate) kind: EventKind,
+    pub(crate) victim: Struck,
+    pub(crate) source: DamageSource,
+    pub(crate) amount: f32,
+    pub(crate) then: AfterHurt,
+}
+
+impl HurtStep {
+    fn repeats(&self) -> bool {
+        matches!(
+            self.source.kind,
+            rspigot_domain::damage::DamageType::Lava
+                | rspigot_domain::damage::DamageType::OutOfWorld
+                | rspigot_domain::damage::DamageType::InFire
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RegainStep {
+    pub(crate) player: PlayerId,
+    pub(crate) amount: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExhaustStep {
+    pub(crate) player: PlayerId,
+    pub(crate) amount: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FoodStep {
+    pub(crate) player: PlayerId,
+    pub(crate) level: i32,
+    pub(crate) from: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Holder {
+    Player(PlayerId),
+    Mob(EntityId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Potion {
+    Add(EffectInstance),
+    Remove(EffectInstance),
+    Clear(EffectInstance),
+    Expire(EffectInstance),
+}
+
+#[derive(Debug)]
+pub(crate) struct Landing {
+    pub(crate) falling: EntityId,
+    pub(crate) pos: BlockPos,
+    pub(crate) original: BlockStateId,
+    pub(crate) replaced: BlockStateId,
+    pub(crate) state: BlockStateId,
+    pub(crate) drop_item: bool,
+}
+
+#[derive(Debug)]
+pub(crate) enum Grief {
+    Fall {
+        pos: BlockPos,
+        state: BlockStateId,
+        entity: Box<Entity>,
+    },
+    Land(Box<Landing>),
+    Graze {
+        sheep: EntityId,
+        pos: BlockPos,
+        below: bool,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct ChangeStep {
+    pub(crate) change: Grief,
+}
+
+#[derive(Debug)]
+pub(crate) struct PickupStep {
+    pub(crate) player: PlayerId,
+    pub(crate) collector: EntityId,
+    pub(crate) item: EntityId,
+    pub(crate) stack: ItemStack,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Push {
+    Knock {
+        strength: f64,
+        direction: (f64, f64),
+    },
+    Blast(Vec3),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct KnockStep {
+    pub(crate) kind: EventKind,
+    pub(crate) target: Holder,
+    pub(crate) push: Push,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CombustStep {
+    pub(crate) kind: EventKind,
+    pub(crate) target: Holder,
+    pub(crate) seconds: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PotionStep {
+    pub(crate) holder: Holder,
+    pub(crate) potion: Potion,
+    pub(crate) overrides: bool,
+    pub(crate) respawned: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct LootStep {
+    pub(crate) victim: EntityId,
+    pub(crate) drops: Vec<ItemStack>,
+    pub(crate) slots: Vec<(rspigot_items::EquipmentSlot, ItemStack)>,
+    pub(crate) experience: i32,
 }
 
 #[derive(Debug)]
@@ -484,10 +841,34 @@ pub(crate) enum Continuation {
     SetWeather(Sky),
     Weather(WeatherStep),
     Thunder(bool),
+    Spawn(Box<SpawnStep>),
+    EntityDrop(Box<Entity>),
+    Hurt(Box<HurtStep>),
+    MobDeath(Box<LootStep>),
+    Regain(RegainStep),
+    Exhaust(ExhaustStep),
+    Food(FoodStep),
+    Potion(PotionStep),
+    Combust(CombustStep),
+    Knock(KnockStep),
+    ItemDespawn(EntityId),
+    PickupItem(Box<PickupStep>),
+    ChangeBlock(Box<ChangeStep>),
+    Regrow(EntityId),
+    EggBreak { mob: EntityId, pos: BlockPos },
+    EntityExplode(Box<ExplodeStep>),
+    Prime(PrimeStep),
+    Relocate(RelocateStep),
+    Shoot(Box<ShotStep>),
+    ProjectileHit { arrow: EntityId, target: EntityId },
+    Aim(AimStep),
+    Breed(Box<BreedStep>),
+    Love(Box<LoveStep>),
+    Dye(Box<DyeStep>),
 }
 
 impl Continuation {
-    pub(crate) const fn kind(&self) -> EventKind {
+    pub(crate) fn kind(&self) -> EventKind {
         match self {
             Self::PlayerMove(_) => EventKind::PlayerMove,
             Self::Notice(kind) => *kind,
@@ -539,6 +920,30 @@ impl Continuation {
             Self::TimeSkip(_) => EventKind::TimeSkip,
             Self::SetWeather(_) | Self::Weather(_) => EventKind::WeatherChange,
             Self::Thunder(_) => EventKind::ThunderChange,
+            Self::Spawn(step) => step.kind,
+            Self::EntityDrop(_) => EventKind::EntityDropItem,
+            Self::Hurt(step) => step.kind,
+            Self::MobDeath(_) => EventKind::EntityDeath,
+            Self::Regain(_) => EventKind::EntityRegainHealth,
+            Self::Exhaust(_) => EventKind::EntityExhaustion,
+            Self::Food(_) => EventKind::FoodLevelChange,
+            Self::Potion(_) => EventKind::EntityPotionEffect,
+            Self::Combust(step) => step.kind,
+            Self::Knock(step) => step.kind,
+            Self::ItemDespawn(_) => EventKind::ItemDespawn,
+            Self::PickupItem(_) => EventKind::EntityPickupItem,
+            Self::ChangeBlock(_) => EventKind::EntityChangeBlock,
+            Self::Regrow(_) => EventKind::SheepRegrowWool,
+            Self::EggBreak { .. } => EventKind::EntityInteract,
+            Self::EntityExplode(_) => EventKind::EntityExplode,
+            Self::Prime(_) => EventKind::ExplosionPrime,
+            Self::Relocate(_) => EventKind::EntityTeleport,
+            Self::Shoot(_) => EventKind::EntityShootBow,
+            Self::ProjectileHit { .. } => EventKind::ProjectileHit,
+            Self::Aim(_) => EventKind::EntityTargetLivingEntity,
+            Self::Breed(_) => EventKind::EntityBreed,
+            Self::Love(_) => EventKind::EntityEnterLoveMode,
+            Self::Dye(_) => EventKind::SheepDyeWool,
         }
     }
 
@@ -568,15 +973,55 @@ impl Continuation {
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
+            (Self::Combust(one), Self::Combust(other)) => one.target == other.target,
+            (Self::ItemDespawn(one), Self::ItemDespawn(other)) => one == other,
+            (Self::ChangeBlock(one), Self::ChangeBlock(other)) => {
+                match (&one.change, &other.change) {
+                    (Grief::Fall { pos: one, .. }, Grief::Fall { pos: other, .. }) => one == other,
+                    _ => false,
+                }
+            }
+            (Self::EggBreak { mob: one, .. }, Self::EggBreak { mob: other, .. }) => one == other,
+            (Self::Prime(one), Self::Prime(other)) => one.creeper == other.creeper,
+            (Self::Breed(one), Self::Breed(other)) => one.parent == other.parent,
+            (Self::Aim(one), Self::Aim(other)) => {
+                one.deferred && one.mob == other.mob && one.seeker == other.seeker
+            }
+            (
+                Self::ProjectileHit { arrow, target },
+                Self::ProjectileHit {
+                    arrow: other_arrow,
+                    target: other_target,
+                },
+            ) => arrow == other_arrow && target == other_target,
+            (Self::PickupItem(one), Self::PickupItem(other)) => {
+                one.player == other.player && one.item == other.item
+            }
+            (Self::Potion(one), Self::Potion(other)) => {
+                matches!((one.potion, other.potion), (Potion::Expire(a), Potion::Expire(b)) if a.effect == b.effect)
+                    && one.holder == other.holder
+            }
+            (Self::Hurt(one), Self::Hurt(other)) => {
+                one.repeats() && one.victim == other.victim && one.source.kind == other.source.kind
+            }
             _ => false,
         }
     }
 
-    pub(crate) const fn may_skip(&self) -> bool {
-        matches!(
-            self,
-            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
-        )
+    pub(crate) fn may_skip(&self) -> bool {
+        match self {
+            Self::Hurt(step) => step.repeats(),
+            Self::Potion(step) => matches!(step.potion, Potion::Expire(_)),
+            Self::Combust(_) | Self::ItemDespawn(_) | Self::PickupItem(_) => true,
+            Self::ChangeBlock(step) => matches!(step.change, Grief::Fall { .. }),
+            Self::EggBreak { .. } | Self::Prime(_) | Self::ProjectileHit { .. } => true,
+            Self::Aim(step) => step.deferred,
+            Self::Breed(_) => true,
+            _ => matches!(
+                self,
+                Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
+            ),
+        }
     }
 }
 

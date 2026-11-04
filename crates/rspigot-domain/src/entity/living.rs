@@ -343,6 +343,7 @@ pub struct LivingState {
     pub hurt_time: i32,
     pub death_time: i32,
     pub dead: bool,
+    pub dying: bool,
     pub body_yaw: f32,
     pub attributes: LivingAttributes,
     pub effects: ActiveEffects,
@@ -435,6 +436,7 @@ impl LivingState {
             hurt_time: 0,
             death_time: 0,
             dead: false,
+            dying: false,
             body_yaw: 0.0,
             attributes: LivingAttributes::new(kind),
             effects: ActiveEffects::default(),
@@ -714,6 +716,35 @@ pub fn actually_hurt(
     amount
 }
 
+pub fn can_hurt(base: &EntityBase, living: &LivingState, source: &HurtSource<'_>) -> bool {
+    !(base.is_removed()
+        || is_dead_or_dying(base, living)
+        || is_invulnerable_to(base, source)
+        || (source.kind.is(DamageTag::IsFire) && living.has_effect("minecraft:fire_resistance")))
+}
+
+fn helmeted(living: &LivingState, kind: DamageType, amount: f32) -> f32 {
+    let mut amount = amount;
+    if kind.is(DamageTag::DamagesHelmet) && living.equipment(EquipmentSlot::Head).is_some() {
+        amount *= HELMET_FACTOR;
+    }
+    if !amount.is_finite() {
+        amount = f32::MAX;
+    }
+    amount
+}
+
+pub fn final_damage(living: &mut LivingState, kind: DamageType, amount: f32) -> f32 {
+    let mut amount = helmeted(living, kind, floored(amount));
+    if !kind.is(DamageTag::BypassesArmor) {
+        let armor = living.attribute(ARMOR).floor() as f32;
+        let toughness = living.attribute(ARMOR_TOUGHNESS) as f32;
+        amount = damage::after_armor(amount, armor, toughness);
+    }
+    amount = after_magic(living, kind, amount);
+    (amount - living.absorption).max(0.0)
+}
+
 pub fn hurt(
     base: &mut EntityBase,
     living: &mut LivingState,
@@ -721,21 +752,26 @@ pub fn hurt(
     amount: f32,
     now: u64,
 ) -> HurtOutcome {
-    if base.is_removed() || is_dead_or_dying(base, living) || is_invulnerable_to(base, source) {
-        return HurtOutcome::Ignored;
-    }
-    let kind = source.kind;
-    if kind.is(DamageTag::IsFire) && living.has_effect("minecraft:fire_resistance") {
+    if !can_hurt(base, living, source) {
         return HurtOutcome::Ignored;
     }
     living.no_action_time = 0;
-    let mut amount = if amount < 0.0 { 0.0 } else { amount };
-    if kind.is(DamageTag::DamagesHelmet) && living.equipment(EquipmentSlot::Head).is_some() {
-        amount *= HELMET_FACTOR;
-    }
-    if !amount.is_finite() {
-        amount = f32::MAX;
-    }
+    hurt_settled(base, living, source, floored(amount), now)
+}
+
+pub fn floored(amount: f32) -> f32 {
+    if amount < 0.0 { 0.0 } else { amount }
+}
+
+pub fn hurt_settled(
+    base: &mut EntityBase,
+    living: &mut LivingState,
+    source: &HurtSource<'_>,
+    amount: f32,
+    now: u64,
+) -> HurtOutcome {
+    let kind = source.kind;
+    let amount = helmeted(living, kind, amount);
     if living.damage.cooldown as f32 > COOLDOWN_THRESHOLD && !kind.is(DamageTag::BypassesCooldown) {
         if amount <= living.last_hurt {
             return HurtOutcome::Ignored;
@@ -802,7 +838,6 @@ pub struct LivingTick {
     pub burn: bool,
     pub died: bool,
     pub removed: bool,
-    pub expired_effects: bool,
     pub below_world: bool,
 }
 
@@ -826,7 +861,7 @@ pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick 
     if living.damage.cooldown > 0 {
         living.damage.cooldown -= 1;
     }
-    if is_dead_or_dying(base, living) {
+    if is_dead_or_dying(base, living) && !living.dying {
         living.death_time += 1;
         if living.death_time >= DEATH_DURATION && !base.is_removed() {
             outcome.removed = true;
@@ -843,11 +878,6 @@ pub fn base_tick(base: &mut EntityBase, living: &mut LivingState) -> LivingTick 
     {
         memory.last_hurt_by_mob = None;
     }
-    let expired = living.effects.tick();
-    for effect in &expired {
-        mark_effect_attributes(living, *effect);
-    }
-    outcome.expired_effects = !expired.is_empty();
     outcome
 }
 
@@ -1170,4 +1200,73 @@ pub fn below_world(base: &EntityBase, min_y: i32) -> bool {
 
 pub fn supporting_ground(base: &EntityBase, view: &impl BlockView) -> BlockPos {
     physics::ground_pos(base, view)
+}
+
+#[cfg(test)]
+mod tests {
+    use rspigot_entities::EntityKind;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::EntityId;
+
+    fn zombie() -> (EntityBase, LivingState) {
+        let mut base = EntityBase::new(EntityId(1), Uuid::from_u128(1), EntityKind::Zombie);
+        let living = LivingState::new(&mut base, 0.0);
+        (base, living)
+    }
+
+    #[test]
+    fn a_dying_mob_starts_its_death_countdown_only_once_its_death_applies() {
+        let (mut base, mut living) = zombie();
+        set_health(&mut base, &mut living, 0.0);
+        living.dying = true;
+        for _ in 0..DEATH_DURATION {
+            assert!(!base_tick(&mut base, &mut living).removed);
+        }
+        assert_eq!(living.death_time, 0);
+        living.dying = false;
+        living.dead = true;
+        let removed = (0..DEATH_DURATION).any(|_| base_tick(&mut base, &mut living).removed);
+        assert!(removed);
+    }
+
+    #[test]
+    fn the_final_damage_runs_the_armor_and_absorption_chain_without_touching_the_mob() {
+        let (_, mut living) = zombie();
+        let armor = living.attribute(ARMOR);
+        let expected = damage::after_armor(6.0, armor.floor() as f32, 0.0);
+        assert_eq!(
+            final_damage(&mut living, DamageType::MobAttack, 6.0),
+            expected
+        );
+        living.absorption = 1.5;
+        assert_eq!(
+            final_damage(&mut living, DamageType::MobAttack, 6.0),
+            expected - 1.5
+        );
+        assert_eq!(final_damage(&mut living, DamageType::Starve, -3.0), 0.0);
+        assert_eq!(living.absorption, 1.5);
+    }
+
+    #[test]
+    fn a_settled_hurt_skips_the_checks_the_ask_already_made() {
+        let (mut base, mut living) = zombie();
+        let source = HurtSource::plain(DamageType::Generic);
+        assert!(can_hurt(&base, &living, &source));
+        assert_eq!(
+            hurt_settled(&mut base, &mut living, &source, 4.0, 0),
+            HurtOutcome::Full
+        );
+        assert_eq!(health(&base), 16.0);
+        assert_eq!(
+            hurt_settled(&mut base, &mut living, &source, 3.0, 0),
+            HurtOutcome::Ignored
+        );
+        assert_eq!(
+            hurt_settled(&mut base, &mut living, &source, 6.0, 0),
+            HurtOutcome::Partial
+        );
+        assert_eq!(health(&base), 14.0);
+    }
 }

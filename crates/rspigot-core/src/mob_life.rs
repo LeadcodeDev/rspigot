@@ -18,6 +18,8 @@ use rspigot_items::EquipmentSlot;
 use crate::events::{ClientEvent, EntityStatus};
 use crate::health::DamageSource;
 use crate::loot::{self, LootContext};
+use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause};
+use crate::plugins::{Birth, Combuster, Continuation, Holder, Spawned};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -273,7 +275,6 @@ impl<L: ClientLink> Server<L> {
         let Some(entity) = self.entities.store.get(id) else {
             return;
         };
-        let position = entity.base.position;
         let facts = crate::mobs::loot_facts_of(entity);
         let drops = rspigot_data::loot::table(CHICKEN_LAY).map_or_else(Vec::new, |table| {
             let context = LootContext {
@@ -284,7 +285,7 @@ impl<L: ClientLink> Server<L> {
         });
         let dropped = !drops.is_empty();
         for stack in drops {
-            self.spawn_at_location(position, 0.0, stack);
+            self.drop_at_location(id, 0.0, stack, Vec3::ZERO);
         }
         let mut random = self.mob_random(id);
         if dropped {
@@ -305,19 +306,39 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    pub(crate) fn spawn_at_location(
+    pub(crate) fn spawn_at_location(&mut self, position: Vec3, offset: f64, stack: ItemStack) {
+        let item = self.item_at_location(position, offset, stack);
+        self.add_entity(item, CreatureSpawnReason::Default);
+    }
+
+    pub(crate) fn item_at_location(
         &mut self,
         position: Vec3,
         offset: f64,
         stack: ItemStack,
-    ) -> Option<EntityId> {
+    ) -> Entity {
         let at = Vec3::new(position.x, position.y + offset, position.z);
         let velocity = Vec3::new(
             self.rng.random::<f64>() * ITEM_SPREAD - ITEM_SPREAD / 2.0,
             ITEM_LIFT,
             self.rng.random::<f64>() * ITEM_SPREAD - ITEM_SPREAD / 2.0,
         );
-        self.spawn_item_entity(at, velocity, SPAWN_ITEM_DELAY, stack)
+        self.item_entity(at, velocity, SPAWN_ITEM_DELAY, stack)
+    }
+
+    pub(crate) fn drop_at_location(
+        &mut self,
+        dropper: EntityId,
+        offset: f64,
+        stack: ItemStack,
+        push: Vec3,
+    ) {
+        let Some(view) = self.subject_view(dropper) else {
+            return;
+        };
+        let mut item = self.item_at_location(view.position, offset, stack);
+        item.base.velocity = item.base.velocity + push;
+        self.drop_from(view, item);
     }
 
     fn burn_undead(&mut self, id: EntityId) {
@@ -377,7 +398,7 @@ impl<L: ClientLink> Server<L> {
             }
             None => {
                 self.store_mob_random(id, random);
-                self.ignite_entity(id, fire::SUN_SECONDS);
+                self.combust(Holder::Mob(id), fire::SUN_SECONDS, Combuster::Nothing);
             }
         }
     }
@@ -435,13 +456,24 @@ impl<L: ClientLink> Server<L> {
         fire::ignite_for_ticks(base, ticks);
     }
 
-    pub(crate) fn convert_mob(&mut self, id: EntityId, kind: Kind, event: i32) -> Option<EntityId> {
-        let entity = self.entities.store.get(id)?;
-        if entity.base.is_removed() {
-            return None;
+    fn converting(&self, id: EntityId) -> bool {
+        self.decisions.anywhere(|then| {
+            matches!(then, Continuation::Spawn(step)
+                if matches!(step.birth.then, Spawned::Converted { old, .. } if old == id))
+        })
+    }
+
+    pub(crate) fn convert_mob(&mut self, id: EntityId, kind: Kind, event: i32) {
+        let Some(entity) = self.entities.store.get(id) else {
+            return;
+        };
+        if entity.base.is_removed() || self.converting(id) {
+            return;
         }
         let old_base = entity.base.clone();
-        let old_living = entity.living()?.clone();
+        let Some(old_living) = entity.living().cloned() else {
+            return;
+        };
         let mut base = self.new_entity_base(kind);
         base.position = old_base.position;
         base.old_position = old_base.position;
@@ -505,18 +537,35 @@ impl<L: ClientLink> Server<L> {
                 &mut own,
             );
         }
-        let silent = base.is_silent();
-        let pos = base.position.block();
         let converted = Entity::new(base, EntityState::Living(Box::new(state)));
-        if let Some(entity) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) {
-            entity.equipment = Default::default();
+        let reason = if kind == Kind::Stray {
+            CreatureSpawnReason::Frozen
+        } else {
+            CreatureSpawnReason::Drowned
+        };
+        self.spawn_entity(
+            converted,
+            Birth::of(reason).then(Spawned::Converted { old: id, event }),
+        );
+    }
+
+    pub(crate) fn finish_conversion(&mut self, old: EntityId, event: i32) {
+        let Some(entity) = self.entities.store.get_mut(old) else {
+            return;
+        };
+        let silent = entity.base.is_silent();
+        let pos = entity.base.position.block();
+        if let Some(living) = entity.living_mut() {
+            living.equipment = Default::default();
         }
-        self.remove_entity(id, RemovalReason::Discarded);
-        let new_id = self.add_entity(converted).ok()?;
+        self.remove_entity(
+            old,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Transformation),
+        );
         if !silent {
             self.level_event(event, pos, 0);
         }
-        Some(new_id)
     }
 
     pub(crate) fn level_event(&mut self, event: i32, pos: BlockPos, data: i32) {
@@ -677,12 +726,15 @@ impl<L: ClientLink> Server<L> {
                 },
             );
         }
-        let Ok(new_id) = self.add_mob_entity(zombie, own) else {
-            return;
-        };
-        if let Some(entry) = self.entities.mobs.entries.get_mut(&new_id) {
-            entry.ai.set_target(Some(target));
-        }
+        self.request_target(
+            crate::plugins::view_of_entity(&zombie),
+            target,
+            rspigot_ai::TargetReason::ReinforcementTarget,
+        );
+        self.spawn_entity(
+            zombie,
+            Birth::of(CreatureSpawnReason::Reinforcements).with_random(own),
+        );
         if let Some(living) = self
             .entities
             .store

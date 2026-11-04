@@ -24,7 +24,7 @@ mod view;
 mod walk;
 mod world;
 
-pub use action::MobAction;
+pub use action::{MobAction, TargetReason, TargetRequest};
 pub use animal::{
     BreedGoal, EAT_GRASS_EVENT, EatBlockGoal, FollowParentGoal, PanicGoal, is_edible_for_sheep,
 };

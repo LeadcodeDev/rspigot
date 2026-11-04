@@ -72,8 +72,8 @@ pub enum InsideEffect {
     ClearFreeze,
     FireIgnite,
     InFire(f32),
-    LavaIgnite,
-    LavaHurt,
+    LavaIgnite(BlockPos),
+    LavaHurt(BlockPos),
     MeltPowderSnow(BlockPos),
     Extinguish,
 }
@@ -84,7 +84,7 @@ struct StepEffects {
     clear_freeze: bool,
     fire_ignite: bool,
     in_fire: Vec<f32>,
-    lava_ignite: bool,
+    lava: Option<BlockPos>,
     lava_hurt: usize,
     melt: Vec<BlockPos>,
     extinguish: bool,
@@ -103,10 +103,13 @@ impl StepEffects {
             out.push(InsideEffect::FireIgnite);
         }
         out.extend(self.in_fire.into_iter().map(InsideEffect::InFire));
-        if self.lava_ignite {
-            out.push(InsideEffect::LavaIgnite);
+        if let Some(lava) = self.lava {
+            out.push(InsideEffect::LavaIgnite(lava));
+            out.extend(std::iter::repeat_n(
+                InsideEffect::LavaHurt(lava),
+                self.lava_hurt,
+            ));
         }
-        out.extend(std::iter::repeat_n(InsideEffect::LavaHurt, self.lava_hurt));
         out.extend(self.melt.into_iter().map(InsideEffect::MeltPowderSnow));
         if self.extinguish {
             out.push(InsideEffect::Extinguish);
@@ -159,7 +162,7 @@ pub fn inside_effects(base: &mut EntityBase, view: &impl BlockView) -> Vec<Insid
                 }
                 if lava_height(view, pos).is_some_and(|h| bb.min_y < f64::from(y) + h) {
                     step.clear_freeze = true;
-                    step.lava_ignite = true;
+                    step.lava = Some(pos);
                     step.lava_hurt += 1;
                 }
             }

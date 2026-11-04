@@ -7,12 +7,14 @@ use rspigot_entities::EntityKind as Kind;
 
 use crate::commands::{CommandContext, Target};
 use crate::console::console_text;
-use crate::context::{SUMMON_DUPLICATE_UUID, SUMMON_FAILED};
+use crate::context::SUMMON_FAILED;
 use crate::health::DamageSource;
 use crate::items::PICKUP_DELAY;
+use crate::plugins::events::{CreatureSpawnReason, EntityPotionEffectCause, EntityRemoveCause};
 use crate::plugins::items::stack_of;
 use crate::plugins::resolve::{self, finite_not_negative};
-use crate::plugins::{Answer, EntityDetails, EntityOrder, EntityView, ItemSpec};
+use crate::plugins::steps::Birth;
+use crate::plugins::{EntityDetails, EntityOrder, EntityView, ItemSpec};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -32,10 +34,14 @@ impl<L: ClientLink> Server<L> {
         match order {
             EntityOrder::Teleport(position) => {
                 let position = resolve::position_of(position)?;
-                CommandContext::teleport_target(self, target, position);
+                self.relocate(id, position, false);
             }
             EntityOrder::Remove => {
-                self.remove_entity(id, RemovalReason::Discarded);
+                self.remove_entity(
+                    id,
+                    RemovalReason::Discarded,
+                    Some(EntityRemoveCause::Plugin),
+                );
             }
             EntityOrder::Damage(amount) => {
                 let amount = resolve::damage_of(amount)?;
@@ -46,14 +52,14 @@ impl<L: ClientLink> Server<L> {
             }
             EntityOrder::AddEffect(spec) => {
                 let effect = resolve::effect_of(&spec)?;
-                CommandContext::give_effect_to(self, target, effect);
+                self.apply_entity_effect(id, effect, EntityPotionEffectCause::Plugin);
             }
             EntityOrder::RemoveEffect(key) => {
                 let effect = resolve::effect_id(&key)?;
-                CommandContext::clear_effect_of(self, target, Some(effect));
+                self.remove_entity_effects(id, Some(effect), EntityPotionEffectCause::Plugin);
             }
             EntityOrder::ClearEffects => {
-                CommandContext::clear_effect_of(self, target, None);
+                self.remove_entity_effects(id, None, EntityPotionEffectCause::Plugin);
             }
             EntityOrder::SetVelocity(velocity) => {
                 let velocity = resolve::velocity_of(velocity)?;
@@ -68,11 +74,6 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn entity_view(&self, id: EntityId) -> Option<EntityView> {
         self.entities.store.get(id).map(view_of)
-    }
-
-    pub(super) fn spawned(&self, id: EntityId) -> Answer {
-        self.entity_view(id)
-            .map_or(Answer::NotFound, Answer::Spawned)
     }
 
     pub(super) fn entity_details(&self, id: EntityId) -> Option<EntityDetails> {
@@ -121,10 +122,16 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         kind: &str,
         position: Vec3,
-    ) -> Result<EntityId, String> {
+    ) -> Result<EntityView, String> {
         let kind = entity_kind(kind)?;
         let position = self.loaded_position(position)?;
-        self.summon_entity(kind, position, None).map_err(refusal)
+        let (entity, random) = self.summon_entity(kind, position, None).map_err(refusal)?;
+        let view = view_of(&entity);
+        self.spawn_entity(
+            entity,
+            Birth::of(CreatureSpawnReason::Custom).with_random(random),
+        );
+        Ok(view)
     }
 
     fn loaded_position(&self, position: Vec3) -> Result<Vec3, String> {
@@ -140,7 +147,7 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         position: Vec3,
         item: &ItemSpec,
-    ) -> Result<EntityId, String> {
+    ) -> Result<EntityView, String> {
         let stack = stack_of(item)?.ok_or_else(|| "air cannot be dropped".to_owned())?;
         let position = self.loaded_position(position)?;
         let velocity = Vec3::new(
@@ -148,8 +155,7 @@ impl<L: ClientLink> Server<L> {
             0.2,
             self.rng.random::<f64>() * 0.2 - 0.1,
         );
-        self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack)
-            .ok_or_else(|| refusal(SUMMON_DUPLICATE_UUID))
+        Ok(self.spawn_item_entity(position, velocity, PICKUP_DELAY, stack))
     }
 }
 

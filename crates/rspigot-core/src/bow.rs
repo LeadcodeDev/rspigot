@@ -11,6 +11,7 @@ use rspigot_items::ItemKind;
 
 use crate::events::Hand;
 use crate::player::Player;
+use crate::plugins::steps::{Draw, Shooter};
 use crate::ports::ClientLink;
 use crate::projectiles::{EYE_OFFSET, is_arrow_item};
 use crate::server::Server;
@@ -40,10 +41,10 @@ struct Ammo {
 
 struct Shot {
     weapon: ItemStack,
+    hand: Hand,
     ammo: Ammo,
     power: f32,
     creative: bool,
-    position: Vec3,
     eye: Vec3,
     pitch: f32,
     yaw: f32,
@@ -115,13 +116,13 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn release_use_item(&mut self, id: PlayerId) {
         if let Some(shot) = self.take_drawn_shot(id) {
-            self.fire_arrow(&shot);
             if let Some(player) = self.players.get_mut(&id)
                 && !shot.creative
                 && let Some(slot) = shot.ammo.slot
             {
                 player.inventory.remove(slot, 1);
             }
+            self.fire_arrow(id, &shot);
         }
         self.send_inventory(id);
     }
@@ -145,10 +146,10 @@ impl<L: ClientLink> Server<L> {
         }
         Some(Shot {
             weapon,
+            hand: using.hand,
             ammo,
             power,
             creative: player.game_mode == GameMode::Creative,
-            position: player.position,
             eye: player.eye_position(),
             pitch: player.rotation.pitch,
             yaw: player.rotation.yaw,
@@ -158,7 +159,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn fire_arrow(&mut self, shot: &Shot) {
+    fn fire_arrow(&mut self, id: PlayerId, shot: &Shot) {
         let mut base = self.new_entity_base(Kind::Arrow);
         base.position = Vec3::new(shot.eye.x, shot.eye.y - EYE_OFFSET, shot.eye.z);
         base.old_position = base.position;
@@ -189,11 +190,28 @@ impl<L: ClientLink> Server<L> {
                 shooter_on_ground: shot.on_ground,
             },
         );
-        let _ = self.add_entity(Entity::new(base, EntityState::Arrow(Box::new(state))));
-        let pitch = 1.0 / (self.rng.random::<f32>() * 0.4 + 1.2) + shot.power * 0.5;
+        let arrow = Entity::new(base, EntityState::Arrow(Box::new(state)));
+        let ammo = ItemStack {
+            count: NonZeroU8::MIN,
+            ..shot.ammo.stack.clone()
+        };
+        let draw = Draw {
+            weapon: Some(shot.weapon.clone()),
+            ammo: Some(ammo),
+            hand: shot.hand,
+            force: shot.power * POWER_TO_SPEED,
+        };
+        self.shoot_bow(Shooter::Player(id), draw, arrow);
+    }
+
+    pub(crate) fn bow_sound(&mut self, id: PlayerId, power: f32) {
+        let Some(position) = self.players.get(&id).map(|player| player.position) else {
+            return;
+        };
+        let pitch = 1.0 / (self.rng.random::<f32>() * 0.4 + 1.2) + power / POWER_TO_SPEED * 0.5;
         self.play_sound(
             None,
-            shot.position,
+            position,
             SHOOT_SOUND,
             SoundSource::Players,
             1.0,

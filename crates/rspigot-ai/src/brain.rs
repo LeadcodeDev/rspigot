@@ -3,7 +3,7 @@ use rspigot_domain::entity::living::LivingState;
 use rspigot_domain::{BlockPos, EntityId, Vec3};
 use rspigot_entities::EntityKind;
 
-use crate::action::MobAction;
+use crate::action::{MobAction, TargetReason, TargetRequest};
 use crate::blocks::BreakDoorGoal;
 use crate::combat::{MeleeAttackGoal, RangedBowAttackGoal};
 use crate::control::{BodyRotationControl, JumpControl, LookControl, MoveControl};
@@ -35,6 +35,9 @@ pub struct Brain {
     pub target: Option<EntityId>,
     pub profile: MobProfile,
     pub actions: Vec<MobAction>,
+    pub defer_targets: bool,
+    pub target_requests: Vec<TargetRequest>,
+    pub tempt_verdict: Option<Option<EntityId>>,
     follow_range: f64,
 }
 
@@ -63,6 +66,9 @@ impl Brain {
             target: None,
             profile,
             actions: Vec::new(),
+            defer_targets: false,
+            target_requests: Vec::new(),
+            tempt_verdict: None,
             follow_range,
         }
     }
@@ -100,10 +106,23 @@ impl<W: AiWorld> AiContext<'_, W> {
         targeting::valid_target(self.world, living)
     }
 
-    pub fn set_target(&mut self, target: Option<Living>) {
-        self.brain.target = target
+    pub fn set_target(&mut self, target: Option<Living>, reason: TargetReason) {
+        let to = target
             .and_then(|living| targeting::valid_target(self.world, living))
             .map(|living| living.id);
+        let from = self.brain.target;
+        if to == from {
+            return;
+        }
+        self.brain.target_requests.push(TargetRequest {
+            from,
+            to,
+            reason,
+            tempt: false,
+        });
+        if !self.brain.defer_targets {
+            self.brain.target = to;
+        }
     }
 
     fn path_profile(&mut self) -> MobProfile {
@@ -307,6 +326,18 @@ impl MobAi {
 
     pub fn take_actions(&mut self) -> Vec<MobAction> {
         std::mem::take(&mut self.brain.actions)
+    }
+
+    pub fn take_target_requests(&mut self) -> Vec<TargetRequest> {
+        std::mem::take(&mut self.brain.target_requests)
+    }
+
+    pub fn defer_targets(&mut self, defer: bool) {
+        self.brain.defer_targets = defer;
+    }
+
+    pub fn settle_tempt(&mut self, verdict: Option<EntityId>) {
+        self.brain.tempt_verdict = Some(verdict);
     }
 
     pub fn goals_mut(&mut self) -> &mut GoalSelector<MobGoal> {

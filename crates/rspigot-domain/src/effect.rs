@@ -148,6 +148,23 @@ impl ActiveEffects {
         expired
     }
 
+    pub fn countdown(&mut self) -> Vec<EffectInstance> {
+        let mut spent = Vec::new();
+        for effect in &mut self.effects {
+            if let EffectDuration::Ticks(ticks) = &mut effect.duration {
+                *ticks = ticks.saturating_sub(1);
+                if *ticks == 0 {
+                    spent.push(*effect);
+                }
+            }
+        }
+        spent
+    }
+
+    pub fn trial(&self, instance: EffectInstance) -> ApplyOutcome {
+        self.clone().apply(instance)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &EffectInstance> {
         self.effects.iter()
     }

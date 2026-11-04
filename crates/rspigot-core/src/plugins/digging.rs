@@ -14,7 +14,7 @@ use crate::plugins::block::snapshot_of;
 use crate::plugins::decisions::Continuation;
 use crate::plugins::events::{
     BlockBreak, BlockBreakPatch, BlockDamage, BlockDamageAbort, BlockDamagePatch, BlockDropItem,
-    BlockDropItemPatch,
+    BlockDropItemPatch, EntityExhaustionReason,
 };
 use crate::plugins::steps::{
     AbortStep, Announced, BreakStep, DamageStep, DropItemsStep, FinishStep,
@@ -400,7 +400,7 @@ impl<L: ClientLink> Server<L> {
         }
         let mut stacks = Vec::new();
         if survival && loot::tool_is_correct(step.held.as_ref(), step.state) {
-            self.exhaust(id, MINING_EXHAUSTION);
+            self.exhaust(id, MINING_EXHAUSTION, EntityExhaustionReason::BlockMined);
             if self.config.rules.block_drops {
                 let breaker = LootEntity::of(Kind::Player);
                 let context = LootContext::block(step.state, step.held.as_ref(), Some(&breaker));

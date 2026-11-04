@@ -1,16 +1,23 @@
 use rand::Rng;
-use rspigot_ai::{Hand, MobAction, is_edible_for_sheep};
+use rspigot_ai::{Hand, MobAction, TargetReason, is_edible_for_sheep};
 use rspigot_blocks::BlockKind;
 use rspigot_domain::entity::ageable::{self, PARENT_AGE_AFTER_BREEDING, SHEEP_REGROWTH_SECONDS};
 use rspigot_domain::entity::living::{self, LivingState};
 use rspigot_domain::entity::species;
 use rspigot_domain::entity::{Entity, EntityBase, EntityState};
+use rspigot_domain::item::ItemStack;
 use rspigot_domain::random::{LegacyRandom, RandomSource};
 use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::{EntityKind as Kind, SoundSource};
 
 use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, EntityStatus};
+use crate::plugins::events::{
+    CreatureSpawnReason, EntityBreed, EntityBreedPatch, EntityEnterLoveModePatch, EntityInteract,
+    SheepRegrowWool,
+};
+use crate::plugins::steps::{BreedStep, Grief, LoveStep};
+use crate::plugins::{Continuation, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -49,10 +56,14 @@ impl<L: ClientLink> Server<L> {
             ),
             MobAction::EatGrass => self.eat_grass(id),
             MobAction::Alert { mob, target } => {
-                if let Some(entry) = self.entities.mobs.entries.get_mut(&mob)
-                    && entry.ai.target().is_none()
-                {
-                    entry.ai.set_target(Some(target));
+                let idle = self
+                    .entities
+                    .mobs
+                    .entries
+                    .get(&mob)
+                    .is_some_and(|entry| entry.ai.target().is_none());
+                if idle && let Some(view) = self.entity_view(mob) {
+                    self.request_target(view, target, TargetReason::TargetAttackedNearbyEntity);
                 }
             }
             MobAction::Particle(particle) => {
@@ -72,16 +83,7 @@ impl<L: ClientLink> Server<L> {
                 );
                 self.play_sound(None, at, sound, source, volume, pitch);
             }
-            MobAction::RemoveTurtleEgg(pos) => {
-                self.set_block(pos, BlockStateId::AIR);
-                let pitch = 0.9 + self.rng.random::<f32>() * 0.2;
-                let at = Vec3::new(
-                    f64::from(pos.x) + 0.5,
-                    f64::from(pos.y) + 0.5,
-                    f64::from(pos.z) + 0.5,
-                );
-                self.play_sound(None, at, TURTLE_EGG_BREAK, SoundSource::Blocks, 0.7, pitch);
-            }
+            MobAction::RemoveTurtleEgg(pos) => self.interact_with_egg(id, pos),
             MobAction::LevelEvent { event, pos, data } => self.level_event(event, pos, data),
             MobAction::DestroyProgress { pos, stage } => self.push(
                 Audience::ChunkViewers(pos.chunk()),
@@ -122,33 +124,83 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn eat_grass(&mut self, id: EntityId) {
-        let Some(pos) = self.entities.store.get(id).map(|e| e.base.position.block()) else {
+    fn interact_with_egg(&mut self, id: EntityId, pos: BlockPos) {
+        let Some(mob) = self.entity_view(id) else {
             return;
         };
-        let griefing = self.config.rules.mob_griefing;
-        let here = self.world.chunks.block(pos);
-        if is_edible_for_sheep(here) {
-            if griefing {
-                self.destroy_block_silently(pos);
-            }
-            self.mob_ate(id);
+        let lane = self.lane_for(None, id);
+        self.fire(lane, Continuation::EggBreak { mob: id, pos }, move |_| {
+            Some(EventPayload::EntityInteract(EntityInteract {
+                block: pos,
+                entity_type: mob.kind.clone(),
+                entity: mob,
+            }))
+        });
+    }
+
+    pub(crate) fn break_turtle_egg(&mut self, id: EntityId, pos: BlockPos) {
+        let egg = self.world.chunks.block(pos).and_then(BlockStateId::kind);
+        if egg != Some(BlockKind::TurtleEgg) || self.entities.store.get(id).is_none() {
             return;
         }
+        self.set_block(pos, BlockStateId::AIR);
+        let pitch = 0.9 + self.rng.random::<f32>() * 0.2;
+        let at = Vec3::new(
+            f64::from(pos.x) + 0.5,
+            f64::from(pos.y) + 0.5,
+            f64::from(pos.z) + 0.5,
+        );
+        self.play_sound(None, at, TURTLE_EGG_BREAK, SoundSource::Blocks, 0.7, pitch);
+    }
+
+    fn eat_grass(&mut self, id: EntityId) {
+        let Some(sheep) = self.entity_view(id) else {
+            return;
+        };
+        let pos = sheep.position.block();
+        let refused = !self.config.rules.mob_griefing;
+        let here = self.world.chunks.block(pos);
         let below = pos.offset(0, -1, 0);
-        if self.world.chunks.block(below).and_then(BlockStateId::kind)
+        let (target, grazed) = if is_edible_for_sheep(here) {
+            (pos, false)
+        } else if self.world.chunks.block(below).and_then(BlockStateId::kind)
             == Some(BlockKind::GrassBlock)
         {
-            if griefing {
-                self.level_event(
-                    BLOCK_BREAK_EVENT,
-                    below,
-                    i32::from(BlockKind::GrassBlock.default_state().0),
-                );
-                self.set_block(below, BlockKind::Dirt.default_state());
+            (below, true)
+        } else {
+            return;
+        };
+        let change = Grief::Graze {
+            sheep: id,
+            pos: target,
+            below: grazed,
+        };
+        self.change_block(sheep, target, BlockStateId::AIR, change, refused);
+    }
+
+    pub(crate) fn finish_graze(
+        &mut self,
+        id: EntityId,
+        pos: BlockPos,
+        below: bool,
+        cancelled: bool,
+    ) {
+        if !cancelled {
+            let state = self.world.chunks.block(pos);
+            if below {
+                if state.and_then(BlockStateId::kind) == Some(BlockKind::GrassBlock) {
+                    self.level_event(
+                        BLOCK_BREAK_EVENT,
+                        pos,
+                        i32::from(BlockKind::GrassBlock.default_state().0),
+                    );
+                    self.set_block(pos, BlockKind::Dirt.default_state());
+                }
+            } else if is_edible_for_sheep(state) {
+                self.destroy_block_silently(pos);
             }
-            self.mob_ate(id);
         }
+        self.mob_ate(id);
     }
 
     pub(crate) fn destroy_block_silently(&mut self, pos: BlockPos) {
@@ -163,6 +215,22 @@ impl<L: ClientLink> Server<L> {
     }
 
     fn mob_ate(&mut self, id: EntityId) {
+        let Some(sheep) = self
+            .entity_view(id)
+            .filter(|view| view.kind == Kind::Sheep.name())
+        else {
+            return;
+        };
+        let lane = self.lane_for(None, id);
+        self.fire(lane, Continuation::Regrow(id), move |_| {
+            Some(EventPayload::SheepRegrowWool(SheepRegrowWool {
+                entity_type: sheep.kind.clone(),
+                entity: sheep,
+            }))
+        });
+    }
+
+    pub(crate) fn regrow_wool(&mut self, id: EntityId) {
         let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -171,7 +239,7 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        if base.kind != Kind::Sheep {
+        if base.kind != Kind::Sheep || living::is_dead_or_dying(base, state) {
             return;
         }
         species::set_sheared(base, false);
@@ -246,6 +314,87 @@ impl<L: ClientLink> Server<L> {
         child.base.snap_to(position, 0.0, 0.0);
         let experience = random.next_int(BREED_EXPERIENCE) + 1;
         self.store_mob_random(parent, random);
+        let (Some(mother), Some(father)) = (self.entity_view(parent), self.entity_view(partner))
+        else {
+            return;
+        };
+        let baby = crate::plugins::view_of_entity(&child);
+        let (bred_with, breeder) = self.breeding_facts(parent, partner);
+        let lane = self.lane_for(None, parent);
+        let step = BreedStep {
+            parent,
+            partner,
+            child,
+            experience,
+            position,
+        };
+        self.fire(lane, Continuation::Breed(Box::new(step)), move |server| {
+            let breeder = match breeder {
+                Some(entity) => Some(server.subject_view(entity)?),
+                None => None,
+            };
+            Some(EventPayload::EntityBreed(EntityBreed {
+                bred_with: bred_with.as_ref().map(spec_of),
+                breeder,
+                entity_type: baby.kind.clone(),
+                entity: baby,
+                experience,
+                father,
+                mother,
+            }))
+        });
+    }
+
+    fn breeding_facts(
+        &self,
+        parent: EntityId,
+        partner: EntityId,
+    ) -> (Option<ItemStack>, Option<EntityId>) {
+        let love = |id: EntityId| {
+            self.entities
+                .store
+                .get(id)
+                .and_then(|e| e.living())
+                .and_then(|l| l.mob.as_ref())
+                .and_then(|m| m.ageable.as_ref())
+                .and_then(|a| a.love.clone())
+        };
+        let online = |cause: Option<uuid::Uuid>| {
+            cause.and_then(|uuid| {
+                self.players
+                    .values()
+                    .find(|player| player.id.0 == uuid)
+                    .map(|player| player.entity_id)
+            })
+        };
+        let mother = love(parent);
+        let breeder = online(mother.as_ref().and_then(|love| love.cause))
+            .or_else(|| online(love(partner).and_then(|love| love.cause)));
+        (mother.and_then(|love| love.breed_item), breeder)
+    }
+
+    pub(crate) fn finish_breed(&mut self, step: BreedStep, patch: EntityBreedPatch) {
+        let BreedStep {
+            parent,
+            partner,
+            child,
+            experience,
+            position,
+        } = step;
+        let in_love = |server: &Self, id: EntityId| {
+            server.entities.store.get(id).is_some_and(|e| {
+                e.living().is_some_and(|l| {
+                    !living::is_dead_or_dying(&e.base, l)
+                        && l.mob
+                            .as_ref()
+                            .and_then(|m| m.ageable.as_ref())
+                            .is_some_and(ageable::AgeableState::in_love)
+                })
+            })
+        };
+        if !in_love(self, parent) || !in_love(self, partner) {
+            return;
+        }
         for id in [parent, partner] {
             if let Some(Entity {
                 base,
@@ -265,20 +414,38 @@ impl<L: ClientLink> Server<L> {
                 status: EntityStatus::Event(LOVE_EVENT),
             },
         );
+        let experience = patch.experience.unwrap_or(experience).max(0);
         if self.config.rules.mob_drops && experience > 0 {
             self.spawn_orb(position, experience);
         }
-        let _ = self.add_entity(child);
+        self.add_entity(child, CreatureSpawnReason::Breeding);
     }
 
-    pub(crate) fn set_in_love(&mut self, id: EntityId, cause: Option<uuid::Uuid>) {
-        let Some(state) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+    pub(crate) fn finish_love(&mut self, step: LoveStep, patch: EntityEnterLoveModePatch) {
+        let LoveStep {
+            target: id,
+            cause,
+            item,
+        } = step;
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
             return;
         };
+        if living::is_dead_or_dying(base, state) {
+            return;
+        }
         let Some(ageable) = state.mob.as_mut().and_then(|mob| mob.ageable.as_mut()) else {
             return;
         };
-        ageable.set_in_love(cause);
+        if ageable.age != 0 || !ageable.can_fall_in_love() {
+            return;
+        }
+        let ticks = patch.ticks_in_love.unwrap_or(ageable::LOVE_TICKS);
+        ageable.fall_in_love(ticks, cause, item);
         self.push(
             Audience::Trackers(id),
             ClientEvent::EntityStatus {

@@ -7,7 +7,6 @@ use rspigot_domain::entity::ageable::{self, AgeableState};
 use rspigot_domain::entity::fire;
 use rspigot_domain::entity::living::{
     self, ATTACK_DAMAGE, ATTACK_KNOCKBACK, EQUIPMENT_SLOTS, HurtOutcome, HurtSource,
-    KNOCKBACK_RESISTANCE,
 };
 use rspigot_domain::entity::physics::{Landing, water_height};
 use rspigot_domain::entity::species::{self, Species};
@@ -40,6 +39,12 @@ use crate::health::{DamageSource, SourceEntity};
 use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
+use crate::plugins::events::EntityRemoveCause;
+use crate::plugins::events::{EntityDeath, EntityDeathPatch, EntityKnockbackCause};
+use crate::plugins::steps::LootStep;
+use crate::plugins::{
+    AfterHurt, Continuation, EventPayload, Holder, MobAttackFollow, Struck, spec_of, stack_of,
+};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -67,7 +72,6 @@ const DAMAGE_SOURCE_MEMORY: i64 = 40;
 const PANIC_CAUSES: &str = "minecraft:panic_causes";
 pub const DEFAULT_KNOCKBACK: f64 = 0.400_000_005_960_464_5;
 pub const MIN_KNOCKBACK_DIRECTION: f64 = 9.999_999_747_378_752e-6;
-const RANDOM_DIRECTION_SCALE: f64 = 0.01;
 const KNOCKBACK_VERTICAL_CAP: f64 = 0.4;
 const VOID_DAMAGE: f32 = 4.0;
 const VOID_DEPTH: i32 = 64;
@@ -109,6 +113,7 @@ pub(crate) struct MobTable {
     pub entries: FxHashMap<EntityId, MobEntry>,
     pub players: Vec<Living>,
     pub spawn_randoms: FxHashMap<EntityId, LegacyRandom>,
+    pub initial_targets: FxHashMap<EntityId, EntityId>,
 }
 
 fn range_of(activation: ActivationType, ranges: &ActivationRanges) -> i32 {
@@ -504,6 +509,9 @@ impl<L: ClientLink> Server<L> {
         if let Some(random) = self.entities.mobs.spawn_randoms.remove(&id) {
             ai.brain_mut().random = random;
         }
+        if let Some(target) = self.entities.mobs.initial_targets.remove(&id) {
+            ai.set_target(Some(target));
+        }
         let hard = self.world.difficulty == Difficulty::Hard;
         if let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) {
             let bow = living
@@ -711,10 +719,13 @@ impl<L: ClientLink> Server<L> {
             return;
         };
         let mut body = MobBody::of(&mob);
+        let deferred = self.defers_targets();
+        entry.ai.defer_targets(deferred);
         {
             let world = self.mob_world(sky_darken);
             entry.ai.think(&mob, &world, &mut body);
         }
+        let requests = entry.ai.take_target_requests();
         if let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -728,6 +739,7 @@ impl<L: ClientLink> Server<L> {
         }
         let actions = entry.ai.take_actions();
         self.entities.mobs.entries.insert(id, entry);
+        self.mob_target_requests(id, requests, deferred);
         for action in actions {
             self.apply_mob_action(id, action);
         }
@@ -913,6 +925,16 @@ fn sound_state<V: rspigot_domain::entity::BlockView>(entity: &Entity, view: &V) 
     }
 }
 
+fn hurt_source_of(source: &DamageSource) -> HurtSource<'_> {
+    HurtSource {
+        kind: source.kind,
+        causing: source.causing.as_ref().map(|c| &c.name),
+        direct: source.direct.as_ref().map(|d| &d.name),
+        living_cause: source.living_cause(),
+        creative_attacker: source.creative_attacker(),
+    }
+}
+
 pub(crate) fn loot_facts_of(entity: &Entity) -> LootEntity {
     loot_facts(entity)
 }
@@ -975,7 +997,7 @@ impl<L: ClientLink> Server<L> {
         })
     }
 
-    fn living_entity_alive(&self, id: EntityId) -> bool {
+    pub(crate) fn living_entity_alive(&self, id: EntityId) -> bool {
         if let Some(player) = self.players.values().find(|p| p.entity_id == id) {
             return !player.vitals.is_dead();
         }
@@ -996,6 +1018,53 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt_mob(&mut self, id: EntityId, source: &DamageSource, amount: f32) -> bool {
+        self.strike(
+            None,
+            Struck::Mob(id),
+            source.clone(),
+            amount,
+            AfterHurt::Nothing,
+        )
+    }
+
+    pub(crate) fn ask_hurt_mob(
+        &mut self,
+        id: EntityId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> Option<f32> {
+        let hurt_source = hurt_source_of(source);
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return None;
+        };
+        if !living::can_hurt(base, state, &hurt_source) {
+            return None;
+        }
+        state.no_action_time = 0;
+        Some(living::floored(amount))
+    }
+
+    pub(crate) fn mob_final_damage(&self, id: EntityId, kind: DamageType, amount: f32) -> f32 {
+        self.entities
+            .store
+            .get(id)
+            .and_then(Entity::living)
+            .map_or(0.0, |state| {
+                living::final_damage(&mut state.clone(), kind, amount)
+            })
+    }
+
+    pub(crate) fn apply_hurt_mob(
+        &mut self,
+        id: EntityId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> bool {
         let now = self.current_tick();
         let game_time = self.world.level.game_time;
         let kind = source.kind;
@@ -1004,13 +1073,7 @@ impl<L: ClientLink> Server<L> {
             .as_ref()
             .filter(|c| c.kind.living())
             .map(|c| c.entity);
-        let hurt_source = HurtSource {
-            kind,
-            causing: source.causing.as_ref().map(|c| &c.name),
-            direct: source.direct.as_ref().map(|d| &d.name),
-            living_cause: source.living_cause(),
-            creative_attacker: source.creative_attacker(),
-        };
+        let hurt_source = hurt_source_of(source);
         let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -1019,8 +1082,11 @@ impl<L: ClientLink> Server<L> {
         else {
             return false;
         };
+        if !living::can_hurt(base, state, &hurt_source) {
+            return false;
+        }
         let health_before = living::health(base);
-        let outcome = living::hurt(base, state, &hurt_source, amount, now);
+        let outcome = living::hurt_settled(base, state, &hurt_source, amount, now);
         if outcome == HurtOutcome::Ignored {
             return false;
         }
@@ -1060,7 +1126,13 @@ impl<L: ClientLink> Server<L> {
             );
             if !kind.is(DamageTag::NoKnockback) {
                 let (dx, dz) = source.knockback_from(position);
-                self.mob_knockback(id, DEFAULT_KNOCKBACK, dx, dz);
+                self.knock(
+                    Holder::Mob(id),
+                    DEFAULT_KNOCKBACK,
+                    (dx, dz),
+                    source.knock_cause(),
+                    source.direct.as_ref().map(|direct| direct.entity),
+                );
             }
         }
         if dead {
@@ -1077,28 +1149,6 @@ impl<L: ClientLink> Server<L> {
             self.zombie_reinforcements(id, source);
         }
         true
-    }
-
-    pub(crate) fn mob_knockback(&mut self, id: EntityId, strength: f64, dx: f64, dz: f64) {
-        let Some(Entity {
-            state: EntityState::Living(state),
-            ..
-        }) = self.entities.store.get_mut(id)
-        else {
-            return;
-        };
-        let strength = strength * (1.0 - state.attribute(KNOCKBACK_RESISTANCE));
-        let (mut dx, mut dz) = (dx, dz);
-        while dx * dx + dz * dz < MIN_KNOCKBACK_DIRECTION {
-            dx = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-            dz = (self.rng.random::<f64>() - self.rng.random::<f64>()) * RANDOM_DIRECTION_SCALE;
-        }
-        let Some(entity) = self.entities.store.get_mut(id) else {
-            return;
-        };
-        let base = &mut entity.base;
-        base.velocity = knockback_velocity(base.velocity, strength, dx, dz, base.on_ground);
-        base.needs_sync = true;
     }
 
     pub(crate) fn make_entity_sound(
@@ -1165,7 +1215,7 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        if base.is_removed() || state.dead {
+        if base.is_removed() || state.dead || state.dying {
             return;
         }
         if let (Some(name), Some(victim)) = (base.custom_name(), victim) {
@@ -1182,18 +1232,8 @@ impl<L: ClientLink> Server<L> {
                 crate::console::console_text(&message)
             );
         }
-        state.dead = true;
+        state.dying = true;
         self.drop_all_death_loot(id, source);
-        if let Some(entity) = self.entities.store.get_mut(id) {
-            entity.base.set_pose(rspigot_domain::entity::Pose::Dying);
-        }
-        self.push(
-            Audience::Trackers(id),
-            ClientEvent::EntityStatus {
-                entity: id,
-                status: EntityStatus::Death,
-            },
-        );
     }
 
     fn damage_facts(&self, source: &DamageSource) -> LootDamage {
@@ -1231,7 +1271,6 @@ impl<L: ClientLink> Server<L> {
             facts.mainhand = p.inventory.held().cloned();
             facts
         });
-        let position = entity.base.position;
         let drop_loot = reward::should_drop_loot(entity, mob_drops);
         let table = living
             .mob
@@ -1242,6 +1281,7 @@ impl<L: ClientLink> Server<L> {
         let this = loot_facts(entity);
         let damage = self.damage_facts(source);
         let mut drops: Vec<ItemStack> = Vec::new();
+        let mut slots = Vec::new();
         if drop_loot {
             if let Some(table) = table {
                 let context = LootContext {
@@ -1255,8 +1295,64 @@ impl<L: ClientLink> Server<L> {
                 };
                 drops.extend(loot::table_drops(table, &context, &mut self.rng));
             }
-            drops.extend(self.drop_equipment(id, killed_by_player));
+            slots = self.planned_equipment_drops(id, killed_by_player);
+            drops.extend(slots.iter().map(|(_, stack)| stack.clone()));
         }
+        let experience = self.experience_reward(id, killed_by_player, mob_drops);
+        let step = LootStep {
+            victim: id,
+            drops,
+            slots,
+            experience,
+        };
+        let lane = self.lane_for(None, id);
+        let described = step.drops.iter().map(spec_of).collect::<Vec<_>>();
+        let damage_source = self.damage_view(source);
+        self.fire(
+            lane,
+            Continuation::MobDeath(Box::new(step)),
+            move |server| {
+                let entity = server.entity_view(id)?;
+                Some(EventPayload::EntityDeath(EntityDeath {
+                    damage_source,
+                    dropped_exp: experience,
+                    drops: described,
+                    entity_type: entity.kind.clone(),
+                    entity,
+                }))
+            },
+        );
+    }
+
+    pub(crate) fn finish_mob_death(&mut self, step: LootStep, patch: EntityDeathPatch) {
+        let LootStep {
+            victim,
+            drops,
+            slots,
+            experience,
+        } = step;
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(victim)
+        else {
+            return;
+        };
+        if base.is_removed() || !state.dying {
+            return;
+        }
+        state.dying = false;
+        state.dead = true;
+        let position = base.position;
+        self.clear_dropped_equipment(victim, &slots);
+        let drops = match patch.drops {
+            Some(specs) => specs
+                .iter()
+                .filter_map(|spec| stack_of(spec).ok().flatten())
+                .collect(),
+            None => drops,
+        };
         for stack in drops {
             let velocity = Vec3::new(
                 self.rng.random::<f64>() * ITEM_SPREAD - ITEM_SPREAD / 2.0,
@@ -1265,28 +1361,52 @@ impl<L: ClientLink> Server<L> {
             );
             self.spawn_item_entity(position, velocity, ITEM_PICKUP_DELAY, stack);
         }
-        let experience = self.experience_reward(id, killed_by_player, mob_drops);
-        self.award_experience(position, experience);
+        self.award_experience(position, patch.dropped_exp.unwrap_or(experience));
+        if let Some(entity) = self.entities.store.get_mut(victim) {
+            entity.base.set_pose(rspigot_domain::entity::Pose::Dying);
+        }
+        self.push(
+            Audience::Trackers(victim),
+            ClientEvent::EntityStatus {
+                entity: victim,
+                status: EntityStatus::Death,
+            },
+        );
     }
 
-    fn drop_equipment(&mut self, id: EntityId, killed_by_player: bool) -> Vec<ItemStack> {
+    fn planned_equipment_drops(
+        &mut self,
+        id: EntityId,
+        killed_by_player: bool,
+    ) -> Vec<(EquipmentSlot, ItemStack)> {
         let rng = &mut self.rng;
-        let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+        let Some(living) = self.entities.store.get(id).and_then(|e| e.living()) else {
             return Vec::new();
         };
-        let drops = reward::equipment_drops(living, killed_by_player, &mut ServerRandom(rng));
-        if drops.is_empty() {
-            return Vec::new();
+        reward::planned_equipment_drops(living, killed_by_player, &mut ServerRandom(rng))
+    }
+
+    fn clear_dropped_equipment(&mut self, id: EntityId, slots: &[(EquipmentSlot, ItemStack)]) {
+        let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
+            return;
+        };
+        let mut cleared = Vec::new();
+        for (slot, stack) in slots {
+            let index = living::slot_index(*slot);
+            if living.equipment[index].as_ref() == Some(stack) {
+                living.equipment[index] = None;
+                cleared.push((crate::entities::wire_slot(*slot), None));
+            }
         }
-        let slots = drops
-            .iter()
-            .map(|(slot, _)| (crate::entities::wire_slot(*slot), None))
-            .collect();
-        self.push(
-            Audience::Trackers(id),
-            ClientEvent::EntityEquipment { entity: id, slots },
-        );
-        drops.into_iter().map(|(_, stack)| stack).collect()
+        if !cleared.is_empty() {
+            self.push(
+                Audience::Trackers(id),
+                ClientEvent::EntityEquipment {
+                    entity: id,
+                    slots: cleared,
+                },
+            );
+        }
     }
 
     fn experience_reward(&mut self, id: EntityId, killed_by_player: bool, mob_drops: bool) -> i32 {
@@ -1308,7 +1428,7 @@ impl<L: ClientLink> Server<L> {
         if living {
             self.hurt_mob(id, &DamageSource::new(DamageType::GenericKill), f32::MAX);
         } else {
-            self.remove_entity(id, RemovalReason::Killed);
+            self.remove_entity(id, RemovalReason::Killed, Some(EntityRemoveCause::Death));
         }
         true
     }
@@ -1377,7 +1497,11 @@ impl<L: ClientLink> Server<L> {
             };
             self.entity_sound(id, sound, 1.0, 1.0);
         }
-        self.hurt_mob(id, &DamageSource::new(impact.kind), damage as f32);
+        self.hurt_mob(
+            id,
+            &impact.source((landing.pos, landing.state)),
+            damage as f32,
+        );
     }
 
     pub fn do_hurt_target(&mut self, attacker: EntityId, target: Target) -> bool {
@@ -1396,32 +1520,48 @@ impl<L: ClientLink> Server<L> {
         let knockback = state.attribute(ATTACK_KNOCKBACK) as f32 / 2.0;
         let yaw = base.yaw;
         let source = DamageSource::by(DamageType::MobAttack, source_entity);
-        let hurt = match target {
-            Target::Player(player) => self.hurt(player, &source, damage),
-            Target::Entity(entity) => self.hurt_mob(entity, &source, damage),
+        let victim = match target {
+            Target::Player(player) => Struck::Player(player),
+            Target::Entity(entity) => Struck::Mob(entity),
         };
+        let follow = MobAttackFollow {
+            attacker,
+            target,
+            knockback,
+            yaw,
+        };
+        self.strike(None, victim, source, damage, AfterHurt::MobAttack(follow))
+    }
+
+    pub(crate) fn finish_mob_attack(&mut self, follow: MobAttackFollow, hurt: bool) {
+        let MobAttackFollow {
+            attacker,
+            target,
+            knockback,
+            yaw,
+        } = follow;
         if !hurt {
-            return false;
+            return;
         }
         if knockback > 0.0 {
             let (dx, dz) = mth::yaw_direction(yaw);
             let living_target = match target {
-                Target::Player(player) => {
-                    self.knockback(player, f64::from(knockback), dx, dz);
-                    true
-                }
-                Target::Entity(entity) => {
-                    let living = self
-                        .entities
-                        .store
-                        .get(entity)
-                        .is_some_and(|e| e.living().is_some());
-                    if living {
-                        self.mob_knockback(entity, f64::from(knockback), dx, dz);
-                    }
-                    living
-                }
+                Target::Player(_) => true,
+                Target::Entity(entity) => self
+                    .entities
+                    .store
+                    .get(entity)
+                    .is_some_and(|e| e.living().is_some()),
             };
+            if living_target {
+                self.knockback_target(
+                    target,
+                    f64::from(knockback),
+                    (dx, dz),
+                    EntityKnockbackCause::EntityAttack,
+                    attacker,
+                );
+            }
             if living_target && let Some(entity) = self.entities.store.get_mut(attacker) {
                 entity.base.velocity =
                     entity
@@ -1448,7 +1588,6 @@ impl<L: ClientLink> Server<L> {
             living.damage.last_hurt_mob = target_entity;
             living.damage.last_hurt_mob_at = tick_count;
         }
-        true
     }
 
     pub fn mob_damage(&self, id: EntityId) -> Option<MobDamageSnapshot> {

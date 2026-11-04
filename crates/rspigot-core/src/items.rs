@@ -2,11 +2,15 @@ use rand::Rng;
 use rspigot_domain::entity::{Entity, EntityState, FLAG_ON_FIRE, ItemState, RemovalReason, item};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{BlockPos, EntityId, Vec3};
+use rspigot_domain::{BlockPos, EntityId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::events::ClientEvent;
-use crate::plugins::steps::Announced;
+use crate::plugins::events::{
+    CreatureSpawnReason, EntityPickupItem, EntityRemoveCause, ItemDespawn,
+};
+use crate::plugins::steps::{Announced, PickupStep};
+use crate::plugins::{Continuation, EntityView, EventPayload, view_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -16,6 +20,18 @@ const ITEM_HEIGHT: f64 = 0.25;
 const PLAYER_HALF_WIDTH: f64 = 0.3;
 const PLAYER_HEIGHT: f64 = 1.8;
 const BELOW_WORLD: i32 = 64;
+
+pub(crate) fn launched(launch: Announced, stack: ItemStack) -> Entity {
+    let Announced {
+        mut base,
+        velocity,
+        yaw,
+    } = launch;
+    base.set_yaw(yaw);
+    base.velocity = velocity;
+    let state = ItemState::new(&mut base, stack, i32::from(PICKUP_DELAY));
+    Entity::new(base, EntityState::Item(state))
+}
 
 fn touches_player(position: Vec3, player: Vec3) -> bool {
     let reach_x = PLAYER_HALF_WIDTH + 1.0 + ITEM_HALF_WIDTH;
@@ -57,15 +73,7 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn drop_launched(&mut self, launch: Announced, stack: ItemStack) {
-        let Announced {
-            mut base,
-            velocity,
-            yaw,
-        } = launch;
-        base.set_yaw(yaw);
-        base.velocity = velocity;
-        let state = ItemState::new(&mut base, stack, i32::from(PICKUP_DELAY));
-        let _ = self.add_entity(Entity::new(base, EntityState::Item(state)));
+        self.add_entity(launched(launch, stack), CreatureSpawnReason::Default);
     }
 
     pub(crate) fn spawn_item_from_face(
@@ -115,7 +123,20 @@ impl<L: ClientLink> Server<L> {
         velocity: Vec3,
         pickup_delay: u16,
         stack: ItemStack,
-    ) -> Option<EntityId> {
+    ) -> EntityView {
+        let item = self.item_entity(position, velocity, pickup_delay, stack);
+        let view = view_of_entity(&item);
+        self.add_entity(item, CreatureSpawnReason::Default);
+        view
+    }
+
+    pub(crate) fn item_entity(
+        &mut self,
+        position: Vec3,
+        velocity: Vec3,
+        pickup_delay: u16,
+        stack: ItemStack,
+    ) -> Entity {
         let mut base = self.new_entity_base(Kind::Item);
         base.position = position;
         base.old_position = position;
@@ -123,8 +144,7 @@ impl<L: ClientLink> Server<L> {
         base.set_yaw(yaw);
         base.velocity = velocity;
         let state = ItemState::new(&mut base, stack, i32::from(pickup_delay));
-        self.add_entity(Entity::new(base, EntityState::Item(state)))
-            .ok()
+        Entity::new(base, EntityState::Item(state))
     }
 
     pub(crate) fn tick_item_entity(&mut self, id: EntityId) {
@@ -140,8 +160,10 @@ impl<L: ClientLink> Server<L> {
         else {
             return;
         };
-        let mut discard = item::stack(base).is_none();
-        if !discard {
+        let mut discard = item::stack(base)
+            .is_none()
+            .then_some(EntityRemoveCause::Despawn);
+        if discard.is_none() {
             base.old_position = base.position;
             base.tick_count = base.tick_count.wrapping_add(1);
             if base.remaining_fire_ticks > 0 {
@@ -153,15 +175,52 @@ impl<L: ClientLink> Server<L> {
             }
             base.set_shared_flag(FLAG_ON_FIRE, base.remaining_fire_ticks > 0);
             if base.position.y < floor {
-                discard = true;
+                discard = Some(EntityRemoveCause::OutOfWorld);
             } else {
                 let mut next_float = || rng.random::<f32>();
                 item::tick_item(base, state, chunks, &mut next_float);
-                discard = i64::from(state.age) >= despawn_after;
+                if i64::from(state.age) >= despawn_after {
+                    self.ask_item_despawn(id);
+                    return;
+                }
             }
         }
-        if discard {
-            self.remove_entity(id, RemovalReason::Discarded);
+        if let Some(cause) = discard {
+            self.remove_entity(id, RemovalReason::Discarded, Some(cause));
+        }
+    }
+
+    fn ask_item_despawn(&mut self, id: EntityId) {
+        let lane = self.lane_for(None, id);
+        self.fire(lane, Continuation::ItemDespawn(id), move |server| {
+            let entity = server.entities.store.get(id)?;
+            let location = server.location_of(
+                entity.base.position,
+                Rotation::new(entity.base.yaw, entity.base.pitch),
+            );
+            let entity = server.entity_view(id)?;
+            Some(EventPayload::ItemDespawn(ItemDespawn {
+                entity_type: entity.kind.clone(),
+                entity,
+                location,
+            }))
+        });
+    }
+
+    pub(crate) fn finish_item_despawn(&mut self, id: EntityId, cancelled: bool) {
+        let despawn_after = i64::from(self.config.item_despawn_ticks);
+        let Some(EntityState::Item(state)) = self.entities.store.get_mut(id).map(|e| &mut e.state)
+        else {
+            return;
+        };
+        if cancelled {
+            state.age = 0;
+        } else if i64::from(state.age) >= despawn_after {
+            self.remove_entity(
+                id,
+                RemovalReason::Discarded,
+                Some(EntityRemoveCause::Despawn),
+            );
         }
     }
 
@@ -199,9 +258,58 @@ impl<L: ClientLink> Server<L> {
         let Some(stack) = self.item_stack_of(id) else {
             return;
         };
+        let Some(player) = self.players.get(&player_id) else {
+            return;
+        };
+        let mut trial = player.inventory.clone();
+        let outcome = trial.insert(
+            stack.item,
+            u32::from(stack.count.get()),
+            stack.item.max_stack_size(),
+        );
+        let taken = u32::from(stack.count.get()) - outcome.remaining;
+        if taken == 0 {
+            return;
+        }
+        let remaining = outcome.remaining as i32;
+        let step = PickupStep {
+            player: player_id,
+            collector,
+            item: id,
+            stack,
+        };
+        let lane = self.lane_for(Some(player_id), collector);
+        self.fire(
+            lane,
+            Continuation::PickupItem(Box::new(step)),
+            move |server| {
+                let entity = server.subject_view(collector)?;
+                Some(EventPayload::EntityPickupItem(EntityPickupItem {
+                    entity_type: entity.kind.clone(),
+                    entity,
+                    item: server.entity_view(id)?,
+                    remaining,
+                }))
+            },
+        );
+    }
+
+    pub(crate) fn finish_pickup(&mut self, step: PickupStep, cancelled: bool) {
+        let PickupStep {
+            player: player_id,
+            collector,
+            item: id,
+            stack,
+        } = step;
+        if cancelled || self.item_stack_of(id).as_ref() != Some(&stack) {
+            return;
+        }
         let Some(player) = self.players.get_mut(&player_id) else {
             return;
         };
+        if player.vitals.is_dead() || player.game_mode == GameMode::Spectator {
+            return;
+        }
         let outcome = player.inventory.insert(
             stack.item,
             u32::from(stack.count.get()),
@@ -233,7 +341,11 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn remove_item(&mut self, id: EntityId) {
-        self.remove_entity(id, RemovalReason::Discarded);
+        self.remove_entity(
+            id,
+            RemovalReason::Discarded,
+            Some(EntityRemoveCause::Pickup),
+        );
     }
 
     pub fn ground_items(&self) -> Vec<(EntityId, ItemStack)> {

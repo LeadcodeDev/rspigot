@@ -1,3 +1,4 @@
+use crate::action::{TargetReason, TargetRequest};
 use crate::random::RandomSource;
 use rspigot_domain::{EntityId, ItemId, Vec3};
 use rspigot_items::ItemKind;
@@ -292,14 +293,35 @@ impl TemptGoal {
             .ignore_line_of_sight()
             .range(context.mob.tempt_range);
         let origin = context.mob.position;
-        self.player = targeting::nearest_player(
+        let found = targeting::nearest_player(
             context,
             conditions,
             |player| items.matches(player.main_hand) || items.matches(player.off_hand),
             origin,
         )
         .map(|player| player.id);
-        self.player.is_some()
+        let Some(player) = found else {
+            self.player = None;
+            return false;
+        };
+        let brain = &mut *context.brain;
+        if brain.defer_targets
+            && let Some(verdict) = brain.tempt_verdict.take()
+        {
+            self.player = verdict;
+            return self.player.is_some();
+        }
+        brain.target_requests.push(TargetRequest {
+            from: None,
+            to: Some(player),
+            reason: TargetReason::Tempt,
+            tempt: true,
+        });
+        if brain.defer_targets {
+            return self.running && self.player == Some(player);
+        }
+        self.player = Some(player);
+        true
     }
 
     fn start(&mut self) {
@@ -439,17 +461,22 @@ impl NearestAttackableTargetGoal {
                 }
             }
         }
-        context.set_target(Some(target));
+        context.set_target(Some(target), TargetReason::ClosestEntity);
         true
     }
 
     fn start<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
-        context.set_target(self.found);
+        let reason = if self.found.is_some_and(|found| found.player) {
+            TargetReason::ClosestPlayer
+        } else {
+            TargetReason::ClosestEntity
+        };
+        context.set_target(self.found, reason);
         self.unseen_ticks = 0;
     }
 
     fn stop<W: AiWorld>(&mut self, context: &mut AiContext<'_, W>) {
-        context.set_target(None);
+        context.set_target(None, TargetReason::ForgotTarget);
     }
 }
 

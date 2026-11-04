@@ -7,11 +7,15 @@ use rspigot_domain::{Rotation, Vec3};
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
+use crate::plugins::aims::settled_target;
+use crate::plugins::burning::settled_duration;
+use crate::plugins::damage::settled_damage;
 use crate::plugins::decisions::{
     Asked, Continuation, Flushed, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo,
     Undone,
 };
 use crate::plugins::events::{EventResult, PlayerMove, PlayerMovePatch, PlayerTeleportCause};
+use crate::plugins::knockback::settled_knockback;
 use crate::plugins::objects::settled_results;
 use crate::plugins::player::SPEED_SCALE;
 use crate::plugins::{
@@ -169,10 +173,10 @@ impl<L: ClientLink> Server<L> {
                 .map_or(Answer::NotFound, Answer::Entity),
             Question::Spawn { kind, position } => self
                 .spawn_for_plugin(&kind, position)
-                .map_or_else(Answer::Refused, |id| self.spawned(id)),
+                .map_or_else(Answer::Refused, Answer::Spawned),
             Question::DropItem { position, item } => self
                 .drop_for_plugin(position, &item)
-                .map_or_else(Answer::Refused, |id| self.spawned(id)),
+                .map_or_else(Answer::Refused, Answer::Spawned),
             Question::CustomInventory(inventory) => self
                 .custom_inventory_state(connection, inventory)
                 .map_or(Answer::NotFound, Answer::CustomInventory),
@@ -707,9 +711,7 @@ impl<L: ClientLink> Server<L> {
                 Vec::new()
             }
             Continuation::Explode(step) => {
-                if !cancelled {
-                    self.finish_explosion(*step, patch_of!(patch, BlockExplode));
-                }
+                self.finish_explosion(*step, cancelled, patch_of!(patch, BlockExplode));
                 Vec::new()
             }
             Continuation::ChunkUnload(pos) => {
@@ -730,6 +732,110 @@ impl<L: ClientLink> Server<L> {
                 self.finish_thunder(to, cancelled);
                 Vec::new()
             }
+            Continuation::Spawn(step) => {
+                self.finish_spawn(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::EntityDrop(item) => {
+                self.finish_entity_drop(*item, cancelled);
+                Vec::new()
+            }
+            Continuation::Hurt(step) => {
+                self.finish_hurt(*step, cancelled, settled_damage(patch));
+                Vec::new()
+            }
+            Continuation::MobDeath(step) => {
+                self.finish_mob_death(*step, patch_of!(patch, EntityDeath));
+                Vec::new()
+            }
+            Continuation::Regain(step) => {
+                self.finish_regain(step, cancelled, patch_of!(patch, EntityRegainHealth));
+                Vec::new()
+            }
+            Continuation::Exhaust(step) => {
+                self.finish_exhaust(step, cancelled, patch_of!(patch, EntityExhaustion));
+                Vec::new()
+            }
+            Continuation::Food(step) => {
+                self.finish_food(step, cancelled, patch_of!(patch, FoodLevelChange));
+                Vec::new()
+            }
+            Continuation::Potion(step) => {
+                self.finish_potion(step, cancelled, patch_of!(patch, EntityPotionEffect));
+                Vec::new()
+            }
+            Continuation::Combust(step) => {
+                self.finish_combust(step, cancelled, settled_duration(patch));
+                Vec::new()
+            }
+            Continuation::Knock(step) => {
+                self.finish_knock(step, cancelled, settled_knockback(patch));
+                Vec::new()
+            }
+            Continuation::ItemDespawn(id) => {
+                self.finish_item_despawn(id, cancelled);
+                Vec::new()
+            }
+            Continuation::PickupItem(step) => {
+                self.finish_pickup(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::ChangeBlock(step) => {
+                self.finish_change(*step, cancelled);
+                Vec::new()
+            }
+            Continuation::Regrow(sheep) => {
+                if !cancelled {
+                    self.regrow_wool(sheep);
+                }
+                Vec::new()
+            }
+            Continuation::EggBreak { mob, pos } => {
+                if !cancelled {
+                    self.break_turtle_egg(mob, pos);
+                }
+                Vec::new()
+            }
+            Continuation::EntityExplode(step) => {
+                self.finish_entity_explosion(*step, cancelled, patch_of!(patch, EntityExplode));
+                Vec::new()
+            }
+            Continuation::Prime(step) => {
+                self.finish_prime(step, cancelled, patch_of!(patch, ExplosionPrime));
+                Vec::new()
+            }
+            Continuation::Relocate(step) => {
+                self.finish_relocate(step, cancelled, patch_of!(patch, EntityTeleport));
+                Vec::new()
+            }
+            Continuation::Shoot(step) => {
+                self.finish_shot(*step, cancelled, patch_of!(patch, EntityShootBow));
+                Vec::new()
+            }
+            Continuation::ProjectileHit { arrow, target } => {
+                self.finish_projectile_hit(arrow, target, cancelled);
+                Vec::new()
+            }
+            Continuation::Aim(step) => {
+                self.finish_aim(step, cancelled, settled_target(patch));
+                Vec::new()
+            }
+            Continuation::Breed(step) => {
+                if !cancelled {
+                    self.finish_breed(*step, patch_of!(patch, EntityBreed));
+                }
+                Vec::new()
+            }
+            Continuation::Love(step) => {
+                if !cancelled {
+                    self.finish_love(*step, patch_of!(patch, EntityEnterLoveMode));
+                }
+                Vec::new()
+            }
+            Continuation::Dye(step) => {
+                self.finish_dye(*step, cancelled, patch_of!(patch, SheepDyeWool));
+                Vec::new()
+            }
         }
     }
 
@@ -743,8 +849,10 @@ impl<L: ClientLink> Server<L> {
     fn undo(&mut self, lane: Lane, undo: Undo) {
         match (lane, undo) {
             (Lane::Player(player), Undo::SendBack(position)) => self.send_back(player, position),
-            (Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::World, Undo::SendBack(_)) => {
-            }
+            (
+                Lane::Login(_) | Lane::Block(_) | Lane::Chunk(_) | Lane::Entity(_) | Lane::World,
+                Undo::SendBack(_),
+            ) => {}
         }
     }
 
@@ -885,7 +993,7 @@ impl<L: ClientLink> Server<L> {
     }
 }
 
-fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
+pub(crate) fn effect_spec(effect: &EffectInstance) -> Option<EffectSpec> {
     Some(EffectSpec {
         key: effect.effect.name()?.to_owned(),
         duration: effect.duration.wire_ticks(),

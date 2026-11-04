@@ -24,6 +24,15 @@ pub struct FallImpact {
     pub kind: DamageType,
 }
 
+impl FallImpact {
+    pub(crate) fn source(&self, below: (BlockPos, BlockStateId)) -> DamageSource {
+        DamageSource::from_block(
+            self.kind,
+            (self.kind == DamageType::Stalagmite).then_some(below),
+        )
+    }
+}
+
 fn is_bed(kind: BlockKind) -> bool {
     rspigot_data::tags::tag("minecraft:block", BEDS_TAG)
         .is_some_and(|beds| beds.binary_search(&u32::from(kind.id().0)).is_ok())
@@ -66,13 +75,13 @@ pub fn fall_impact(
 }
 
 impl<L: ClientLink> Server<L> {
-    fn supporting_block(&self, position: Vec3) -> BlockStateId {
+    fn supporting_block(&self, position: Vec3) -> (BlockPos, BlockStateId) {
         let y = (position.y - SUPPORT_OFFSET).floor() as i32;
         let center = BlockPos::new(position.x.floor() as i32, y, position.z.floor() as i32);
         let state = |pos: BlockPos| self.world.chunks.block(pos).unwrap_or(BlockStateId::AIR);
         let solid = |pos: BlockPos| state(pos).flags().contains(StateFlags::HAS_COLLISION);
         if solid(center) {
-            return state(center);
+            return (center, state(center));
         }
         let min_x = (position.x - PLAYER_HALF_WIDTH).floor() as i32;
         let max_x = (position.x + PLAYER_HALF_WIDTH).floor() as i32;
@@ -88,7 +97,7 @@ impl<L: ClientLink> Server<L> {
                 };
                 distance(*a).total_cmp(&distance(*b))
             })
-            .map_or_else(|| state(center), state)
+            .map_or((center, state(center)), |pos| (pos, state(pos)))
     }
 
     pub(crate) fn check_fall(&mut self, id: PlayerId, dy: f64, on_ground: bool) {
@@ -110,9 +119,9 @@ impl<L: ClientLink> Server<L> {
             let sneaking = player.sneaking;
             let position = player.position;
             if distance > 0.0 {
-                let below = self.supporting_block(position);
+                let (pos, below) = self.supporting_block(position);
                 if let Some(impact) = fall_impact(below, distance, sneaking) {
-                    self.cause_player_fall_damage(id, impact);
+                    self.cause_player_fall_damage(id, impact, (pos, below));
                 }
             }
             if let Some(player) = self.players.get_mut(&id) {
@@ -126,7 +135,12 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn cause_player_fall_damage(&mut self, id: PlayerId, impact: FallImpact) {
+    fn cause_player_fall_damage(
+        &mut self,
+        id: PlayerId,
+        impact: FallImpact,
+        below: (BlockPos, BlockStateId),
+    ) {
         let Some(player) = self.players.get(&id) else {
             return;
         };
@@ -150,7 +164,7 @@ impl<L: ClientLink> Server<L> {
                 let position = player.position;
                 self.play_sound(Some(id), position, sound, sounds.source, 1.0, 1.0);
             }
-            self.hurt(id, &DamageSource::new(impact.kind), amount as f32);
+            self.hurt(id, &impact.source(below), amount as f32);
         }
     }
 }

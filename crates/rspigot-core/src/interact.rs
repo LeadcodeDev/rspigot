@@ -3,7 +3,7 @@ use std::num::NonZeroU8;
 use rspigot_domain::entity::ageable;
 use rspigot_domain::entity::living::{self, slot_index};
 use rspigot_domain::entity::reward::max_damage;
-use rspigot_domain::entity::species::{self, Species};
+use rspigot_domain::entity::species;
 use rspigot_domain::entity::{Aabb, Entity, EntityState, save};
 use rspigot_domain::item::{HOTBAR_START, ItemStack, OFFHAND_SLOT};
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -16,9 +16,12 @@ use rspigot_items::{EquipmentSlot, ItemKind};
 use crate::events::{Animation, ClientEvent, EquipmentSlot as WireSlot, Hand};
 use crate::loot::{self, LootContext};
 use crate::mob_actions::new_mob;
-use crate::plugins::events::{EquipmentSlot as Slot, PlayerShearEntity};
-use crate::plugins::steps::ShearStep;
-use crate::plugins::{Continuation, EventPayload, Lane, spec_of};
+use crate::plugins::events::{
+    CreatureSpawnReason, DyeColor, EntityEnterLoveMode, EquipmentSlot as Slot, PlayerShearEntity,
+    SheepDyeWool, SheepDyeWoolPatch,
+};
+use crate::plugins::steps::{DyeStep, LoveStep, ShearStep};
+use crate::plugins::{Birth, Continuation, EventPayload, Lane, Spawned, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -80,6 +83,40 @@ fn dye_color(item: ItemId) -> Option<u8> {
     DYES.iter()
         .position(|dye| *dye == name)
         .map(|index| index as u8)
+}
+
+const DYE_COLORS: [DyeColor; 16] = [
+    DyeColor::White,
+    DyeColor::Orange,
+    DyeColor::Magenta,
+    DyeColor::LightBlue,
+    DyeColor::Yellow,
+    DyeColor::Lime,
+    DyeColor::Pink,
+    DyeColor::Gray,
+    DyeColor::LightGray,
+    DyeColor::Cyan,
+    DyeColor::Purple,
+    DyeColor::Blue,
+    DyeColor::Brown,
+    DyeColor::Green,
+    DyeColor::Red,
+    DyeColor::Black,
+];
+
+fn dye_of(color: u8) -> DyeColor {
+    DYE_COLORS
+        .get(usize::from(color))
+        .copied()
+        .unwrap_or(DyeColor::White)
+}
+
+fn wool_of(color: DyeColor) -> u8 {
+    DYE_COLORS
+        .iter()
+        .position(|dye| *dye == color)
+        .and_then(|index| u8::try_from(index).ok())
+        .unwrap_or(0)
 }
 
 fn hand_slot(hand: Hand, selected: u8) -> usize {
@@ -407,9 +444,17 @@ impl<L: ClientLink> Server<L> {
                 mob.can_pick_up_loot = loot;
             }
         }
-        let _ = self.add_entity(child);
-        self.consume_held(id, hand, 1);
+        self.spawn_entity(
+            child,
+            Birth::of(CreatureSpawnReason::SpawnerEgg)
+                .by(id)
+                .then(Spawned::Hatched { player: id, hand }),
+        );
         true
+    }
+
+    pub(crate) fn use_spawn_egg(&mut self, id: PlayerId, hand: Hand) {
+        self.consume_held(id, hand, 1);
     }
 
     fn shear_saddle(&mut self, id: PlayerId, target: EntityId, hand: Hand) {
@@ -417,7 +462,6 @@ impl<L: ClientLink> Server<L> {
         let Some(entity) = self.entities.store.get_mut(target) else {
             return;
         };
-        let position = entity.base.position;
         let height = f64::from(entity.base.dimensions.height);
         let Some(living) = entity.living_mut() else {
             return;
@@ -432,7 +476,7 @@ impl<L: ClientLink> Server<L> {
                 slots: vec![(WireSlot::Saddle, None)],
             },
         );
-        self.spawn_at_location(position, height, saddle);
+        self.drop_at_location(target, height, saddle, Vec3::ZERO);
         self.entity_sound(target, "minecraft:item.saddle.unequip", 1.0, 1.0);
     }
 
@@ -640,9 +684,6 @@ impl<L: ClientLink> Server<L> {
                     count: NonZeroU8::MIN,
                     ..stack.clone()
                 };
-                let Some(spawned) = self.spawn_at_location(position, 1.0, single) else {
-                    continue;
-                };
                 let mut random = self.mob_random(target);
                 let push = Vec3::new(
                     f64::from((random.next_float() - random.next_float()) * 0.1),
@@ -650,9 +691,7 @@ impl<L: ClientLink> Server<L> {
                     f64::from((random.next_float() - random.next_float()) * 0.1),
                 );
                 self.store_mob_random(target, random);
-                if let Some(item) = self.entities.store.get_mut(spawned) {
-                    item.base.velocity = item.base.velocity + push;
-                }
+                self.drop_at_location(target, 1.0, single, push);
             }
         }
         if let Some(entity) = self.entities.store.get_mut(target) {
@@ -687,7 +726,8 @@ impl<L: ClientLink> Server<L> {
         if is_food {
             if age == 0 && can_love {
                 self.consume_held(id, hand, 1);
-                self.set_in_love(target, uuid);
+                let item = self.held(id, hand);
+                self.ask_love(id, target, uuid, item);
                 self.eating_sound(target);
                 return Interaction::ServerOnly;
             }
@@ -818,6 +858,62 @@ impl<L: ClientLink> Server<L> {
         {
             return Interaction::Pass;
         }
+        let mut then = Continuation::Dye(Box::new(DyeStep {
+            player: id,
+            target,
+            hand,
+            color,
+            stack: stack.clone(),
+            parked: false,
+        }));
+        let parked = self.parks(Lane::Player(id), &then);
+        if let Continuation::Dye(step) = &mut then {
+            step.parked = parked;
+        }
+        self.fire(id, then, move |server| {
+            Some(EventPayload::SheepDyeWool(SheepDyeWool {
+                color: dye_of(color),
+                entity: server.entity_view(target)?,
+                entity_type: Kind::Sheep.name().to_owned(),
+                player: server.snapshot_of(id),
+            }))
+        });
+        if parked {
+            Interaction::Consume
+        } else {
+            Interaction::Predicted
+        }
+    }
+
+    pub(crate) fn finish_dye(&mut self, step: DyeStep, cancelled: bool, patch: SheepDyeWoolPatch) {
+        let DyeStep {
+            player: id,
+            target,
+            hand,
+            color,
+            stack,
+            parked,
+        } = step;
+        let ready = self.entities.store.get(target).is_some_and(|entity| {
+            entity.base.kind == Kind::Sheep
+                && !species::is_sheared(&entity.base)
+                && entity
+                    .living()
+                    .is_some_and(|living| !living::is_dead_or_dying(&entity.base, living))
+        });
+        let holding = self
+            .held(id, hand)
+            .is_some_and(|held| held.item == stack.item);
+        if cancelled || !ready || !holding {
+            if parked {
+                self.refresh_hands(id);
+            }
+            return;
+        }
+        let color = patch.color.map_or(color, wool_of);
+        let Some(entity) = self.entities.store.get_mut(target) else {
+            return;
+        };
         species::set_wool_color(&mut entity.base, color);
         let position = entity.base.position;
         self.play_sound(
@@ -828,17 +924,34 @@ impl<L: ClientLink> Server<L> {
             1.0,
             1.0,
         );
-        self.shrink_held(id, hand, 1);
-        if let Some(Species::Sheep(_)) = self
-            .entities
-            .store
-            .get(target)
-            .and_then(|e| e.living())
-            .and_then(|l| l.mob.as_ref())
-            .map(|m| m.species)
-        {
-            self.refresh_hands(id);
+        if parked {
+            self.consume_held(id, hand, 1);
+            self.player_swing(id, hand, true);
+        } else {
+            self.shrink_held(id, hand, 1);
         }
-        Interaction::Predicted
+        self.refresh_hands(id);
+    }
+
+    fn ask_love(
+        &mut self,
+        id: PlayerId,
+        target: EntityId,
+        cause: Option<uuid::Uuid>,
+        item: Option<ItemStack>,
+    ) {
+        let step = LoveStep {
+            target,
+            cause,
+            item,
+        };
+        self.fire(id, Continuation::Love(Box::new(step)), move |server| {
+            Some(EventPayload::EntityEnterLoveMode(EntityEnterLoveMode {
+                entity: server.entity_view(target)?,
+                entity_type: server.entity_view(target)?.kind,
+                human_entity: server.snapshot_of(id),
+                ticks_in_love: rspigot_domain::entity::ageable::LOVE_TICKS,
+            }))
+        });
     }
 }

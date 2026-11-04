@@ -147,7 +147,7 @@ impl<L: ClientLink> Server<L> {
                     BlockInteraction::Keep
                 };
                 let damage = DamageSource::new(DamageType::Explosion);
-                self.explode(None, &damage, position, power, interaction);
+                self.explode(None, &damage, position, power, interaction, false, None);
             }
         }
         Ok(())
