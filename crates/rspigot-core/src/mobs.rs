@@ -9,6 +9,7 @@ use rspigot_domain::entity::living::{
     self, ATTACK_DAMAGE, ATTACK_KNOCKBACK, EQUIPMENT_SLOTS, HurtOutcome, HurtSource,
 };
 use rspigot_domain::entity::physics::{Landing, water_height};
+use rspigot_domain::entity::reward::EquipmentDrop;
 use rspigot_domain::entity::species::{self, Species};
 use rspigot_domain::entity::{
     Aabb, ActivationType, Entities, Entity, EntityState, FLAG_INVISIBLE, RemovalReason,
@@ -1296,7 +1297,7 @@ impl<L: ClientLink> Server<L> {
                 drops.extend(loot::table_drops(table, &context, &mut self.rng));
             }
             slots = self.planned_equipment_drops(id, killed_by_player);
-            drops.extend(slots.iter().map(|(_, stack)| stack.clone()));
+            drops.extend(slots.iter().map(|drop| drop.dropped.clone()));
         }
         let experience = self.experience_reward(id, killed_by_player, mob_drops);
         let step = LootStep {
@@ -1378,7 +1379,7 @@ impl<L: ClientLink> Server<L> {
         &mut self,
         id: EntityId,
         killed_by_player: bool,
-    ) -> Vec<(EquipmentSlot, ItemStack)> {
+    ) -> Vec<EquipmentDrop> {
         let rng = &mut self.rng;
         let Some(living) = self.entities.store.get(id).and_then(|e| e.living()) else {
             return Vec::new();
@@ -1386,16 +1387,16 @@ impl<L: ClientLink> Server<L> {
         reward::planned_equipment_drops(living, killed_by_player, &mut ServerRandom(rng))
     }
 
-    fn clear_dropped_equipment(&mut self, id: EntityId, slots: &[(EquipmentSlot, ItemStack)]) {
+    fn clear_dropped_equipment(&mut self, id: EntityId, slots: &[EquipmentDrop]) {
         let Some(living) = self.entities.store.get_mut(id).and_then(|e| e.living_mut()) else {
             return;
         };
         let mut cleared = Vec::new();
-        for (slot, stack) in slots {
-            let index = living::slot_index(*slot);
-            if living.equipment[index].as_ref() == Some(stack) {
+        for drop in slots {
+            let index = living::slot_index(drop.slot);
+            if living.equipment[index].as_ref() == Some(&drop.original) {
                 living.equipment[index] = None;
-                cleared.push((crate::entities::wire_slot(*slot), None));
+                cleared.push((crate::entities::wire_slot(drop.slot), None));
             }
         }
         if !cleared.is_empty() {

@@ -1,5 +1,6 @@
 use crossbeam_channel::Sender;
 use rspigot_domain::effect::EffectInstance;
+use rspigot_domain::entity::reward::EquipmentDrop;
 use rspigot_domain::entity::{Entity, EntityBase};
 use rspigot_domain::item::ItemStack;
 use rspigot_domain::player::{ClientSettings, GameMode, PlayerId};
@@ -780,7 +781,7 @@ pub(crate) struct PotionStep {
 pub(crate) struct LootStep {
     pub(crate) victim: EntityId,
     pub(crate) drops: Vec<ItemStack>,
-    pub(crate) slots: Vec<(rspigot_items::EquipmentSlot, ItemStack)>,
+    pub(crate) slots: Vec<EquipmentDrop>,
     pub(crate) experience: i32,
 }
 

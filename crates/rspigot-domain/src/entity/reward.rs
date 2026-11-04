@@ -112,14 +112,21 @@ pub fn set_damage_value(stack: &mut ItemStack, value: i32) {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct EquipmentDrop {
+    pub slot: EquipmentSlot,
+    pub original: ItemStack,
+    pub dropped: ItemStack,
+}
+
 pub fn equipment_drops(
     living: &mut LivingState,
     killed_by_player: bool,
     random: &mut impl RandomSource,
-) -> Vec<(EquipmentSlot, ItemStack)> {
+) -> Vec<EquipmentDrop> {
     let drops = planned_equipment_drops(living, killed_by_player, random);
-    for (slot, _) in &drops {
-        living.equipment[slot_index(*slot)] = None;
+    for drop in &drops {
+        living.equipment[slot_index(drop.slot)] = None;
     }
     drops
 }
@@ -128,7 +135,7 @@ pub fn planned_equipment_drops(
     living: &LivingState,
     killed_by_player: bool,
     random: &mut impl RandomSource,
-) -> Vec<(EquipmentSlot, ItemStack)> {
+) -> Vec<EquipmentDrop> {
     let Some(chances) = living.mob.as_ref().map(|mob| mob.drop_chances) else {
         return Vec::new();
     };
@@ -148,15 +155,20 @@ pub fn planned_equipment_drops(
         if random.next_float() >= chance {
             continue;
         }
-        let Some(mut stack) = living.equipment[slot_index(slot)].clone() else {
+        let Some(original) = living.equipment[slot_index(slot)].clone() else {
             continue;
         };
-        if !preserved && let Some(max) = max_damage(&stack) {
+        let mut dropped = original.clone();
+        if !preserved && let Some(max) = max_damage(&dropped) {
             let inner = random.next_int((max - 3).max(1));
             let value = max - random.next_int(1 + inner);
-            set_damage_value(&mut stack, value);
+            set_damage_value(&mut dropped, value);
         }
-        drops.push((slot, stack));
+        drops.push(EquipmentDrop {
+            slot,
+            original,
+            dropped,
+        });
     }
     drops
 }
@@ -289,10 +301,12 @@ mod tests {
                     },
                 },
             );
-            if let [(EquipmentSlot::Head, stack)] = drops.as_slice() {
+            if let [drop] = drops.as_slice() {
                 dropped += 1;
+                assert_eq!(drop.slot, EquipmentSlot::Head);
                 assert_eq!(values, vec![162, 162]);
-                assert_eq!(damage_value(stack), 165 - 161);
+                assert_eq!(damage_value(&drop.dropped), 165 - 161);
+                assert_eq!(damage_value(&drop.original), 0);
                 assert!(living.equipment(EquipmentSlot::Head).is_none());
             }
         }
@@ -313,7 +327,7 @@ mod tests {
         };
         let drops = equipment_drops(living, false, &mut random);
         assert_eq!(drops.len(), 1);
-        assert_eq!(damage_value(&drops[0].1), 0);
+        assert_eq!(damage_value(&drops[0].dropped), 0);
     }
 
     #[test]
