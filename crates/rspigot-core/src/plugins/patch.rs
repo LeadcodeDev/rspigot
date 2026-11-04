@@ -11,13 +11,15 @@ pub struct Verdict {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ListDiff<T> {
+pub struct ListDiff<T, const SET: bool = false> {
     pub removed: Vec<u32>,
     pub replaced: Vec<(u32, T)>,
     pub added: Vec<T>,
 }
 
-impl<T> Default for ListDiff<T> {
+pub type SetDiff<T> = ListDiff<T, true>;
+
+impl<T, const SET: bool> Default for ListDiff<T, SET> {
     fn default() -> Self {
         Self {
             removed: Vec::new(),
@@ -27,7 +29,7 @@ impl<T> Default for ListDiff<T> {
     }
 }
 
-impl<T> ListDiff<T> {
+impl<T, const SET: bool> ListDiff<T, SET> {
     pub const fn is_empty(&self) -> bool {
         self.removed.is_empty() && self.replaced.is_empty() && self.added.is_empty()
     }
@@ -61,11 +63,7 @@ impl<T> ListDiff<T> {
         self
     }
 
-    pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
-        self.apply_with(snapshot, |_, value| Some(value), Some)
-    }
-
-    pub fn apply_with<U>(
+    fn merge<U>(
         self,
         snapshot: Vec<U>,
         mut replace: impl FnMut(U, T) -> Option<U>,
@@ -123,6 +121,45 @@ impl<T> ListDiff<T> {
                 "{name} keeps its length: it only replaces elements in place"
             ))
         }
+    }
+}
+
+impl<T> ListDiff<T> {
+    pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
+        self.merge(snapshot, |_, value| Some(value), Some)
+    }
+
+    pub fn apply_with<U>(
+        self,
+        snapshot: Vec<U>,
+        replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
+        self.merge(snapshot, replace, add)
+    }
+}
+
+impl<T: PartialEq> SetDiff<T> {
+    pub fn apply(self, snapshot: Vec<T>) -> Vec<T> {
+        self.apply_with(snapshot, |_, value| Some(value), Some)
+    }
+
+    pub fn apply_with<U: PartialEq>(
+        self,
+        snapshot: Vec<U>,
+        replace: impl FnMut(U, T) -> Option<U>,
+        add: impl FnMut(T) -> Option<U>,
+    ) -> Vec<U> {
+        if self.is_empty() {
+            return snapshot;
+        }
+        let mut unique: Vec<U> = Vec::new();
+        for value in self.merge(snapshot, replace, add) {
+            if !unique.contains(&value) {
+                unique.push(value);
+            }
+        }
+        unique
     }
 }
 
@@ -323,6 +360,37 @@ mod tests {
             |name| (!name.is_empty()).then_some(name.len() * 100),
         );
         assert_eq!(lengths, [23, 40, 400, 500]);
+    }
+
+    #[test]
+    fn a_set_keeps_one_of_each_element_and_a_list_keeps_them_all() {
+        let set: SetDiff<&str> = SetDiff {
+            removed: vec![0],
+            replaced: vec![(1, "carol")],
+            added: vec!["erin", "dave", "erin", "alice"],
+        };
+        assert_eq!(
+            set.apply(SNAPSHOT.to_vec()),
+            ["carol", "dave", "erin", "alice"]
+        );
+        let list = diff(&[0], &[(1, "carol")], &["erin", "dave", "erin", "alice"]);
+        assert_eq!(
+            list.apply(SNAPSHOT.to_vec()),
+            ["carol", "carol", "dave", "erin", "dave", "erin", "alice"]
+        );
+        let ids = SetDiff {
+            removed: Vec::new(),
+            replaced: Vec::new(),
+            added: vec!["bob"],
+        };
+        assert_eq!(
+            ids.apply_with(
+                vec![1, 2],
+                |_, name| Some(name.len()),
+                |name| Some(name.len() - 1)
+            ),
+            [1, 2]
+        );
     }
 
     #[test]

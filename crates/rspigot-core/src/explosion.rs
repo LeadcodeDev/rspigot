@@ -19,7 +19,7 @@ use crate::plugins::events::{
 };
 use crate::plugins::steps::{ExplodeStep, PrimeStep};
 use crate::plugins::{AfterHurt, BlastFollow, Holder, Struck};
-use crate::plugins::{Continuation, EventPayload, ListDiff};
+use crate::plugins::{Continuation, EventPayload, SetDiff};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -207,7 +207,7 @@ impl<L: ClientLink> Server<L> {
 
     fn ask_entity_explosion(&mut self, entity: EntityId, step: ExplodeStep) {
         let Some(view) = self.subject_view(entity) else {
-            self.settle_explosion(step, false, ListDiff::default(), None);
+            self.settle_explosion(step, false, SetDiff::default(), None);
             return;
         };
         let block_list = step.blocks.clone();

@@ -638,8 +638,9 @@ mod tests {
     use super::*;
     use crate::plugins::events::{
         Action, AsyncPlayerChat, AsyncPlayerChatPatch, BlockDropItem, BlockDropItemPatch,
-        ClickKind, EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause,
-        EntityDamagePatch, EntityDeathPatch, EventResult, Face, InventoryAction, InventoryClick,
+        BlockExplode, BlockExplodePatch, BroadcastMessage, BroadcastMessagePatch, ClickKind,
+        EntityDamageByEntity, EntityDamageByEntityPatch, EntityDamageCause, EntityDamagePatch,
+        EntityDeathPatch, EventResult, ExplosionResult, Face, InventoryAction, InventoryClick,
         InventoryClickPatch, InventoryTypeSlotType, PlayerCommandSend, PlayerCommandSendPatch,
         PlayerDeath, PlayerDeathPatch, PlayerInteract, PlayerInteractPatch, PlayerJoin, PlayerMove,
         PlayerMovePatch, PlayerRespawn, PlayerRespawnPatch, PlayerRespawnReason, PlayerTeleport,
@@ -2112,6 +2113,69 @@ mod tests {
                 dropped(8, "minecraft:dirt", 1)
             ]
         );
+    }
+
+    #[test]
+    fn two_handlers_adding_the_same_broadcast_recipient_give_it_once() {
+        let broadcast = EventPayload::BroadcastMessage(BroadcastMessage {
+            message: "restarting".to_owned(),
+            recipients: vec![SenderView::Console, SenderView::Player(listener("Alice"))],
+        });
+        let adding = |name: &str| {
+            EventPatch::BroadcastMessage(BroadcastMessagePatch {
+                recipients: ListDiff {
+                    removed: Vec::new(),
+                    replaced: Vec::new(),
+                    added: vec![SenderView::Player(listener(name))],
+                },
+                ..BroadcastMessagePatch::default()
+            })
+        };
+        let EventPayload::BroadcastMessage(settled) =
+            settled_lists(&broadcast, &[adding("Bob"), adding("Bob"), adding("Alice")])
+        else {
+            panic!("expected a broadcast");
+        };
+        assert_eq!(
+            settled.recipients,
+            [
+                SenderView::Console,
+                SenderView::Player(listener("Alice")),
+                SenderView::Player(listener("Bob"))
+            ]
+        );
+    }
+
+    #[test]
+    fn two_handlers_adding_the_same_explosion_position_break_it_once() {
+        let at = rspigot_domain::BlockPos::new(2, 63, 0);
+        let far = rspigot_domain::BlockPos::new(5, 60, 5);
+        let blast = EventPayload::BlockExplode(BlockExplode {
+            block: at,
+            block_list: vec![at],
+            exploded_block_state: BlockSnapshot {
+                pos: at,
+                state: BlockState {
+                    kind: "minecraft:air".to_owned(),
+                    properties: Vec::new(),
+                },
+            },
+            explosion_result: ExplosionResult::Destroy,
+            explosion_yield: 1.0,
+        });
+        let adding = EventPatch::BlockExplode(BlockExplodePatch {
+            block_list: ListDiff {
+                removed: Vec::new(),
+                replaced: Vec::new(),
+                added: vec![far, at],
+            },
+            ..BlockExplodePatch::default()
+        });
+        let EventPayload::BlockExplode(settled) = settled_lists(&blast, &[adding.clone(), adding])
+        else {
+            panic!("expected a block explosion");
+        };
+        assert_eq!(settled.block_list, [at, far]);
     }
 
     #[test]

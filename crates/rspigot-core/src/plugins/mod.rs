@@ -78,7 +78,7 @@ pub use orders::{
     BlockOrder, CustomInventoryOrder, EffectSpec, EntityOrder, GameRule, InventoryOrder, Order,
     ParticleDataSpec, ParticleSpec, PlayerOrder, ServerOrder, SoundSpec, TitleSpec, WorldOrder,
 };
-pub use patch::{ListDiff, Verdict};
+pub use patch::{ListDiff, SetDiff, Verdict};
 pub(crate) use registry::Registry;
 pub(crate) use session::{Arrival, Refusal};
 pub(crate) use spawns::{name_of_entity, view_of_entity};

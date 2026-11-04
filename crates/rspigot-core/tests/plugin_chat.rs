@@ -7,7 +7,7 @@ use rspigot_core::plugins::events::{
 };
 use rspigot_core::plugins::{
     EventKind, EventPatch, EventPayload, HandlerSpec, ListDiff, PlayerOrder, PlayerSnapshot,
-    Priority,
+    Priority, SetDiff,
 };
 
 fn chat_lines(player: &Player) -> Vec<String> {
@@ -145,7 +145,7 @@ fn two_plugins_chat(names: &[&str]) -> (Scene, u64, Vec<PlayerSnapshot>) {
     (s, asked.id, recipients)
 }
 
-fn recipients_patch(recipients: ListDiff<PlayerSnapshot>) -> Option<EventPatch> {
+fn recipients_patch(recipients: SetDiff<PlayerSnapshot>) -> Option<EventPatch> {
     Some(EventPatch::AsyncPlayerChat(AsyncPlayerChatPatch {
         recipients,
         ..AsyncPlayerChatPatch::default()

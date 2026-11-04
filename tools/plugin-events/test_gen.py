@@ -177,7 +177,12 @@ class Generator(unittest.TestCase):
         self.assertRegex(proto, r"message ServerListPingPatch {[^}]* StringListDiff hidden_players = 1100; reserved 100; }")
         self.assertNotRegex(proto, r"(?m)^message \w+List {")
         core = (self.root / OUTPUTS[1]).read_text()
-        self.assertIn("pub recipients: ListDiff<PlayerSnapshot>,", core)
+        self.assertIn("pub recipients: SetDiff<PlayerSnapshot>,", core)
+        self.assertIn("pub commands: SetDiff<String>,", core)
+        self.assertIn("pub block_list: SetDiff<BlockPos>,", core)
+        self.assertIn("pub hidden_players: SetDiff<Uuid>,", core)
+        self.assertIn("pub drops: ListDiff<ItemSpec>,", core)
+        self.assertIn("pub completions: ListDiff<String>,", core)
         self.assertIn("recipients: self.recipients.then(later.recipients),", core)
         self.assertIn("lines: self.lines.then(later.lines),", core)
         self.assertIn('self.lines.slot_refusal("lines", event.lines.len())', core)
@@ -198,6 +203,13 @@ class Generator(unittest.TestCase):
         failed = generator(self.root, "--check")
         self.assertEqual(failed.returncode, 1)
         self.assertIn("PlayerJoin.mystery", failed.stderr)
+
+    def test_a_set_override_on_a_field_that_is_not_a_list_patch_fails_the_generation(self):
+        overrides = self.root / INPUTS[1]
+        overrides.write_text(overrides.read_text() + '\n[events.TabComplete]\nsets = ["getBuffer"]\n')
+        failed = generator(self.root, "--check")
+        self.assertEqual(failed.returncode, 1)
+        self.assertIn("TabComplete: the set getBuffer is not a list patch", failed.stderr)
 
     def test_a_list_patch_without_its_getter_fails_the_generation(self):
         overrides = self.root / INPUTS[1]

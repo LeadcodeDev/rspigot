@@ -1,6 +1,5 @@
 use rspigot_domain::player::PlayerId;
 use rspigot_domain::text::Component;
-use rustc_hash::FxHashSet;
 
 use crate::commands::{self, CommandSender};
 use crate::console::console_text;
@@ -131,7 +130,6 @@ impl<L: ClientLink> Server<L> {
         let recipients: Vec<PlayerId> = if patch.recipients.is_empty() {
             self.players.keys().copied().collect()
         } else {
-            let mut seen = FxHashSet::default();
             patch
                 .recipients
                 .apply_with(
@@ -140,7 +138,7 @@ impl<L: ClientLink> Server<L> {
                     |player| Some(player.id),
                 )
                 .into_iter()
-                .filter(|id| self.players.contains_key(id) && seen.insert(*id))
+                .filter(|id| self.players.contains_key(id))
                 .collect()
         };
         for recipient in recipients {

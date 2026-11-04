@@ -26,7 +26,7 @@ use crate::plugins::SpawnerData;
 use crate::plugins::Trade;
 use crate::plugins::TrialSpawnerData;
 use crate::plugins::patch::{
-    ListDiff, icon_refusal, location_refusal, merge_indexed, number_refusal, text_refusal,
+    ListDiff, SetDiff, icon_refusal, location_refusal, merge_indexed, number_refusal, text_refusal,
     vector_refusal,
 };
 use rspigot_domain::BlockPos;
@@ -4576,7 +4576,7 @@ impl ArrowBodyCountChangePatch {
 pub struct AsyncPlayerChatPatch {
     pub format: Option<String>,
     pub message: Option<String>,
-    pub recipients: ListDiff<PlayerSnapshot>,
+    pub recipients: SetDiff<PlayerSnapshot>,
 }
 
 impl AsyncPlayerChatPatch {
@@ -4833,7 +4833,7 @@ impl BlockExpPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BlockExplodePatch {
-    pub block_list: ListDiff<BlockPos>,
+    pub block_list: SetDiff<BlockPos>,
     pub explosion_yield: Option<f32>,
 }
 
@@ -4965,7 +4965,7 @@ impl BrewingStartPatch {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BroadcastMessagePatch {
     pub message: Option<String>,
-    pub recipients: ListDiff<SenderView>,
+    pub recipients: SetDiff<SenderView>,
 }
 
 impl BroadcastMessagePatch {
@@ -5394,7 +5394,7 @@ impl EntityExhaustionPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EntityExplodePatch {
-    pub block_list: ListDiff<BlockPos>,
+    pub block_list: SetDiff<BlockPos>,
     pub explosion_yield: Option<f32>,
 }
 
@@ -6166,7 +6166,7 @@ impl PlayerCommandPreprocessPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlayerCommandSendPatch {
-    pub commands: ListDiff<String>,
+    pub commands: SetDiff<String>,
 }
 
 impl PlayerCommandSendPatch {
@@ -6948,7 +6948,7 @@ pub struct ServerListPingPatch {
     pub max_players: Option<i32>,
     pub motd: Option<String>,
     pub server_icon: Option<Vec<u8>>,
-    pub hidden_players: ListDiff<Uuid>,
+    pub hidden_players: SetDiff<Uuid>,
 }
 
 impl ServerListPingPatch {

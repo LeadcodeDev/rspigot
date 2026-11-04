@@ -90,24 +90,18 @@ impl<L: ClientLink> Server<L> {
             CommandContext::broadcast(self, line);
             return;
         }
-        let mut console = false;
-        let mut players: Vec<PlayerId> = Vec::new();
-        for recipient in patch.recipients.apply_with(
+        let settled = patch.recipients.apply_with(
             offered,
             |_, sender| Some(Recipient::of(&sender)),
             |sender| Some(Recipient::of(&sender)),
-        ) {
+        );
+        for recipient in settled {
             match recipient {
-                Recipient::Console => console = true,
-                Recipient::Player(id) if !players.contains(&id) => players.push(id),
-                Recipient::Player(_) => {}
+                Recipient::Console => tracing::info!("{}", console_text(&line)),
+                Recipient::Player(id) => {
+                    self.push(Audience::One(id), ClientEvent::system(line.clone()));
+                }
             }
-        }
-        if console {
-            tracing::info!("{}", console_text(&line));
-        }
-        for player in players {
-            self.push(Audience::One(player), ClientEvent::system(line.clone()));
         }
     }
 }

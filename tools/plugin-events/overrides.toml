@@ -323,6 +323,7 @@ getters = ["whichButton"]
 getters = ["iterator"]
 limits = { setMotd = 32767 }
 rename = { iterator = "players" }
+sets = ["hidden_players"]
 extra = [
     { name = "hidden_players", java = "java.util.List<java.util.UUID>", patch = true, number = 100, reason = "Spigot reads back the players removed through iterator(): they leave the sample and the count" },
 ]
@@ -351,11 +352,13 @@ collections = ["getItemsHarvested"]
 [events.EntityExplode]
 getters = ["blockList"]
 collections = ["blockList"]
+sets = ["blockList"]
 rename = { yield = "explosion_yield" }
 
 [events.BlockExplode]
 getters = ["blockList"]
 collections = ["blockList"]
+sets = ["blockList"]
 rename = { yield = "explosion_yield" }
 
 [events.EntityDeath]
@@ -380,6 +383,7 @@ collections = ["getItems"]
 
 [events.PlayerCommandSend]
 collections = ["getCommands"]
+sets = ["getCommands"]
 
 [events.SignChange]
 collections = ["getLines"]

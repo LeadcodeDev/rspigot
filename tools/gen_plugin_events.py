@@ -143,6 +143,7 @@ class Ty:
     leaf: Leaf
     many: bool = False
     array: bool = False
+    set: bool = False
 
     def same(self, other):
         return self.leaf.proto == other.leaf.proto and self.many == other.many
@@ -343,6 +344,7 @@ class Field:
     direct: bool = False
     index: Leaf = None
     limit: int = None
+    set: bool = False
 
 
 @dataclass
@@ -475,7 +477,7 @@ class Model:
         generic = re.match(r"^([\w.$]+)<(.*)>$", java)
         if generic and generic[1] in CONTAINERS:
             inner = re.sub(r"^\?( (extends|super) )?", "", generic[2]).strip()
-            return Ty(self.leaf(inner), many=True)
+            return Ty(self.leaf(inner), many=True, set=generic[1] == "java.util.Set")
         if generic:
             return Ty(self.leaf(generic[1]))
         return Ty(self.leaf(java))
@@ -526,7 +528,7 @@ class Model:
 
     def event(self, record, sdk_name, state, note, extra):
         allowed = {"getters", "rename", "collections", "omit", "unread", "revive", "applies_when_cancelled",
-                   "pairs", "extra", "indexed", "limits"}
+                   "pairs", "extra", "indexed", "limits", "sets"}
         for option in extra:
             if option not in allowed:
                 fail(f"{record['name']}: unknown override `{option}`")
@@ -684,6 +686,16 @@ class Model:
                 target.setter_method = "set_" + name
                 target.patch_nullable = item.get("nullable", False)
             fields[name] = target
+        readers = {f.getter: f for f in fields.values()}
+        for getter in extra.get("sets", []):
+            target = readers.get(getter)
+            if target is None or not listed(target) or not target.setter:
+                fail(f"{record['name']}: the set {getter} is not a list patch")
+            if target.ty.set:
+                fail(f"{record['name']}: {getter} is already a Java Set")
+            target.set = True
+        for f in fields.values():
+            f.set = f.set or (listed(f) and f.ty.set)
         cancel_sets = {}
         main_result = None
         owner = next((java for java in [record["java"]] + record["parents"] if java in self.results), None)
@@ -798,7 +810,7 @@ class Model:
                         fail(f"{fired.name} lacks the field {f.name} of {handler.name}")
                     if f.getter and not other.getter:
                         fail(f"{fired.name}.{f.name} is not readable as in {handler.name}")
-                    if f.setter and (not other.setter or other.patch_nullable != f.patch_nullable or not other.ty.same(f.ty)):
+                    if f.setter and (not other.setter or other.patch_nullable != f.patch_nullable or not other.ty.same(f.ty) or other.set != f.set):
                         fail(f"{fired.name}.{f.name} cannot carry a patch of {handler.name}")
                     if f.getter and not projection(other, f):
                         fail(f"{fired.name}.{f.name} cannot be read as {handler.name}.{f.name}")
@@ -991,7 +1003,7 @@ def core_patch_type(f):
     if f.index:
         return f"Vec<({f.index.core}, {leaf.core})>"
     if f.ty.many:
-        return f"ListDiff<{leaf.core}>"
+        return f"{'SetDiff' if f.set else 'ListDiff'}<{leaf.core}>"
     if f.patch_nullable:
         return f"Option<Option<{leaf.core}>>"
     return f"Option<{leaf.core}>"
@@ -1285,8 +1297,10 @@ def emit_core(model):
     helpers = sorted({name for e in located_events for f in e.patched for name in REFUSALS if name in (refusal_check(f) or "")})
     if any(f.index for e in patched for f in e.patched):
         helpers.append("merge_indexed")
-    if any(listed(f) for e in patched for f in e.patched):
+    if any(listed(f) and not f.set for e in patched for f in e.patched):
         helpers.append("ListDiff")
+    if any(listed(f) and f.set for e in patched for f in e.patched):
+        helpers.append("SetDiff")
     if helpers:
         head(f"use crate::plugins::patch::{{{', '.join(sorted(helpers))}}};")
     head()

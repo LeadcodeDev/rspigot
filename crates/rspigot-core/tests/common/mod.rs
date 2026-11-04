@@ -648,7 +648,7 @@ fn indices<T>(snapshot: &[T], chosen: impl Fn(&T) -> bool) -> Vec<u32> {
         .collect()
 }
 
-pub fn removing<T>(snapshot: &[T], gone: impl Fn(&T) -> bool) -> ListDiff<T> {
+pub fn removing<T, const SET: bool>(snapshot: &[T], gone: impl Fn(&T) -> bool) -> ListDiff<T, SET> {
     ListDiff {
         removed: indices(snapshot, gone),
         replaced: Vec::new(),
@@ -656,7 +656,7 @@ pub fn removing<T>(snapshot: &[T], gone: impl Fn(&T) -> bool) -> ListDiff<T> {
     }
 }
 
-pub fn replacing<T>(snapshot: &[T], added: Vec<T>) -> ListDiff<T> {
+pub fn replacing<T, const SET: bool>(snapshot: &[T], added: Vec<T>) -> ListDiff<T, SET> {
     ListDiff {
         removed: indices(snapshot, |_| true),
         replaced: Vec::new(),
