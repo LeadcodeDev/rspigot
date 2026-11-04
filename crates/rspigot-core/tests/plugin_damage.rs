@@ -356,3 +356,25 @@ fn a_difficulty_scaled_damage_never_asks_for_a_player_in_peaceful() {
     };
     assert_eq!(state.health, 20.0);
 }
+
+#[test]
+fn a_mob_hit_whose_attacker_died_while_it_waited_lands_nothing() {
+    let mut s = waiting_scene(
+        &["Alice"],
+        vec![deciding(1, EventKind::EntityDamageByEntity)],
+    );
+    let alice = s.players[0].id;
+    let zombie = spawn(&mut s, "minecraft:zombie", Vec3::new(0.5, 64.0, 1.5));
+    s.server
+        .do_hurt_target(zombie.id, rspigot_core::commands::Target::Player(alice));
+    let asked = last_asked(&s.plugin, EventKind::EntityDamageByEntity);
+    s.act(Order::Entity {
+        entity: zombie.id,
+        order: EntityOrder::Kill,
+    });
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    let Answer::Player(state) = s.ask(Question::Player(alice)) else {
+        panic!("expected Alice");
+    };
+    assert_eq!(state.health, 20.0);
+}

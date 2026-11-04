@@ -261,6 +261,7 @@ impl<L: ClientLink> Server<L> {
         let attacker = match then {
             AfterHurt::Attack(follow) => follow.attacker,
             AfterHurt::Sweep(follow) => follow.attacker,
+            AfterHurt::MobAttack(follow) => return !self.living_entity_alive(follow.attacker),
             _ => return false,
         };
         self.players
