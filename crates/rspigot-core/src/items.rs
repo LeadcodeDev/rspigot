@@ -10,7 +10,7 @@ use crate::plugins::events::{
     CreatureSpawnReason, EntityPickupItem, EntityRemoveCause, ItemDespawn,
 };
 use crate::plugins::steps::{Announced, PickupStep};
-use crate::plugins::{Continuation, EntityView, EventPayload, view_of_entity};
+use crate::plugins::{Continuation, EntityView, EventKind, EventPayload, view_of_entity};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -258,26 +258,26 @@ impl<L: ClientLink> Server<L> {
         let Some(stack) = self.item_stack_of(id) else {
             return;
         };
-        let Some(player) = self.players.get(&player_id) else {
-            return;
-        };
-        let mut trial = player.inventory.clone();
-        let outcome = trial.insert(
-            stack.item,
-            u32::from(stack.count.get()),
-            stack.item.max_stack_size(),
-        );
-        let taken = u32::from(stack.count.get()) - outcome.remaining;
-        if taken == 0 {
-            return;
-        }
-        let remaining = outcome.remaining as i32;
         let step = PickupStep {
             player: player_id,
             collector,
             item: id,
             stack,
         };
+        if !self.listened(EventKind::EntityPickupItem) {
+            self.finish_pickup(step, false);
+            return;
+        }
+        let Some(player) = self.players.get(&player_id) else {
+            return;
+        };
+        let mut trial = player.inventory.clone();
+        let count = u32::from(step.stack.count.get());
+        let outcome = trial.insert(step.stack.item, count, step.stack.item.max_stack_size());
+        if outcome.remaining == count {
+            return;
+        }
+        let remaining = outcome.remaining as i32;
         let lane = self.lane_for(Some(player_id), collector);
         self.fire(
             lane,
