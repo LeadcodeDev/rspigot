@@ -425,8 +425,7 @@ fn a_waiting_natural_spawn_holds_its_slot_and_a_cancelled_one_frees_it() {
     );
 }
 
-#[test]
-fn a_cancelled_conversion_still_removes_the_old_mob_with_transformation() {
+fn drowning_zombie() -> (Scene, EntityId, Fired) {
     let mut server = server(PluginSettings {
         decision_ticks: 1_000,
         ..PluginSettings::default()
@@ -476,6 +475,12 @@ fn a_cancelled_conversion_still_removes_the_old_mob_with_transformation() {
                 if spawn.spawn_reason == CreatureSpawnReason::Drowned)
         })
         .expect("the conversion asks");
+    (s, zombie, asked)
+}
+
+#[test]
+fn a_cancelled_conversion_still_removes_the_old_mob_with_transformation() {
+    let (mut s, zombie, asked) = drowning_zombie();
     let EventPayload::CreatureSpawn(spawn) = &asked.payload else {
         panic!("a creature spawn");
     };
@@ -500,6 +505,28 @@ fn a_cancelled_conversion_still_removes_the_old_mob_with_transformation() {
             .is_empty()
     );
     assert_eq!(removals(&s), [(zombie, EntityRemoveCause::Transformation)]);
+}
+
+#[test]
+fn a_conversion_whose_old_mob_died_meanwhile_brings_no_new_mob() {
+    let (mut s, zombie, asked) = drowning_zombie();
+    s.act(Order::Entity {
+        entity: zombie,
+        order: EntityOrder::Kill,
+    });
+    rule_on(&mut s.server, 1, asked.id, false, None);
+    assert!(
+        s.server
+            .entities_of(rspigot_entities::EntityKind::Drowned)
+            .is_empty()
+    );
+    assert!(
+        !removals(&s)
+            .iter()
+            .any(|(_, cause)| *cause == EntityRemoveCause::Transformation)
+    );
+    s.tick(25);
+    assert_eq!(removals(&s), [(zombie, EntityRemoveCause::Death)]);
 }
 
 fn eggs(s: &mut Scene) -> i32 {

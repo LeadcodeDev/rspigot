@@ -172,7 +172,9 @@ impl<L: ClientLink> Server<L> {
         } = step;
         let id = entity.base.id;
         let mut placed = None;
-        if cancelled {
+        let orphaned =
+            matches!(birth.then, Spawned::Converted { old, .. } if !self.living_entity_alive(old));
+        if cancelled || orphaned {
             self.entities.mobs.initial_targets.remove(&id);
         } else if loaded && !self.world.chunks.is_loaded(entity.base.chunk()) {
             self.entities.mobs.initial_targets.remove(&id);

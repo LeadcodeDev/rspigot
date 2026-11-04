@@ -550,6 +550,9 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn finish_conversion(&mut self, old: EntityId, event: i32) {
+        if !self.living_entity_alive(old) {
+            return;
+        }
         let Some(entity) = self.entities.store.get_mut(old) else {
             return;
         };
