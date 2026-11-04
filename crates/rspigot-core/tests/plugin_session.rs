@@ -746,3 +746,25 @@ fn the_end_of_a_refused_second_session_leaves_the_first_one_online() {
     s.server.handle(leave_of(&first));
     assert_eq!(s.server.players_online(), 0);
 }
+
+#[test]
+fn repeated_anti_cheat_triggers_ask_one_kick_at_a_time() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerKick)]);
+    let alice = s.players[0].clone();
+    for _ in 0..3 {
+        send_input(
+            &mut s.server,
+            &alice,
+            PlayerInput::Chat("bad\u{7}".to_owned()),
+        );
+    }
+    assert_eq!(asked_for(&s.plugin, EventKind::PlayerKick).len(), 1);
+    let kick = last_asked(&s.plugin, EventKind::PlayerKick);
+    rule_on(&mut s.server, 1, kick.id, true, None);
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Chat("bad\u{7}".to_owned()),
+    );
+    assert_eq!(asked_for(&s.plugin, EventKind::PlayerKick).len(), 2);
+}

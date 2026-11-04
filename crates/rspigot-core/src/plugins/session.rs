@@ -294,7 +294,10 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get(&id) else {
             return;
         };
-        if !player.link.is_connected() {
+        let kicking = self.decisions.in_flight(Lane::Player(id), |then| {
+            matches!(then, Continuation::Kick(_))
+        });
+        if !player.link.is_connected() || kicking {
             return;
         }
         let leave = format!("§e{} left the game.", player.profile.name);
