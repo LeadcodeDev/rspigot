@@ -44,6 +44,39 @@ pub(crate) fn number_refusal(name: &str, value: f64) -> Option<String> {
     (!value.is_finite()).then(|| format!("{name} {value} is not finite"))
 }
 
+const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
+const ICON_SIZE: u32 = 64;
+const STATUS_CHARS: usize = 32_767;
+const ICON_PREFIX: &str = "data:image/png;base64,";
+
+pub(crate) fn text_refusal(name: &str, text: &str, limit: usize) -> Option<String> {
+    let length = text.encode_utf16().count();
+    (length > limit).then(|| format!("{name} is {length} characters long, more than {limit}"))
+}
+
+pub(crate) fn icon_refusal(name: &str, png: &[u8]) -> Option<String> {
+    let header = png
+        .strip_prefix(PNG_SIGNATURE)
+        .and_then(|rest| rest.get(4..16))
+        .filter(|header| header.starts_with(b"IHDR"));
+    let Some(&[_, _, _, _, w0, w1, w2, w3, h0, h1, h2, h3]) = header else {
+        return Some(format!("{name} is not a PNG image"));
+    };
+    let width = u32::from_be_bytes([w0, w1, w2, w3]);
+    let height = u32::from_be_bytes([h0, h1, h2, h3]);
+    if width != ICON_SIZE || height != ICON_SIZE {
+        return Some(format!(
+            "{name} is a {width}x{height} image, not {ICON_SIZE}x{ICON_SIZE}"
+        ));
+    }
+    let encoded = ICON_PREFIX.len() + png.len().div_ceil(3) * 4;
+    (encoded > STATUS_CHARS).then(|| {
+        format!(
+            "{name} takes {encoded} characters once encoded, more than a status answer holds ({STATUS_CHARS})",
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use rspigot_domain::{EntityId, Rotation};
@@ -53,7 +86,7 @@ mod tests {
     use crate::plugins::events::{
         EntityDamageByEntityPatch, EntityDamagePatch, EntityExhaustionPatch, EntityTeleportPatch,
         EventResult, InventoryClickPatch, InventoryDragPatch, PlayerMovePatch, PlayerVelocityPatch,
-        PotionSplashPatch,
+        PotionSplashPatch, ServerListPingPatch,
     };
     use crate::plugins::{EventKind, ItemSpec};
 
@@ -82,6 +115,72 @@ mod tests {
         assert_eq!(
             moving(None).then(moving(Some(at(9.0)))),
             moving(Some(at(9.0)))
+        );
+    }
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut png = PNG_SIGNATURE.to_vec();
+        png.extend_from_slice(b"\0\0\0\rIHDR");
+        png.extend_from_slice(&width.to_be_bytes());
+        png.extend_from_slice(&height.to_be_bytes());
+        png.extend_from_slice(&[8, 6, 0, 0, 0]);
+        png
+    }
+
+    #[test]
+    fn a_server_icon_must_be_a_64_pixel_square_png() {
+        let icon = |png| {
+            EventPatch::ServerListPing(ServerListPingPatch {
+                server_icon: Some(png),
+                ..ServerListPingPatch::default()
+            })
+        };
+        assert_eq!(icon(png(64, 64)).refusal(), None);
+        assert_eq!(
+            EventPatch::ServerListPing(ServerListPingPatch::default()).refusal(),
+            None
+        );
+        assert_eq!(
+            icon(png(64, 32)).refusal(),
+            Some("server_icon is a 64x32 image, not 64x64".to_owned())
+        );
+        let mut heavy = png(64, 64);
+        heavy.resize(24_600, 0);
+        assert_eq!(
+            icon(heavy).refusal(),
+            Some(
+                "server_icon takes 32822 characters once encoded, more than a status answer holds (32767)"
+                    .to_owned()
+            )
+        );
+        let mut largest = png(64, 64);
+        largest.resize(24_558, 0);
+        assert_eq!(icon(largest).refusal(), None);
+        let truncated = png(64, 64)[..20].to_vec();
+        for broken in [Vec::new(), b"GIF89a".to_vec(), truncated] {
+            assert_eq!(
+                icon(broken).refusal(),
+                Some("server_icon is not a PNG image".to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn a_patched_motd_longer_than_a_status_answer_is_refused() {
+        let motd = |text: String| {
+            EventPatch::ServerListPing(ServerListPingPatch {
+                motd: Some(text),
+                ..ServerListPingPatch::default()
+            })
+        };
+        assert_eq!(motd("é".repeat(32_767)).refusal(), None);
+        assert_eq!(
+            motd("a".repeat(32_768)).refusal(),
+            Some("motd is 32768 characters long, more than 32767".to_owned())
+        );
+        assert_eq!(
+            motd("🙂".repeat(16_384)).refusal(),
+            Some("motd is 32768 characters long, more than 32767".to_owned())
         );
     }
 

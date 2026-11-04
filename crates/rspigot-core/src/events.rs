@@ -2,6 +2,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use crossbeam_channel::Sender;
+use futures_channel::oneshot;
 use rspigot_domain::chunk::ChunkColumn;
 use rspigot_domain::damage::DamageType;
 use rspigot_domain::effect::{AttributeState, EffectId, EffectInstance};
@@ -14,6 +15,7 @@ use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Identifier, Rot
 use crate::commands::CommandTree;
 use crate::plugins::{FromPlugin, PluginIntro};
 use crate::ports::PluginOutbox;
+use crate::status::{StatusPing, StatusReply};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hand {
@@ -207,6 +209,10 @@ pub enum Inbound<L> {
         session: u64,
     },
     Console(String),
+    StatusPing {
+        ping: StatusPing,
+        reply: Option<oneshot::Sender<StatusReply>>,
+    },
     PluginConnected {
         connection: u64,
         intro: PluginIntro,

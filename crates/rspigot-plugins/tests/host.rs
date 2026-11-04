@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rspigot_core::events::{ClientEvent, Inbound};
-use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMove};
+use rspigot_core::plugins::events::{EntityTargetPatch, PlayerMove, PluginDisable};
 use rspigot_core::plugins::{
     Access, EventKind, EventPatch, EventPayload, FromPlugin, HandlerSpec, Location, Phase,
-    PlayerSnapshot, PluginIntro, Priority, ToPlugin, Verdict,
+    PlayerSnapshot, PluginInfo, PluginIntro, Priority, ToPlugin, Verdict,
 };
 use rspigot_core::ports::{ClientLink, PluginOutbox};
 use rspigot_domain::player::{GameMode, PlayerId};
@@ -186,7 +186,11 @@ struct Plugin {
 impl Plugin {
     async fn open(address: SocketAddr, first: from_plugin::Body) -> Result<Self, Status> {
         let (says, said) = mpsc::unbounded_channel();
-        says.send(v1::FromPlugin { body: Some(first) }).unwrap();
+        says.send(v1::FromPlugin {
+            body: Some(first),
+            origin: None,
+        })
+        .unwrap();
         let mut client = PluginHostClient::new(channel(address).await);
         let hears = within(client.connect(UnboundedReceiverStream::new(said)))
             .await?
@@ -206,7 +210,12 @@ impl Plugin {
     }
 
     fn say(&self, body: from_plugin::Body) {
-        self.says.send(v1::FromPlugin { body: Some(body) }).unwrap();
+        self.says
+            .send(v1::FromPlugin {
+                body: Some(body),
+                origin: None,
+            })
+            .unwrap();
     }
 
     async fn hear(&mut self) -> Option<to_plugin::Body> {
@@ -685,4 +694,44 @@ async fn what_the_core_sent_before_a_stop_reaches_the_plugin() {
         heard += 1;
     }
     assert_eq!(heard, 50);
+}
+
+#[tokio::test]
+async fn a_plugin_disable_the_core_sends_before_a_stop_reaches_the_plugin_before_its_stream_ends() {
+    let mut host = Host::start(None).await;
+    let mut plugin = Plugin::accepted(host.address, hello("welcome")).await;
+    assert!(matches!(
+        host.next().await,
+        Seen::Connected { connection: 1, .. }
+    ));
+    host.tell(
+        1,
+        ToPlugin::Event {
+            id: 4,
+            handlers: vec![1],
+            phase: Phase::Settled,
+            cancelled: false,
+            payload: EventPayload::PluginDisable(PluginDisable {
+                plugin: PluginInfo {
+                    name: "guard".to_owned(),
+                    version: "2.0.0".to_owned(),
+                },
+            }),
+        },
+    );
+    host.stop.send(true).unwrap();
+    let Some(to_plugin::Body::Event(heard)) = plugin.hear().await else {
+        panic!("expected an event");
+    };
+    assert_eq!((heard.id, heard.handlers), (4, vec![1]));
+    assert_eq!(
+        heard.payload,
+        Some(event::Payload::PluginDisable(v1::PluginDisable {
+            plugin: Some(v1::PluginInfo {
+                name: "guard".to_owned(),
+                version: "2.0.0".to_owned(),
+            }),
+        }))
+    );
+    assert!(matches!(within(plugin.hears.message()).await, Ok(None)));
 }

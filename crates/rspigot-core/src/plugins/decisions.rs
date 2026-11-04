@@ -15,6 +15,9 @@ pub(crate) enum Lane {
     Chunk(ChunkPos),
     Entity(EntityId),
     World,
+    Console,
+    Broadcast,
+    Ping,
 }
 
 impl From<PlayerId> for Lane {

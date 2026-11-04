@@ -89,18 +89,21 @@ pub(crate) fn from_plugin(
     message: v1::FromPlugin,
     warnings: &mut Vec<String>,
 ) -> Result<FromPlugin, Malformed> {
+    let origin = message.origin;
+    let ordered = |order| match origin {
+        Some(event) => FromPlugin::Reaction { event, order },
+        None => FromPlugin::Order(order),
+    };
     Ok(match message.body.ok_or(Malformed::Empty)? {
         from_plugin::Body::Hello(_) => return Err(Malformed::SecondHello),
         from_plugin::Body::Decision(decided) => decision::decision(decided, warnings),
-        from_plugin::Body::Player(order) => FromPlugin::Order(player::order(order)?),
-        from_plugin::Body::Server(order) => FromPlugin::Order(server::order(order)?),
-        from_plugin::Body::Inventory(order) => FromPlugin::Order(inventory::order(order)?),
-        from_plugin::Body::World(order) => FromPlugin::Order(world::order(order)?),
-        from_plugin::Body::Block(order) => FromPlugin::Order(block::order(order)?),
-        from_plugin::Body::Entity(order) => FromPlugin::Order(entity::order(order)?),
-        from_plugin::Body::CustomInventory(order) => {
-            FromPlugin::Order(custom_inventory::order(order)?)
-        }
+        from_plugin::Body::Player(order) => ordered(player::order(order)?),
+        from_plugin::Body::Server(order) => ordered(server::order(order)?),
+        from_plugin::Body::Inventory(order) => ordered(inventory::order(order)?),
+        from_plugin::Body::World(order) => ordered(world::order(order)?),
+        from_plugin::Body::Block(order) => ordered(block::order(order)?),
+        from_plugin::Body::Entity(order) => ordered(entity::order(order)?),
+        from_plugin::Body::CustomInventory(order) => ordered(custom_inventory::order(order)?),
         from_plugin::Body::Question(asked) => question(asked)?,
     })
 }
@@ -206,7 +209,10 @@ mod tests {
     const STEVE: &str = "00000000-0000-0000-0000-000000000001";
 
     fn body(body: from_plugin::Body) -> v1::FromPlugin {
-        v1::FromPlugin { body: Some(body) }
+        v1::FromPlugin {
+            body: Some(body),
+            origin: None,
+        }
     }
 
     #[test]
@@ -242,6 +248,42 @@ mod tests {
             from_plugin(all, &mut Vec::new()).unwrap(),
             FromPlugin::Question {
                 request: 8,
+                question: Question::Players
+            }
+        );
+    }
+
+    #[test]
+    fn an_order_sent_while_a_handler_runs_becomes_a_reaction_to_its_event() {
+        let broadcast = |origin| v1::FromPlugin {
+            body: Some(from_plugin::Body::Server(v1::ServerOrder {
+                order: Some(v1::server_order::Order::Broadcast("hi".into())),
+            })),
+            origin,
+        };
+        let order = Order::Server(rspigot_core::plugins::ServerOrder::Broadcast("hi".into()));
+        assert_eq!(
+            from_plugin(broadcast(Some(9)), &mut Vec::new()).unwrap(),
+            FromPlugin::Reaction {
+                event: 9,
+                order: order.clone()
+            }
+        );
+        assert_eq!(
+            from_plugin(broadcast(None), &mut Vec::new()).unwrap(),
+            FromPlugin::Order(order)
+        );
+        let asked = v1::FromPlugin {
+            body: Some(from_plugin::Body::Question(v1::Question {
+                request: 3,
+                question: Some(question::Question::Players(v1::Empty {})),
+            })),
+            origin: Some(9),
+        };
+        assert_eq!(
+            from_plugin(asked, &mut Vec::new()).unwrap(),
+            FromPlugin::Question {
+                request: 3,
                 question: Question::Players
             }
         );

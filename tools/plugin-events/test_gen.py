@@ -107,6 +107,20 @@ class Generator(unittest.TestCase):
         self.assertEqual(failed.returncode, 1)
         self.assertIn("PlayerJoin must have exactly one state", failed.stderr)
 
+    def test_a_length_limit_needs_an_existing_text_setter(self):
+        overrides = self.root / INPUTS[1]
+        original = overrides.read_text()
+        for limit, message in (
+            ("setNothing = 5", "the override limits setNothing matches nothing"),
+            ("setMaxPlayers = 5", "the limit of setMaxPlayers needs a text setter and a positive length"),
+        ):
+            overrides.write_text(original.replace("limits = { setMotd = 32767 }", f"limits = {{ {limit} }}"))
+            failed = generator(self.root, "--check")
+            self.assertEqual(failed.returncode, 1, limit)
+            self.assertIn(message, failed.stderr)
+        overrides.write_text(original)
+        self.assertEqual(generator(self.root, "--check").returncode, 0)
+
     def test_a_deprecated_or_retired_event_leaves_its_numbers_reserved(self):
         catalog = self.catalog()
         sheared = next(event for event in catalog["events"] if event["name"] == "SheepRegrowWool")

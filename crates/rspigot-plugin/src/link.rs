@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -10,6 +11,14 @@ use tokio::sync::{mpsc, oneshot};
 use crate::Error;
 
 pub(crate) const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
+
+tokio::task_local! {
+    static HANDLING: u64;
+}
+
+pub(crate) async fn handling<F: Future>(event: u64, handler: F) -> F::Output {
+    HANDLING.scope(event, handler).await
+}
 
 pub(crate) type Outbound = mpsc::UnboundedSender<v1::FromPlugin>;
 
@@ -162,12 +171,19 @@ impl fmt::Debug for Link {
 
 fn send(connection: Option<&Connection>, body: from_plugin::Body) {
     if let Some(connection) = connection {
-        let _ = connection.outbound.send(message(body));
+        let origin = HANDLING.try_with(|event| *event).ok();
+        let _ = connection.outbound.send(v1::FromPlugin {
+            body: Some(body),
+            origin,
+        });
     }
 }
 
 pub(crate) const fn message(body: from_plugin::Body) -> v1::FromPlugin {
-    v1::FromPlugin { body: Some(body) }
+    v1::FromPlugin {
+        body: Some(body),
+        origin: None,
+    }
 }
 
 #[cfg(test)]

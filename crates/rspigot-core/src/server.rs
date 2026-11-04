@@ -27,14 +27,14 @@ use crate::player::Player;
 use crate::player_io::PlayerIo;
 use crate::plugins::events::PlayerLoginResult;
 use crate::plugins::{
-    Arrival, Decisions, Impacts, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
-    Visibility,
+    Arrival, Broadcasts, Decisions, Impacts, Lane, PluginInfo, PluginIntro, PluginInventories,
+    Refusal, Registry, ToPlugin, Visibility,
 };
 use crate::ports::{
     ChunkGenerator, ChunkStore, ClientLink, EntityStore, PlayerStore, PluginOutbox,
 };
 use crate::spawning::Spawning;
-use crate::status::{PlayerSample, StatusBoard};
+use crate::status::{PingHook, PlayerSample, StatusBoard};
 use crate::streaming::ChunkStreamer;
 
 const KICK_DATE: &str = "%Y-%m-%d at %H:%M:%S UTC";
@@ -109,6 +109,7 @@ pub struct Server<L> {
     pub(crate) spawning: Spawning,
     pub(crate) plugins: Registry,
     pub(crate) decisions: Decisions,
+    pub(crate) broadcasts: Broadcasts,
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
     pub(crate) impacts: Impacts,
@@ -119,7 +120,7 @@ pub struct Server<L> {
     inventory_counter: u64,
     clock: fn() -> SystemTime,
     next_entity_id: i32,
-    status: StatusBoard,
+    pub(crate) status: StatusBoard,
     operator_tree: Arc<CommandTree>,
     player_tree: Arc<CommandTree>,
     tick: u64,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             spawning,
             plugins: Registry::default(),
             decisions: Decisions::default(),
+            broadcasts: Broadcasts::default(),
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
             impacts: Impacts::default(),
@@ -275,19 +277,15 @@ impl<L: ClientLink> Server<L> {
 
     pub fn run(mut self, inbound: &Receiver<Inbound<L>>) -> LevelData {
         self.startup = None;
+        self.handle_waiting(inbound);
+        self.server_loaded();
         let tick_length = Duration::from_millis(50);
         let results = self.workers.results().clone();
         let mut next_tick = Instant::now();
         while self.running {
             let now = Instant::now();
             if now >= next_tick {
-                let mut waiting = queued(inbound);
-                while self.running
-                    && let Some(message) = waiting.next()
-                {
-                    self.handle(message);
-                    self.deliver();
-                }
+                self.handle_waiting(inbound);
                 if !self.running {
                     break;
                 }
@@ -320,7 +318,17 @@ impl<L: ClientLink> Server<L> {
                 default(next_tick.saturating_duration_since(now)) => {}
             }
         }
-        self.shutdown()
+        self.shutdown(inbound)
+    }
+
+    fn handle_waiting(&mut self, inbound: &Receiver<Inbound<L>>) {
+        let mut waiting = queued(inbound);
+        while self.running
+            && let Some(message) = waiting.next()
+        {
+            self.handle(message);
+            self.deliver();
+        }
     }
 
     pub fn handle(&mut self, message: Inbound<L>) {
@@ -349,9 +357,8 @@ impl<L: ClientLink> Server<L> {
                     self.remove_player(player, true);
                 }
             }
-            Inbound::Console(line) => {
-                crate::commands::execute(self, crate::commands::CommandSender::Console, &line);
-            }
+            Inbound::Console(line) => self.console_line(line),
+            Inbound::StatusPing { ping, reply } => self.status_ping(ping, reply),
             Inbound::PluginConnected {
                 connection,
                 intro,
@@ -373,12 +380,19 @@ impl<L: ClientLink> Server<L> {
         outbox: Box<dyn PluginOutbox>,
     ) {
         let tick = self.current_tick();
+        let plugin = PluginInfo {
+            name: intro.name.clone(),
+            version: intro.version.clone(),
+        };
         let replaced = self.plugins.connect(connection, intro, outbox, tick);
-        if let Some((old, outbox)) = replaced {
-            outbox.send(ToPlugin::Replaced);
-            self.forget_plugin_inventories(old);
+        if let Some(replaced) = replaced {
+            replaced.outbox.send(ToPlugin::Replaced);
+            self.forget_plugin_inventories(replaced.connection);
+            self.plugin_disabled(connection, replaced.plugin);
         }
         self.plugins.send(connection, ToPlugin::Accepted);
+        self.refresh_ping_hook();
+        self.plugin_enabled(connection, plugin);
         self.release_departed_plugins();
     }
 
@@ -964,8 +978,10 @@ impl<L: ClientLink> Server<L> {
         self.world.chunks.stats()
     }
 
-    fn shutdown(mut self) -> LevelData {
+    fn shutdown(mut self, inbound: &Receiver<Inbound<L>>) -> LevelData {
         tracing::info!("Stopping server");
+        self.status.update(|status| status.ping = PingHook::Off);
+        queued(inbound).for_each(drop);
         self.settle_every_lane();
         let ids: Vec<PlayerId> = self.players.keys().copied().collect();
         for id in ids {
@@ -978,6 +994,7 @@ impl<L: ClientLink> Server<L> {
             self.remove_player(id, false);
         }
         self.world_saving_at_shutdown();
+        self.disable_plugins_at_shutdown();
         self.outbox.clear();
         tracing::info!(
             "Saving chunks for level '{}'/{}",

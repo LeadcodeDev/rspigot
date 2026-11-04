@@ -9682,6 +9682,8 @@ pub mod question {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FromPlugin {
+    #[prost(uint64, optional, tag = "11")]
+    pub origin: ::core::option::Option<u64>,
     #[prost(oneof = "from_plugin::Body", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10")]
     pub body: ::core::option::Option<from_plugin::Body>,
 }

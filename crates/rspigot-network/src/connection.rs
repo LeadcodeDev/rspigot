@@ -1,8 +1,10 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 
 use rspigot_core::events::{Inbound, PreLoginVerdict};
 use rspigot_core::ports::SessionVerifier;
+use rspigot_core::status::{PingHook, StatusPing, StatusReply, StatusSnapshot};
 use rspigot_domain::player::{ClientSettings, GameProfile, MainHand, PlayerId, ProfileProperty};
 use rspigot_domain::text::Component;
 use rspigot_protocol::codec::Encode;
@@ -15,7 +17,7 @@ use rspigot_protocol::configuration::{
     RegistryEntry, ServerboundConfiguration, UpdateEnabledFeatures,
 };
 use rspigot_protocol::frame::{Compression, FrameDecoder, FrameEncoder, FrameError};
-use rspigot_protocol::handshake::{ClientIntent, ServerboundHandshake};
+use rspigot_protocol::handshake::{ClientIntent, Intention, ServerboundHandshake};
 use rspigot_protocol::login::{
     ClientboundHello, LoginCompression, LoginDisconnect, LoginFinished, ServerboundLogin,
 };
@@ -28,10 +30,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
+use crate::NetworkConfig;
 use crate::listener::Shared;
 use crate::play;
-use crate::status::{legacy_status, status_json};
+use crate::status::{Shown, legacy_status, status_json};
 use crate::text::to_json;
+
+const STATUS_PATIENCE: Duration = Duration::from_secs(10);
+const LEGACY_DRAIN: Duration = Duration::from_secs(1);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {
@@ -132,8 +138,14 @@ pub async fn handle<V: SessionVerifier>(
     let peeked = stream.peek(&mut first).await?;
     if peeked == 1 && first[0] == 0xFE {
         let mut stream = stream;
-        let bytes = legacy_status(&shared.config, &shared.status.snapshot());
+        let answer = answer_ping(&shared, addr.ip().to_canonical(), true, String::new).await;
+        let bytes = legacy_status(&shared.config, &answer.shown(&shared.config));
         stream.write_all(&bytes).await?;
+        stream.shutdown().await?;
+        let mut rest = [0u8; 512];
+        let drained =
+            async { while matches!(stream.read(&mut rest).await, Ok(read) if read > 0) {} };
+        let _ = tokio::time::timeout(LEGACY_DRAIN, drained).await;
         return Ok(());
     }
     let (read, write) = stream.into_split();
@@ -155,7 +167,7 @@ pub async fn handle<V: SessionVerifier>(
     let (id, body) = split_packet_id(&packet)?;
     let ServerboundHandshake::Intention(intention) = ServerboundHandshake::decode(id, body)?;
     match intention.intent {
-        ClientIntent::Status => status(&shared, &mut session).await,
+        ClientIntent::Status => status(&shared, &mut session, &intention).await,
         ClientIntent::Login | ClientIntent::Transfer => {
             if intention.intent == ClientIntent::Transfer && !shared.config.accepts_transfers {
                 return reject(
@@ -194,9 +206,68 @@ async fn reject(session: &mut Session, reason: Component) -> Result<(), Connecti
     Ok(())
 }
 
+enum Answer {
+    Board(StatusSnapshot),
+    Replied(StatusReply),
+}
+
+impl Answer {
+    fn shown<'a>(&'a self, config: &'a NetworkConfig) -> Shown<'a> {
+        match self {
+            Self::Board(snapshot) => Shown::board(config, snapshot),
+            Self::Replied(reply) => Shown::replied(reply),
+        }
+    }
+}
+
+async fn answer_ping<V>(
+    shared: &Shared<V>,
+    address: IpAddr,
+    legacy: bool,
+    hostname: impl FnOnce() -> String,
+) -> Answer {
+    let snapshot = shared.status.snapshot();
+    let ping = || StatusPing {
+        address,
+        hostname: hostname(),
+        motd: shared.config.motd.clone(),
+        legacy,
+    };
+    match snapshot.ping {
+        PingHook::Off => Answer::Board(snapshot),
+        PingHook::Notify => {
+            let _ = shared.game.send(Inbound::StatusPing {
+                ping: ping(),
+                reply: None,
+            });
+            Answer::Board(snapshot)
+        }
+        PingHook::Ask => match settled_ping(shared, ping()).await {
+            Some(reply) => Answer::Replied(reply),
+            None => Answer::Board(snapshot),
+        },
+    }
+}
+
+async fn settled_ping<V>(shared: &Shared<V>, ping: StatusPing) -> Option<StatusReply> {
+    let (reply, answer) = futures_channel::oneshot::channel();
+    shared
+        .game
+        .send(Inbound::StatusPing {
+            ping,
+            reply: Some(reply),
+        })
+        .ok()?;
+    tokio::time::timeout(STATUS_PATIENCE, answer)
+        .await
+        .ok()?
+        .ok()
+}
+
 async fn status<V: SessionVerifier>(
     shared: &Shared<V>,
     session: &mut Session,
+    intention: &Intention,
 ) -> Result<(), ConnectionError> {
     loop {
         let packet = session.reader.next().await?;
@@ -206,7 +277,10 @@ async fn status<V: SessionVerifier>(
                 if !shared.config.enable_status {
                     return Ok(());
                 }
-                let json = status_json(&shared.config, &shared.status.snapshot());
+                let address = session.addr.ip().to_canonical();
+                let hostname = || format!("{}:{}", intention.host, intention.port);
+                let answer = answer_ping(shared, address, false, hostname).await;
+                let json = status_json(&shared.config, &answer.shown(&shared.config));
                 session
                     .writer
                     .send(

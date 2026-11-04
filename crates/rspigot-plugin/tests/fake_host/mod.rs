@@ -95,6 +95,7 @@ impl Stub {
             let hello = match incoming.message().await? {
                 Some(v1::FromPlugin {
                     body: Some(from_plugin::Body::Hello(hello)),
+                    ..
                 }) => hello,
                 _ => return Err(Status::invalid_argument("expected a Hello")),
             };

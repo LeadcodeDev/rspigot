@@ -1,13 +1,39 @@
 use std::collections::BTreeMap;
 
 use crate::config::PluginSettings;
-use crate::plugins::{Access, EventKind, HandlerSpec, PluginIntro, Priority, ToPlugin};
+use crate::plugins::{Access, EventKind, HandlerSpec, PluginInfo, PluginIntro, Priority, ToPlugin};
 use crate::ports::PluginOutbox;
 
 struct Connected {
     intro: PluginIntro,
     outbox: Box<dyn PluginOutbox>,
     since: u64,
+}
+
+impl Connected {
+    fn info(&self) -> PluginInfo {
+        PluginInfo {
+            name: self.intro.name.clone(),
+            version: self.intro.version.clone(),
+        }
+    }
+
+    fn departed(self, connection: u64) -> Departed {
+        Departed {
+            connection,
+            outbox: self.outbox,
+            plugin: PluginInfo {
+                name: self.intro.name,
+                version: self.intro.version,
+            },
+        }
+    }
+}
+
+pub(crate) struct Departed {
+    pub(crate) connection: u64,
+    pub(crate) outbox: Box<dyn PluginOutbox>,
+    pub(crate) plugin: PluginInfo,
 }
 
 #[derive(Default)]
@@ -23,14 +49,14 @@ impl Registry {
         intro: PluginIntro,
         outbox: Box<dyn PluginOutbox>,
         tick: u64,
-    ) -> Option<(u64, Box<dyn PluginOutbox>)> {
+    ) -> Option<Departed> {
         let taken = self
             .connected
             .iter()
             .find(|(_, plugin)| plugin.intro.name == intro.name)
             .map(|(id, _)| *id);
         let replaced =
-            taken.and_then(|id| self.connected.remove(&id).map(|plugin| (id, plugin.outbox)));
+            taken.and_then(|id| self.connected.remove(&id).map(|plugin| plugin.departed(id)));
         self.connected.insert(
             connection,
             Connected {
@@ -42,8 +68,17 @@ impl Registry {
         replaced
     }
 
-    pub(crate) fn disconnect(&mut self, connection: u64) -> bool {
-        self.connected.remove(&connection).is_some()
+    pub(crate) fn disconnect(&mut self, connection: u64) -> Option<PluginInfo> {
+        self.connected
+            .remove(&connection)
+            .map(|plugin| plugin.departed(connection).plugin)
+    }
+
+    pub(crate) fn connected(&self) -> Vec<(u64, PluginInfo)> {
+        self.connected
+            .iter()
+            .map(|(connection, plugin)| (*connection, plugin.info()))
+            .collect()
     }
 
     pub(crate) fn next_event_id(&mut self) -> u64 {
@@ -149,7 +184,9 @@ mod tests {
 
     use super::*;
     use crate::config::{PluginSettings, PriorityOverride};
-    use crate::plugins::{Access, EventKind, HandlerSpec, PluginIntro, Priority, ToPlugin};
+    use crate::plugins::{
+        Access, EventKind, HandlerSpec, PluginInfo, PluginIntro, Priority, ToPlugin,
+    };
     use crate::ports::PluginOutbox;
 
     #[derive(Clone, Default)]
@@ -459,9 +496,16 @@ mod tests {
             Box::new(second.clone()),
             9,
         );
-        let (old, outbox) = replaced.expect("the first outbox is handed back");
-        assert_eq!(old, 1);
-        outbox.send(ToPlugin::Replaced);
+        let replaced = replaced.expect("the first outbox is handed back");
+        assert_eq!(replaced.connection, 1);
+        assert_eq!(
+            replaced.plugin,
+            PluginInfo {
+                name: "welcome".to_owned(),
+                version: "1.0.0".to_owned(),
+            }
+        );
+        replaced.outbox.send(ToPlugin::Replaced);
         assert_eq!(first.received(), [ToPlugin::Replaced]);
         assert!(second.received().is_empty());
         assert!(!registry.is_current(1));
@@ -484,13 +528,19 @@ mod tests {
         let mut registry = Registry::default();
         connect(&mut registry, 1, mover("welcome", Priority::Normal));
         connect(&mut registry, 2, mover("welcome", Priority::Normal));
-        assert!(!registry.disconnect(1));
+        assert_eq!(registry.disconnect(1), None);
         assert!(registry.is_current(2));
         assert_eq!(registry.summary(&PluginSettings::default()).len(), 1);
-        assert!(registry.disconnect(2));
+        assert_eq!(
+            registry.disconnect(2),
+            Some(PluginInfo {
+                name: "welcome".to_owned(),
+                version: "1.0.0".to_owned(),
+            })
+        );
         assert!(!registry.is_current(2));
         assert!(registry.summary(&PluginSettings::default()).is_empty());
-        assert!(!registry.disconnect(2));
+        assert_eq!(registry.disconnect(2), None);
     }
 
     #[test]
@@ -498,7 +548,7 @@ mod tests {
         let mut registry = Registry::default();
         connect(&mut registry, 1, mover("welcome", Priority::Normal));
         connect(&mut registry, 2, mover("guard", Priority::Normal));
-        assert!(registry.disconnect(1));
+        assert!(registry.disconnect(1).is_some());
         let settings = PluginSettings::default();
         let remaining = registry.listeners(EventKind::PlayerMove, Access::Observe, &settings);
         assert_eq!(remaining.len(), 1);
@@ -521,6 +571,21 @@ mod tests {
             .map(|(name, _, _)| name)
             .collect();
         assert_eq!(names, ["zeta", "alpha", "beta"]);
+    }
+
+    #[test]
+    fn the_connected_plugins_are_listed_in_connection_order() {
+        let mut registry = Registry::default();
+        connect(&mut registry, 2, mover("zeta", Priority::Normal));
+        connect(&mut registry, 5, mover("alpha", Priority::Normal));
+        connect(&mut registry, 9, mover("beta", Priority::Normal));
+        registry.disconnect(5);
+        let listed: Vec<(u64, String)> = registry
+            .connected()
+            .into_iter()
+            .map(|(connection, plugin)| (connection, plugin.name))
+            .collect();
+        assert_eq!(listed, [(2, "zeta".to_owned()), (9, "beta".to_owned())]);
     }
 
     #[test]

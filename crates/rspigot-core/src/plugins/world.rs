@@ -17,18 +17,26 @@ const PARTICLE_RANGE: f64 = 32.0;
 const DAY_TICKS: i64 = 24_000;
 
 impl<L: ClientLink> Server<L> {
-    pub(super) fn apply_server_order(&mut self, connection: u64, order: ServerOrder) {
+    pub(super) fn apply_server_order(
+        &mut self,
+        connection: u64,
+        origin: Option<u64>,
+        order: ServerOrder,
+    ) {
         let name = order.name();
-        if let Err(reason) = self.server_order(connection, order) {
+        if let Err(reason) = self.server_order(connection, origin, order) {
             self.warn_plugin(connection, name, reason);
         }
     }
 
-    fn server_order(&mut self, connection: u64, order: ServerOrder) -> Result<(), String> {
+    fn server_order(
+        &mut self,
+        connection: u64,
+        origin: Option<u64>,
+        order: ServerOrder,
+    ) -> Result<(), String> {
         match order {
-            ServerOrder::Broadcast(message) => {
-                CommandContext::broadcast(self, resolve::text(&message));
-            }
+            ServerOrder::Broadcast(message) => self.broadcast_order(origin, message),
             ServerOrder::DispatchCommand(line) => {
                 commands::execute(self, CommandSender::Console, &line);
             }

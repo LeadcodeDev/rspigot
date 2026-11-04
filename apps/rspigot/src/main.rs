@@ -191,6 +191,7 @@ fn main() -> anyhow::Result<()> {
         started.elapsed().as_secs_f64()
     );
     let level = server.run(&game_inbox);
+    drop(game_inbox);
     let _ = stop.send(true);
     runtime.block_on(async {
         let adapters = async {

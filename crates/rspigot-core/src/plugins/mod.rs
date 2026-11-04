@@ -1,11 +1,13 @@
 mod aims;
 mod block;
 mod blocks;
+mod broadcast;
 mod burning;
 mod changes;
 mod chat;
 mod chunks;
 pub(crate) mod clicks;
+mod commands;
 mod contract;
 mod damage;
 mod decisions;
@@ -18,10 +20,12 @@ mod inventory;
 mod items;
 mod knockback;
 mod levels;
+mod lifecycle;
 mod menus;
 mod objects;
 mod orders;
 mod patch;
+mod ping;
 mod placing;
 mod player;
 mod poses;
@@ -53,6 +57,7 @@ use uuid::Uuid;
 use crate::admin::{BanEntry, IpBanEntry, ListEntry};
 use crate::events::Direction;
 
+pub(crate) use broadcast::Broadcasts;
 pub(crate) use burning::Combuster;
 pub use contract::{
     BlockSnapshot, BookMeta, BoundingBox, ChunkRef, DamageSourceView, DroppedItem, EnchantOffer,
@@ -79,7 +84,7 @@ pub(crate) use session::{Arrival, Refusal};
 pub(crate) use spawns::{name_of_entity, view_of_entity};
 pub(crate) use steps::{
     AfterHurt, ArrowFollow, AttackFollow, Birth, BlastFollow, BurnFollow, DeathStep, Holder,
-    MobAttackFollow, Potion, RespawnStep, Spawned, Struck, SweepFollow,
+    MobAttackFollow, Potion, RespawnStep, Spawned, Struck, SuggestStep, SweepFollow,
 };
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
@@ -311,6 +316,7 @@ pub enum ToPlugin {
 pub enum FromPlugin {
     Decision { event: u64, verdicts: Vec<Verdict> },
     Order(Order),
+    Reaction { event: u64, order: Order },
     Question { request: u64, question: Question },
 }
 
