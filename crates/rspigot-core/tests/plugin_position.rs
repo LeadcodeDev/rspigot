@@ -697,3 +697,17 @@ fn a_plugin_inventory_closes_after_the_death_of_its_viewer_settles() {
         .collect();
     assert_eq!(settled, [EventKind::PlayerDeath, EventKind::InventoryClose]);
 }
+
+#[test]
+fn a_respawn_nobody_listens_to_does_not_revive_a_player_whose_death_waits() {
+    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerDeath)]);
+    let alice = s.players[0].clone();
+    kill(&mut s, &alice);
+    send_input(&mut s.server, &alice, PlayerInput::Respawn);
+    assert_eq!(s.server.player_is_dead(alice.id), Some(true));
+    let (event, _) = death_of(&s);
+    rule_on(&mut s.server, 1, event, false, None);
+    assert_eq!(s.server.player_is_dead(alice.id), Some(true));
+    send_input(&mut s.server, &alice, PlayerInput::Respawn);
+    assert_eq!(s.server.player_is_dead(alice.id), Some(false));
+}

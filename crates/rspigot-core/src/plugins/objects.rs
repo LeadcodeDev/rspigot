@@ -16,7 +16,7 @@ use crate::plugins::events::{
 };
 use crate::plugins::steps::{
     Aim, BookStep, ClickStep, DigStep, DropSource, DropStep, FinishStep, InteractStep, Launch,
-    UseOnStep, UseStep, WearStep,
+    UseOnStep, UseStep, WearRequest, WearStep,
 };
 use crate::plugins::targets::{Punched, direction_of};
 use crate::plugins::{Access, EntityView, EventKind, EventPayload, LecternData, spec_of};
@@ -656,47 +656,48 @@ impl<L: ClientLink> Server<L> {
         let Some(slot) = self.hand_slot_of(id, hand) else {
             return;
         };
-        let Some(player) = self.players.get(&id) else {
-            return;
-        };
-        let Some(stack) = player.inventory.get(slot).cloned() else {
-            return;
-        };
-        if stack
-            .item
-            .kind()
-            .and_then(|kind| kind.max_damage())
-            .is_none()
-        {
-            return;
-        }
-        let damage = if player.abilities().instant_build || max_damage(&stack).is_none() {
-            0
-        } else {
-            amount
-        };
-        let item = spec_of(&stack);
-        let step = WearStep {
+        let request = WearRequest {
             player: id,
             hand,
             slot,
-            stack,
-            damage,
+            amount,
         };
-        self.fire(
-            id,
-            Continuation::ItemDamage(Box::new(step)),
-            move |server| {
-                Some(EventPayload::PlayerItemDamage(PlayerItemDamage {
-                    damage,
-                    item,
-                    player: server.snapshot_of(id)?,
-                }))
-            },
-        );
+        let kind = EventKind::PlayerItemDamage;
+        if self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
+        {
+            self.fire_deferred(id, Continuation::Wear(request));
+        } else if let Some(step) = self.wear_at_head(&request) {
+            self.finish_wear(step, false, PlayerItemDamagePatch::default());
+        }
     }
 
-    pub(super) fn finish_wear(
+    pub(crate) fn wear_at_head(&self, request: &WearRequest) -> Option<WearStep> {
+        let player = self.players.get(&request.player)?;
+        let stack = player.inventory.get(request.slot).cloned()?;
+        stack.item.kind()?.max_damage()?;
+        let damage = if player.abilities().instant_build || max_damage(&stack).is_none() {
+            0
+        } else {
+            request.amount
+        };
+        Some(WearStep {
+            player: request.player,
+            hand: request.hand,
+            slot: request.slot,
+            stack,
+            damage,
+        })
+    }
+
+    pub(crate) fn wear_payload(&self, step: &WearStep) -> Option<EventPayload> {
+        Some(EventPayload::PlayerItemDamage(PlayerItemDamage {
+            damage: step.damage,
+            item: spec_of(&step.stack),
+            player: self.snapshot_of(step.player)?,
+        }))
+    }
+
+    pub(crate) fn finish_wear(
         &mut self,
         step: WearStep,
         cancelled: bool,

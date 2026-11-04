@@ -53,6 +53,9 @@ impl<L: ClientLink> Server<L> {
                 self.finish_digging(step);
                 None
             }
+            Continuation::Wear(request) => self
+                .wear_at_head(&request)
+                .map(|step| Continuation::ItemDamage(Box::new(step))),
             Continuation::Input(step) => {
                 let player = self.players.get(&step.player)?;
                 (player.last_input != step.state).then_some(Continuation::Input(step))
@@ -86,6 +89,7 @@ impl<L: ClientLink> Server<L> {
             Continuation::UseItemOn(step) => return self.use_on_payload(step),
             Continuation::UseItem(step) => return self.use_payload(step),
             Continuation::Drop(step) => return self.drop_payload_of(step),
+            Continuation::ItemDamage(step) => return self.wear_payload(step),
             Continuation::Input(step) => EventPayload::PlayerInput(Pressed {
                 input: pressed(step.state),
                 player: self.snapshot_of(step.player)?,

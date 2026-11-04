@@ -433,7 +433,7 @@ fn a_tool_wear_is_asked_its_damage_patched_and_a_break_follows_it() {
 }
 
 #[test]
-fn a_tool_wear_without_a_decider_is_not_asked_and_one_in_flight_blocks_the_next() {
+fn a_tool_wear_without_a_decider_is_not_asked_and_every_wear_queues() {
     let mut s = scene_with(&["Alice"], vec![observe(1, EventKind::PlayerItemDamage)]);
     let alice = s.players[0].clone();
     console(&mut s, "give Alice stone_pickaxe 1");
@@ -441,12 +441,56 @@ fn a_tool_wear_without_a_decider_is_not_asked_and_one_in_flight_blocks_the_next(
     assert!(asked_for(&s.plugin, EventKind::PlayerItemDamage).is_empty());
     assert_eq!(settled_for(&s.plugin, EventKind::PlayerItemDamage).len(), 1);
 
-    let mut s = scene_with(&["Alice"], vec![deciding(1, EventKind::PlayerItemDamage)]);
+    let patient = rspigot_core::config::PluginSettings {
+        decision_ticks: 100,
+        ..rspigot_core::config::PluginSettings::default()
+    };
+    let mut s = scene_on(
+        server(patient),
+        &["Alice"],
+        vec![deciding(1, EventKind::PlayerItemDamage)],
+    );
     let alice = s.players[0].clone();
-    console(&mut s, "give Alice stone_pickaxe 1");
-    mine_with_a_pickaxe(&mut s, &alice);
-    dig(&mut s, &alice, DigAction::Finish, BlockPos::new(4, 63, 3));
-    assert_eq!(asked_for(&s.plugin, EventKind::PlayerItemDamage).len(), 1);
+    console(&mut s, "give Alice stone_sword 1");
+    let fresh = damage_of(&mut s, &alice);
+    let cow = cow_near(&mut s);
+    send_input(&mut s.server, &alice, PlayerInput::Attack(cow));
+    s.tick(11);
+    send_input(&mut s.server, &alice, PlayerInput::Attack(cow));
+    let asked = asked_for(&s.plugin, EventKind::PlayerItemDamage);
+    assert_eq!(asked.len(), 1);
+    rule_on(&mut s.server, 1, asked[0].id, false, None);
+    let asked = asked_for(&s.plugin, EventKind::PlayerItemDamage);
+    assert_eq!(asked.len(), 2);
+    let once = damage_of(&mut s, &alice);
+    assert_ne!(once, fresh);
+    rule_on(&mut s.server, 1, asked[1].id, false, None);
+    assert_ne!(damage_of(&mut s, &alice), once);
+}
+
+#[test]
+fn a_busy_lane_without_a_wear_listener_wears_the_tool_at_once() {
+    let mut s = scene_with(&["Alice"], vec![decide(1)]);
+    let alice = s.players[0].clone();
+    console(&mut s, "give Alice stone_sword 1");
+    let mut worn = damage_of(&mut s, &alice);
+    let cow = cow_near(&mut s);
+    for x in [0.6, 0.7] {
+        send_input(
+            &mut s.server,
+            &alice,
+            PlayerInput::Move {
+                position: Some(Vec3::new(x, 64.0, 0.5)),
+                rotation: None,
+                on_ground: true,
+            },
+        );
+        send_input(&mut s.server, &alice, PlayerInput::Attack(cow));
+        let now = damage_of(&mut s, &alice);
+        assert_ne!(now, worn, "x {x}");
+        worn = now;
+        s.tick(11);
+    }
 }
 
 #[test]

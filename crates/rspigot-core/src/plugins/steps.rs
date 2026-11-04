@@ -221,6 +221,14 @@ pub(crate) struct DropStep {
 }
 
 #[derive(Debug)]
+pub(crate) struct WearRequest {
+    pub(crate) player: PlayerId,
+    pub(crate) hand: Hand,
+    pub(crate) slot: usize,
+    pub(crate) amount: i32,
+}
+
+#[derive(Debug)]
 pub(crate) struct WearStep {
     pub(crate) player: PlayerId,
     pub(crate) hand: Hand,
@@ -300,6 +308,7 @@ pub(crate) enum Continuation {
     InteractEntity(Box<InteractStep>),
     DropSelected(SelectedDrop),
     Drop(Box<DropStep>),
+    Wear(WearRequest),
     ItemDamage(Box<WearStep>),
     TakeBook(Box<BookStep>),
     ExpCooldown(CooldownStep),
@@ -341,7 +350,7 @@ impl Continuation {
             | Self::FinishDig(_) => EventKind::PlayerInteract,
             Self::InteractEntity(_) => EventKind::PlayerInteractAtEntity,
             Self::DropSelected(_) | Self::Drop(_) => EventKind::PlayerDropItem,
-            Self::ItemDamage(_) => EventKind::PlayerItemDamage,
+            Self::Wear(_) | Self::ItemDamage(_) => EventKind::PlayerItemDamage,
             Self::TakeBook(_) => EventKind::PlayerTakeLecternBook,
             Self::ExpCooldown(_) => EventKind::PlayerExpCooldownChange,
             Self::ExpChange(_) => EventKind::PlayerExpChange,
@@ -371,9 +380,6 @@ impl Continuation {
     pub(crate) fn same_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Velocity(one), Self::Velocity(other)) => one.player == other.player,
-            (Self::ItemDamage(one), Self::ItemDamage(other)) => {
-                one.player == other.player && one.slot == other.slot
-            }
             (Self::PickupArrow(one), Self::PickupArrow(other)) => {
                 one.player == other.player && one.arrow == other.arrow
             }
@@ -381,11 +387,8 @@ impl Continuation {
         }
     }
 
-    pub(crate) const fn hot(&self) -> bool {
-        matches!(
-            self,
-            Self::Velocity(_) | Self::ItemDamage(_) | Self::PickupArrow(_)
-        )
+    pub(crate) const fn may_skip(&self) -> bool {
+        matches!(self, Self::Velocity(_) | Self::PickupArrow(_))
     }
 }
 

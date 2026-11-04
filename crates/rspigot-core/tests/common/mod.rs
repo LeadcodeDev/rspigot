@@ -429,7 +429,7 @@ pub fn saving_scene(names: &[&str], handlers: Vec<HandlerSpec>) -> (Scene, Arc<S
     (scene_on(server, names, handlers), saves)
 }
 
-fn scene_on(mut server: Server<Link>, names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
+pub fn scene_on(mut server: Server<Link>, names: &[&str], handlers: Vec<HandlerSpec>) -> Scene {
     let plugin = connect_with(&mut server, 1, "tester", handlers);
     let players: Vec<Player> = names.iter().map(|name| join(&mut server, name)).collect();
     server.deliver();

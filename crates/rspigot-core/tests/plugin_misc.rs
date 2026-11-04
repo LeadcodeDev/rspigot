@@ -171,3 +171,19 @@ fn shearing_fires_the_click_then_the_shear_then_the_wear_and_a_cancel_keeps_the_
     };
     assert_ne!(held, Some(ItemSpec::of("minecraft:shears", 1)));
 }
+
+#[test]
+fn a_busy_lane_without_an_arrow_listener_still_picks_up_arrows() {
+    let mut s = scene_with(&["Alice"], vec![decide(1)]);
+    let alice = s.players[0].clone();
+    landed_arrow(&mut s);
+    walk_to(&mut s, &alice, Vec3::new(2.5, 64.0, 0.5));
+    let walked = last_asked(&s.plugin, EventKind::PlayerMove);
+    rule_on(&mut s.server, 1, walked.id, false, None);
+    walk_to(&mut s, &alice, Vec3::new(2.6, 64.0, 0.5));
+    let pending = last_asked(&s.plugin, EventKind::PlayerMove);
+    assert_ne!(pending.id, walked.id);
+    s.server.tick();
+    s.server.deliver();
+    assert_eq!(arrows_held(&mut s, &alice), 1);
+}

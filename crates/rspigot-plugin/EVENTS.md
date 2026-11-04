@@ -174,7 +174,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PlayerInteractEntityEvent` | `PlayerInteractEntity` | yes | - | `PlayerInteractAtEntity` | fired: reached through PlayerInteractAtEntity, as Spigot never builds it alone |
 | `PlayerItemBreakEvent` | `PlayerItemBreak` | no | - | - | fired: after the PlayerItemDamage of the same wear |
 | `PlayerItemConsumeEvent` | `PlayerItemConsume` | yes | `set_item` | - | not fired yet: needs eating and drinking (#115) |
-| `PlayerItemDamageEvent` | `PlayerItemDamage` | yes | `set_damage` | - | fired: fires with 0 for creative players and unbreakable items; asked only when a deciding handler exists, one per slot at a time |
+| `PlayerItemDamageEvent` | `PlayerItemDamage` | yes | `set_damage` | - | fired: fires with 0 for creative players and unbreakable items; every wear is a distinct event, read when it reaches the head of the lane |
 | `PlayerItemHeldEvent` | `PlayerItemHeld` | yes | - | - | fired: the previous slot is read at the head of the lane; a cancel sends it back |
 | `PlayerItemMendEvent` | `PlayerItemMend` | yes | `set_repair_amount` | - | not fired yet: needs enchanting (#47) |
 | `PlayerJoinEvent` | `PlayerJoin` | no | `set_join_message` | - | fired: the join message is announced once the event settles |

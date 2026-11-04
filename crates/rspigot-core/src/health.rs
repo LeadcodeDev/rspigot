@@ -712,7 +712,7 @@ impl<L: ClientLink> Server<L> {
         let Some(player) = self.players.get_mut(&id) else {
             return;
         };
-        if !player.vitals.is_dead() || !player.link.is_connected() {
+        if !player.vitals.dead || !player.link.is_connected() {
             return;
         }
         let death_location = player.vitals.death_location;

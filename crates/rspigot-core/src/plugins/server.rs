@@ -241,7 +241,14 @@ impl<L: ClientLink> Server<L> {
         describe: impl FnOnce(&Self) -> Option<EventPayload>,
     ) {
         let kind = then.kind();
-        if then.hot()
+        let observed = self.plugins.listens(kind, Access::Observe);
+        let decided = self.plugins.listens(kind, Access::Decide);
+        if !observed && !decided {
+            self.run_now(then);
+            return;
+        }
+        if then.may_skip()
+            && decided
             && self
                 .decisions
                 .in_flight(lane, |queued| queued.same_as(&then))
@@ -250,20 +257,15 @@ impl<L: ClientLink> Server<L> {
         }
         let deciding = self.deciding(&then);
         if !deciding && !self.decisions.busy(lane) {
-            let observed = if self.plugins.listens(kind, Access::Observe) {
-                describe(self)
-            } else {
-                None
-            };
-            if let Some(payload) = observed {
+            if let Some(payload) = describe(self) {
                 let event = order.unwrap_or_else(|| self.next_event_id());
                 self.notify_plugins(event, &payload, false, Phase::Settled);
             }
-            let dropped = self.conclude(then, false, None, Vec::new());
-            self.notify_undone(dropped, Phase::Settled);
+            self.run_now(then);
             return;
         }
         let Some(payload) = describe(self) else {
+            self.run_now(then);
             return;
         };
         let event = order.unwrap_or_else(|| self.next_event_id());
@@ -303,6 +305,11 @@ impl<L: ClientLink> Server<L> {
             event,
             Pending::new(lane, payload, asked, deadline, until, then),
         );
+    }
+
+    fn run_now(&mut self, then: Continuation) {
+        let dropped = self.conclude(then, false, None, Vec::new());
+        self.notify_undone(dropped, Phase::Settled);
     }
 
     fn deciding(&self, then: &Continuation) -> bool {
@@ -589,7 +596,8 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::ClickBlock(_)
             | Continuation::FinishDig(_)
-            | Continuation::DropSelected(_) => Vec::new(),
+            | Continuation::DropSelected(_)
+            | Continuation::Wear(_) => Vec::new(),
             Continuation::CommandSend(id) => {
                 self.finish_command_send(id, patch_of!(patch, PlayerCommandSend));
                 Vec::new()
