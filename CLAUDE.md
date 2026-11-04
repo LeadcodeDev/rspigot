@@ -10,7 +10,7 @@ Plugin contract (`crates/rspigot-plugin-protocol/proto`): regenerate the Rust co
 
 Plugin SDK typed keys (`crates/rspigot-plugin/src/keys`): regenerate with `python3 -I tools/gen_plugin_keys.py`; `--check` fails when they are stale.
 
-Plugin events (`tools/plugin-events`): `python3 -I tools/gen_plugin_events.py` then the protocol generator; `--check` fails when stale, `--check-dump <event-types.json>` when the jar has an event the catalog lacks.
+Plugin events (`tools/plugin-events`): `python3 -I tools/gen_plugin_events.py` then the protocol generator; `--check` fails when stale, `--check-dump <event-types.json>` when the jar has an event the catalog lacks. The catalog is derived from the API dump with `python3 -I tools/plugin-events/extract.py <api-dump>`, whose `--check` fails when it is stale. Generator tests: `python3 -I tools/plugin-events/test_gen.py`.
 
 Rules: no `async-trait`, no comments in code, static dispatch first, `thiserror` per crate, `anyhow` only in `apps/rspigot`. Stacked PRs, one per crate, in dependency order.
 
