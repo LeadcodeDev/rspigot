@@ -610,3 +610,24 @@ fn an_abort_does_not_call_off_a_delayed_destroy_as_in_the_bytecode() {
     s.tick(10);
     assert_eq!(kind_at(&mut s, STONE), "minecraft:air");
 }
+
+#[test]
+fn a_born_cancelled_break_nobody_listens_to_applies_at_once_behind_a_waiting_move() {
+    let (mut s, alice) = dirt_scene(vec![decide(1)]);
+    console(&mut s, "gamemode creative Alice");
+    console(&mut s, "give Alice diamond_sword");
+    send_input(
+        &mut s.server,
+        &alice,
+        PlayerInput::Move {
+            position: Some(rspigot_domain::Vec3::new(0.6, 64.0, 0.5)),
+            rotation: None,
+            on_ground: true,
+        },
+    );
+    assert_eq!(asked_for(&s.plugin, EventKind::PlayerMove).len(), 1);
+    alice.link.take();
+    dig(&mut s, &alice, DigAction::Start, DIRT, 4);
+    assert_eq!(block_updates_and_acks(&alice.link.take()), ["ack 4"]);
+    assert_eq!(kind_at(&mut s, DIRT), "minecraft:dirt");
+}

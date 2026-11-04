@@ -225,18 +225,17 @@ impl<L: ClientLink> Server<L> {
         describe: impl FnOnce(&Self) -> Option<EventPayload>,
     ) {
         let lane = lane.into();
-        if !self.decisions.busy(lane) {
-            if self.plugins.listens(then.kind(), Access::Observe)
-                && let Some(payload) = describe(self)
-            {
+        let observed = self.plugins.listens(then.kind(), Access::Observe);
+        if !observed || !self.decisions.busy(lane) {
+            if observed && let Some(payload) = describe(self) {
                 let event = self.next_event_id();
                 self.notify_plugins(event, &payload, true, Phase::Settled);
             }
-            let dropped = self.conclude(then, true, None, Vec::new());
-            self.notify_undone(dropped, Phase::Settled);
+            self.run_refused(then);
             return;
         }
         let Some(payload) = describe(self) else {
+            self.run_refused(then);
             return;
         };
         let event = self.next_event_id();
@@ -346,6 +345,11 @@ impl<L: ClientLink> Server<L> {
 
     pub(crate) fn listened(&self, kind: EventKind) -> bool {
         self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
+    }
+
+    fn run_refused(&mut self, then: Continuation) {
+        let dropped = self.conclude(then, true, None, Vec::new());
+        self.notify_undone(dropped, Phase::Settled);
     }
 
     fn run_now(&mut self, then: Continuation) {
@@ -923,11 +927,166 @@ fn recipients(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use rspigot_domain::chunk::ChunkColumn;
     use rspigot_domain::player::GameMode;
+    use rspigot_domain::text::Component;
+    use rspigot_domain::world::Dimension;
+    use rspigot_domain::{BiomeId, ChunkPos, Identifier};
+    use rspigot_nbt::Compound;
 
     use super::*;
-    use crate::plugins::events::{Action, EventResult, Face, PlayerInteract};
-    use crate::plugins::{EventKind, Priority};
+    use crate::config::{GameConfig, LevelData};
+    use crate::events::Inbound;
+    use crate::plugins::events::{Action, EventResult, Face, PlayerInteract, WorldSave};
+    use crate::plugins::steps::WeatherStep;
+    use crate::plugins::{EventKind, PluginIntro, Priority};
+    use crate::ports::{ChunkGenerator, ChunkStore, EntityStore, PluginOutbox, StoreError};
+    use crate::status::StatusBoard;
+
+    struct Quiet;
+
+    impl ClientLink for Quiet {
+        fn send(&self, _: ClientEvent) {}
+
+        fn disconnect(&self, _: Component) {}
+
+        fn is_connected(&self) -> bool {
+            true
+        }
+    }
+
+    impl PluginOutbox for Quiet {
+        fn send(&self, _: ToPlugin) {}
+    }
+
+    impl ChunkStore for Quiet {
+        fn load(&self, _: &Identifier, _: ChunkPos) -> Result<Option<ChunkColumn>, StoreError> {
+            Ok(None)
+        }
+
+        fn save(&self, _: &Identifier, _: &ChunkColumn) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        fn flush(&self) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl EntityStore for Quiet {
+        fn load_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+        ) -> Result<Option<Vec<Compound>>, StoreError> {
+            Ok(None)
+        }
+
+        fn save_entities(
+            &self,
+            _: &Identifier,
+            _: ChunkPos,
+            _: &[Compound],
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    impl ChunkGenerator for Quiet {
+        fn generate(&self, dimension: &Dimension, pos: ChunkPos) -> ChunkColumn {
+            ChunkColumn::empty(pos, dimension.height, BiomeId(0))
+        }
+
+        fn spawn_point(&self, _: &Dimension) -> Vec3 {
+            Vec3::new(0.5, 64.0, 0.5)
+        }
+    }
+
+    fn quiet_server() -> Server<Quiet> {
+        let config = GameConfig {
+            chunk_workers: 1,
+            spawn_chunk_radius: 0,
+            ..GameConfig::default()
+        };
+        Server::new(
+            config,
+            LevelData::default(),
+            Arc::new(Quiet),
+            Arc::new(Quiet),
+            StatusBoard::new(1),
+        )
+    }
+
+    fn observing(server: &mut Server<Quiet>, kind: EventKind) {
+        server.handle(Inbound::PluginConnected {
+            connection: 1,
+            intro: PluginIntro {
+                name: "watch".to_owned(),
+                version: "1.0.0".to_owned(),
+                handlers: vec![HandlerSpec {
+                    id: 1,
+                    event: kind,
+                    access: Access::Observe,
+                    priority: Priority::Normal,
+                    ignore_cancelled: false,
+                }],
+            },
+            outbox: Box::new(Quiet),
+        });
+    }
+
+    fn busy_world(server: &mut Server<Quiet>) {
+        let save = EventPayload::WorldSave(WorldSave {
+            world: "minecraft:overworld".to_owned(),
+        });
+        let waiting = Asked {
+            connection: 9,
+            handler: 1,
+            kind: EventKind::WorldSave,
+        };
+        server.decisions.queue(
+            1,
+            Pending::new(
+                Lane::World,
+                save,
+                vec![waiting],
+                u64::MAX,
+                u64::MAX,
+                Continuation::Notice(EventKind::WorldSave),
+            ),
+        );
+        assert!(server.decisions.busy(Lane::World));
+    }
+
+    fn storm() -> Continuation {
+        Continuation::Weather(WeatherStep {
+            rain: Some(true),
+            thunder: Some(true),
+        })
+    }
+
+    #[test]
+    fn a_refused_event_with_nothing_to_describe_still_runs_its_continuation() {
+        let mut server = quiet_server();
+        observing(&mut server, EventKind::WeatherChange);
+        busy_world(&mut server);
+        server.fire_refused(Lane::World, storm(), |_| None);
+        assert!(!server.world.level.raining);
+        assert!(server.world.level.thundering);
+    }
+
+    #[test]
+    fn a_refused_event_nobody_listens_to_runs_at_once_on_a_busy_lane() {
+        let mut server = quiet_server();
+        busy_world(&mut server);
+        server.fire_refused(Lane::World, storm(), |_| {
+            panic!("an event nobody listens to is never described")
+        });
+        assert!(!server.world.level.raining);
+        assert!(server.world.level.thundering);
+    }
 
     fn listener(connection: u64, id: u32, ignore_cancelled: bool) -> (u64, HandlerSpec) {
         (
