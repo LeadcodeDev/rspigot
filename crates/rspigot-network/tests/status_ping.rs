@@ -263,6 +263,25 @@ async fn a_legacy_ping_goes_through_the_same_hook_without_a_hostname() {
     assert_eq!((ping.hostname.as_str(), ping.legacy), ("", true));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_ping_whose_request_arrives_late_still_reads_the_whole_answer() {
+    let (game, _inbox) = unbounded();
+    let net = network(board(PingHook::Off), game).await;
+    let mut stream = TcpStream::connect(net.address).await.expect("connected");
+    stream.write_all(&[0xFE, 0x01, 0xFA]).await.expect("sent");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let mut hostname = vec![0x00, 0x0B];
+    hostname.extend("MC|PingHost".encode_utf16().flat_map(u16::to_be_bytes));
+    hostname.extend(std::iter::repeat_n(0x61, 4096));
+    let _ = stream.write_all(&hostname).await;
+    let mut bytes = Vec::new();
+    within(stream.read_to_end(&mut bytes))
+        .await
+        .expect("the answer arrives without a reset");
+    assert_eq!(bytes[0], 0xFF);
+    assert!(bytes.len() > 20);
+}
+
 struct NoStore;
 
 impl ChunkStore for NoStore {

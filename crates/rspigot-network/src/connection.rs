@@ -37,6 +37,7 @@ use crate::status::{Shown, legacy_status, status_json};
 use crate::text::to_json;
 
 const STATUS_PATIENCE: Duration = Duration::from_secs(10);
+const LEGACY_DRAIN: Duration = Duration::from_secs(1);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {
@@ -137,11 +138,14 @@ pub async fn handle<V: SessionVerifier>(
     let peeked = stream.peek(&mut first).await?;
     if peeked == 1 && first[0] == 0xFE {
         let mut stream = stream;
-        let mut request = [0u8; 256];
-        let _ = stream.try_read(&mut request);
         let answer = answer_ping(&shared, addr.ip().to_canonical(), true, String::new).await;
         let bytes = legacy_status(&shared.config, &answer.shown(&shared.config));
         stream.write_all(&bytes).await?;
+        stream.shutdown().await?;
+        let mut rest = [0u8; 512];
+        let drained =
+            async { while matches!(stream.read(&mut rest).await, Ok(read) if read > 0) {} };
+        let _ = tokio::time::timeout(LEGACY_DRAIN, drained).await;
         return Ok(());
     }
     let (read, write) = stream.into_split();
