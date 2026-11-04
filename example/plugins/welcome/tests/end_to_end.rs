@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use rspigot_core::config::{GameConfig, LevelData};
-use rspigot_core::events::{ClientEvent, Inbound, PlayerInput};
+use rspigot_core::events::{
+    ClickInput, ClientEvent, ContainerClick, EntityKind, HashedSlot, Inbound, PlayerInput,
+};
 use rspigot_core::ports::{ChunkGenerator, ChunkStore, ClientLink, EntityStore, StoreError};
 use rspigot_core::server::Server;
 use rspigot_core::status::StatusBoard;
@@ -15,6 +17,8 @@ use rspigot_domain::player::{ClientSettings, GameProfile, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Dimension;
 use rspigot_domain::{BiomeId, BlockPos, BlockStateId, ChunkPos, Identifier, Vec3};
+use rspigot_entities::EntityKind as Kind;
+use rspigot_items::ItemKind;
 use rspigot_nbt::Compound;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -23,6 +27,13 @@ const TICK: Duration = Duration::from_millis(50);
 const PATIENCE: Duration = Duration::from_secs(10);
 const SPAWN: Vec3 = Vec3::new(0.5, 64.0, 0.5);
 const EAST: Vec3 = Vec3::new(1.5, 64.0, 0.5);
+const LEAVE_SLOT: i16 = 4;
+
+#[derive(Clone, Copy)]
+struct Screen {
+    window: i32,
+    state: i32,
+}
 
 #[derive(Clone, Default)]
 struct Link {
@@ -131,6 +142,63 @@ impl Player {
             |event| matches!(event, ClientEvent::Teleport { position: to, .. } if *to == position),
         )
     }
+
+    fn received_chunk(&mut self, pos: ChunkPos) -> bool {
+        self.heard()
+            .iter()
+            .any(|event| matches!(event, ClientEvent::Chunk { chunk, .. } if chunk.pos() == pos))
+    }
+
+    fn saw_title(&mut self, text: &str) -> bool {
+        self.heard().iter().any(
+            |event| matches!(event, ClientEvent::TitleText(title) if title.plain_text() == text),
+        )
+    }
+
+    fn was_given(&mut self, item: ItemKind, name: &str) -> bool {
+        self.heard().iter().any(|event| {
+            matches!(
+                event,
+                ClientEvent::InventorySlot { stack: Some(stack), .. }
+                    if stack.item == item.id()
+                        && stack.custom_name().is_some_and(|shown| shown.plain_text() == name)
+            )
+        })
+    }
+
+    fn saw_spawn_of(&mut self, kind: Kind) -> bool {
+        let kind = EntityKind::Other(kind.id().0);
+        self.heard().iter().any(
+            |event| matches!(event, ClientEvent::SpawnEntity { kind: spawned, .. } if *spawned == kind),
+        )
+    }
+
+    fn screen(&mut self, title: &str) -> Option<Screen> {
+        let window = self.heard().iter().find_map(|event| match event {
+            ClientEvent::OpenScreen {
+                window,
+                title: shown,
+                ..
+            } if shown.plain_text() == title => Some(*window),
+            _ => None,
+        })?;
+        self.log.iter().rev().find_map(|event| match event {
+            ClientEvent::ContainerContent {
+                window: shown,
+                state_id,
+                ..
+            } if *shown == window => Some(Screen {
+                window,
+                state: *state_id,
+            }),
+            _ => None,
+        })
+    }
+
+    fn saw_closed(&mut self, screen: Screen) -> bool {
+        self.heard()
+            .contains(&ClientEvent::ContainerClose(screen.window))
+    }
 }
 
 fn server() -> Server<Link> {
@@ -165,12 +233,16 @@ fn join(server: &mut Server<Link>, name: &str) -> Player {
         address: std::net::Ipv4Addr::LOCALHOST.into(),
     });
     server.deliver();
+    server.tick();
     let mut player = Player {
         id,
         link,
         log: Vec::new(),
     };
-    player.log.extend(player.link.take());
+    assert!(
+        player.received_chunk(SPAWN.chunk()),
+        "{name} receives the spawn chunk before loading in"
+    );
     confirm_teleports(server, &player);
     server.handle(Inbound::Input {
         player: id,
@@ -198,6 +270,22 @@ fn step(server: &mut Server<Link>, player: &Player, to: Vec3) {
             rotation: None,
             on_ground: true,
         },
+    });
+    server.deliver();
+}
+
+fn click(server: &mut Server<Link>, player: &Player, screen: Screen, slot: i16) {
+    server.handle(Inbound::Input {
+        player: player.id,
+        input: PlayerInput::ContainerClick(ContainerClick {
+            container: screen.window,
+            state_id: screen.state,
+            slot,
+            button: 0,
+            input: ClickInput::Pickup,
+            changed: Vec::new(),
+            carried: HashedSlot::EMPTY,
+        }),
     });
     server.deliver();
 }
@@ -282,7 +370,7 @@ impl Core {
 }
 
 #[test]
-fn a_plugin_greets_a_player_and_keeps_them_in_place() {
+fn a_plugin_greets_a_player_shows_its_menu_and_keeps_them_in_place() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let listener = runtime.block_on(TcpListener::bind("127.0.0.1:0")).unwrap();
     let address = listener.local_addr().unwrap();
@@ -296,6 +384,27 @@ fn a_plugin_greets_a_player_and_keeps_them_in_place() {
 
     let mut alice = join(&mut core.server, "Alice");
     core.run_until("Alice is welcomed", |_| alice.was_told("Welcome Alice!"));
+    core.run_until("Alice sees the welcome title", |_| {
+        alice.saw_title("Welcome")
+    });
+    core.run_until("Alice gets a compass named Menu", |_| {
+        alice.was_given(ItemKind::Compass, "Menu")
+    });
+    core.run_until("a chicken spawns at Alice's feet", |_| {
+        alice.saw_spawn_of(Kind::Chicken)
+    });
+    let mut menu = None;
+    core.run_until("Alice is shown the menu", |_| {
+        menu = alice.screen("Menu");
+        menu.is_some()
+    });
+    let menu = menu.expect("the menu is open");
+
+    click(&mut core.server, &alice, menu, LEAVE_SLOT);
+    core.run_until("the menu closes", |_| alice.saw_closed(menu));
+    core.run_until("Alice is told goodbye", |_| {
+        alice.was_told("See you around")
+    });
 
     alice.log.clear();
     step(&mut core.server, &alice, EAST);
