@@ -119,12 +119,7 @@ mod tests {
         );
         let mut turned = at(1.0);
         turned.rotation = Rotation::new(f32::NAN, 0.0);
-        let teleported = |to| {
-            EventPatch::EntityTeleport(EntityTeleportPatch {
-                from: None,
-                to: Some(to),
-            })
-        };
+        let teleported = |to| EventPatch::EntityTeleport(EntityTeleportPatch { to: Some(to) });
         assert_eq!(teleported(None).refusal(), None);
         assert_eq!(teleported(Some(at(1.0))).refusal(), None);
         assert_eq!(

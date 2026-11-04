@@ -5448,7 +5448,6 @@ impl EntityKnockbackByEntityPatch {
 pub struct EntityPortalPatch {
     pub can_create_portal: Option<bool>,
     pub creation_radius: Option<i32>,
-    pub from: Option<Location>,
     pub search_radius: Option<i32>,
     pub to: Option<Option<Location>>,
 }
@@ -5458,7 +5457,6 @@ impl EntityPortalPatch {
         Self {
             can_create_portal: later.can_create_portal.or(self.can_create_portal),
             creation_radius: later.creation_radius.or(self.creation_radius),
-            from: later.from.or(self.from),
             search_radius: later.search_radius.or(self.search_radius),
             to: later.to.or(self.to),
         }
@@ -5471,9 +5469,6 @@ impl EntityPortalPatch {
         if let Some(value) = self.creation_radius {
             event.creation_radius = value;
         }
-        if let Some(value) = self.from {
-            event.from = value;
-        }
         if let Some(value) = self.search_radius {
             event.search_radius = value;
         }
@@ -5483,19 +5478,16 @@ impl EntityPortalPatch {
     }
 
     fn refusal(&self) -> Option<String> {
-        self.from.as_ref().and_then(location_refusal).or_else(|| {
-            self.to
-                .as_ref()
-                .and_then(Option::as_ref)
-                .and_then(location_refusal)
-        })
+        self.to
+            .as_ref()
+            .and_then(Option::as_ref)
+            .and_then(location_refusal)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EntityPortalExitPatch {
     pub after: Option<Vec3>,
-    pub from: Option<Location>,
     pub to: Option<Option<Location>>,
 }
 
@@ -5503,7 +5495,6 @@ impl EntityPortalExitPatch {
     fn then(self, later: Self) -> Self {
         Self {
             after: later.after.or(self.after),
-            from: later.from.or(self.from),
             to: later.to.or(self.to),
         }
     }
@@ -5511,9 +5502,6 @@ impl EntityPortalExitPatch {
     fn settle(self, event: &mut EntityPortalExit) {
         if let Some(value) = self.after {
             event.after = value;
-        }
-        if let Some(value) = self.from {
-            event.from = value;
         }
         if let Some(value) = self.to {
             event.to = value;
@@ -5523,7 +5511,6 @@ impl EntityPortalExitPatch {
     fn refusal(&self) -> Option<String> {
         self.after
             .and_then(|value| vector_refusal("after", value))
-            .or_else(|| self.from.as_ref().and_then(location_refusal))
             .or_else(|| {
                 self.to
                     .as_ref()
@@ -5654,34 +5641,27 @@ impl EntityTargetLivingEntityPatch {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EntityTeleportPatch {
-    pub from: Option<Location>,
     pub to: Option<Option<Location>>,
 }
 
 impl EntityTeleportPatch {
     fn then(self, later: Self) -> Self {
         Self {
-            from: later.from.or(self.from),
             to: later.to.or(self.to),
         }
     }
 
     fn settle(self, event: &mut EntityTeleport) {
-        if let Some(value) = self.from {
-            event.from = value;
-        }
         if let Some(value) = self.to {
             event.to = value;
         }
     }
 
     fn refusal(&self) -> Option<String> {
-        self.from.as_ref().and_then(location_refusal).or_else(|| {
-            self.to
-                .as_ref()
-                .and_then(Option::as_ref)
-                .and_then(location_refusal)
-        })
+        self.to
+            .as_ref()
+            .and_then(Option::as_ref)
+            .and_then(location_refusal)
     }
 }
 
@@ -6559,7 +6539,6 @@ impl PlayerMovePatch {
 pub struct PlayerPortalPatch {
     pub can_create_portal: Option<bool>,
     pub creation_radius: Option<i32>,
-    pub from: Option<Location>,
     pub search_radius: Option<i32>,
     pub to: Option<Location>,
 }
@@ -6569,7 +6548,6 @@ impl PlayerPortalPatch {
         Self {
             can_create_portal: later.can_create_portal.or(self.can_create_portal),
             creation_radius: later.creation_radius.or(self.creation_radius),
-            from: later.from.or(self.from),
             search_radius: later.search_radius.or(self.search_radius),
             to: later.to.or(self.to),
         }
@@ -6582,9 +6560,6 @@ impl PlayerPortalPatch {
         if let Some(value) = self.creation_radius {
             event.creation_radius = value;
         }
-        if let Some(value) = self.from {
-            event.from = value;
-        }
         if let Some(value) = self.search_radius {
             event.search_radius = value;
         }
@@ -6594,10 +6569,7 @@ impl PlayerPortalPatch {
     }
 
     fn refusal(&self) -> Option<String> {
-        self.from
-            .as_ref()
-            .and_then(location_refusal)
-            .or_else(|| self.to.as_ref().and_then(location_refusal))
+        self.to.as_ref().and_then(location_refusal)
     }
 }
 

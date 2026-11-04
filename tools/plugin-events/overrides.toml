@@ -200,6 +200,18 @@ WorldUnload = "several worlds, since the overworld never unloads"
 [events.PlayerMove]
 unread = { setFrom = "Spigot never reads it back: a cancel always sends the player to where the move started" }
 
+[events.EntityTeleport]
+unread = { setFrom = "Spigot never reads it back: no caller reads getFrom() after the event" }
+
+[events.EntityPortal]
+unread = { setFrom = "Spigot never reads it back: the portal search reads getTo(), the radii and getCanCreatePortal() only" }
+
+[events.PlayerPortal]
+unread = { setFrom = "Spigot never reads it back: the portal search reads getTo(), the radii and getCanCreatePortal() only" }
+
+[events.EntityPortalExit]
+unread = { setFrom = "Spigot never reads it back: Spigot 26.3 never fires this event" }
+
 [events.PlayerCommandPreprocess]
 unread = { setPlayer = "Spigot reads it back only for commands sent through Player.chat, never for a command packet" }
 

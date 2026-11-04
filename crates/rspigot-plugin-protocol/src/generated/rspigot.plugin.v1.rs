@@ -1935,8 +1935,6 @@ pub struct EntityPortalPatch {
     pub can_create_portal: ::core::option::Option<bool>,
     #[prost(int32, optional, tag = "2")]
     pub creation_radius: ::core::option::Option<i32>,
-    #[prost(message, optional, tag = "5")]
-    pub from: ::core::option::Option<Location>,
     #[prost(int32, optional, tag = "6")]
     pub search_radius: ::core::option::Option<i32>,
     #[prost(message, optional, tag = "7")]
@@ -1963,8 +1961,6 @@ pub struct EntityPortalExit {
 pub struct EntityPortalExitPatch {
     #[prost(message, optional, tag = "1")]
     pub after: ::core::option::Option<Vec3>,
-    #[prost(message, optional, tag = "5")]
-    pub from: ::core::option::Option<Location>,
     #[prost(message, optional, tag = "6")]
     pub to: ::core::option::Option<NullableLocation>,
 }
@@ -2165,8 +2161,6 @@ pub struct EntityTeleport {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntityTeleportPatch {
-    #[prost(message, optional, tag = "3")]
-    pub from: ::core::option::Option<Location>,
     #[prost(message, optional, tag = "4")]
     pub to: ::core::option::Option<NullableLocation>,
 }
@@ -3358,8 +3352,6 @@ pub struct PlayerPortalPatch {
     pub can_create_portal: ::core::option::Option<bool>,
     #[prost(int32, optional, tag = "3")]
     pub creation_radius: ::core::option::Option<i32>,
-    #[prost(message, optional, tag = "4")]
-    pub from: ::core::option::Option<Location>,
     #[prost(int32, optional, tag = "6")]
     pub search_radius: ::core::option::Option<i32>,
     #[prost(message, optional, tag = "7")]

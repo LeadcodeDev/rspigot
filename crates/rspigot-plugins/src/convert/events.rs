@@ -2338,7 +2338,6 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::EntityPortal(patch) => EventPatch::EntityPortal(EntityPortalPatch {
             can_create_portal: patch.can_create_portal,
             creation_radius: patch.creation_radius,
-            from: patch.from.map(contract::location).transpose()?,
             search_radius: patch.search_radius,
             to: patch
                 .to
@@ -2348,7 +2347,6 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::EntityPortalExit(patch) => {
             EventPatch::EntityPortalExit(EntityPortalExitPatch {
                 after: patch.after.map(shared::vec3),
-                from: patch.from.map(contract::location).transpose()?,
                 to: patch
                     .to
                     .map(|wrapped| wrapped.value.map(contract::location).transpose())
@@ -2390,7 +2388,6 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
             })
         }
         patch::Change::EntityTeleport(patch) => EventPatch::EntityTeleport(EntityTeleportPatch {
-            from: patch.from.map(contract::location).transpose()?,
             to: patch
                 .to
                 .map(|wrapped| wrapped.value.map(contract::location).transpose())
@@ -2590,7 +2587,6 @@ pub(super) fn change(change: patch::Change) -> Result<EventPatch, Malformed> {
         patch::Change::PlayerPortal(patch) => EventPatch::PlayerPortal(PlayerPortalPatch {
             can_create_portal: patch.can_create_portal,
             creation_radius: patch.creation_radius,
-            from: patch.from.map(contract::location).transpose()?,
             search_radius: patch.search_radius,
             to: patch.to.map(contract::location).transpose()?,
         }),
