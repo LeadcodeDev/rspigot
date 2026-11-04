@@ -25,6 +25,7 @@ impl Item for MossyCobblestoneStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:mossy_cobblestone_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

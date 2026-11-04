@@ -24,6 +24,7 @@ impl Item for IronBars {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:iron_bars",
         width: 3,
         height: 2,
         symmetrical: true,

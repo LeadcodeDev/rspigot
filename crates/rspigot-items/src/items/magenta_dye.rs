@@ -25,10 +25,12 @@ impl Item for MagentaDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:magenta_dye_from_allium",
             ingredients: &[ItemSet::Direct(&[ItemId(304)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:magenta_dye_from_blue_red_pink",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1210)]),
                 ItemSet::Direct(&[ItemId(1213)]),
@@ -37,6 +39,7 @@ impl Item for MagentaDye {
             product: Product::of(3),
         },
         Craft::Shapeless {
+            id: "minecraft:magenta_dye_from_blue_red_white_dye",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1210)]),
                 ItemSet::Direct(&[ItemId(1213)]),
@@ -46,10 +49,12 @@ impl Item for MagentaDye {
             product: Product::of(4),
         },
         Craft::Shapeless {
+            id: "minecraft:magenta_dye_from_lilac",
             ingredients: &[ItemSet::Direct(&[ItemId(600)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:magenta_dye_from_purple_and_pink",
             ingredients: &[ItemSet::Direct(&[ItemId(1209)]), ItemSet::Direct(&[ItemId(1205)])],
             product: Product::of(2),
         },

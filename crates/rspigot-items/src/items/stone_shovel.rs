@@ -56,8 +56,9 @@ impl Item for StoneShovel {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:stone_shovel",
             width: 1,
             height: 3,
             symmetrical: true,

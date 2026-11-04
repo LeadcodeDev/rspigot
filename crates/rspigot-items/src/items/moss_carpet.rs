@@ -24,6 +24,7 @@ impl Item for MossCarpet {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:moss_carpet",
         width: 2,
         height: 1,
         symmetrical: true,

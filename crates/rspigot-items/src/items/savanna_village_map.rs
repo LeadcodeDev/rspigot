@@ -22,6 +22,7 @@ impl Item for SavannaVillageMap {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Transmute {
+        id: "minecraft:map_cloning",
         input: ItemSet::Direct(&[ItemId(1246)]),
         material: ItemSet::Direct(&[ItemId(1382)]),
         min_material: 1,

@@ -24,6 +24,7 @@ impl Item for BlueIce {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:blue_ice",
         ingredients: &[
             ItemSet::Direct(&[ItemId(597)]),
             ItemSet::Direct(&[ItemId(597)]),

@@ -26,6 +26,7 @@ impl Item for PaleOakDoor {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:pale_oak_door",
         width: 2,
         height: 3,
         symmetrical: true,

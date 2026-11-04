@@ -24,6 +24,7 @@ impl Item for LightningRod {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:lightning_rod",
         width: 1,
         height: 3,
         symmetrical: true,

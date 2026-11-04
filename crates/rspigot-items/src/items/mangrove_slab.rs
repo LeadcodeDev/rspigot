@@ -26,6 +26,7 @@ impl Item for MangroveSlab {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 150, fast_burn_time: 75 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:mangrove_slab",
         width: 3,
         height: 1,
         symmetrical: true,

@@ -27,6 +27,7 @@ impl Item for PinkWoolSlab {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_pink_wool_slab",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1205)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for PinkWoolSlab {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:pink_wool_slab",
             width: 3,
             height: 1,
             symmetrical: true,

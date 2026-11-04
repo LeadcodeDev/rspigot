@@ -26,6 +26,7 @@ impl Item for SpruceChestBoat {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1200, fast_burn_time: 600 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:spruce_chest_boat",
         ingredients: &[ItemSet::Direct(&[ItemId(404)]), ItemSet::Direct(&[ItemId(977)])],
         product: Product::of(1),
     }];

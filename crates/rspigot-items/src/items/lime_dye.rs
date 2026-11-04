@@ -26,6 +26,7 @@ impl Item for LimeDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:lime_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1212)]), ItemSet::Direct(&[ItemId(1199)])],
             product: Product::of(2),
         },

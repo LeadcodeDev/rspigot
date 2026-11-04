@@ -25,6 +25,7 @@ impl Item for LimeConcreteStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:lime_concrete_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

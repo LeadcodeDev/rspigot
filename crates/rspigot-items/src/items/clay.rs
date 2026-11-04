@@ -24,6 +24,7 @@ impl Item for Clay {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:clay",
         width: 2,
         height: 2,
         symmetrical: true,

@@ -61,8 +61,9 @@ impl Item for StoneSword {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:stone_sword",
             width: 1,
             height: 3,
             symmetrical: true,

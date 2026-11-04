@@ -56,8 +56,9 @@ impl Item for StoneAxe {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:stone_axe",
             width: 2,
             height: 3,
             symmetrical: false,

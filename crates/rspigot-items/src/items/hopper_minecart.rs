@@ -24,6 +24,7 @@ impl Item for HopperMinecart {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:hopper_minecart",
         ingredients: &[ItemSet::Direct(&[ItemId(834)]), ItemSet::Direct(&[ItemId(966)])],
         product: Product::of(1),
     }];

@@ -41,6 +41,7 @@ impl Item for LeatherHorseArmor {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:leather_horse_armor",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -57,7 +58,10 @@ impl Item for LeatherHorseArmor {
             ],
             product: Product::of(1),
         },
-        Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
+        Craft::Dye {
+            id: "minecraft:leather_horse_armor_dyed",
+            dye: ItemSet::Tag(&tags::ITEM_DYES),
+        },
     ];
     type Behavior = crate::family::Plain;
 }

@@ -27,6 +27,7 @@ impl Item for Stick {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 100, fast_burn_time: 50 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:stick",
             width: 1,
             height: 2,
             symmetrical: true,
@@ -37,6 +38,7 @@ impl Item for Stick {
             product: Product::of(4),
         },
         Craft::Shaped {
+            id: "minecraft:stick_from_bamboo_item",
             width: 1,
             height: 2,
             symmetrical: true,

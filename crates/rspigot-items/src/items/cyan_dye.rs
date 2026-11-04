@@ -25,10 +25,12 @@ impl Item for CyanDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:cyan_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1210)]), ItemSet::Direct(&[ItemId(1212)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:cyan_dye_from_pitcher_plant",
             ingredients: &[ItemSet::Direct(&[ItemId(315)])],
             product: Product::of(2),
         },

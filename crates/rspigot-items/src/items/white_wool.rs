@@ -27,6 +27,7 @@ impl Item for WhiteWool {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 100, fast_burn_time: 50 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_white_wool",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1199)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for WhiteWool {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:white_wool_from_string",
             width: 2,
             height: 2,
             symmetrical: true,

@@ -26,6 +26,7 @@ impl Item for BirchBoat {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 1200, fast_burn_time: 600 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:birch_boat",
         width: 3,
         height: 2,
         symmetrical: true,

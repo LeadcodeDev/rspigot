@@ -24,6 +24,7 @@ impl Item for GlowItemFrame {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:glow_item_frame",
         ingredients: &[ItemSet::Direct(&[ItemId(1375)]), ItemSet::Direct(&[ItemId(1197)])],
         product: Product::of(1),
     }];

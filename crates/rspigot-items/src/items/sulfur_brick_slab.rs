@@ -25,6 +25,7 @@ impl Item for SulfurBrickSlab {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:sulfur_brick_slab",
             width: 3,
             height: 1,
             symmetrical: true,

@@ -24,6 +24,7 @@ impl Item for StrippedCrimsonHyphae {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:stripped_crimson_hyphae",
         width: 2,
         height: 2,
         symmetrical: true,

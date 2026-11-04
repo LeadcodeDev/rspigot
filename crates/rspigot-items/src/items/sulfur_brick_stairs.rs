@@ -25,6 +25,7 @@ impl Item for SulfurBrickStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:sulfur_brick_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

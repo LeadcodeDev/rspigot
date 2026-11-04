@@ -24,6 +24,7 @@ impl Item for CrimsonShelf {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:crimson_shelf",
         width: 3,
         height: 3,
         symmetrical: true,

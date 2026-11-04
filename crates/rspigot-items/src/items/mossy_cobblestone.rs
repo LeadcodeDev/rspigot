@@ -25,10 +25,12 @@ impl Item for MossyCobblestone {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:mossy_cobblestone_from_moss_block",
             ingredients: &[ItemSet::Direct(&[ItemId(62)]), ItemSet::Direct(&[ItemId(333)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:mossy_cobblestone_from_vine",
             ingredients: &[ItemSet::Direct(&[ItemId(62)]), ItemSet::Direct(&[ItemId(484)])],
             product: Product::of(1),
         },

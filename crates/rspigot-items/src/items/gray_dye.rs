@@ -25,10 +25,12 @@ impl Item for GrayDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:gray_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1214)]), ItemSet::Direct(&[ItemId(1199)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:gray_dye_from_closed_eyeblossom",
             ingredients: &[ItemSet::Direct(&[ItemId(301)])],
             product: Product::of(1),
         },

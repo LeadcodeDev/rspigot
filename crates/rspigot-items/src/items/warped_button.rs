@@ -24,6 +24,7 @@ impl Item for WarpedButton {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:warped_button",
         ingredients: &[ItemSet::Direct(&[ItemId(75)])],
         product: Product::of(1),
     }];

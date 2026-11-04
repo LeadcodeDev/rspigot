@@ -24,6 +24,7 @@ impl Item for StoneButton {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:stone_button",
         ingredients: &[ItemSet::Direct(&[ItemId(1)])],
         product: Product::of(1),
     }];

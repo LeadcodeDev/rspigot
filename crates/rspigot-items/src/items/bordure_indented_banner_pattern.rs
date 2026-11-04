@@ -24,6 +24,7 @@ impl Item for BordureIndentedBannerPattern {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:bordure_indented_banner_pattern",
         ingredients: &[ItemSet::Direct(&[ItemId(1145)]), ItemSet::Direct(&[ItemId(484)])],
         product: Product::of(1),
     }];

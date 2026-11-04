@@ -26,6 +26,7 @@ impl Item for DriedKelpBlock {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 4001, fast_burn_time: 2000 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:dried_kelp_block",
         width: 3,
         height: 3,
         symmetrical: true,

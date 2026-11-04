@@ -24,6 +24,7 @@ impl Item for MuddyMangroveRoots {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:muddy_mangrove_roots",
         ingredients: &[ItemSet::Direct(&[ItemId(59)]), ItemSet::Direct(&[ItemId(173)])],
         product: Product::of(1),
     }];

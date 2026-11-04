@@ -255,6 +255,7 @@ pub enum CookingKind {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Craft {
     Shaped {
+        id: &'static str,
         width: u8,
         height: u8,
         symmetrical: bool,
@@ -262,10 +263,12 @@ pub enum Craft {
         product: Product,
     },
     Shapeless {
+        id: &'static str,
         ingredients: &'static [ItemSet],
         product: Product,
     },
     Transmute {
+        id: &'static str,
         input: ItemSet,
         material: ItemSet,
         min_material: u8,
@@ -274,32 +277,43 @@ pub enum Craft {
         count: u8,
     },
     Dye {
+        id: &'static str,
         dye: ItemSet,
     },
     Imbue {
+        id: &'static str,
         source: ItemSet,
         material: ItemSet,
         count: u8,
     },
     DecoratedPot {
+        id: &'static str,
         back: ItemSet,
         front: ItemSet,
         left: ItemSet,
         right: ItemSet,
     },
-    BannerDuplicate,
-    RepairItem,
+    BannerDuplicate {
+        id: &'static str,
+    },
+    RepairItem {
+        id: &'static str,
+    },
     ShieldDecoration {
+        id: &'static str,
         banner: ItemSet,
     },
     MapExtending {
+        id: &'static str,
         map: ItemSet,
         material: ItemSet,
     },
     FireworkStarFade {
+        id: &'static str,
         dye: ItemSet,
     },
     FireworkStar {
+        id: &'static str,
         dye: ItemSet,
         fuel: ItemSet,
         trail: ItemSet,
@@ -307,12 +321,14 @@ pub enum Craft {
         shapes: FireworkShapes,
     },
     FireworkRocket {
+        id: &'static str,
         shell: ItemSet,
         star: ItemSet,
         fuel: ItemSet,
         count: u8,
     },
     BookCloning {
+        id: &'static str,
         source: ItemSet,
         material: ItemSet,
     },
@@ -329,11 +345,13 @@ pub enum Craft {
         count: u8,
     },
     SmithingTransform {
+        id: &'static str,
         template: ItemSet,
         base: ItemSet,
         addition: ItemSet,
     },
     SmithingTrim {
+        id: &'static str,
         template: ItemSet,
         base: ItemSet,
         addition: ItemSet,
@@ -342,6 +360,29 @@ pub enum Craft {
 }
 
 impl Craft {
+    pub const fn id(&self) -> &'static str {
+        match self {
+            Self::Shaped { id, .. }
+            | Self::Shapeless { id, .. }
+            | Self::Transmute { id, .. }
+            | Self::Dye { id, .. }
+            | Self::Imbue { id, .. }
+            | Self::DecoratedPot { id, .. }
+            | Self::BannerDuplicate { id }
+            | Self::RepairItem { id }
+            | Self::ShieldDecoration { id, .. }
+            | Self::MapExtending { id, .. }
+            | Self::FireworkStarFade { id, .. }
+            | Self::FireworkStar { id, .. }
+            | Self::FireworkRocket { id, .. }
+            | Self::BookCloning { id, .. }
+            | Self::Cooking { id, .. }
+            | Self::Stonecutting { id, .. }
+            | Self::SmithingTransform { id, .. }
+            | Self::SmithingTrim { id, .. } => id,
+        }
+    }
+
     pub const fn uses_crafting_grid(&self) -> bool {
         !matches!(
             self,

@@ -24,6 +24,7 @@ impl Item for MojangBannerPattern {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:mojang_banner_pattern",
         ingredients: &[ItemSet::Direct(&[ItemId(1145)]), ItemSet::Direct(&[ItemId(1101)])],
         product: Product::of(1),
     }];

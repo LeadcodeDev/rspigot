@@ -25,6 +25,7 @@ impl Item for WaxedCopperGrate {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:waxed_copper_grate",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -42,6 +43,7 @@ impl Item for WaxedCopperGrate {
             product: Product::of(4),
         },
         Craft::Shapeless {
+            id: "minecraft:waxed_copper_grate_from_honeycomb",
             ingredients: &[ItemSet::Direct(&[ItemId(1621)]), ItemSet::Direct(&[ItemId(1530)])],
             product: Product::of(1),
         },

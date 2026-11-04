@@ -24,6 +24,7 @@ impl Item for PolishedBlackstoneButton {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:polished_blackstone_button",
         ingredients: &[ItemSet::Direct(&[ItemId(1541)])],
         product: Product::of(1),
     }];

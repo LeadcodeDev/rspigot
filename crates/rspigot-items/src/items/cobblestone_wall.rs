@@ -25,6 +25,7 @@ impl Item for CobblestoneWall {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cobblestone_wall",
             width: 3,
             height: 2,
             symmetrical: true,

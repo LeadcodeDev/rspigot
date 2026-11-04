@@ -39,6 +39,6 @@ impl Item for ChainmailHelmet {
             slot: SlotGroup::Head,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
+    const CRAFTS: &'static [Craft] = &[Craft::RepairItem { id: "minecraft:repair_item" }];
     type Behavior = crate::family::Plain;
 }

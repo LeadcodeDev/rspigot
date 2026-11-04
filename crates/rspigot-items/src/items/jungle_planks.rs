@@ -26,6 +26,7 @@ impl Item for JunglePlanks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:jungle_planks",
         ingredients: &[ItemSet::Tag(&tags::ITEM_JUNGLE_LOGS)],
         product: Product::of(4),
     }];

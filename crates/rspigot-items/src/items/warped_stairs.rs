@@ -24,6 +24,7 @@ impl Item for WarpedStairs {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:warped_stairs",
         width: 3,
         height: 3,
         symmetrical: false,

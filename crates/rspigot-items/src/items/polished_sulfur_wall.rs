@@ -25,6 +25,7 @@ impl Item for PolishedSulfurWall {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_sulfur_wall",
             width: 3,
             height: 2,
             symmetrical: true,

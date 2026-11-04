@@ -98,13 +98,14 @@ fn matches(owner: ItemKind, craft: &Craft, input: &Input) -> bool {
             input,
         ),
         Craft::Shapeless { ingredients, .. } => shapeless_matches(ingredients, input),
-        Craft::Dye { dye } => dyeable(owner, dye, input).is_some(),
+        Craft::Dye { dye, .. } => dyeable(owner, dye, input).is_some(),
         Craft::FireworkStar {
             dye,
             fuel,
             trail,
             twinkle,
             shapes,
+            ..
         } => star_parts(
             &StarIngredients {
                 dye,
@@ -116,25 +117,26 @@ fn matches(owner: ItemKind, craft: &Craft, input: &Input) -> bool {
             input,
         )
         .is_some(),
-        Craft::FireworkStarFade { dye } => fadeable(owner, dye, input).is_some(),
+        Craft::FireworkStarFade { dye, .. } => fadeable(owner, dye, input).is_some(),
         Craft::FireworkRocket {
             shell, star, fuel, ..
         } => rocket_parts(shell, star, fuel, input).is_some(),
-        Craft::RepairItem => repairable(owner, input).is_some(),
-        Craft::BannerDuplicate => duplicable(owner, input).is_some(),
-        Craft::ShieldDecoration { banner } => decorable(owner, banner, input).is_some(),
+        Craft::RepairItem { .. } => repairable(owner, input).is_some(),
+        Craft::BannerDuplicate { .. } => duplicable(owner, input).is_some(),
+        Craft::ShieldDecoration { banner, .. } => decorable(owner, banner, input).is_some(),
         Craft::DecoratedPot {
             back,
             front,
             left,
             right,
+            ..
         } => pot_sides(back, front, left, right, input).is_some(),
         Craft::Imbue {
             source, material, ..
         } => imbuable(source, material, input).is_some(),
-        Craft::BookCloning { source, material } => {
-            input.filled >= 2 && cloning(source, material, input).is_some()
-        }
+        Craft::BookCloning {
+            source, material, ..
+        } => input.filled >= 2 && cloning(source, material, input).is_some(),
         Craft::Transmute {
             input: base,
             material,
@@ -142,6 +144,7 @@ fn matches(owner: ItemKind, craft: &Craft, input: &Input) -> bool {
             max_material,
             add_material_count,
             count,
+            ..
         } => transmute_matches(
             owner,
             base,
@@ -763,7 +766,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components: found.base.components.clone(),
             })
         }
-        Craft::Dye { dye } => {
+        Craft::Dye { dye, .. } => {
             let (target, colors) = dyeable(owner, dye, input)?;
             let current = target.components.get_i32(DYED_COLOR);
             let mut components = target.components.clone();
@@ -780,6 +783,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
             trail,
             twinkle,
             shapes,
+            ..
         } => {
             let star = star_parts(
                 &StarIngredients {
@@ -799,7 +803,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components,
             })
         }
-        Craft::FireworkStarFade { dye } => {
+        Craft::FireworkStarFade { dye, .. } => {
             let (target, fade) = fadeable(owner, dye, input)?;
             let mut components = target.components.clone();
             let mut faded = target
@@ -820,6 +824,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
             star,
             fuel,
             count,
+            ..
         } => {
             let (flight, stars) = rocket_parts(shell, star, fuel, input)?;
             let explosions: Vec<Tag> = stars
@@ -843,11 +848,11 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components,
             })
         }
-        Craft::RepairItem => {
+        Craft::RepairItem { .. } => {
             let (first, second) = repairable(owner, input)?;
             repaired(owner, first, second)
         }
-        Craft::BannerDuplicate => {
+        Craft::BannerDuplicate { .. } => {
             let patterned = duplicable(owner, input)?;
             Some(ItemStack {
                 item: owner.id(),
@@ -855,7 +860,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components: patterned.components.clone(),
             })
         }
-        Craft::ShieldDecoration { banner } => {
+        Craft::ShieldDecoration { banner, .. } => {
             let (shield, banner) = decorable(owner, banner, input)?;
             decorated(owner, shield, banner)
         }
@@ -864,6 +869,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
             front,
             left,
             right,
+            ..
         } => {
             let mut components = Compound::new();
             if let Some(decorations) = pot_decorations(pot_sides(back, front, left, right, input)?)
@@ -880,6 +886,7 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
             source,
             material,
             count,
+            ..
         } => {
             let potion = imbuable(source, material, input)?;
             let mut components = Compound::new();
@@ -892,7 +899,9 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
                 components,
             })
         }
-        Craft::BookCloning { source, material } => {
+        Craft::BookCloning {
+            source, material, ..
+        } => {
             let cloned = cloning(source, material, input)?;
             let mut components = cloned.source.components.clone();
             if let Some(Tag::Compound(content)) = components.get_mut(WRITTEN_BOOK_CONTENT) {
@@ -911,6 +920,21 @@ fn assemble(owner: ItemKind, craft: &Craft, input: &Input) -> Slot {
 fn remainder_of(stack: &ItemStack) -> Slot {
     let item = stack.item.kind()?.crafting_remainder()?;
     Some(ItemStack::new(item, NonZeroU8::MIN))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Recipe {
+    pub id: &'static str,
+    pub repair: bool,
+}
+
+pub fn recipe(width: usize, height: usize, slots: &[Slot]) -> Option<Recipe> {
+    let input = Input::of(width, height, slots)?;
+    let (_, craft) = find(&input)?;
+    Some(Recipe {
+        id: craft.id(),
+        repair: matches!(craft, Craft::RepairItem { .. }),
+    })
 }
 
 pub fn result(width: usize, height: usize, slots: &[Slot]) -> Slot {
@@ -934,7 +958,7 @@ fn remainders(craft: &Craft, slots: &[Slot]) -> Vec<Slot> {
                 remainders[index] = with_count(stack, 1);
                 break;
             }
-            Craft::BannerDuplicate if layers(stack) > 0 => {
+            Craft::BannerDuplicate { .. } if layers(stack) > 0 => {
                 remainders[index] = with_count(stack, 1);
             }
             _ => {}
@@ -975,6 +999,29 @@ mod tests {
     use rspigot_items::ItemId;
 
     use super::*;
+
+    #[test]
+    fn the_recipe_of_a_grid_carries_its_datapack_id() {
+        let planks = grid(2, 2, &[(0, ItemKind::OakLog, 1)]);
+        assert_eq!(
+            recipe(2, 2, &planks),
+            Some(Recipe {
+                id: "minecraft:oak_planks",
+                repair: false
+            })
+        );
+        let mut swords = vec![None; 4];
+        swords[0] = Some(ItemStack::new(ItemKind::IronSword.id(), NonZeroU8::MIN));
+        swords[3] = Some(ItemStack::new(ItemKind::IronSword.id(), NonZeroU8::MIN));
+        assert_eq!(
+            recipe(2, 2, &swords),
+            Some(Recipe {
+                id: "minecraft:repair_item",
+                repair: true
+            })
+        );
+        assert_eq!(recipe(2, 2, &[None, None, None, None]), None);
+    }
 
     fn stack(kind: ItemKind, amount: u8) -> Slot {
         Some(ItemStack::new(kind.id(), NonZeroU8::new(amount).unwrap()))

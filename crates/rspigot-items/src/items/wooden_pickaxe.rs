@@ -57,8 +57,9 @@ impl Item for WoodenPickaxe {
     ];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:wooden_pickaxe",
             width: 3,
             height: 3,
             symmetrical: true,

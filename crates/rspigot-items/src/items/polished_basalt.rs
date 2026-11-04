@@ -25,6 +25,7 @@ impl Item for PolishedBasalt {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:polished_basalt",
             width: 2,
             height: 2,
             symmetrical: true,

@@ -25,6 +25,7 @@ impl Item for Brush {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:brush",
             width: 1,
             height: 3,
             symmetrical: true,
@@ -35,7 +36,7 @@ impl Item for Brush {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

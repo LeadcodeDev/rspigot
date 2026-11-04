@@ -24,6 +24,7 @@ impl Item for CrimsonButton {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:crimson_button",
         ingredients: &[ItemSet::Direct(&[ItemId(74)])],
         product: Product::of(1),
     }];

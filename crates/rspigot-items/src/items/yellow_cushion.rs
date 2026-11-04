@@ -27,6 +27,7 @@ impl Item for YellowCushion {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_yellow_cushion",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1203)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for YellowCushion {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:yellow_cushion",
             width: 3,
             height: 1,
             symmetrical: true,

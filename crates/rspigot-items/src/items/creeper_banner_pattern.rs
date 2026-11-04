@@ -24,6 +24,7 @@ impl Item for CreeperBannerPattern {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:creeper_banner_pattern",
         ingredients: &[ItemSet::Direct(&[ItemId(1145)]), ItemSet::Direct(&[ItemId(1388)])],
         product: Product::of(1),
     }];

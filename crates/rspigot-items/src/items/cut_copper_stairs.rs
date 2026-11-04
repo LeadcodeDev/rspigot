@@ -25,6 +25,7 @@ impl Item for CutCopperStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cut_copper_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

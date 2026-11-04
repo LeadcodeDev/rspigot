@@ -27,6 +27,7 @@ impl Item for LimeBanner {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:lime_banner",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -43,7 +44,7 @@ impl Item for LimeBanner {
             ],
             product: Product::of(1),
         },
-        Craft::BannerDuplicate,
+        Craft::BannerDuplicate { id: "minecraft:lime_banner_duplicate" },
     ];
     type Behavior = crate::family::BlockItem;
 }

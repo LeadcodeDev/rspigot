@@ -25,6 +25,7 @@ impl Item for CinnabarWall {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cinnabar_wall",
             width: 3,
             height: 2,
             symmetrical: true,

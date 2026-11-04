@@ -48,10 +48,12 @@ impl Item for IronIngot {
             cooking_time: 200,
         },
         Craft::Shapeless {
+            id: "minecraft:iron_ingot_from_iron_block",
             ingredients: &[ItemSet::Direct(&[ItemId(119)])],
             product: Product::of(9),
         },
         Craft::Shaped {
+            id: "minecraft:iron_ingot_from_nuggets",
             width: 3,
             height: 3,
             symmetrical: true,

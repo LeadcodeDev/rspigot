@@ -26,6 +26,7 @@ impl Item for Bowl {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 100, fast_burn_time: 50 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:bowl",
         width: 3,
         height: 2,
         symmetrical: true,

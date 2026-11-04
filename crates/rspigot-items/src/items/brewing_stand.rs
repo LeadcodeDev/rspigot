@@ -25,6 +25,7 @@ impl Item for BrewingStand {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:brewing_stand",
         width: 3,
         height: 2,
         symmetrical: true,

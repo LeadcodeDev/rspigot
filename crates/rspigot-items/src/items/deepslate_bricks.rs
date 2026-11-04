@@ -25,6 +25,7 @@ impl Item for DeepslateBricks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:deepslate_bricks",
             width: 2,
             height: 2,
             symmetrical: true,

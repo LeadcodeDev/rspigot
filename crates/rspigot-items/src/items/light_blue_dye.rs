@@ -25,10 +25,12 @@ impl Item for LightBlueDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:light_blue_dye_from_blue_orchid",
             ingredients: &[ItemSet::Direct(&[ItemId(303)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:light_blue_dye_from_blue_white_dye",
             ingredients: &[ItemSet::Direct(&[ItemId(1210)]), ItemSet::Direct(&[ItemId(1199)])],
             product: Product::of(2),
         },

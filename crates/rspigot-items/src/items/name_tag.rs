@@ -25,6 +25,7 @@ impl Item for NameTag {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:name_tag",
         width: 2,
         height: 2,
         symmetrical: false,

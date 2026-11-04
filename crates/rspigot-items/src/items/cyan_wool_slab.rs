@@ -27,6 +27,7 @@ impl Item for CyanWoolSlab {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cyan_wool_slab",
             width: 3,
             height: 1,
             symmetrical: true,
@@ -38,6 +39,7 @@ impl Item for CyanWoolSlab {
             product: Product::of(6),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_cyan_wool_slab",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1208)]),
                 ItemSet::Direct(&[

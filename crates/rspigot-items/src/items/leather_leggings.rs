@@ -41,6 +41,7 @@ impl Item for LeatherLeggings {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:leather_leggings",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -57,8 +58,8 @@ impl Item for LeatherLeggings {
             ],
             product: Product::of(1),
         },
-        Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
-        Craft::RepairItem,
+        Craft::Dye { id: "minecraft:leather_leggings_dyed", dye: ItemSet::Tag(&tags::ITEM_DYES) },
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

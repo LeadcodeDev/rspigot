@@ -56,8 +56,9 @@ impl Item for StonePickaxe {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:stone_pickaxe",
             width: 3,
             height: 3,
             symmetrical: true,

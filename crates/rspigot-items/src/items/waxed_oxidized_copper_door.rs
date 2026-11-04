@@ -24,6 +24,7 @@ impl Item for WaxedOxidizedCopperDoor {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:waxed_oxidized_copper_door_from_honeycomb",
         ingredients: &[ItemSet::Direct(&[ItemId(905)]), ItemSet::Direct(&[ItemId(1530)])],
         product: Product::of(1),
     }];

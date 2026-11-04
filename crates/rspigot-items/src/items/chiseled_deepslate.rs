@@ -25,6 +25,7 @@ impl Item for ChiseledDeepslate {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:chiseled_deepslate",
             width: 1,
             height: 2,
             symmetrical: true,

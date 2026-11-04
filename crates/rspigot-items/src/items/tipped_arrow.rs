@@ -22,6 +22,7 @@ impl Item for TippedArrow {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Imbue {
+        id: "minecraft:tipped_arrow",
         source: ItemSet::Direct(&[ItemId(1445)]),
         material: ItemSet::Direct(&[ItemId(1009)]),
         count: 8,

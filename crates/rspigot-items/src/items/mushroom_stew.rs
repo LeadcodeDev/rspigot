@@ -29,6 +29,7 @@ impl Item for MushroomStew {
     const USE_REMAINDER: Option<ItemId> = Some(ItemId(1006));
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:mushroom_stew",
         ingredients: &[
             ItemSet::Tag(&tags::ITEM_MUSHROOMS),
             ItemSet::Tag(&tags::ITEM_MUSHROOMS),

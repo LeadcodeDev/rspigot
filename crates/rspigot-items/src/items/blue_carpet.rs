@@ -27,6 +27,7 @@ impl Item for BlueCarpet {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 67, fast_burn_time: 33 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:blue_carpet",
             width: 2,
             height: 1,
             symmetrical: true,
@@ -34,6 +35,7 @@ impl Item for BlueCarpet {
             product: Product::of(3),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_blue_carpet",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1210)]),
                 ItemSet::Direct(&[

@@ -27,6 +27,7 @@ impl Item for Emerald {
     const TRIM_MATERIAL: Option<&'static str> = Some("minecraft:emerald");
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:emerald",
             ingredients: &[ItemSet::Direct(&[ItemId(514)])],
             product: Product::of(9),
         },

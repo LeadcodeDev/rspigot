@@ -24,6 +24,7 @@ impl Item for Book {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:book",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1145)]),
             ItemSet::Direct(&[ItemId(1145)]),

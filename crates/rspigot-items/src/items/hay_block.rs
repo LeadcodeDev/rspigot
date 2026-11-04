@@ -24,6 +24,7 @@ impl Item for HayBlock {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:hay_block",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1066)]),
             ItemSet::Direct(&[ItemId(1066)]),

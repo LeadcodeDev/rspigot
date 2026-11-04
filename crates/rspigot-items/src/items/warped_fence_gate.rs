@@ -24,6 +24,7 @@ impl Item for WarpedFenceGate {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:warped_fence_gate",
         width: 3,
         height: 2,
         symmetrical: true,

@@ -27,6 +27,7 @@ impl Item for RedWoolStairs {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 100, fast_burn_time: 50 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_red_wool_stairs",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1213)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for RedWoolStairs {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:red_wool_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

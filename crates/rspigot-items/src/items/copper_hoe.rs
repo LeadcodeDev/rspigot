@@ -57,6 +57,7 @@ impl Item for CopperHoe {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:copper_hoe",
             width: 2,
             height: 3,
             symmetrical: false,
@@ -70,7 +71,7 @@ impl Item for CopperHoe {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

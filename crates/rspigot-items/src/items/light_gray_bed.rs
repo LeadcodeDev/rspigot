@@ -26,6 +26,7 @@ impl Item for LightGrayBed {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_light_gray_bed",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1207)]),
                 ItemSet::Direct(&[
@@ -49,6 +50,7 @@ impl Item for LightGrayBed {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:light_gray_bed",
             width: 3,
             height: 2,
             symmetrical: true,

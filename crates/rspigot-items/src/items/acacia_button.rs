@@ -26,6 +26,7 @@ impl Item for AcaciaButton {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 100, fast_burn_time: 50 });
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:acacia_button",
         ingredients: &[ItemSet::Direct(&[ItemId(67)])],
         product: Product::of(1),
     }];

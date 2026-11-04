@@ -25,6 +25,7 @@ impl Item for ChiseledResinBricks {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:chiseled_resin_bricks",
             width: 1,
             height: 2,
             symmetrical: true,

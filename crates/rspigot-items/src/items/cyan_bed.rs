@@ -26,6 +26,7 @@ impl Item for CyanBed {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cyan_bed",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -40,6 +41,7 @@ impl Item for CyanBed {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_cyan_bed",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1208)]),
                 ItemSet::Direct(&[

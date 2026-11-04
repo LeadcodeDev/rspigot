@@ -25,6 +25,7 @@ impl Item for CinnabarStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:cinnabar_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

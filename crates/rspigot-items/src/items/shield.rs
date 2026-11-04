@@ -25,8 +25,9 @@ impl Item for Shield {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:shield",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -43,7 +44,10 @@ impl Item for Shield {
             ],
             product: Product::of(1),
         },
-        Craft::ShieldDecoration { banner: ItemSet::Tag(&tags::ITEM_BANNERS) },
+        Craft::ShieldDecoration {
+            id: "minecraft:shield_decoration",
+            banner: ItemSet::Tag(&tags::ITEM_BANNERS),
+        },
     ];
     type Behavior = crate::family::Plain;
 }

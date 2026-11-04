@@ -24,6 +24,7 @@ impl Item for NetheriteUpgradeSmithingTemplate {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:netherite_upgrade_smithing_template",
         width: 3,
         height: 3,
         symmetrical: true,

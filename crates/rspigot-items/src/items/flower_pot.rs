@@ -24,6 +24,7 @@ impl Item for FlowerPot {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:flower_pot",
         width: 3,
         height: 2,
         symmetrical: true,

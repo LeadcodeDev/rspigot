@@ -46,13 +46,14 @@ impl Item for Mace {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:mace",
             width: 1,
             height: 2,
             symmetrical: true,
             cells: &[Some(ItemSet::Direct(&[ItemId(116)])), Some(ItemSet::Direct(&[ItemId(1373)]))],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

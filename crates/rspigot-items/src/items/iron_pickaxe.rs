@@ -57,6 +57,7 @@ impl Item for IronPickaxe {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:iron_pickaxe",
             width: 3,
             height: 3,
             symmetrical: true,
@@ -73,7 +74,7 @@ impl Item for IronPickaxe {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

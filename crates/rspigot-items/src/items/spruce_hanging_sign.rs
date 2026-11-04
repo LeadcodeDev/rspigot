@@ -26,6 +26,7 @@ impl Item for SpruceHangingSign {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 800, fast_burn_time: 400 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:spruce_hanging_sign",
         width: 3,
         height: 3,
         symmetrical: true,

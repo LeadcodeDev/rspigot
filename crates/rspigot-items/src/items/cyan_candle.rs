@@ -24,6 +24,7 @@ impl Item for CyanCandle {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:cyan_candle",
         ingredients: &[ItemSet::Direct(&[ItemId(1550)]), ItemSet::Direct(&[ItemId(1208)])],
         product: Product::of(1),
     }];

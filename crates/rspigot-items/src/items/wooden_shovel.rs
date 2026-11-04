@@ -57,8 +57,9 @@ impl Item for WoodenShovel {
     ];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 200, fast_burn_time: 100 });
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:wooden_shovel",
             width: 1,
             height: 3,
             symmetrical: true,

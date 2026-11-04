@@ -27,6 +27,7 @@ impl Item for BlackCushion {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 50, fast_burn_time: 25 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:black_cushion",
             width: 3,
             height: 1,
             symmetrical: true,
@@ -38,6 +39,7 @@ impl Item for BlackCushion {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_black_cushion",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1214)]),
                 ItemSet::Direct(&[

@@ -26,6 +26,7 @@ impl Item for FireworkStar {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::FireworkStar {
+            id: "minecraft:firework_star",
             dye: ItemSet::Tag(&tags::ITEM_DYES),
             fuel: ItemSet::Direct(&[ItemId(1064)]),
             trail: ItemSet::Direct(&[ItemId(1012)]),
@@ -37,7 +38,10 @@ impl Item for FireworkStar {
                 star: ItemSet::Direct(&[ItemId(1268)]),
             },
         },
-        Craft::FireworkStarFade { dye: ItemSet::Tag(&tags::ITEM_DYES) },
+        Craft::FireworkStarFade {
+            id: "minecraft:firework_star_fade",
+            dye: ItemSet::Tag(&tags::ITEM_DYES),
+        },
     ];
     type Behavior = crate::family::Plain;
 }

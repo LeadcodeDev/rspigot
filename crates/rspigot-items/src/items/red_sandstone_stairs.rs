@@ -25,6 +25,7 @@ impl Item for RedSandstoneStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:red_sandstone_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

@@ -24,6 +24,7 @@ impl Item for WindCharge {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:wind_charge",
         ingredients: &[ItemSet::Direct(&[ItemId(1373)])],
         product: Product::of(4),
     }];

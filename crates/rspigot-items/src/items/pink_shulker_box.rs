@@ -24,6 +24,7 @@ impl Item for PinkShulkerBox {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Transmute {
+        id: "minecraft:pink_shulker_box",
         input: ItemSet::Tag(&tags::ITEM_SHULKER_BOXES),
         material: ItemSet::Direct(&[ItemId(1205)]),
         min_material: 1,

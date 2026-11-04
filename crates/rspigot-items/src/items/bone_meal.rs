@@ -25,10 +25,12 @@ impl Item for BoneMeal {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:bone_meal",
             ingredients: &[ItemSet::Direct(&[ItemId(1216)])],
             product: Product::of(3),
         },
         Craft::Shapeless {
+            id: "minecraft:bone_meal_from_bone_block",
             ingredients: &[ItemSet::Direct(&[ItemId(654)])],
             product: Product::of(9),
         },

@@ -40,8 +40,9 @@ impl Item for TurtleHelmet {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:turtle_helmet",
             width: 3,
             height: 2,
             symmetrical: true,

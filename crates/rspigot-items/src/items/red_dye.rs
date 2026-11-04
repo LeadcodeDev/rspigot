@@ -25,18 +25,22 @@ impl Item for RedDye {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:red_dye_from_beetroot",
             ingredients: &[ItemSet::Direct(&[ItemId(1438)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:red_dye_from_poppy",
             ingredients: &[ItemSet::Direct(&[ItemId(302)])],
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:red_dye_from_rose_bush",
             ingredients: &[ItemSet::Direct(&[ItemId(601)])],
             product: Product::of(2),
         },
         Craft::Shapeless {
+            id: "minecraft:red_dye_from_tulip",
             ingredients: &[ItemSet::Direct(&[ItemId(306)])],
             product: Product::of(1),
         },

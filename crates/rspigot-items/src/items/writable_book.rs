@@ -24,6 +24,7 @@ impl Item for WritableBook {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:writable_book",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1146)]),
             ItemSet::Direct(&[ItemId(1196)]),

@@ -26,6 +26,7 @@ impl Item for IronNugget {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:iron_nugget",
             ingredients: &[ItemSet::Direct(&[ItemId(1018)])],
             product: Product::of(9),
         },

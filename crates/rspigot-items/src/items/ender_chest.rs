@@ -24,6 +24,7 @@ impl Item for EnderChest {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:ender_chest",
         width: 3,
         height: 3,
         symmetrical: true,

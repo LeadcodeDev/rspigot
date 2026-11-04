@@ -41,6 +41,7 @@ impl Item for CopperSpear {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:copper_spear",
             width: 3,
             height: 3,
             symmetrical: false,
@@ -57,7 +58,7 @@ impl Item for CopperSpear {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

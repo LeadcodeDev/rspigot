@@ -28,6 +28,7 @@ impl Item for BeetrootSoup {
     const USE_REMAINDER: Option<ItemId> = Some(ItemId(1006));
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:beetroot_soup",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1006)]),
             ItemSet::Direct(&[ItemId(1438)]),

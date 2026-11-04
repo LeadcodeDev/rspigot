@@ -26,6 +26,7 @@ impl Item for SmithingTable {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 300, fast_burn_time: 150 });
     const CRAFTS: &'static [Craft] = &[Craft::Shaped {
+        id: "minecraft:smithing_table",
         width: 2,
         height: 3,
         symmetrical: true,

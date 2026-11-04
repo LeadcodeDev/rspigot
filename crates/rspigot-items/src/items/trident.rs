@@ -44,6 +44,6 @@ impl Item for Trident {
             slot: SlotGroup::Mainhand,
         },
     ];
-    const CRAFTS: &'static [Craft] = &[Craft::RepairItem];
+    const CRAFTS: &'static [Craft] = &[Craft::RepairItem { id: "minecraft:repair_item" }];
     type Behavior = crate::family::Plain;
 }

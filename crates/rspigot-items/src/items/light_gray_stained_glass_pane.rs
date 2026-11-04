@@ -25,6 +25,7 @@ impl Item for LightGrayStainedGlassPane {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:light_gray_stained_glass_pane",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -39,6 +40,7 @@ impl Item for LightGrayStainedGlassPane {
             product: Product::of(16),
         },
         Craft::Shaped {
+            id: "minecraft:light_gray_stained_glass_pane_from_glass_pane",
             width: 3,
             height: 3,
             symmetrical: true,

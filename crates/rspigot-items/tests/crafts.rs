@@ -27,7 +27,7 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
         Craft::Transmute {
             input, material, ..
         } => vec![input, material],
-        Craft::Dye { dye } => vec![dye],
+        Craft::Dye { dye, .. } => vec![dye],
         Craft::Imbue {
             source, material, ..
         } => vec![source, material],
@@ -36,17 +36,19 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
             front,
             left,
             right,
+            ..
         } => vec![back, front, left, right],
-        Craft::BannerDuplicate | Craft::RepairItem => vec![],
-        Craft::ShieldDecoration { banner } => vec![banner],
-        Craft::MapExtending { map, material } => vec![map, material],
-        Craft::FireworkStarFade { dye } => vec![dye],
+        Craft::BannerDuplicate { .. } | Craft::RepairItem { .. } => vec![],
+        Craft::ShieldDecoration { banner, .. } => vec![banner],
+        Craft::MapExtending { map, material, .. } => vec![map, material],
+        Craft::FireworkStarFade { dye, .. } => vec![dye],
         Craft::FireworkStar {
             dye,
             fuel,
             trail,
             twinkle,
             shapes,
+            ..
         } => vec![
             dye,
             fuel,
@@ -60,7 +62,9 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
         Craft::FireworkRocket {
             shell, star, fuel, ..
         } => vec![shell, star, fuel],
-        Craft::BookCloning { source, material } => vec![source, material],
+        Craft::BookCloning {
+            source, material, ..
+        } => vec![source, material],
         Craft::Cooking { ingredient, .. } | Craft::Stonecutting { ingredient, .. } => {
             vec![ingredient]
         }
@@ -68,6 +72,7 @@ fn sets(craft: &Craft) -> Vec<ItemSet> {
             template,
             base,
             addition,
+            ..
         }
         | Craft::SmithingTrim {
             template,
@@ -99,14 +104,17 @@ fn every_crafting_table_recipe_is_declared_on_an_item() {
             .count(),
         1265 + 16 + damageable
     );
-    assert_eq!(count_of(|c| matches!(c, Craft::RepairItem)), damageable);
+    assert_eq!(
+        count_of(|c| matches!(c, Craft::RepairItem { .. })),
+        damageable
+    );
     assert_eq!(count_of(|c| matches!(c, Craft::Shaped { .. })), 827);
     assert_eq!(count_of(|c| matches!(c, Craft::Shapeless { .. })), 375);
     assert_eq!(count_of(|c| matches!(c, Craft::Transmute { .. })), 33 + 16);
     assert_eq!(count_of(|c| matches!(c, Craft::Dye { .. })), 6);
     assert_eq!(count_of(|c| matches!(c, Craft::Imbue { .. })), 1);
     assert_eq!(count_of(|c| matches!(c, Craft::DecoratedPot { .. })), 1);
-    assert_eq!(count_of(|c| matches!(c, Craft::BannerDuplicate)), 16);
+    assert_eq!(count_of(|c| matches!(c, Craft::BannerDuplicate { .. })), 16);
     assert_eq!(count_of(|c| matches!(c, Craft::ShieldDecoration { .. })), 1);
     assert_eq!(count_of(|c| matches!(c, Craft::MapExtending { .. })), 1);
     assert_eq!(count_of(|c| matches!(c, Craft::FireworkStarFade { .. })), 1);
@@ -236,6 +244,7 @@ fn stonecutting_and_smithing_recipes_are_declared_too() {
             template,
             base,
             addition,
+            ..
         },
         ..,
     ] = ItemKind::NetheriteAxe.crafts()
@@ -281,6 +290,7 @@ fn an_item_declares_the_crafts_that_produce_it() {
         Craft::Shapeless {
             ingredients: [logs],
             product,
+            ..
         },
     ] = OakPlanks::CRAFTS
     else {
@@ -301,8 +311,9 @@ fn a_shaped_craft_keeps_its_pattern() {
             symmetrical,
             cells,
             product,
+            ..
         },
-        Craft::RepairItem,
+        Craft::RepairItem { .. },
     ] = IronPickaxe::CRAFTS
     else {
         panic!("{:?}", IronPickaxe::CRAFTS);
@@ -474,6 +485,7 @@ fn keeping_the_input_item_is_declared_on_each_item_it_applies_to() {
                 max_material,
                 add_material_count: true,
                 count,
+                ..
             } => Some((kind, input, material, min_material, max_material, count)),
             _ => None,
         })
@@ -507,6 +519,7 @@ fn a_transmute_without_a_range_takes_one_material() {
         max_material,
         add_material_count,
         count,
+        ..
     } = *craft
     else {
         unreachable!()
@@ -524,6 +537,7 @@ fn special_crafts_name_their_ingredients() {
         star,
         fuel,
         count,
+        ..
     }) = ItemKind::FireworkRocket
         .crafts()
         .iter()

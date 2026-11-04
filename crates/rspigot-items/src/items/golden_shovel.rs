@@ -57,6 +57,7 @@ impl Item for GoldenShovel {
     ];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:golden_shovel",
             width: 1,
             height: 3,
             symmetrical: true,
@@ -67,7 +68,7 @@ impl Item for GoldenShovel {
             ],
             product: Product::of(1),
         },
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
     ];
     type Behavior = crate::family::Plain;
 }

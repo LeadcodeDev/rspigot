@@ -25,6 +25,7 @@ impl Item for BrownHarness {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:brown_harness",
             width: 3,
             height: 2,
             symmetrical: true,
@@ -39,6 +40,7 @@ impl Item for BrownHarness {
             product: Product::of(1),
         },
         Craft::Shapeless {
+            id: "minecraft:dye_brown_harness",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1211)]),
                 ItemSet::Direct(&[

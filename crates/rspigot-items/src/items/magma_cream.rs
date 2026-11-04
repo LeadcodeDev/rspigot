@@ -24,6 +24,7 @@ impl Item for MagmaCream {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:magma_cream",
         ingredients: &[ItemSet::Direct(&[ItemId(1274)]), ItemSet::Direct(&[ItemId(1147)])],
         product: Product::of(1),
     }];

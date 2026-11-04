@@ -64,6 +64,7 @@ fn build() -> Vec<(&'static str, Vec<u16>)> {
                     template,
                     base,
                     addition,
+                    ..
                 }
                 | Craft::SmithingTrim {
                     template,

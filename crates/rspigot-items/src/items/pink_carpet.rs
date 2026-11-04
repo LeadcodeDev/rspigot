@@ -27,6 +27,7 @@ impl Item for PinkCarpet {
     const COOKING_FUEL: Option<Fuel> = Some(Fuel { burn_time: 67, fast_burn_time: 33 });
     const CRAFTS: &'static [Craft] = &[
         Craft::Shapeless {
+            id: "minecraft:dye_pink_carpet",
             ingredients: &[
                 ItemSet::Direct(&[ItemId(1205)]),
                 ItemSet::Direct(&[
@@ -50,6 +51,7 @@ impl Item for PinkCarpet {
             product: Product::of(1),
         },
         Craft::Shaped {
+            id: "minecraft:pink_carpet",
             width: 2,
             height: 1,
             symmetrical: true,

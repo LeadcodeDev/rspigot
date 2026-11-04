@@ -40,8 +40,9 @@ impl Item for WolfArmor {
         },
     ];
     const CRAFTS: &'static [Craft] = &[
-        Craft::RepairItem,
+        Craft::RepairItem { id: "minecraft:repair_item" },
         Craft::Shaped {
+            id: "minecraft:wolf_armor",
             width: 3,
             height: 3,
             symmetrical: false,
@@ -58,7 +59,7 @@ impl Item for WolfArmor {
             ],
             product: Product::of(1),
         },
-        Craft::Dye { dye: ItemSet::Tag(&tags::ITEM_DYES) },
+        Craft::Dye { id: "minecraft:wolf_armor_dyed", dye: ItemSet::Tag(&tags::ITEM_DYES) },
     ];
     type Behavior = crate::family::Plain;
 }

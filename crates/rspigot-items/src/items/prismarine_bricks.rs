@@ -24,6 +24,7 @@ impl Item for PrismarineBricks {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:prismarine_bricks",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1398)]),
             ItemSet::Direct(&[ItemId(1398)]),

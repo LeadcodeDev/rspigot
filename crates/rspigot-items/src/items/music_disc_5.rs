@@ -24,6 +24,7 @@ impl Item for MusicDisc5 {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:music_disc_5",
         ingredients: &[
             ItemSet::Direct(&[ItemId(1482)]),
             ItemSet::Direct(&[ItemId(1482)]),

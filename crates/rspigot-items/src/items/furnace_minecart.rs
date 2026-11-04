@@ -24,6 +24,7 @@ impl Item for FurnaceMinecart {
     const USE_REMAINDER: Option<ItemId> = None;
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[Craft::Shapeless {
+        id: "minecraft:furnace_minecart",
         ingredients: &[ItemSet::Direct(&[ItemId(407)]), ItemSet::Direct(&[ItemId(966)])],
         product: Product::of(1),
     }];

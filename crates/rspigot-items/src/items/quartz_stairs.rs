@@ -25,6 +25,7 @@ impl Item for QuartzStairs {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:quartz_stairs",
             width: 3,
             height: 3,
             symmetrical: false,

@@ -25,6 +25,7 @@ impl Item for AndesiteWall {
     const ATTRIBUTE_MODIFIERS: &'static [AttributeModifier] = &[];
     const CRAFTS: &'static [Craft] = &[
         Craft::Shaped {
+            id: "minecraft:andesite_wall",
             width: 3,
             height: 2,
             symmetrical: true,
