@@ -1,0 +1,40 @@
+syntax = "proto3";
+package rspigot.plugin.v1;
+
+enum GameMode { GAME_MODE_UNSPECIFIED = 0; GAME_MODE_SURVIVAL = 1; GAME_MODE_CREATIVE = 2; GAME_MODE_ADVENTURE = 3; GAME_MODE_SPECTATOR = 4; }
+enum Phase { PHASE_UNSPECIFIED = 0; PHASE_DECIDE = 1; PHASE_SETTLED = 2; PHASE_ROLLED_BACK = 3; }
+
+message Empty {}
+message Vec3 { double x = 1; double y = 2; double z = 3; }
+message Rotation { float yaw = 1; float pitch = 2; }
+message BlockPos { int32 x = 1; int32 y = 2; int32 z = 3; }
+message Property { string name = 1; string value = 2; }
+message Enchant { string key = 1; int32 level = 2; }
+message Item { string key = 1; int32 count = 2; optional string name = 3; repeated string lore = 4; repeated Enchant enchantments = 5; bytes components = 6; }
+message Slot { int32 slot = 1; Item item = 2; }
+message Effect { string key = 1; int32 duration = 2; int32 amplifier = 3; bool ambient = 4; bool particles = 5; bool icon = 6; }
+message PlayerSnapshot { string uuid = 1; string name = 2; int32 entity_id = 3; string world = 4; Vec3 position = 5; GameMode game_mode = 6; Rotation rotation = 7; }
+message EntitySnapshot { int32 entity_id = 1; string uuid = 2; string kind = 3; Vec3 position = 4; }
+message BlockState { string block = 1; repeated Property properties = 2; }
+
+message Location { string world = 1; Vec3 position = 2; Rotation rotation = 3; }
+message BlockSnapshot { BlockPos pos = 1; BlockState state = 2; }
+message InventoryRef { oneof owner { uint64 custom = 1; string player = 2; BlockPos block = 3; int32 entity = 4; Empty detached = 5; } int32 size = 6; string kind = 7; }
+message InventoryView { InventoryRef top = 1; InventoryRef bottom = 2; string title = 3; PlayerSnapshot player = 4; }
+message ChunkRef { string world = 1; int32 x = 2; int32 z = 3; }
+message DamageSource { string kind = 1; EntitySnapshot causing = 2; EntitySnapshot direct = 3; Vec3 location = 4; }
+message CommandSender { oneof sender { PlayerSnapshot player = 1; Empty console = 2; } }
+message Trade { Item result = 1; repeated Item ingredients = 2; int32 uses = 3; int32 max_uses = 4; bool experience_reward = 5; int32 villager_experience = 6; float price_multiplier = 7; int32 demand = 8; int32 special_price = 9; }
+message PluginInfo { string name = 1; string version = 2; }
+message BoundingBox { Vec3 min = 1; Vec3 max = 2; }
+message Input { bool forward = 1; bool backward = 2; bool left = 3; bool right = 4; bool jump = 5; bool sneak = 6; bool sprint = 7; }
+message SpawnerData { BlockPos pos = 1; optional string spawned = 2; int32 delay = 3; }
+message TrialSpawnerData { BlockPos pos = 1; bool ominous = 2; }
+message LecternData { BlockPos pos = 1; Item book = 2; int32 page = 3; }
+message SignData { BlockPos pos = 1; repeated string front = 2; repeated string back = 3; bool waxed = 4; }
+message EnchantOffer { string enchantment = 1; int32 level = 2; int32 cost = 3; }
+message OwnerRef { oneof owner { PlayerSnapshot player = 1; EntitySnapshot entity = 2; string offline = 3; } }
+message HolderRef { oneof holder { PlayerSnapshot player = 1; EntitySnapshot entity = 2; BlockPos block = 3; } }
+message MerchantRef { oneof merchant { EntitySnapshot entity = 1; Empty custom = 2; } }
+message BookMeta { optional string title = 1; optional string author = 2; repeated string pages = 3; }
+message LootContext { Location location = 1; float luck = 2; EntitySnapshot killer = 3; EntitySnapshot looted = 4; }
