@@ -26,8 +26,6 @@ const OFFHAND: i32 = 40;
 
 type Key = (u64, u64);
 
-const PLAYER_SLOTS: i32 = 41;
-
 struct PluginInventory {
     rows: u8,
     title: Component,
@@ -258,12 +256,9 @@ impl<L: ClientLink> Server<L> {
                 i32::try_from(held.items.len()).unwrap_or(i32::MAX)
             }),
             kind: "CHEST".to_owned(),
+            id: key.1,
         };
-        let bottom = InventoryRef {
-            owner: InventoryOwner::Player(player.id),
-            size: PLAYER_SLOTS,
-            kind: "PLAYER".to_owned(),
-        };
+        let bottom = self.player_inventory(player.id);
         let view = InventoryView {
             top: top.clone(),
             bottom,

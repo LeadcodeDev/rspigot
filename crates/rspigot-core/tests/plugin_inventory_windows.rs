@@ -890,3 +890,44 @@ fn a_result_set_on_a_grid_without_a_recipe_uses_the_grid_and_stops_when_it_empti
     assert_eq!(count_of(&mut s, &alice, "minecraft:dirt"), 0);
     assert_eq!(count_of(&mut s, &alice, "minecraft:diamond"), 3);
 }
+
+#[test]
+fn vanilla_inventories_carry_a_runtime_id_per_opening() {
+    let mut s = scene_with(&["Alice", "Bob"], window_handlers());
+    let (alice, bob) = (s.players[0].clone(), s.players[1].clone());
+    set_block(&mut s, CHEST, "minecraft:chest");
+    set_block(&mut s, TABLE, "minecraft:crafting_table");
+    set_block(&mut s, SMITHY, "minecraft:ender_chest");
+    alice.link.take();
+    bob.link.take();
+    let mut alice_table = open_block(&mut s, &alice, TABLE);
+    let mut bob_table = open_block(&mut s, &bob, TABLE);
+    let tables = opens(&s);
+    assert_eq!(tables[0].inventory.owner, tables[1].inventory.owner);
+    assert_ne!(tables[0].inventory.id, tables[1].inventory.id);
+    assert_ne!(tables[0].inventory.id, 0);
+    close_window(&mut s, &alice, &mut alice_table);
+    close_window(&mut s, &bob, &mut bob_table);
+    let _alice_chest = open_block(&mut s, &alice, CHEST);
+    let _bob_chest = open_block(&mut s, &bob, CHEST);
+    let chests = opens(&s);
+    assert_eq!(chests[2].inventory.id, chests[3].inventory.id);
+    let ender = open_block(&mut s, &alice, SMITHY);
+    let enders = opens(&s);
+    let ender_open = enders.last().expect("the ender chest opens");
+    assert_eq!(ender_open.inventory.kind, "ENDER_CHEST");
+    assert_eq!(ender_open.inventory.owner, InventoryOwner::Player(alice.id));
+    assert_eq!(
+        ender_open.view.bottom.owner,
+        InventoryOwner::Player(alice.id)
+    );
+    assert_ne!(ender_open.inventory.id, ender_open.view.bottom.id);
+    let mut ender = ender;
+    let mut own = View::inventory();
+    close_window(&mut s, &alice, &mut ender);
+    close_window(&mut s, &alice, &mut own);
+    let grid = closes(&s).pop().expect("the player inventory closes");
+    assert_eq!(grid.inventory.kind, "CRAFTING");
+    assert_ne!(grid.inventory.id, grid.view.bottom.id);
+    assert_eq!(grid.view.bottom.id, ender_open.view.bottom.id);
+}

@@ -68,6 +68,7 @@ impl Backing {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct OpenMenu {
     pub window: i32,
+    pub inventory: u64,
     pub title: &'static str,
     pub menu: ContainerMenu,
     pub backing: Backing,
@@ -471,10 +472,11 @@ impl<L: ClientLink> Server<L> {
         let Some(opening) = self.opening_at(pos, state) else {
             return false;
         };
-        let Some(open) = opening else {
+        let Some(mut open) = opening else {
             return true;
         };
         self.close_open_menu(id, true);
+        open.inventory = self.inventory_of(open.backing);
         self.ask_open(id, pos, open);
         true
     }
@@ -516,6 +518,7 @@ impl<L: ClientLink> Server<L> {
         };
         Some(Some(OpenMenu {
             window: 0,
+            inventory: 0,
             title: opening.title,
             menu: ContainerMenu::new(opening.kind),
             backing,
@@ -523,6 +526,19 @@ impl<L: ClientLink> Server<L> {
             local: Vec::new(),
             data: Vec::new(),
         }))
+    }
+
+    fn inventory_of(&mut self, backing: Backing) -> u64 {
+        let shared = backing.entity.is_some().then(|| {
+            self.players.values().find_map(|player| {
+                player
+                    .open_menu
+                    .as_ref()
+                    .filter(|open| open.backing.entity.is_some() && open.backing.pos == backing.pos)
+                    .map(|open| open.inventory)
+            })
+        });
+        shared.flatten().unwrap_or_else(|| self.next_inventory_id())
     }
 
     pub(crate) fn opening_in_reach(&self, id: PlayerId, pos: BlockPos, open: &OpenMenu) -> bool {

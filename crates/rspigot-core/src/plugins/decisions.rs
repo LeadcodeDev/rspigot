@@ -1243,6 +1243,7 @@ mod tests {
             },
             size: 27,
             kind: "CHEST".to_owned(),
+            id: 7,
         };
         EventPayload::InventoryClick(InventoryClick {
             action: InventoryAction::Unknown,

@@ -72,6 +72,7 @@ fn custom_of(plugin: &str, id: u64) -> v1::InventoryRef {
         size: 54,
         kind: "CHEST".to_owned(),
         plugin: plugin.to_owned(),
+        id: 0,
     }
 }
 
@@ -81,6 +82,7 @@ fn own() -> v1::InventoryRef {
         size: 41,
         kind: "PLAYER".to_owned(),
         plugin: String::new(),
+        id: 0,
     }
 }
 

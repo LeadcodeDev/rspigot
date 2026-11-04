@@ -66,6 +66,7 @@ pub struct InventoryRef {
     pub owner: InventoryOwner,
     pub size: i32,
     pub kind: String,
+    pub id: u64,
 }
 
 impl InventoryRef {
@@ -85,6 +86,7 @@ impl InventoryRef {
             owner,
             size: inventory.size,
             kind: inventory.kind,
+            id: inventory.id,
         })
     }
 
@@ -105,6 +107,7 @@ impl InventoryRef {
             size: self.size,
             kind: self.kind.clone(),
             plugin,
+            id: self.id,
         }
     }
 

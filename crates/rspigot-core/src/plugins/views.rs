@@ -202,15 +202,19 @@ impl Described {
     }
 }
 
-pub(crate) fn player_bottom(id: PlayerId) -> InventoryRef {
-    InventoryRef {
-        owner: InventoryOwner::Player(id),
-        size: PLAYER_SLOTS,
-        kind: "PLAYER".to_owned(),
-    }
-}
-
 impl<L: ClientLink> Server<L> {
+    pub(crate) fn player_inventory(&self, id: PlayerId) -> InventoryRef {
+        InventoryRef {
+            owner: InventoryOwner::Player(id),
+            size: PLAYER_SLOTS,
+            kind: "PLAYER".to_owned(),
+            id: self
+                .players
+                .get(&id)
+                .map_or(0, |player| player.inventory_ids[0]),
+        }
+    }
+
     pub(crate) fn window_of(&self, id: PlayerId) -> Option<Window> {
         let player = self.players.get(&id)?;
         Some(if let Some(open) = &player.plugin_menu {
@@ -231,6 +235,7 @@ impl<L: ClientLink> Server<L> {
                     owner: InventoryOwner::Player(id),
                     size: PLAYER_GRID,
                     kind: TopType::Crafting.name().to_owned(),
+                    id: state.inventory_ids[1],
                 };
                 Some(self.described(
                     top,
@@ -266,6 +271,7 @@ impl<L: ClientLink> Server<L> {
             owner,
             size: i32::try_from(open.menu.kind().container_size()).unwrap_or(i32::MAX),
             kind: kind.name().to_owned(),
+            id: open.inventory,
         };
         let backing = open.backing;
         let mut viewers: Vec<PlayerId> = if backing.entity.is_some() {
@@ -304,7 +310,7 @@ impl<L: ClientLink> Server<L> {
         Described {
             view: InventoryView {
                 top: top.clone(),
-                bottom: player_bottom(player.id),
+                bottom: self.player_inventory(player.id),
                 title,
                 player,
             },

@@ -31,6 +31,7 @@ pub struct InventoryRef {
     pub owner: InventoryOwner,
     pub size: i32,
     pub kind: String,
+    pub id: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

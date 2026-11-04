@@ -57,6 +57,7 @@ pub(super) fn wire_inventory_ref(inventory: InventoryRef) -> v1::InventoryRef {
         size: inventory.size,
         kind: inventory.kind,
         plugin,
+        id: inventory.id,
     }
 }
 
@@ -75,6 +76,7 @@ pub(super) fn inventory_ref(inventory: v1::InventoryRef) -> Result<InventoryRef,
         owner,
         size: inventory.size,
         kind: inventory.kind,
+        id: inventory.id,
     })
 }
 
@@ -315,6 +317,7 @@ mod tests {
                 owner,
                 size: 27,
                 kind: "CHEST".to_owned(),
+                id: 12,
             };
             assert_eq!(
                 inventory_ref(wire_inventory_ref(inventory.clone())).ok(),

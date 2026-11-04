@@ -116,6 +116,7 @@ pub struct Server<L> {
     startup: Option<Receiver<Inbound<L>>>,
     arrival_counter: u64,
     login_counter: u64,
+    inventory_counter: u64,
     clock: fn() -> SystemTime,
     next_entity_id: i32,
     status: StatusBoard,
@@ -177,6 +178,7 @@ impl<L: ClientLink> Server<L> {
             startup: None,
             arrival_counter: 0,
             login_counter: 0,
+            inventory_counter: 0,
             clock: SystemTime::now,
             next_entity_id: 1,
             status,
@@ -478,6 +480,11 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
+    pub(crate) fn next_inventory_id(&mut self) -> u64 {
+        self.inventory_counter += 1;
+        self.inventory_counter
+    }
+
     pub(crate) fn next_login_attempt(&mut self) -> u64 {
         self.login_counter += 1;
         self.login_counter
@@ -571,6 +578,7 @@ impl<L: ClientLink> Server<L> {
         let operator = self.admin.is_operator(&profile);
         let saved = self.load_saved_player(&profile);
         let entity_id = self.allocate_entity_id();
+        let inventory_ids = [self.next_inventory_id(), self.next_inventory_id()];
         let position = saved
             .as_ref()
             .filter(|save| !save.is_dead())
@@ -615,6 +623,7 @@ impl<L: ClientLink> Server<L> {
             open_menu: None,
             plugin_menu: None,
             window_counter: 0,
+            inventory_ids,
             ender_items: vec![None; 27],
             kick_leave_message: None,
             last_input: Default::default(),
