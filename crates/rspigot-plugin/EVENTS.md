@@ -89,9 +89,9 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `EntityMountEvent` | `EntityMount` | yes | - | - | not fired yet: needs mounts, leads and taming |
 | `EntityPickupItemEvent` | `EntityPickupItem` | yes | - | - | not fired yet: its fire point comes with its domain |
 | `EntityPlaceEvent` | `EntityPlace` | yes | - | - | not fired yet: needs item frames, paintings and armor stands |
-| `EntityPortalEvent` | `EntityPortal` | yes | `set_can_create_portal`, `set_creation_radius`, `set_from`, `set_search_radius`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
+| `EntityPortalEvent` | `EntityPortal` | yes | `set_can_create_portal`, `set_creation_radius`, `set_search_radius`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
 | `EntityPortalEnterEvent` | `EntityPortalEnter` | no | - | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
-| `EntityPortalExitEvent` | `EntityPortalExit` | yes | `set_after`, `set_from`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
+| `EntityPortalExitEvent` | `EntityPortalExit` | yes | `set_after`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
 | `EntityPoseChangeEvent` | `EntityPoseChange` | no | - | - | not fired yet: its fire point comes with its domain |
 | `EntityPotionEffectEvent` | `EntityPotionEffect` | yes | `set_override` | - | not fired yet: its fire point comes with its domain |
 | `EntityRegainHealthEvent` | `EntityRegainHealth` | yes | `set_amount` | - | not fired yet: its fire point comes with its domain |
@@ -104,7 +104,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `EntityTargetEvent` | `EntityTarget` | yes | `set_target` | `EntityTargetLivingEntity` | not fired yet: its fire point comes with its domain |
 | `EntityTargetBlockEvent` | `EntityTargetBlock` | yes | `set_target` | - | not fired yet: needs the mobs or objects involved |
 | `EntityTargetLivingEntityEvent` | `EntityTargetLivingEntity` | yes | `set_target` | - | not fired yet: its fire point comes with its domain |
-| `EntityTeleportEvent` | `EntityTeleport` | yes | `set_from`, `set_to` | - | not fired yet: its fire point comes with its domain |
+| `EntityTeleportEvent` | `EntityTeleport` | yes | `set_to` | - | not fired yet: its fire point comes with its domain |
 | `EntityToggleGlideEvent` | `EntityToggleGlide` | yes | - | - | not fired yet: needs elytra gliding |
 | `EntityToggleSwimEvent` | `EntityToggleSwim` | yes | - | - | not fired yet: needs swimming |
 | `EntityTransformEvent` | `EntityTransform` | yes | - | - | not fired yet: needs the mobs or objects involved |
@@ -186,7 +186,7 @@ An observing handler takes `&Event`. A deciding handler takes `&mut Event` and e
 | `PlayerLoginEvent` | `PlayerLogin` | no | `set_kick_message`, `set_result` | - | not fired yet: its fire point comes with its domain |
 | `PlayerMoveEvent` | `PlayerMove` | yes | `set_to` | - | fired: observers and deciding handlers; only set_to is applied |
 | `PlayerPickupArrowEvent` | `PlayerPickupArrow` | yes | - | - | not fired yet: its fire point comes with its domain |
-| `PlayerPortalEvent` | `PlayerPortal` | yes | `set_can_create_portal`, `set_creation_radius`, `set_from`, `set_search_radius`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
+| `PlayerPortalEvent` | `PlayerPortal` | yes | `set_can_create_portal`, `set_creation_radius`, `set_search_radius`, `set_to` | - | not fired yet: needs the Nether and End dimensions and structures (#23) |
 | `PlayerQuitEvent` | `PlayerLeave` | no | `set_quit_message` | - | fired: observers only; deciding handlers are asked once the player events land |
 | `PlayerRecipeBookClickEvent` | `PlayerRecipeBookClick` | no | `set_recipe`, `set_shift_click` | - | not fired yet: needs advancements, statistics and the recipe book (#24) |
 | `PlayerRecipeBookSettingsChangeEvent` | `PlayerRecipeBookSettingsChange` | no | - | - | not fired yet: needs advancements, statistics and the recipe book (#24) |
@@ -292,12 +292,16 @@ Accessors that have no field, with the reason.
 | `EntityDamageByEntity` | `getOriginalDamage(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
 | `EntityDamageByEntity` | `isApplicable(EntityDamageEvent$DamageModifier)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
 | `EntityDamageByEntity` | `setDamage(EntityDamageEvent$DamageModifier, double)` | per-modifier damage is left out: rspigot applies armor and effects after the event |
+| `EntityPortal` | `setFrom` | Spigot never reads it back: the portal search reads getTo(), the radii and getCanCreatePortal() only |
+| `EntityPortalExit` | `setFrom` | Spigot never reads it back: Spigot 26.3 never fires this event |
+| `EntityTeleport` | `setFrom` | Spigot never reads it back: no caller reads getFrom() after the event |
 | `MapInitialize` | `getMap` | maps do not exist yet |
 | `PlayerCommandPreprocess` | `setPlayer` | Spigot reads it back only for commands sent through Player.chat, never for a command packet |
 | `PlayerLinksSend` | `getLinks` | server links do not exist yet (#30) |
 | `PlayerLogin` | `allow` | set_result(Allowed) does the same |
 | `PlayerLogin` | `disallow(PlayerLoginEvent$Result, String)` | set_result and set_kick_message do the same |
 | `PlayerMove` | `setFrom` | Spigot never reads it back: a cancel always sends the player to where the move started |
+| `PlayerPortal` | `setFrom` | Spigot never reads it back: the portal search reads getTo(), the radii and getCanCreatePortal() only |
 | `PotionSplash` | `getIntensity(LivingEntity)` | per-entity intensity is left out until thrown potions exist |
 | `PotionSplash` | `setIntensity(LivingEntity, double)` | per-entity intensity is left out until thrown potions exist |
 | `RaidFinish` | `getRaid` | raids do not exist yet, so there is no raid handle |

@@ -202,9 +202,9 @@ message EntityPickupItem { EntitySnapshot entity = 1; string entity_type = 2; En
 message EntityPlace { BlockPos block = 1; Face block_face = 2; EntitySnapshot entity = 3; string entity_type = 4; EquipmentSlot hand = 5; PlayerSnapshot player = 6; }
 message EntityPortalEnter { EntitySnapshot entity = 1; string entity_type = 2; Location location = 3; }
 message EntityPortal { bool can_create_portal = 1; int32 creation_radius = 2; EntitySnapshot entity = 3; string entity_type = 4; Location from = 5; int32 search_radius = 6; Location to = 7; }
-message EntityPortalPatch { optional bool can_create_portal = 1; optional int32 creation_radius = 2; Location from = 5; optional int32 search_radius = 6; NullableLocation to = 7; }
+message EntityPortalPatch { optional bool can_create_portal = 1; optional int32 creation_radius = 2; optional int32 search_radius = 6; NullableLocation to = 7; }
 message EntityPortalExit { Vec3 after = 1; Vec3 before = 2; EntitySnapshot entity = 3; string entity_type = 4; Location from = 5; Location to = 6; }
-message EntityPortalExitPatch { Vec3 after = 1; Location from = 5; NullableLocation to = 6; }
+message EntityPortalExitPatch { Vec3 after = 1; NullableLocation to = 6; }
 message EntityPoseChange { EntitySnapshot entity = 1; string entity_type = 2; Pose pose = 3; }
 message EntityPotionEffect { EntityPotionEffectAction action = 1; EntityPotionEffectCause cause = 2; EntitySnapshot entity = 3; string entity_type = 4; string modified_type = 5; Effect new_effect = 6; Effect old_effect = 7; bool overrides = 8; }
 message EntityPotionEffectPatch { optional bool overrides = 8; }
@@ -224,7 +224,7 @@ message EntityTargetPatch { NullableEntitySnapshot target = 4; }
 message EntityTargetLivingEntity { EntitySnapshot entity = 1; string entity_type = 2; EntityTargetReason reason = 3; EntitySnapshot target = 4; }
 message EntityTargetLivingEntityPatch { NullableEntitySnapshot target = 4; }
 message EntityTeleport { EntitySnapshot entity = 1; string entity_type = 2; Location from = 3; Location to = 4; }
-message EntityTeleportPatch { Location from = 3; NullableLocation to = 4; }
+message EntityTeleportPatch { NullableLocation to = 4; }
 message EntityToggleGlide { EntitySnapshot entity = 1; string entity_type = 2; bool gliding = 3; }
 message EntityToggleSwim { EntitySnapshot entity = 1; string entity_type = 2; bool swimming = 3; }
 message EntityTransform { EntitySnapshot entity = 1; string entity_type = 2; EntityTransformReason transform_reason = 3; repeated EntitySnapshot transformed_entities = 4; EntitySnapshot transformed_entity = 5; }
@@ -337,7 +337,7 @@ message PlayerLogin { string address = 1; string hostname = 4; string kick_messa
 message PlayerLoginPatch { optional string kick_message = 5; optional PlayerLoginResult result = 8; }
 message PlayerPickupArrow { EntitySnapshot arrow = 1; EntitySnapshot item = 2; PlayerSnapshot player = 3; int32 remaining = 4; }
 message PlayerPortal { bool can_create_portal = 1; PlayerTeleportCause cause = 2; int32 creation_radius = 3; Location from = 4; PlayerSnapshot player = 5; int32 search_radius = 6; Location to = 7; }
-message PlayerPortalPatch { optional bool can_create_portal = 1; optional int32 creation_radius = 3; Location from = 4; optional int32 search_radius = 6; Location to = 7; }
+message PlayerPortalPatch { optional bool can_create_portal = 1; optional int32 creation_radius = 3; optional int32 search_radius = 6; Location to = 7; }
 message PlayerRecipeBookClick { string original_recipe = 1; PlayerSnapshot player = 2; string recipe = 3; bool shift_click = 4; }
 message PlayerRecipeBookClickPatch { optional string recipe = 3; optional bool shift_click = 4; }
 message PlayerRecipeBookSettingsChange { bool filtering = 1; bool open = 2; PlayerSnapshot player = 3; PlayerRecipeBookSettingsChangeRecipeBookType recipe_book_type = 4; }

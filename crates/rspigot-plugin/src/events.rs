@@ -7188,11 +7188,6 @@ impl EntityPortal {
         self.creation_radius = value;
     }
 
-    pub fn set_from(&mut self, value: Location) {
-        self.patch.from = Some(value.to_wire());
-        self.from = value;
-    }
-
     pub fn set_search_radius(&mut self, value: i32) {
         self.patch.search_radius = Some(value);
         self.search_radius = value;
@@ -7330,11 +7325,6 @@ impl EntityPortalExit {
     pub fn set_after(&mut self, value: Vector) {
         self.patch.after = Some(value.to_wire());
         self.after = value;
-    }
-
-    pub fn set_from(&mut self, value: Location) {
-        self.patch.from = Some(value.to_wire());
-        self.from = value;
     }
 
     pub fn set_to(&mut self, value: Option<Location>) {
@@ -8247,11 +8237,6 @@ impl EntityTeleport {
 
     pub fn to(&self) -> Option<&Location> {
         self.to.as_ref()
-    }
-
-    pub fn set_from(&mut self, value: Location) {
-        self.patch.from = Some(value.to_wire());
-        self.from = value;
     }
 
     pub fn set_to(&mut self, value: Option<Location>) {
@@ -14051,11 +14036,6 @@ impl PlayerPortal {
     pub fn set_creation_radius(&mut self, value: i32) {
         self.patch.creation_radius = Some(value);
         self.creation_radius = value;
-    }
-
-    pub fn set_from(&mut self, value: Location) {
-        self.patch.from = Some(value.to_wire());
-        self.from = value;
     }
 
     pub fn set_search_radius(&mut self, value: i32) {
