@@ -358,9 +358,9 @@ impl<L: ClientLink> Server<L> {
             .players
             .get(&id)
             .is_some_and(|player| player.game_mode == GameMode::Spectator);
-        let locked = matches!(window, Window::Plugin(_)) && self.plugin_menu_refuses(id);
+        let locked = matches!(window, Window::Plugin(_)) && self.plugin_menu_locked(id);
         if click.input == ClickInput::QuickCraft || self.quick_crafting(id, window) {
-            let refused = locked || (spectator && matches!(window, Window::Container(_)));
+            let refused = locked || (spectator && !matches!(window, Window::Inventory));
             if !refused
                 && click.input == ClickInput::QuickCraft
                 && let Some(drag) = self.pending_drag(id, window, click.button)
@@ -393,17 +393,28 @@ impl<L: ClientLink> Server<L> {
         } else {
             EventResult::Default
         };
+        let game_mode = self.players.get(&id)?.game_mode;
         let step = WindowClick {
             player: id,
             window,
             current: self.window_item(id, window, slot),
             cursor: self.window_cursor(id, window),
-            game_mode: self.players.get(&id)?.game_mode,
+            game_mode,
             click,
             classified,
             result,
             recipe: recipe.map(|recipe| recipe.id),
         };
+        if locked {
+            let payload = self
+                .listened(kind)
+                .then(|| self.window_click_payload(kind, &step))
+                .flatten();
+            self.fire_refused(id, Continuation::Click(kind, Box::new(step)), move |_| {
+                payload
+            });
+            return None;
+        }
         Some(Continuation::Click(kind, Box::new(step)))
     }
 

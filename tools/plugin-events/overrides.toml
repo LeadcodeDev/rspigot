@@ -26,7 +26,7 @@ ServiceRegister = "the Java service manager is out of scope"
 ServiceUnregister = "the Java service manager is out of scope"
 
 [fired]
-InventoryClick = "every click of the player inventory, a vanilla container or a plugin inventory; a spectator's click and a click in a locked plugin inventory start denied; a refused click is resent through the generic resync, and set_current_item or set_cursor on a slot or cursor that changed while the event waited refuses the click and resends the window"
+InventoryClick = "every click of the player inventory, a vanilla container or a plugin inventory; a spectator's click starts denied and a later handler can let it through; a click in a locked plugin inventory is born cancelled and not asked; a refused click is resent through the generic resync, and set_current_item or set_cursor on a slot or cursor that changed while the event waited refuses the click and resends the window"
 InventoryClose = "when the player or the server closes any window, the player inventory included, before the grid and the cursor go back"
 CraftItem = "a click on the result of the player grid or of a crafting table whose grid has a recipe, which is its datapack id; the whole window is resent after it"
 SmithItem = "a click on the smithing result while it holds an item; the whole window is resent after it"

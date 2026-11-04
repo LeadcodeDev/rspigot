@@ -711,7 +711,7 @@ fn a_cancelled_craft_uses_no_ingredient_and_resends_the_whole_window() {
 }
 
 #[test]
-fn the_plain_and_locked_plugin_menus_ask_their_clicks_as_before() {
+fn a_click_in_a_locked_plugin_menu_is_born_cancelled_and_never_asked() {
     let (mut s, alice) = alice_scene(deciding_clicks());
     s.act(Order::Server(ServerOrder::CreateInventory {
         id: MENU,
@@ -730,10 +730,11 @@ fn the_plain_and_locked_plugin_menus_ask_their_clicks_as_before() {
     let mut menu = opened_view(&alice).expect("the menu opens");
     let take = pickup(&mut menu, 0, ("minecraft:diamond", 1));
     send_click(&mut s, &alice, &mut menu, take);
-    let asked = last_asked(&s.plugin, EventKind::InventoryClick);
-    assert_eq!(click_of(&asked).result, EventResult::Deny);
-    rule_on(&mut s.server, 1, asked.id, false, None);
-    refresh(&alice, &mut menu);
+    assert!(asked_for(&s.plugin, EventKind::InventoryClick).is_empty());
+    let settled = settled_for(&s.plugin, EventKind::InventoryClick);
+    assert_eq!(settled.len(), 1);
+    assert!(settled[0].cancelled);
+    assert_eq!(click_of(&settled[0]).result, EventResult::Deny);
     assert_eq!(menu.at(0), Some(("minecraft:diamond", 1)));
     assert_eq!(menu.held(), None);
 }

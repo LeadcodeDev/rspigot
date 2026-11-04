@@ -196,16 +196,12 @@ impl<L: ClientLink> Server<L> {
         self.sync_inventory(id);
     }
 
-    pub(crate) fn plugin_menu_refuses(&self, id: PlayerId) -> bool {
-        let Some(player) = self.players.get(&id) else {
-            return true;
-        };
-        let locked = player
-            .plugin_menu
-            .as_ref()
+    pub(crate) fn plugin_menu_locked(&self, id: PlayerId) -> bool {
+        self.players
+            .get(&id)
+            .and_then(|player| player.plugin_menu.as_ref())
             .and_then(|open| self.plugin_inventories.held.get(&open.key()))
-            .is_none_or(|held| held.locked);
-        locked || player.game_mode == GameMode::Spectator
+            .is_none_or(|held| held.locked)
     }
 
     pub(crate) fn plugin_menu_items(&self, id: PlayerId) -> Option<&[Slot]> {
