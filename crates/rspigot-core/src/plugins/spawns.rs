@@ -115,7 +115,7 @@ impl<L: ClientLink> Server<L> {
             loaded,
             birth,
         };
-        self.fire(lane, Continuation::Spawn(Box::new(step)), move |server| {
+        self.fire_heard(lane, Continuation::Spawn(Box::new(step)), move |server| {
             Some(server.spawn_payload(kind, newborn, reason))
         });
     }
@@ -217,7 +217,7 @@ impl<L: ClientLink> Server<L> {
     pub(crate) fn drop_from(&mut self, dropper: EntityView, item: Entity) {
         let lane = self.lane_for(None, dropper.id);
         let drop = Newborn::of(&item);
-        self.fire(lane, Continuation::EntityDrop(Box::new(item)), move |_| {
+        self.fire_heard(lane, Continuation::EntityDrop(Box::new(item)), move |_| {
             Some(EventPayload::EntityDropItem(EntityDropItem {
                 entity_type: dropper.kind.clone(),
                 entity: dropper,

@@ -27,7 +27,7 @@ use crate::player::Player;
 use crate::player_io::PlayerIo;
 use crate::plugins::events::PlayerLoginResult;
 use crate::plugins::{
-    Arrival, Decisions, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
+    Arrival, Decisions, Impacts, Lane, PluginIntro, PluginInventories, Refusal, Registry, ToPlugin,
     Visibility,
 };
 use crate::ports::{
@@ -111,6 +111,7 @@ pub struct Server<L> {
     pub(crate) decisions: Decisions,
     pub(crate) visibility: Visibility,
     pub(crate) plugin_inventories: PluginInventories,
+    pub(crate) impacts: Impacts,
     arrivals: FxHashMap<u64, Arrival<L>>,
     startup: Option<Receiver<Inbound<L>>>,
     arrival_counter: u64,
@@ -171,6 +172,7 @@ impl<L: ClientLink> Server<L> {
             decisions: Decisions::default(),
             visibility: Visibility::default(),
             plugin_inventories: PluginInventories::default(),
+            impacts: Impacts::default(),
             arrivals: FxHashMap::default(),
             startup: None,
             arrival_counter: 0,

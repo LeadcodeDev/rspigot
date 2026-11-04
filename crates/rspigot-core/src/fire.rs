@@ -3,10 +3,11 @@ use rspigot_domain::damage::DamageType;
 use rspigot_domain::entity::EntityBase;
 use rspigot_domain::entity::fire::{self, InsideEffect};
 use rspigot_domain::player::{GameMode, PlayerId};
-use rspigot_domain::{EntityId, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, Vec3};
 use rspigot_entities::EntityKind as Kind;
 
 use crate::health::DamageSource;
+use crate::plugins::{AfterHurt, BurnFollow, Struck};
 use crate::ports::ClientLink;
 use crate::server::Server;
 
@@ -90,7 +91,7 @@ impl<L: ClientLink> Server<L> {
             InsideEffect::InFire(damage) => {
                 self.hurt_entity(id, &DamageSource::new(DamageType::InFire), damage);
             }
-            InsideEffect::LavaIgnite => {
+            InsideEffect::LavaIgnite(_) => {
                 let immune = self
                     .entities
                     .store
@@ -100,7 +101,7 @@ impl<L: ClientLink> Server<L> {
                     self.ignite_entity(id, fire::LAVA_SECONDS);
                 }
             }
-            InsideEffect::LavaHurt => self.lava_hurt(id),
+            InsideEffect::LavaHurt(pos) => self.lava_hurt(id, pos),
             InsideEffect::MeltPowderSnow(pos) => {
                 let melt = self
                     .entities
@@ -120,7 +121,12 @@ impl<L: ClientLink> Server<L> {
         }
     }
 
-    fn lava_hurt(&mut self, id: EntityId) {
+    fn lava_source(&self, pos: BlockPos) -> DamageSource {
+        let state = self.world.chunks.block(pos).unwrap_or(BlockStateId::AIR);
+        DamageSource::from_block(DamageType::Lava, Some((pos, state)))
+    }
+
+    fn lava_hurt(&mut self, id: EntityId, pos: BlockPos) {
         let Some(entity) = self.entities.store.get(id) else {
             return;
         };
@@ -129,12 +135,28 @@ impl<L: ClientLink> Server<L> {
         }
         let silent = entity.base.is_silent();
         let position = entity.base.position;
-        let hurt = self.hurt_entity(id, &DamageSource::new(DamageType::Lava), fire::LAVA_DAMAGE);
-        if hurt && !silent {
-            let pitch = 2.0 + self.rng.random::<f32>() * 0.4;
-            let source = self.entity_source(id);
-            self.play_sound(None, position, BURN_SOUND, source, 0.4, pitch);
-        }
+        let then = if silent {
+            AfterHurt::Nothing
+        } else {
+            AfterHurt::Burn(BurnFollow {
+                position,
+                player: false,
+                entity: id,
+            })
+        };
+        let victim = self.struck(id);
+        let source = self.lava_source(pos);
+        self.strike(None, victim, source, fire::LAVA_DAMAGE, then);
+    }
+
+    pub(crate) fn burn_sound(&mut self, follow: BurnFollow) {
+        let pitch = 2.0 + self.rng.random::<f32>() * 0.4;
+        let source = if follow.player {
+            rspigot_entities::SoundSource::Players
+        } else {
+            self.entity_source(follow.entity)
+        };
+        self.play_sound(None, follow.position, BURN_SOUND, source, 0.4, pitch);
     }
 
     pub(crate) fn ignite_player(&mut self, id: PlayerId, seconds: f32) {
@@ -232,22 +254,26 @@ impl<L: ClientLink> Server<L> {
             InsideEffect::InFire(damage) => {
                 self.hurt(id, &DamageSource::new(DamageType::InFire), damage);
             }
-            InsideEffect::LavaIgnite => self.ignite_player(id, fire::LAVA_SECONDS),
-            InsideEffect::LavaHurt => {
-                let position = self.players.get(&id).map(|p| p.position);
-                if self.hurt(id, &DamageSource::new(DamageType::Lava), fire::LAVA_DAMAGE)
-                    && let Some(position) = position
-                {
-                    let pitch = 2.0 + self.rng.random::<f32>() * 0.4;
-                    self.play_sound(
-                        None,
-                        position,
-                        BURN_SOUND,
-                        rspigot_entities::SoundSource::Players,
-                        0.4,
-                        pitch,
-                    );
-                }
+            InsideEffect::LavaIgnite(_) => self.ignite_player(id, fire::LAVA_SECONDS),
+            InsideEffect::LavaHurt(pos) => {
+                let Some((position, entity)) =
+                    self.players.get(&id).map(|p| (p.position, p.entity_id))
+                else {
+                    return;
+                };
+                let follow = BurnFollow {
+                    position,
+                    player: true,
+                    entity,
+                };
+                let source = self.lava_source(pos);
+                self.strike(
+                    None,
+                    Struck::Player(id),
+                    source,
+                    fire::LAVA_DAMAGE,
+                    AfterHurt::Burn(follow),
+                );
             }
             InsideEffect::MeltPowderSnow(pos) => {
                 if self

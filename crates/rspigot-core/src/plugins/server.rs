@@ -7,6 +7,7 @@ use rspigot_domain::{Rotation, Vec3};
 use crate::commands::CommandContext;
 use crate::events::ClientEvent;
 use crate::player::Player;
+use crate::plugins::damage::settled_damage;
 use crate::plugins::decisions::{
     Asked, Continuation, Flushed, Held, Lane, MoveStep, Pending, Ready, Settlement, Taken, Undo,
     Undone,
@@ -206,6 +207,22 @@ impl<L: ClientLink> Server<L> {
         describe: impl FnOnce(&Self) -> Option<EventPayload>,
     ) {
         self.fire_as(lane.into(), None, then, describe);
+    }
+
+    pub(crate) fn fire_heard(
+        &mut self,
+        lane: Lane,
+        then: Continuation,
+        describe: impl FnOnce(&Self) -> Option<EventPayload>,
+    ) {
+        let kind = then.kind();
+        if self.plugins.listens(kind, Access::Observe) || self.plugins.listens(kind, Access::Decide)
+        {
+            self.fire_as(lane, None, then, describe);
+            return;
+        }
+        let dropped = self.conclude(then, false, None, Vec::new());
+        self.notify_undone(dropped, Phase::Settled);
     }
 
     pub(crate) fn fire_deferred(&mut self, lane: impl Into<Lane>, then: Continuation) {
@@ -736,6 +753,10 @@ impl<L: ClientLink> Server<L> {
             }
             Continuation::EntityDrop(item) => {
                 self.finish_entity_drop(*item, cancelled);
+                Vec::new()
+            }
+            Continuation::Hurt(step) => {
+                self.finish_hurt(*step, cancelled, settled_damage(patch));
                 Vec::new()
             }
         }

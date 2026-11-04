@@ -15,6 +15,7 @@ use crate::commands::Target;
 use crate::events::{Animation, ClientEvent, Hand};
 use crate::health::{DamageSource, attributes};
 use crate::mobs::{MIN_KNOCKBACK_DIRECTION, knockback_velocity};
+use crate::plugins::{AfterHurt, AttackFollow, Struck, SweepFollow};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -98,19 +99,13 @@ fn is_sword(item: rspigot_domain::ItemId) -> bool {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Sweep {
-    damage: f32,
-    direction: (f64, f64),
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Victim {
-    target: Target,
-    entity: EntityId,
-    bounds: Aabb,
-    living: bool,
-    attackable: bool,
-    velocity: Vec3,
+pub(crate) struct Victim {
+    pub(crate) target: Target,
+    pub(crate) entity: EntityId,
+    pub(crate) bounds: Aabb,
+    pub(crate) living: bool,
+    pub(crate) attackable: bool,
+    pub(crate) velocity: Vec3,
 }
 
 impl<L: ClientLink> Server<L> {
@@ -234,10 +229,10 @@ impl<L: ClientLink> Server<L> {
         self.attack(id, victim);
     }
 
-    fn hurt_target(&mut self, target: Target, source: &DamageSource, amount: f32) -> bool {
+    fn struck_target(target: Target) -> Struck {
         match target {
-            Target::Player(player) => self.hurt(player, source, amount),
-            Target::Entity(entity) => self.hurt_mob(entity, source, amount),
+            Target::Player(player) => Struck::Player(player),
+            Target::Entity(entity) => Struck::Mob(entity),
         }
     }
 
@@ -314,7 +309,37 @@ impl<L: ClientLink> Server<L> {
             self.attacker_sound(id, SOUND_KNOCKBACK);
         }
         let source = DamageSource::by(DamageType::PlayerAttack, source);
-        if !self.hurt_target(victim.target, &source, strike.damage) {
+        let follow = AttackFollow {
+            attacker: id,
+            attacker_entity,
+            victim,
+            strike,
+            full,
+            knockback,
+            yaw,
+            sweep: sweep.then_some((1.0 + sweep_ratio * strike.damage) * scale),
+        };
+        self.strike(
+            Some(id),
+            Self::struck_target(victim.target),
+            source,
+            strike.damage,
+            AfterHurt::Attack(Box::new(follow)),
+        );
+    }
+
+    pub(crate) fn finish_attack(&mut self, follow: AttackFollow, hurt: bool) {
+        let AttackFollow {
+            attacker: id,
+            attacker_entity,
+            victim,
+            strike,
+            full,
+            knockback,
+            yaw,
+            sweep,
+        } = follow;
+        if !hurt {
             self.attacker_sound(id, SOUND_NO_DAMAGE);
             self.send_inventory(id);
             return;
@@ -357,12 +382,11 @@ impl<L: ClientLink> Server<L> {
         {
             self.knock_velocity(victim_id, victim.velocity);
         }
-        if sweep {
-            let sweep = Sweep {
-                damage: (1.0 + sweep_ratio * strike.damage) * scale,
-                direction: (dx, dz),
-            };
-            self.sweep_attack(id, victim, &source, sweep);
+        if let Some(damage) = sweep
+            && let Some(source) = self.source_of(id)
+        {
+            let source = DamageSource::by(DamageType::PlayerAttack, source);
+            self.sweep_attack(id, victim, source, damage, (dx, dz));
         }
         if strike.critical {
             self.attacker_sound(id, SOUND_CRIT);
@@ -373,7 +397,7 @@ impl<L: ClientLink> Server<L> {
             self.push(Audience::One(id), event.clone());
             self.push(Audience::Trackers(attacker_entity), event);
         }
-        if !strike.critical && !sweep {
+        if !strike.critical && sweep.is_none() {
             self.attacker_sound(id, if full { SOUND_STRONG } else { SOUND_WEAK });
         }
         if let Some(attacker) = self.players.get_mut(&id) {
@@ -385,14 +409,20 @@ impl<L: ClientLink> Server<L> {
         self.exhaust(id, ATTACK_EXHAUSTION);
     }
 
-    fn sweep_attack(&mut self, id: PlayerId, victim: Victim, source: &DamageSource, sweep: Sweep) {
+    fn sweep_attack(
+        &mut self,
+        id: PlayerId,
+        victim: Victim,
+        source: DamageSource,
+        damage: f32,
+        direction: (f64, f64),
+    ) {
         self.attacker_sound(id, SOUND_SWEEP);
         let Some(attacker) = self.players.get(&id) else {
             return;
         };
         let origin = attacker.position;
         let attacker_entity = attacker.entity_id;
-        let (dx, dz) = sweep.direction;
         let b = victim.bounds;
         let area = Aabb::new(
             b.min_x - SWEEP_INFLATE_XZ,
@@ -423,9 +453,25 @@ impl<L: ClientLink> Server<L> {
                 .map(|p| Target::Player(p.id)),
         );
         for target in targets {
-            if self.hurt_target(target, source, sweep.damage) {
-                self.knockback_target(target, SWEEP_KNOCKBACK, dx, dz);
-            }
+            let follow = SweepFollow {
+                attacker: id,
+                target,
+                direction,
+            };
+            self.strike(
+                Some(id),
+                Self::struck_target(target),
+                source.clone(),
+                damage,
+                AfterHurt::Sweep(follow),
+            );
+        }
+    }
+
+    pub(crate) fn finish_sweep(&mut self, follow: SweepFollow, hurt: bool) {
+        if hurt {
+            let (dx, dz) = follow.direction;
+            self.knockback_target(follow.target, SWEEP_KNOCKBACK, dx, dz);
         }
     }
 

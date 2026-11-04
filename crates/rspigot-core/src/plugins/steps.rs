@@ -6,9 +6,11 @@ use rspigot_domain::random::LegacyRandom;
 use rspigot_domain::text::Component;
 use rspigot_domain::{BlockPos, BlockStateId, ChunkPos, EntityId, Rotation, Vec3};
 
-use crate::commands::CommandSender;
+use crate::combat::{Strike, Victim};
+use crate::commands::{CommandSender, Target};
 use crate::events::{Direction, Hand, InputState, PreLoginVerdict};
 use crate::explosion::BlockInteraction;
+use crate::health::DamageSource;
 use crate::plugins::EventKind;
 use crate::plugins::events::{CreatureSpawnReason, PlayerTeleportCause};
 
@@ -490,6 +492,107 @@ pub(crate) struct SpawnStep {
     pub(crate) birth: Birth,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Struck {
+    Player(PlayerId),
+    Mob(EntityId),
+    Item(EntityId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    Hurt,
+    Missed,
+    Cancelled,
+}
+
+impl Outcome {
+    pub(crate) const fn hurt(self) -> bool {
+        matches!(self, Self::Hurt)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AttackFollow {
+    pub(crate) attacker: PlayerId,
+    pub(crate) attacker_entity: EntityId,
+    pub(crate) victim: Victim,
+    pub(crate) strike: Strike,
+    pub(crate) full: bool,
+    pub(crate) knockback: f32,
+    pub(crate) yaw: f32,
+    pub(crate) sweep: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SweepFollow {
+    pub(crate) attacker: PlayerId,
+    pub(crate) target: Target,
+    pub(crate) direction: (f64, f64),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MobAttackFollow {
+    pub(crate) attacker: EntityId,
+    pub(crate) target: Target,
+    pub(crate) knockback: f32,
+    pub(crate) yaw: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArrowFollow {
+    pub(crate) arrow: EntityId,
+    pub(crate) target: EntityId,
+    pub(crate) owner: Option<EntityId>,
+    pub(crate) saved_fire: i32,
+    pub(crate) sound_pitch: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BurnFollow {
+    pub(crate) position: Vec3,
+    pub(crate) player: bool,
+    pub(crate) entity: EntityId,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BlastFollow {
+    pub(crate) target: EntityId,
+    pub(crate) player: Option<PlayerId>,
+    pub(crate) knockback: Vec3,
+}
+
+#[derive(Debug)]
+pub(crate) enum AfterHurt {
+    Nothing,
+    Attack(Box<AttackFollow>),
+    Sweep(SweepFollow),
+    MobAttack(MobAttackFollow),
+    Arrow(ArrowFollow),
+    Burn(BurnFollow),
+    Blast(BlastFollow),
+}
+
+#[derive(Debug)]
+pub(crate) struct HurtStep {
+    pub(crate) kind: EventKind,
+    pub(crate) victim: Struck,
+    pub(crate) source: DamageSource,
+    pub(crate) amount: f32,
+    pub(crate) then: AfterHurt,
+}
+
+impl HurtStep {
+    fn repeats(&self) -> bool {
+        matches!(
+            self.source.kind,
+            rspigot_domain::damage::DamageType::Lava
+                | rspigot_domain::damage::DamageType::OutOfWorld
+                | rspigot_domain::damage::DamageType::InFire
+        )
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum Continuation {
     PlayerMove(MoveStep),
@@ -549,6 +652,7 @@ pub(crate) enum Continuation {
     Thunder(bool),
     Spawn(Box<SpawnStep>),
     EntityDrop(Box<Entity>),
+    Hurt(Box<HurtStep>),
 }
 
 impl Continuation {
@@ -606,6 +710,7 @@ impl Continuation {
             Self::Thunder(_) => EventKind::ThunderChange,
             Self::Spawn(step) => step.kind,
             Self::EntityDrop(_) => EventKind::EntityDropItem,
+            Self::Hurt(step) => step.kind,
         }
     }
 
@@ -635,15 +740,21 @@ impl Continuation {
             }
             (Self::Cook(one), Self::Cook(other)) => one.pos == other.pos && one.slot == other.slot,
             (Self::ChunkUnload(one), Self::ChunkUnload(other)) => one == other,
+            (Self::Hurt(one), Self::Hurt(other)) => {
+                one.repeats() && one.victim == other.victim && one.source.kind == other.source.kind
+            }
             _ => false,
         }
     }
 
-    pub(crate) const fn may_skip(&self) -> bool {
-        matches!(
-            self,
-            Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
-        )
+    pub(crate) fn may_skip(&self) -> bool {
+        match self {
+            Self::Hurt(step) => step.repeats(),
+            _ => matches!(
+                self,
+                Self::Velocity(_) | Self::PickupArrow(_) | Self::Cook(_) | Self::ChunkUnload(_)
+            ),
+        }
     }
 }
 

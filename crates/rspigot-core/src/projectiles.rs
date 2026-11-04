@@ -16,7 +16,7 @@ use crate::events::{ClientEvent, GameEvent};
 use crate::health::{DamageSource, SourceEntity};
 use crate::plugins::events::{CreatureSpawnReason, EntityRemoveCause, PlayerPickupArrow};
 use crate::plugins::steps::ArrowStep;
-use crate::plugins::{Continuation, EventPayload, spec_of};
+use crate::plugins::{AfterHurt, ArrowFollow, Continuation, EventPayload, spec_of};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -440,13 +440,34 @@ impl<L: ClientLink> Server<L> {
             direct: Some(direct),
             position: None,
             knockback: Some((-velocity.x, -velocity.z)),
+            direct_block: None,
         };
-        let hurt = self.hurt_entity(target, &source, damage as f32);
-        let target_player = self
-            .players
-            .values()
-            .find(|p| p.entity_id == target)
-            .map(|p| p.id);
+        let follow = ArrowFollow {
+            arrow: id,
+            target,
+            owner: owner_id,
+            saved_fire,
+            sound_pitch,
+        };
+        let victim = self.struck(target);
+        self.strike(
+            None,
+            victim,
+            source,
+            damage as f32,
+            AfterHurt::Arrow(follow),
+        );
+    }
+
+    pub(crate) fn finish_arrow_hit(&mut self, follow: ArrowFollow, hurt: bool) {
+        let ArrowFollow {
+            arrow: id,
+            target,
+            owner: owner_id,
+            saved_fire,
+            sound_pitch,
+        } = follow;
+        let target_player = self.player_of_entity(target);
         if hurt {
             if let Some(Entity {
                 base,
@@ -460,11 +481,7 @@ impl<L: ClientLink> Server<L> {
                 self.add_player_arrow(player);
             }
             if let (Some(_), Some(owner)) = (target_player, owner_id)
-                && let Some(shooter) = self
-                    .players
-                    .values()
-                    .find(|p| p.entity_id == owner)
-                    .map(|p| p.id)
+                && let Some(shooter) = self.player_of_entity(owner)
                 && Some(shooter) != target_player
             {
                 self.push(

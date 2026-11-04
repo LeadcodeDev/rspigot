@@ -41,6 +41,7 @@ use crate::lighting::light_level;
 use crate::loot::{self, LootContext, LootDamage, LootEntity, RaiderFacts};
 use crate::player::Player;
 use crate::plugins::events::EntityRemoveCause;
+use crate::plugins::{AfterHurt, MobAttackFollow, Struck};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -918,6 +919,16 @@ fn sound_state<V: rspigot_domain::entity::BlockView>(entity: &Entity, view: &V) 
     }
 }
 
+fn hurt_source_of(source: &DamageSource) -> HurtSource<'_> {
+    HurtSource {
+        kind: source.kind,
+        causing: source.causing.as_ref().map(|c| &c.name),
+        direct: source.direct.as_ref().map(|d| &d.name),
+        living_cause: source.living_cause(),
+        creative_attacker: source.creative_attacker(),
+    }
+}
+
 pub(crate) fn loot_facts_of(entity: &Entity) -> LootEntity {
     loot_facts(entity)
 }
@@ -1001,6 +1012,53 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt_mob(&mut self, id: EntityId, source: &DamageSource, amount: f32) -> bool {
+        self.strike(
+            None,
+            Struck::Mob(id),
+            source.clone(),
+            amount,
+            AfterHurt::Nothing,
+        )
+    }
+
+    pub(crate) fn ask_hurt_mob(
+        &mut self,
+        id: EntityId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> Option<f32> {
+        let hurt_source = hurt_source_of(source);
+        let Some(Entity {
+            base,
+            state: EntityState::Living(state),
+            ..
+        }) = self.entities.store.get_mut(id)
+        else {
+            return None;
+        };
+        if !living::can_hurt(base, state, &hurt_source) {
+            return None;
+        }
+        state.no_action_time = 0;
+        Some(living::floored(amount))
+    }
+
+    pub(crate) fn mob_final_damage(&self, id: EntityId, kind: DamageType, amount: f32) -> f32 {
+        self.entities
+            .store
+            .get(id)
+            .and_then(Entity::living)
+            .map_or(0.0, |state| {
+                living::final_damage(&mut state.clone(), kind, amount)
+            })
+    }
+
+    pub(crate) fn apply_hurt_mob(
+        &mut self,
+        id: EntityId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> bool {
         let now = self.current_tick();
         let game_time = self.world.level.game_time;
         let kind = source.kind;
@@ -1009,13 +1067,7 @@ impl<L: ClientLink> Server<L> {
             .as_ref()
             .filter(|c| c.kind.living())
             .map(|c| c.entity);
-        let hurt_source = HurtSource {
-            kind,
-            causing: source.causing.as_ref().map(|c| &c.name),
-            direct: source.direct.as_ref().map(|d| &d.name),
-            living_cause: source.living_cause(),
-            creative_attacker: source.creative_attacker(),
-        };
+        let hurt_source = hurt_source_of(source);
         let Some(Entity {
             base,
             state: EntityState::Living(state),
@@ -1024,8 +1076,11 @@ impl<L: ClientLink> Server<L> {
         else {
             return false;
         };
+        if !living::can_hurt(base, state, &hurt_source) {
+            return false;
+        }
         let health_before = living::health(base);
-        let outcome = living::hurt(base, state, &hurt_source, amount, now);
+        let outcome = living::hurt_settled(base, state, &hurt_source, amount, now);
         if outcome == HurtOutcome::Ignored {
             return false;
         }
@@ -1382,7 +1437,11 @@ impl<L: ClientLink> Server<L> {
             };
             self.entity_sound(id, sound, 1.0, 1.0);
         }
-        self.hurt_mob(id, &DamageSource::new(impact.kind), damage as f32);
+        self.hurt_mob(
+            id,
+            &impact.source((landing.pos, landing.state)),
+            damage as f32,
+        );
     }
 
     pub fn do_hurt_target(&mut self, attacker: EntityId, target: Target) -> bool {
@@ -1401,12 +1460,28 @@ impl<L: ClientLink> Server<L> {
         let knockback = state.attribute(ATTACK_KNOCKBACK) as f32 / 2.0;
         let yaw = base.yaw;
         let source = DamageSource::by(DamageType::MobAttack, source_entity);
-        let hurt = match target {
-            Target::Player(player) => self.hurt(player, &source, damage),
-            Target::Entity(entity) => self.hurt_mob(entity, &source, damage),
+        let victim = match target {
+            Target::Player(player) => Struck::Player(player),
+            Target::Entity(entity) => Struck::Mob(entity),
         };
+        let follow = MobAttackFollow {
+            attacker,
+            target,
+            knockback,
+            yaw,
+        };
+        self.strike(None, victim, source, damage, AfterHurt::MobAttack(follow))
+    }
+
+    pub(crate) fn finish_mob_attack(&mut self, follow: MobAttackFollow, hurt: bool) {
+        let MobAttackFollow {
+            attacker,
+            target,
+            knockback,
+            yaw,
+        } = follow;
         if !hurt {
-            return false;
+            return;
         }
         if knockback > 0.0 {
             let (dx, dz) = mth::yaw_direction(yaw);
@@ -1453,7 +1528,6 @@ impl<L: ClientLink> Server<L> {
             living.damage.last_hurt_mob = target_entity;
             living.damage.last_hurt_mob_at = tick_count;
         }
-        true
     }
 
     pub fn mob_damage(&self, id: EntityId) -> Option<MobDamageSnapshot> {

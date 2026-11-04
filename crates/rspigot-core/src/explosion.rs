@@ -14,6 +14,7 @@ use crate::loot::{self, LootContext, LootEntity};
 use crate::mobs::ServerRandom;
 use crate::plugins::events::EntityRemoveCause;
 use crate::plugins::steps::ExplodeStep;
+use crate::plugins::{AfterHurt, BlastFollow, Struck};
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
 
@@ -218,10 +219,10 @@ impl<L: ClientLink> Server<L> {
         center: Vec3,
         radius: f32,
     ) -> Vec<(PlayerId, Vec3)> {
-        let mut knocked = Vec::new();
         if radius < 1.0e-5 {
-            return knocked;
+            return Vec::new();
         }
+        let outer = self.impacts.knocked.replace(Vec::new());
         let area = explosion::hurt_area(center, radius);
         for target in self.explosion_targets(source, &area) {
             let distance =
@@ -231,12 +232,14 @@ impl<L: ClientLink> Server<L> {
             }
             let exposure = explosion::seen_percent(&self.world.chunks, center, &target.bounds);
             let amount = explosion::entity_damage(radius, center, target.position, exposure);
-            if let Some(player) = target.player {
-                self.hurt(player, damage, amount);
-            } else if target.living {
-                self.hurt_mob(target.id, damage, amount);
-            } else {
-                self.damage_inert(target.id, amount);
+            let orb = target.player.is_none()
+                && self
+                    .entities
+                    .store
+                    .get(target.id)
+                    .is_some_and(|e| matches!(e.state, EntityState::Orb(_)));
+            if orb {
+                self.damage_orb(target.id, amount);
             }
             let resistance = self
                 .entities
@@ -246,48 +249,68 @@ impl<L: ClientLink> Server<L> {
                 .map_or(0.0, |living| {
                     living.attribute(EXPLOSION_KNOCKBACK_RESISTANCE)
                 });
-            let Some(knockback) = explosion::knockback(
+            let knockback = explosion::knockback(
                 radius,
                 center,
                 target.position,
                 target.eye,
                 exposure,
                 resistance,
-            ) else {
-                continue;
-            };
-            match target.player {
-                Some(player) => {
-                    let Some(p) = self.players.get_mut(&player) else {
-                        continue;
-                    };
-                    p.vitals.velocity = p.vitals.velocity + knockback;
-                    let flying_creative = p.game_mode == GameMode::Creative && p.flying;
-                    if p.game_mode != GameMode::Spectator && !flying_creative {
-                        knocked.push((player, knockback));
-                    }
+            );
+            let then = knockback.map_or(AfterHurt::Nothing, |knockback| {
+                AfterHurt::Blast(BlastFollow {
+                    target: target.id,
+                    player: target.player,
+                    knockback,
+                })
+            });
+            if orb {
+                if let AfterHurt::Blast(follow) = then {
+                    self.blast_knockback(follow);
                 }
-                None => {
-                    if let Some(entity) = self.entities.store.get_mut(target.id) {
-                        entity.base.velocity = entity.base.velocity + knockback;
-                        entity.base.needs_sync = true;
-                    }
+                continue;
+            }
+            let victim = match target.player {
+                Some(player) => Struck::Player(player),
+                None if target.living => Struck::Mob(target.id),
+                None => Struck::Item(target.id),
+            };
+            self.strike(None, victim, damage.clone(), amount, then);
+        }
+        std::mem::replace(&mut self.impacts.knocked, outer).unwrap_or_default()
+    }
+
+    pub(crate) fn blast_knockback(&mut self, follow: BlastFollow) {
+        let knockback = follow.knockback;
+        match follow.player {
+            Some(player) => {
+                let Some(p) = self.players.get_mut(&player) else {
+                    return;
+                };
+                p.vitals.velocity = p.vitals.velocity + knockback;
+                let flying_creative = p.game_mode == GameMode::Creative && p.flying;
+                if p.game_mode == GameMode::Spectator || flying_creative {
+                    return;
+                }
+                match &mut self.impacts.knocked {
+                    Some(knocked) => knocked.push((player, knockback)),
+                    None => p.vitals.sync_velocity = true,
+                }
+            }
+            None => {
+                if let Some(entity) = self.entities.store.get_mut(follow.target) {
+                    entity.base.velocity = entity.base.velocity + knockback;
+                    entity.base.needs_sync = true;
                 }
             }
         }
-        knocked
     }
 
-    fn damage_inert(&mut self, id: EntityId, amount: f32) {
-        let griefing = self.config.rules.mob_griefing;
+    fn damage_orb(&mut self, id: EntityId, amount: f32) {
         let Some(entity) = self.entities.store.get_mut(id) else {
             return;
         };
         let destroyed = match &mut entity.state {
-            EntityState::Item(state) if griefing => {
-                state.health -= amount.ceil() as i32;
-                state.health <= 0
-            }
             EntityState::Orb(state) => {
                 state.health -= amount.ceil() as i32;
                 state.health <= 0

@@ -15,7 +15,7 @@ use rspigot_domain::menu::InventoryMenu;
 use rspigot_domain::player::{GameMode, PlayerId};
 use rspigot_domain::text::Component;
 use rspigot_domain::world::Difficulty;
-use rspigot_domain::{BlockPos, EntityId, ItemId, Rotation, Vec3};
+use rspigot_domain::{BlockPos, BlockStateId, EntityId, ItemId, Rotation, Vec3};
 use rspigot_entities::EntityKind as Kind;
 use rspigot_items::EquipmentSlot as ItemSlot;
 
@@ -26,8 +26,8 @@ use crate::plugins::events::{
     PlayerRespawnReason,
 };
 use crate::plugins::{
-    Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, spec_of,
-    stack_of,
+    AfterHurt, Continuation, DeathStep, EventKind, EventPayload, ItemSpec, Phase, RespawnStep, Struck,
+    spec_of, stack_of,
 };
 use crate::ports::ClientLink;
 use crate::server::{Audience, Server};
@@ -73,6 +73,7 @@ pub struct DamageSource {
     pub direct: Option<SourceEntity>,
     pub position: Option<Vec3>,
     pub knockback: Option<(f64, f64)>,
+    pub direct_block: Option<(BlockPos, BlockStateId)>,
 }
 
 impl DamageSource {
@@ -83,6 +84,7 @@ impl DamageSource {
             direct: None,
             position: None,
             knockback: None,
+            direct_block: None,
         }
     }
 
@@ -93,6 +95,14 @@ impl DamageSource {
             direct: Some(source),
             position: None,
             knockback: None,
+            direct_block: None,
+        }
+    }
+
+    pub fn from_block(kind: DamageType, block: Option<(BlockPos, BlockStateId)>) -> Self {
+        Self {
+            direct_block: block,
+            ..Self::new(kind)
         }
     }
 
@@ -367,38 +377,90 @@ impl<L: ClientLink> Server<L> {
     }
 
     pub(crate) fn hurt(&mut self, id: PlayerId, source: &DamageSource, amount: f32) -> bool {
-        let pvp = self.config.pvp;
+        self.strike(
+            None,
+            Struck::Player(id),
+            source.clone(),
+            amount,
+            AfterHurt::Nothing,
+        )
+    }
+
+    pub(crate) fn ask_hurt_player(
+        &self,
+        id: PlayerId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> Option<f32> {
+        let kind = source.kind;
+        let player = self.players.get(&id)?;
+        if invulnerable_to(player, kind, self.config.rules.fall_damage)
+            || (source.attacker().is_some() && !self.config.pvp)
+            || (player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability))
+            || player.vitals.is_dead()
+        {
+            return None;
+        }
+        let amount = if source.scales_with_difficulty() {
+            damage::scaled_for_difficulty(amount, self.world.difficulty)
+        } else {
+            amount
+        };
+        if kind.is(DamageTag::IsFire) && player.effects.has("minecraft:fire_resistance") {
+            return None;
+        }
+        Some(if amount < 0.0 { 0.0 } else { amount })
+    }
+
+    pub(crate) fn player_final_damage(&self, id: PlayerId, kind: DamageType, amount: f32) -> f32 {
+        let Some(player) = self.players.get(&id) else {
+            return 0.0;
+        };
+        let mut amount = if amount < 0.0 { 0.0 } else { amount };
+        if kind.is(DamageTag::DamagesHelmet) && player.inventory.get(HEAD_SLOT).is_some() {
+            amount *= HELMET_FACTOR;
+        }
+        let attributes = attributes(player);
+        if !kind.is(DamageTag::BypassesArmor) {
+            amount = damage::after_armor(
+                amount,
+                attributes.get(ARMOR).floor() as f32,
+                attributes.get(ARMOR_TOUGHNESS) as f32,
+            );
+        }
+        if !kind.is(DamageTag::BypassesEffects) {
+            if let Some(level) = amplifier(player, "minecraft:resistance")
+                && !kind.is(DamageTag::BypassesResistance)
+            {
+                amount = damage::after_resistance(amount, level);
+            }
+            if amount <= 0.0 {
+                amount = 0.0;
+            }
+        }
+        damage::absorb(amount, player.vitals.absorption).damage
+    }
+
+    pub(crate) fn apply_hurt_player(
+        &mut self,
+        id: PlayerId,
+        source: &DamageSource,
+        amount: f32,
+    ) -> bool {
         let fall_damage = self.config.rules.fall_damage;
-        let difficulty = self.world.difficulty;
         let now = self.current_tick();
         let kind = source.kind;
         let Some(player) = self.players.get_mut(&id) else {
             return false;
         };
-        if invulnerable_to(player, kind, fall_damage) {
+        if invulnerable_to(player, kind, fall_damage)
+            || (player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability))
+            || player.vitals.is_dead()
+            || amount == 0.0
+        {
             return false;
         }
-        if source.attacker().is_some() && !pvp {
-            return false;
-        }
-        if player.abilities().invulnerable && !kind.is(DamageTag::BypassesInvulnerability) {
-            return false;
-        }
-        if player.vitals.is_dead() {
-            return false;
-        }
-        let amount = if source.scales_with_difficulty() {
-            damage::scaled_for_difficulty(amount, difficulty)
-        } else {
-            amount
-        };
-        if amount == 0.0 {
-            return false;
-        }
-        if kind.is(DamageTag::IsFire) && player.effects.has("minecraft:fire_resistance") {
-            return false;
-        }
-        let mut amount = if amount < 0.0 { 0.0 } else { amount };
+        let mut amount = amount;
         if kind.is(DamageTag::DamagesHelmet) && player.inventory.get(HEAD_SLOT).is_some() {
             amount *= HELMET_FACTOR;
         }

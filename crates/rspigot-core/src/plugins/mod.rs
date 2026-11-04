@@ -3,6 +3,7 @@ mod blocks;
 mod chat;
 mod chunks;
 mod contract;
+mod damage;
 mod decisions;
 mod digging;
 mod entity;
@@ -45,6 +46,7 @@ pub use contract::{
     LootContext, MerchantRef, OwnerRef, PluginInfo, SenderView, SignData, SpawnerData, Trade,
     TrialSpawnerData,
 };
+pub(crate) use damage::Impacts;
 pub(crate) use decisions::{Continuation, Decisions, Held, Lane};
 pub(crate) use digging::Mining;
 pub use events::{EventKind, EventPatch, EventPayload};
@@ -61,7 +63,10 @@ pub use patch::Verdict;
 pub(crate) use registry::Registry;
 pub(crate) use session::{Arrival, Refusal};
 pub(crate) use spawns::{name_of_entity, view_of_entity};
-pub(crate) use steps::{Birth, DeathStep, RespawnStep, Spawned};
+pub(crate) use steps::{
+    AfterHurt, ArrowFollow, AttackFollow, Birth, BlastFollow, BurnFollow, DeathStep,
+    MobAttackFollow, RespawnStep, Spawned, Struck, SweepFollow,
+};
 pub use targets::MAX_TARGET_DISTANCE;
 pub(crate) use visibility::Visibility;
 
